@@ -1,0 +1,93 @@
+server:
+  listen_address: ":50053"
+
+providers:
+  hub_gemini:
+    type: gemini
+    api_key: "${GEMINI_API_KEY}"
+    proxy_url: ""
+  vertex_chat:
+    type: vertexai
+    project: "${VERTEX_PROJECT}"
+    location: us-central1
+  ark_chat:
+    type: ark
+    api_key: "${ARK_API_KEY}"
+    base_url: https://ark.cn-beijing.volces.com/api/v3
+  quick_speech:
+    type: openai
+    api_key: "${DASHSCOPE_API_KEY}"
+    base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+    send_enable_thinking: true
+  brainstorm:
+    type: openai
+    api_key: "${BRAINSTORM_API_KEY}"
+    base_url: https://api.ominilink.ai/v1
+  async_vision:
+    type: openai
+    api_key: "${ASYNC_VISION_API_KEY}"
+    base_url: https://api.openai-compatible.example/v1
+  # OminiLink 生图使用 Gemini generateContent 协议，不是 OpenAI chat/completions。
+  ominilink_image:
+    type: gemini
+    api_key: "${OMINILINK_IMAGE_API_KEY}"
+    base_url: https://api.ominilink.ai
+  ltx_video:
+    type: ltx
+    base_url: https://ltx.example
+    token: "${LTX_TOKEN}"
+    duration: 4
+    fps: 24
+    seed: 42
+    poll_interval: 2
+    max_poll_time: 300
+
+profiles:
+  hub.chat:
+    capability: text
+    provider: hub_gemini
+    model: gemini-2.5-flash
+  hub.quick_speech:
+    capability: text
+    provider: quick_speech
+    model: qwen-flash
+  hub.brainstorm:
+    capability: text
+    provider: brainstorm
+    model: gemini-2.5-flash
+  async.vision:
+    capability: text
+    provider: async_vision
+    model: gpt-4.1-mini
+  async.candidate:
+    capability: text
+    provider: async_vision
+    model: gpt-4.1-mini
+  async.artwork:
+    capability: image
+    provider: ominilink_image
+    model: gemini-2.5-flash-image
+  async.cloth_image:
+    capability: image
+    provider: ominilink_image
+    model: gemini-2.5-flash-image
+  async.body_model:
+    capability: image
+    provider: ominilink_image
+    model: gemini-2.5-flash-image
+  async.face_stylize:
+    capability: image
+    provider: ominilink_image
+    model: gemini-2.5-flash-image
+  async.vton.primary:
+    capability: image
+    provider: ominilink_image
+    model: gemini-2.5-flash-image
+  async.vton.backup:
+    capability: image
+    provider: ominilink_image
+    model: gemini-2.5-flash-image-backup
+  async.ltx.video:
+    capability: video
+    provider: ltx_video
+    model: ltx-vton
