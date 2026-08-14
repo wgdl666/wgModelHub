@@ -15,6 +15,8 @@ const (
 	AsyncVTONPrimary = "async.vton.primary"
 	AsyncVTONBackup  = "async.vton.backup"
 	AsyncLTXVideo    = "async.ltx.video"
+	// 运营台录衣候选用例纯文生图；与 Async 封面/白底图分开，避免压测夹具打进业务 profile。
+	OpsFixtureImage = "ops.fixture_image"
 )
 
 // Required 返回首版启动前必须在 Nacos 中配齐的全部 profile。
@@ -33,5 +35,6 @@ func Required() []string {
 		AsyncVTONPrimary,
 		AsyncVTONBackup,
 		AsyncLTXVideo,
+		OpsFixtureImage,
 	}
 }

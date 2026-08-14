@@ -91,3 +91,7 @@ profiles:
     capability: video
     provider: ltx_video
     model: ltx-vton
+  ops.fixture_image:
+    capability: image
+    provider: ominilink_image
+    model: gemini-3.1-flash-image
