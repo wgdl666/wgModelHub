@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"strings"
 
-	modelhubv1 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v1"
+	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	genaisdk "google.golang.org/genai"
@@ -64,7 +64,7 @@ func NewVertexAI(ctx context.Context, name, project, location string) (*Provider
 	return &Provider{name: name, client: client}, nil
 }
 
-func (p *Provider) Generate(ctx context.Context, model string, request *modelhubv1.GenerateTextRequest) (*modelhubv1.GenerateTextResponse, error) {
+func (p *Provider) Generate(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
 	response, err := p.client.Models.GenerateContent(ctx, model, p.buildContents(request), p.buildConfig(request))
 	if err != nil {
 		return nil, p.mapError(ctx, "generate content", err)
@@ -72,12 +72,10 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 	return convertResponse(response), nil
 }
 
-func (p *Provider) GenerateStream(ctx context.Context, model string, request *modelhubv1.GenerateTextRequest, emit provider.EmitTextEvent) (*modelhubv1.GenerateTextResponse, error) {
-	var content strings.Builder
-	var toolCalls []*modelhubv1.ToolCall
+func (p *Provider) GenerateStream(ctx context.Context, model string, request *modelhubv2.GenerateRequest, emit provider.EmitEvent) (*modelhubv2.GenerateEvent, error) {
 	var finishReason string
 	var responseID string
-	var usage *modelhubv1.Usage
+	var usage *modelhubv2.Usage
 
 	for response, err := range p.client.Models.GenerateContentStream(ctx, model, p.buildContents(request), p.buildConfig(request)) {
 		if err != nil {
@@ -88,12 +86,9 @@ func (p *Provider) GenerateStream(ctx context.Context, model string, request *mo
 				continue
 			}
 			for _, part := range candidate.Content.Parts {
-				if part.Text != "" {
-					content.WriteString(part.Text)
-					if emit != nil {
-						if err := emit(&modelhubv1.TextStreamEvent{Event: &modelhubv1.TextStreamEvent_TextChunk{TextChunk: part.Text}}); err != nil {
-							return nil, err
-						}
+				if part.Text != "" && emit != nil {
+					if err := emit(provider.TextDeltaEvent(part.Text)); err != nil {
+						return nil, err
 					}
 				}
 				if part.FunctionCall == nil {
@@ -101,9 +96,8 @@ func (p *Provider) GenerateStream(ctx context.Context, model string, request *mo
 				}
 				call := convertFunctionCall(part)
 				// Gemini 可能在同一轮合法调用同名函数多次；没有稳定 call ID 时不能按名称去重。
-				toolCalls = append(toolCalls, call)
 				if emit != nil {
-					if err := emit(&modelhubv1.TextStreamEvent{Event: &modelhubv1.TextStreamEvent_ToolCall{ToolCall: call}}); err != nil {
+					if err := emit(provider.ToolCallEvent(call)); err != nil {
 						return nil, err
 					}
 				}
@@ -118,62 +112,70 @@ func (p *Provider) GenerateStream(ctx context.Context, model string, request *mo
 		usage = convertUsage(response.UsageMetadata)
 	}
 
-	return &modelhubv1.GenerateTextResponse{
-		Content:      content.String(),
-		ToolCalls:    toolCalls,
-		ResponseId:   responseID,
-		FinishReason: finishReason,
-		Usage:        usage,
-	}, nil
+	return provider.MetadataFinalEvent(responseID, finishReason, usage), nil
 }
 
-func (p *Provider) buildContents(request *modelhubv1.GenerateTextRequest) []*genaisdk.Content {
-	contents := make([]*genaisdk.Content, 0, len(request.Messages)+len(request.ToolOutputs))
-	hasToolMessage := false
-	for _, message := range request.Messages {
-		if message.Role == modelhubv1.Role_ROLE_SYSTEM {
-			continue
-		}
-		if message.Role == modelhubv1.Role_ROLE_TOOL {
-			hasToolMessage = true
-		}
-		if content := convertMessage(message); content != nil {
-			contents = append(contents, content)
-		}
+func (p *Provider) buildContents(request *modelhubv2.GenerateRequest) []*genaisdk.Content {
+	input := request.GetInput()
+	if input == nil {
+		return nil
 	}
-
-	// 旧调用链可能仍把工具结果放在 tool_outputs；只有消息历史未物化结果时才补入，避免重复续轮。
-	if !hasToolMessage {
-		for _, output := range request.ToolOutputs {
-			response := toolOutputObject(output)
-			name := output.ToolName
-			if name == "" {
-				name = output.ToolCallId
+	// Input.items 单遍转换；SYSTEM 只进 SystemInstruction，不进入 contents。
+	var contents []*genaisdk.Content
+	for _, item := range input.GetItems() {
+		switch value := item.GetItem().(type) {
+		case *modelhubv2.InputItem_Message:
+			if value.Message.GetRole() == modelhubv2.Role_ROLE_SYSTEM {
+				continue
 			}
-			contents = append(contents, genaisdk.NewContentFromFunctionResponse(name, response, genaisdk.RoleUser))
-			if len(output.Images) > 0 {
-				parts := make([]*genaisdk.Part, 0, len(output.Images))
-				for _, image := range output.Images {
-					if part := convertMedia(image); part != nil {
-						parts = append(parts, part)
-					}
-				}
-				if len(parts) > 0 {
-					contents = append(contents, genaisdk.NewContentFromParts(parts, genaisdk.RoleUser))
-				}
+			if content := convertMessage(value.Message); content != nil {
+				contents = append(contents, content)
 			}
+		case *modelhubv2.InputItem_ToolOutput:
+			contents = append(contents, convertToolOutputContents(value.ToolOutput)...)
 		}
 	}
 	return contents
 }
 
-func convertMessage(message *modelhubv1.Message) *genaisdk.Content {
+// convertToolOutputContents 把工具回执转成 function response，图片紧跟该项。
+func convertToolOutputContents(output *modelhubv2.ToolOutput) []*genaisdk.Content {
+	if output == nil {
+		return nil
+	}
+	name := output.ToolName
+	if name == "" {
+		name = output.ToolCallId
+	}
+	contents := []*genaisdk.Content{genaisdk.NewContentFromFunctionResponse(name, toolOutputObject(output), genaisdk.RoleUser)}
+	if len(output.Images) == 0 {
+		return contents
+	}
+	parts := make([]*genaisdk.Part, 0, len(output.Images))
+	for _, image := range output.Images {
+		if part := convertMedia(image); part != nil {
+			parts = append(parts, part)
+		}
+	}
+	if len(parts) == 0 {
+		return contents
+	}
+	return append(contents, genaisdk.NewContentFromParts(parts, genaisdk.RoleUser))
+}
+
+func convertMessage(message *modelhubv2.Message) *genaisdk.Content {
 	role := genaisdk.Role(genaisdk.RoleUser)
-	if message.Role == modelhubv1.Role_ROLE_ASSISTANT {
+	if message.Role == modelhubv2.Role_ROLE_ASSISTANT {
 		role = genaisdk.Role(genaisdk.RoleModel)
 	}
-	if message.Role == modelhubv1.Role_ROLE_ASSISTANT && len(message.ToolCalls) > 0 {
-		parts := make([]*genaisdk.Part, 0, len(message.ToolCalls))
+	// 文本 parts 与 tool_calls 可同属一条 assistant Message；二者都保留，先文本后工具调用。
+	parts := make([]*genaisdk.Part, 0, len(message.Parts)+len(message.ToolCalls))
+	for _, part := range message.Parts {
+		if converted := convertContentPart(part); converted != nil {
+			parts = append(parts, converted)
+		}
+	}
+	if message.Role == modelhubv2.Role_ROLE_ASSISTANT {
 		for _, call := range message.ToolCalls {
 			arguments := map[string]any{}
 			if len(call.ArgumentsJson) > 0 {
@@ -192,26 +194,6 @@ func convertMessage(message *modelhubv1.Message) *genaisdk.Content {
 				ThoughtSignature: call.ThoughtSignature,
 			})
 		}
-		return genaisdk.NewContentFromParts(parts, role)
-	}
-	if message.Role == modelhubv1.Role_ROLE_TOOL {
-		response := map[string]any{}
-		text := messageText(message)
-		_ = json.Unmarshal([]byte(text), &response)
-		if len(response) == 0 {
-			response["result"] = text
-		}
-		name := message.ToolName
-		if name == "" {
-			name = message.ToolCallId
-		}
-		return genaisdk.NewContentFromFunctionResponse(name, response, genaisdk.RoleUser)
-	}
-	parts := make([]*genaisdk.Part, 0, len(message.Parts))
-	for _, part := range message.Parts {
-		if converted := convertContentPart(part); converted != nil {
-			parts = append(parts, converted)
-		}
 	}
 	if len(parts) == 0 {
 		return nil
@@ -219,37 +201,37 @@ func convertMessage(message *modelhubv1.Message) *genaisdk.Content {
 	return genaisdk.NewContentFromParts(parts, role)
 }
 
-func convertContentPart(part *modelhubv1.ContentPart) *genaisdk.Part {
+func convertContentPart(part *modelhubv2.ContentPart) *genaisdk.Part {
 	switch value := part.Content.(type) {
-	case *modelhubv1.ContentPart_Text:
+	case *modelhubv2.ContentPart_Text:
 		if value.Text == "" {
 			return nil
 		}
 		return genaisdk.NewPartFromText(value.Text)
-	case *modelhubv1.ContentPart_Image:
+	case *modelhubv2.ContentPart_Image:
 		return convertMedia(value.Image)
-	case *modelhubv1.ContentPart_Video:
+	case *modelhubv2.ContentPart_Video:
 		return convertMedia(value.Video)
-	case *modelhubv1.ContentPart_Audio:
+	case *modelhubv2.ContentPart_Audio:
 		return convertMedia(value.Audio)
-	case *modelhubv1.ContentPart_File:
+	case *modelhubv2.ContentPart_File:
 		return convertMedia(value.File)
 	default:
 		return nil
 	}
 }
 
-func convertMedia(media *modelhubv1.Media) *genaisdk.Part {
+func convertMedia(media *modelhubv2.Media) *genaisdk.Part {
 	if media == nil || strings.TrimSpace(media.MimeType) == "" {
 		return nil
 	}
 	switch source := media.Source.(type) {
-	case *modelhubv1.Media_Data:
+	case *modelhubv2.Media_Data:
 		if len(source.Data) == 0 {
 			return nil
 		}
 		return genaisdk.NewPartFromBytes(source.Data, media.MimeType)
-	case *modelhubv1.Media_Uri:
+	case *modelhubv2.Media_Uri:
 		if strings.TrimSpace(source.Uri) == "" {
 			return nil
 		}
@@ -259,59 +241,70 @@ func convertMedia(media *modelhubv1.Media) *genaisdk.Part {
 	}
 }
 
-func (p *Provider) buildConfig(request *modelhubv1.GenerateTextRequest) *genaisdk.GenerateContentConfig {
+func (p *Provider) buildConfig(request *modelhubv2.GenerateRequest) *genaisdk.GenerateContentConfig {
+	input := request.GetInput()
+	if input == nil {
+		input = &modelhubv2.Input{}
+	}
+	textSpec := request.GetOutput().GetText()
 	cfg := &genaisdk.GenerateContentConfig{}
-	if request.Instructions != "" {
-		cfg.SystemInstruction = genaisdk.NewContentFromText(request.Instructions, genaisdk.RoleUser)
-	} else {
-		for _, message := range request.Messages {
-			if message.Role == modelhubv1.Role_ROLE_SYSTEM {
-				cfg.SystemInstruction = genaisdk.NewContentFromText(messageText(message), genaisdk.RoleUser)
-				break
-			}
+	// 仅拼接前置连续 SYSTEM 文本进 SystemInstruction；中途 SYSTEM 不造复杂状态机。
+	var systemTexts []string
+	for _, item := range input.GetItems() {
+		message := item.GetMessage()
+		if message == nil || message.Role != modelhubv2.Role_ROLE_SYSTEM {
+			break
+		}
+		if text := strings.TrimSpace(messageText(message)); text != "" {
+			systemTexts = append(systemTexts, text)
 		}
 	}
-	if request.MaxOutputTokens != nil {
-		cfg.MaxOutputTokens = *request.MaxOutputTokens
+	if len(systemTexts) > 0 {
+		cfg.SystemInstruction = genaisdk.NewContentFromText(strings.Join(systemTexts, "\n"), genaisdk.RoleUser)
 	}
-	if request.Temperature != nil {
-		value := float32(*request.Temperature)
+	if textSpec != nil && textSpec.MaxOutputTokens != nil {
+		cfg.MaxOutputTokens = *textSpec.MaxOutputTokens
+	}
+	if textSpec != nil && textSpec.Temperature != nil {
+		value := float32(*textSpec.Temperature)
 		cfg.Temperature = &value
 	}
-	if request.TopP != nil {
-		value := float32(*request.TopP)
+	if textSpec != nil && textSpec.TopP != nil {
+		value := float32(*textSpec.TopP)
 		cfg.TopP = &value
 	}
-	switch request.Thinking {
-	case modelhubv1.ThinkingMode_THINKING_MODE_DISABLED:
-		cfg.ThinkingConfig = &genaisdk.ThinkingConfig{ThinkingBudget: genaisdk.Ptr(int32(0))}
-	case modelhubv1.ThinkingMode_THINKING_MODE_ENABLED:
-		cfg.ThinkingConfig = &genaisdk.ThinkingConfig{ThinkingBudget: genaisdk.Ptr(int32(1024))}
-	}
-	if format := request.ResponseFormat; format != nil {
-		switch format.Type {
-		case modelhubv1.ResponseFormatType_RESPONSE_FORMAT_TYPE_JSON_OBJECT:
-			cfg.ResponseMIMEType = "application/json"
-		case modelhubv1.ResponseFormatType_RESPONSE_FORMAT_TYPE_JSON_SCHEMA:
-			cfg.ResponseMIMEType = "application/json"
-			if len(format.JsonSchema) > 0 {
-				var schema any
-				_ = json.Unmarshal(format.JsonSchema, &schema)
-				cfg.ResponseJsonSchema = schema
+	if textSpec != nil {
+		switch textSpec.Thinking {
+		case modelhubv2.ThinkingMode_THINKING_MODE_DISABLED:
+			cfg.ThinkingConfig = &genaisdk.ThinkingConfig{ThinkingBudget: genaisdk.Ptr(int32(0))}
+		case modelhubv2.ThinkingMode_THINKING_MODE_ENABLED:
+			cfg.ThinkingConfig = &genaisdk.ThinkingConfig{ThinkingBudget: genaisdk.Ptr(int32(1024))}
+		}
+		if format := textSpec.ResponseFormat; format != nil {
+			switch format.Type {
+			case modelhubv2.ResponseFormatType_RESPONSE_FORMAT_TYPE_JSON_OBJECT:
+				cfg.ResponseMIMEType = "application/json"
+			case modelhubv2.ResponseFormatType_RESPONSE_FORMAT_TYPE_JSON_SCHEMA:
+				cfg.ResponseMIMEType = "application/json"
+				if len(format.JsonSchema) > 0 {
+					var schema any
+					_ = json.Unmarshal(format.JsonSchema, &schema)
+					cfg.ResponseJsonSchema = schema
+				}
 			}
 		}
 	}
-	cfg.Tools = buildTools(request.Tools)
+	cfg.Tools = buildTools(input.GetTools())
 	if len(cfg.Tools) > 0 {
 		cfg.ToolConfig = &genaisdk.ToolConfig{FunctionCallingConfig: &genaisdk.FunctionCallingConfig{Mode: genaisdk.FunctionCallingConfigModeAuto}}
 	}
-	if choice := request.ToolChoice; choice != nil {
+	if choice := input.GetToolChoice(); choice != nil {
 		switch choice.Mode {
-		case modelhubv1.ToolChoiceMode_TOOL_CHOICE_MODE_NONE:
+		case modelhubv2.ToolChoiceMode_TOOL_CHOICE_MODE_NONE:
 			cfg.ToolConfig = &genaisdk.ToolConfig{FunctionCallingConfig: &genaisdk.FunctionCallingConfig{Mode: genaisdk.FunctionCallingConfigModeNone}}
-		case modelhubv1.ToolChoiceMode_TOOL_CHOICE_MODE_REQUIRED:
+		case modelhubv2.ToolChoiceMode_TOOL_CHOICE_MODE_REQUIRED:
 			cfg.ToolConfig = &genaisdk.ToolConfig{FunctionCallingConfig: &genaisdk.FunctionCallingConfig{Mode: genaisdk.FunctionCallingConfigModeAny}}
-		case modelhubv1.ToolChoiceMode_TOOL_CHOICE_MODE_FUNCTION:
+		case modelhubv2.ToolChoiceMode_TOOL_CHOICE_MODE_FUNCTION:
 			cfg.ToolConfig = &genaisdk.ToolConfig{FunctionCallingConfig: &genaisdk.FunctionCallingConfig{
 				Mode:                 genaisdk.FunctionCallingConfigModeAny,
 				AllowedFunctionNames: []string{choice.FunctionName},
@@ -328,7 +321,7 @@ func (p *Provider) buildConfig(request *modelhubv1.GenerateTextRequest) *genaisd
 	return cfg
 }
 
-func buildTools(tools []*modelhubv1.Tool) []*genaisdk.Tool {
+func buildTools(tools []*modelhubv2.Tool) []*genaisdk.Tool {
 	declarations := make([]*genaisdk.FunctionDeclaration, 0, len(tools))
 	for _, tool := range tools {
 		if tool == nil || tool.Function == nil || tool.Function.Name == "" {
@@ -351,15 +344,13 @@ func buildTools(tools []*modelhubv1.Tool) []*genaisdk.Tool {
 	return []*genaisdk.Tool{{FunctionDeclarations: declarations}}
 }
 
-func convertResponse(response *genaisdk.GenerateContentResponse) *modelhubv1.GenerateTextResponse {
+func convertResponse(response *genaisdk.GenerateContentResponse) *modelhubv2.GenerateEvent {
 	if response == nil {
-		return &modelhubv1.GenerateTextResponse{}
-	}
-	result := &modelhubv1.GenerateTextResponse{
-		ResponseId: response.ResponseID,
-		Usage:      convertUsage(response.UsageMetadata),
+		return provider.TextFinalEvent("", nil, "", "", nil)
 	}
 	var content strings.Builder
+	var toolCalls []*modelhubv2.ToolCall
+	var finishReason string
 	for _, candidate := range response.Candidates {
 		if candidate.Content == nil {
 			continue
@@ -367,25 +358,24 @@ func convertResponse(response *genaisdk.GenerateContentResponse) *modelhubv1.Gen
 		for _, part := range candidate.Content.Parts {
 			content.WriteString(part.Text)
 			if part.FunctionCall != nil {
-				result.ToolCalls = append(result.ToolCalls, convertFunctionCall(part))
+				toolCalls = append(toolCalls, convertFunctionCall(part))
 			}
 		}
-		if result.FinishReason == "" && candidate.FinishReason != "" {
-			result.FinishReason = string(candidate.FinishReason)
+		if finishReason == "" && candidate.FinishReason != "" {
+			finishReason = string(candidate.FinishReason)
 		}
 	}
-	result.Content = content.String()
-	return result
+	return provider.TextFinalEvent(content.String(), toolCalls, response.ResponseID, finishReason, convertUsage(response.UsageMetadata))
 }
 
-func convertFunctionCall(part *genaisdk.Part) *modelhubv1.ToolCall {
+func convertFunctionCall(part *genaisdk.Part) *modelhubv2.ToolCall {
 	call := part.FunctionCall
 	arguments, _ := json.Marshal(call.Args)
 	id := call.ID
 	if id == "" {
 		id = call.Name
 	}
-	return &modelhubv1.ToolCall{
+	return &modelhubv2.ToolCall{
 		Id:               id,
 		Name:             call.Name,
 		ArgumentsJson:    arguments,
@@ -393,11 +383,11 @@ func convertFunctionCall(part *genaisdk.Part) *modelhubv1.ToolCall {
 	}
 }
 
-func convertUsage(metadata *genaisdk.GenerateContentResponseUsageMetadata) *modelhubv1.Usage {
+func convertUsage(metadata *genaisdk.GenerateContentResponseUsageMetadata) *modelhubv2.Usage {
 	if metadata == nil {
 		return nil
 	}
-	usage := &modelhubv1.Usage{
+	usage := &modelhubv2.Usage{
 		InputTokens:  int64(metadata.PromptTokenCount),
 		OutputTokens: int64(metadata.CandidatesTokenCount),
 		TotalTokens:  int64(metadata.TotalTokenCount),
@@ -413,17 +403,17 @@ func convertUsage(metadata *genaisdk.GenerateContentResponseUsageMetadata) *mode
 	return usage
 }
 
-func messageText(message *modelhubv1.Message) string {
+func messageText(message *modelhubv2.Message) string {
 	var text strings.Builder
 	for _, part := range message.Parts {
-		if value, ok := part.Content.(*modelhubv1.ContentPart_Text); ok {
+		if value, ok := part.Content.(*modelhubv2.ContentPart_Text); ok {
 			text.WriteString(value.Text)
 		}
 	}
 	return text.String()
 }
 
-func toolOutputObject(output *modelhubv1.ToolOutput) map[string]any {
+func toolOutputObject(output *modelhubv2.ToolOutput) map[string]any {
 	var object map[string]any
 	_ = json.Unmarshal([]byte(output.Output), &object)
 	if object == nil {

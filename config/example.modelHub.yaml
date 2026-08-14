@@ -1,97 +1,61 @@
 server:
   listen_address: ":50053"
 
+# 每个 provider 实例声明其承载的真实模型 ID；同一模型 ID 只能绑定一个实例。
 providers:
-  hub_gemini:
-    type: gemini
-    api_key: "${GEMINI_API_KEY}"
-    proxy_url: ""
+  gemini_main:
+    models: [gemini-2.5-flash]
+    gemini:
+      api_key: "${GEMINI_API_KEY}"
+      proxy_url: ""
   vertex_chat:
-    type: vertexai
-    project: "${VERTEX_PROJECT}"
-    location: us-central1
+    models: [gemini-2.0-flash-001]
+    vertexai:
+      project: "${VERTEX_PROJECT}"
+      location: us-central1
   ark_chat:
-    type: ark
-    api_key: "${ARK_API_KEY}"
-    base_url: https://ark.cn-beijing.volces.com/api/v3
+    models: [doubao-seed-1.6]
+    ark:
+      api_key: "${ARK_API_KEY}"
+      base_url: https://ark.cn-beijing.volces.com/api/v3
+  # Quick Speech：DashScope OpenAI-compatible，模型 ID 与线上一致。
   quick_speech:
-    type: openai
-    api_key: "${DASHSCOPE_API_KEY}"
-    base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
-    send_enable_thinking: true
-  brainstorm:
-    type: openai
-    api_key: "${BRAINSTORM_API_KEY}"
-    base_url: https://api.ominilink.ai/v1
+    models: [qwen-flash]
+    openai:
+      api_key: "${DASHSCOPE_API_KEY}"
+      base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+      send_enable_thinking: true
+  # Async 视觉：独立 OpenAI-compatible 实例，避免与 speech/candidate 共用路由。
   async_vision:
-    type: openai
-    api_key: "${ASYNC_VISION_API_KEY}"
-    base_url: https://api.openai-compatible.example/v1
+    models: [qwen3-vl-plus]
+    openai:
+      api_key: "${ASYNC_VISION_API_KEY}"
+      base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  # Async 深度推荐候选：与 vision 分实例，便于独立密钥与配额。
+  async_candidate:
+    models: [qwen3.5-flash]
+    openai:
+      api_key: "${ASYNC_CANDIDATE_API_KEY}"
+      base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
   # OminiLink 生图使用 Gemini generateContent 协议，不是 OpenAI chat/completions。
+  # 三个真实图片模型共用同一 OminiLink Gemini 凭据；每个 ID 全局只绑定本实例。
   ominilink_image:
-    type: gemini
-    api_key: "${OMINILINK_IMAGE_API_KEY}"
-    base_url: https://api.ominilink.ai
+    models:
+      - gemini-3-pro-image
+      - gemini-2.5-flash-image
+      - gemini-3.1-flash-image
+    gemini:
+      api_key: "${OMINILINK_IMAGE_API_KEY}"
+      base_url: https://api.ominilink.ai
+  # LTX 供应商请求体里的 model 字段值就是 ltx，不是业务别名。
   ltx_video:
-    type: ltx
-    base_url: https://ltx.example
-    token: "${LTX_TOKEN}"
-    duration: 4
-    fps: 24
-    seed: 42
-    poll_interval: 2
-    max_poll_time: 300
-
-profiles:
-  hub.chat:
-    capability: text
-    provider: hub_gemini
-    model: gemini-2.5-flash
-  hub.quick_speech:
-    capability: text
-    provider: quick_speech
-    model: qwen-flash
-  hub.brainstorm:
-    capability: text
-    provider: brainstorm
-    model: gemini-2.5-flash
-  async.vision:
-    capability: text
-    provider: async_vision
-    model: gpt-4.1-mini
-  async.candidate:
-    capability: text
-    provider: async_vision
-    model: gpt-4.1-mini
-  async.artwork:
-    capability: image
-    provider: ominilink_image
-    model: gemini-2.5-flash-image
-  async.cloth_image:
-    capability: image
-    provider: ominilink_image
-    model: gemini-2.5-flash-image
-  async.body_model:
-    capability: image
-    provider: ominilink_image
-    model: gemini-2.5-flash-image
-  async.face_stylize:
-    capability: image
-    provider: ominilink_image
-    model: gemini-2.5-flash-image
-  async.vton.primary:
-    capability: image
-    provider: ominilink_image
-    model: gemini-2.5-flash-image
-  async.vton.backup:
-    capability: image
-    provider: ominilink_image
-    model: gemini-2.5-flash-image-backup
-  async.ltx.video:
-    capability: video
-    provider: ltx_video
-    model: ltx-vton
-  ops.fixture_image:
-    capability: image
-    provider: ominilink_image
-    model: gemini-3.1-flash-image
+    models: [ltx]
+    ltx:
+      base_url: https://ltx.example
+      token: "${LTX_TOKEN}"
+      duration: 4
+      fps: 24
+      seed: 42
+      poll_interval: 2
+      # 120s 与 ACK terminationGracePeriodSeconds=180 对齐，留出收尾余量。
+      max_poll_time: 120

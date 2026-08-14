@@ -2,172 +2,160 @@ package modelhub
 
 import (
 	"context"
-	"fmt"
+	"strings"
 
 	"github.com/wgdl666/wgModelHub/config"
-	modelhubv1 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v1"
+	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/protocol"
 )
 
 type Service struct {
-	modelhubv1.UnimplementedModelHubServiceServer
-	profiles  map[string]config.ProfileConfig
-	providers map[string]provider.Set
+	modelhubv2.UnimplementedModelHubServiceServer
+	// modelRoutes：真实模型 ID -> provider 实例名；启动时由配置唯一确定。
+	modelRoutes map[string]string
+	providers   map[string]provider.Set
+	providerCfg map[string]config.ProviderConfig
 }
 
 func New(cfg config.Config, providers map[string]provider.Set) *Service {
 	return &Service{
-		profiles:  cfg.Profiles,
-		providers: providers,
+		modelRoutes: cfg.ModelRoutes(),
+		providers:   providers,
+		providerCfg: cfg.Providers,
 	}
 }
 
-func (s *Service) GenerateText(ctx context.Context, request *modelhubv1.GenerateTextRequest) (*modelhubv1.GenerateTextResponse, error) {
-	ctx, span := telemetry.StartSpan(ctx, "modelhub.GenerateText")
-	defer span.End()
-
-	if err := validateTextRequest(request); err != nil {
-		statusErr := provider.ToStatus(err)
-		telemetry.RecordError(ctx, statusErr)
-		return nil, statusErr
-	}
-	binding, err := s.resolve(request.GetModelProfile(), config.CapabilityText)
-	if err != nil {
-		statusErr := provider.ToStatus(err)
-		telemetry.RecordError(ctx, statusErr)
-		return nil, statusErr
-	}
-	if binding.set.Text == nil {
-		err = provider.Errorf(provider.ErrorConfiguration, "profile %s does not support text", request.GetModelProfile())
-		statusErr := provider.ToStatus(err)
-		telemetry.RecordError(ctx, statusErr)
-		return nil, statusErr
-	}
-	response, err := binding.set.Text.Generate(ctx, binding.model, request)
-	if err != nil {
-		statusErr := provider.ToStatus(err)
-		telemetry.RecordError(ctx, statusErr)
-		return nil, statusErr
-	}
-	return response, nil
-}
-
-func (s *Service) GenerateTextStream(request *modelhubv1.GenerateTextRequest, stream modelhubv1.ModelHubService_GenerateTextStreamServer) error {
+// Generate 按 OutputSpec oneof 选择 text/image/video 能力，并以 request.model（真实供应商模型 ID）路由。
+func (s *Service) Generate(request *modelhubv2.GenerateRequest, stream modelhubv2.ModelHubService_GenerateServer) error {
 	ctx := stream.Context()
-	ctx, span := telemetry.StartSpan(ctx, "modelhub.GenerateTextStream")
+	ctx, span := telemetry.StartSpan(ctx, "modelhub.Generate")
 	defer span.End()
 
-	if err := validateTextRequest(request); err != nil {
-		statusErr := provider.ToStatus(err)
-		telemetry.RecordError(ctx, statusErr)
-		return statusErr
-	}
-	binding, err := s.resolve(request.GetModelProfile(), config.CapabilityText)
+	capability, err := capabilityOf(request)
 	if err != nil {
 		statusErr := provider.ToStatus(err)
 		telemetry.RecordError(ctx, statusErr)
 		return statusErr
 	}
-	if binding.set.Text == nil {
-		err = provider.Errorf(provider.ErrorConfiguration, "profile %s does not support text", request.GetModelProfile())
+	if err := validateGenerateRequest(request, capability); err != nil {
 		statusErr := provider.ToStatus(err)
 		telemetry.RecordError(ctx, statusErr)
 		return statusErr
 	}
-	var sendErr error
-	emit := func(event *modelhubv1.TextStreamEvent) error {
-		// completed 由 service 统一发送一次，供应商只能产生增量事件。
-		if event != nil && event.GetCompleted() != nil {
-			return nil
+	binding, err := s.resolve(request.GetModel(), capability)
+	if err != nil {
+		statusErr := provider.ToStatus(err)
+		telemetry.RecordError(ctx, statusErr)
+		return statusErr
+	}
+
+	switch capability {
+	case config.CapabilityText:
+		return s.generateText(ctx, binding, request, stream)
+	case config.CapabilityImage:
+		return s.generateImage(ctx, binding, request, stream)
+	case config.CapabilityVideo:
+		return s.generateVideo(ctx, binding, request, stream)
+	default:
+		statusErr := provider.ToStatus(provider.Errorf(provider.ErrorInvalidArgument, "unsupported capability %s", capability))
+		telemetry.RecordError(ctx, statusErr)
+		return statusErr
+	}
+}
+
+func (s *Service) generateText(ctx context.Context, binding binding, request *modelhubv2.GenerateRequest, stream modelhubv2.ModelHubService_GenerateServer) error {
+	if binding.set.Text == nil {
+		err := provider.Errorf(provider.ErrorConfiguration, "model %s does not support text", request.GetModel())
+		statusErr := provider.ToStatus(err)
+		telemetry.RecordError(ctx, statusErr)
+		return statusErr
+	}
+	if request.GetOutput().GetStream() {
+		var sendErr error
+		var sequence uint32
+		emit := func(event *modelhubv2.GenerateEvent) error {
+			// 文本 stream 的唯一 final 由 service 发送；供应商误标 final 的事件只当增量丢弃终态标记。
+			if event == nil || event.GetFinal() {
+				return nil
+			}
+			event.Sequence = sequence
+			sequence++
+			sendErr = stream.Send(event)
+			return sendErr
 		}
-		sendErr = stream.Send(event)
-		return sendErr
+		final, err := binding.set.Text.GenerateStream(ctx, binding.model, request, emit)
+		if sendErr != nil {
+			telemetry.RecordError(ctx, sendErr)
+			return sendErr
+		}
+		if err != nil {
+			statusErr := provider.ToStatus(err)
+			telemetry.RecordError(ctx, statusErr)
+			return statusErr
+		}
+		if final == nil {
+			final = &modelhubv2.GenerateEvent{}
+		}
+		// 调用方自行累计增量；final 只携带 response_id/finish_reason/usage 等终态元数据。
+		return stream.Send(&modelhubv2.GenerateEvent{
+			Sequence:     sequence,
+			Final:        true,
+			ResponseId:   final.GetResponseId(),
+			FinishReason: final.GetFinishReason(),
+			Usage:        final.GetUsage(),
+			Safety:       final.GetSafety(),
+		})
 	}
-	response, err := binding.set.Text.GenerateStream(ctx, binding.model, request, emit)
-	if sendErr != nil {
-		telemetry.RecordError(ctx, sendErr)
-		return sendErr
-	}
+
+	event, err := binding.set.Text.Generate(ctx, binding.model, request)
 	if err != nil {
 		statusErr := provider.ToStatus(err)
 		telemetry.RecordError(ctx, statusErr)
 		return statusErr
 	}
-	if response == nil {
-		response = &modelhubv1.GenerateTextResponse{}
+	if event == nil {
+		event = &modelhubv2.GenerateEvent{}
 	}
-	return stream.Send(&modelhubv1.TextStreamEvent{
-		Event: &modelhubv1.TextStreamEvent_Completed{Completed: response},
-	})
+	event.Sequence = 0
+	event.Final = true
+	return stream.Send(event)
 }
 
-func (s *Service) GenerateImage(ctx context.Context, request *modelhubv1.GenerateImageRequest) (*modelhubv1.GenerateImageResponse, error) {
-	ctx, span := telemetry.StartSpan(ctx, "modelhub.GenerateImage")
-	defer span.End()
-
-	if err := validateImageRequest(request); err != nil {
-		statusErr := provider.ToStatus(err)
-		telemetry.RecordError(ctx, statusErr)
-		return nil, statusErr
-	}
-	binding, err := s.resolve(request.GetModelProfile(), config.CapabilityImage)
-	if err != nil {
-		statusErr := provider.ToStatus(err)
-		telemetry.RecordError(ctx, statusErr)
-		return nil, statusErr
-	}
+func (s *Service) generateImage(ctx context.Context, binding binding, request *modelhubv2.GenerateRequest, stream modelhubv2.ModelHubService_GenerateServer) error {
 	if binding.set.Image == nil {
-		err = provider.Errorf(provider.ErrorConfiguration, "profile %s does not support image", request.GetModelProfile())
+		err := provider.Errorf(provider.ErrorConfiguration, "model %s does not support image", request.GetModel())
 		statusErr := provider.ToStatus(err)
 		telemetry.RecordError(ctx, statusErr)
-		return nil, statusErr
+		return statusErr
 	}
-	response, err := binding.set.Image.GenerateImage(ctx, binding.model, request)
+	event, err := binding.set.Image.GenerateImage(ctx, binding.model, request)
 	if err != nil {
 		statusErr := provider.ToStatus(err)
 		telemetry.RecordError(ctx, statusErr)
-		return nil, statusErr
+		return statusErr
 	}
-	if err := validateImageResponse(response); err != nil {
+	if err := validateImageEvent(event); err != nil {
 		statusErr := provider.ToStatus(err)
 		telemetry.RecordError(ctx, statusErr)
-		return nil, statusErr
+		return statusErr
 	}
-	return response, nil
+	event.Sequence = 0
+	event.Final = true
+	return stream.Send(event)
 }
 
-func (s *Service) GenerateVideo(request *modelhubv1.GenerateVideoRequest, stream modelhubv1.ModelHubService_GenerateVideoServer) error {
-	ctx := stream.Context()
-	ctx, span := telemetry.StartSpan(ctx, "modelhub.GenerateVideo")
-	defer span.End()
-
-	if request == nil {
-		statusErr := provider.ToStatus(provider.New(provider.ErrorInvalidArgument, "video request is required"))
-		telemetry.RecordError(ctx, statusErr)
-		return statusErr
-	}
-	if err := validateMedia(request.GetFirstFrame(), provider.ErrorInvalidArgument); err != nil {
-		statusErr := provider.ToStatus(err)
-		telemetry.RecordError(ctx, statusErr)
-		return statusErr
-	}
-	binding, err := s.resolve(request.GetModelProfile(), config.CapabilityVideo)
-	if err != nil {
-		statusErr := provider.ToStatus(err)
-		telemetry.RecordError(ctx, statusErr)
-		return statusErr
-	}
+func (s *Service) generateVideo(ctx context.Context, binding binding, request *modelhubv2.GenerateRequest, stream modelhubv2.ModelHubService_GenerateServer) error {
 	if binding.set.Video == nil {
-		err = provider.Errorf(provider.ErrorConfiguration, "profile %s does not support video", request.GetModelProfile())
+		err := provider.Errorf(provider.ErrorConfiguration, "model %s does not support video", request.GetModel())
 		statusErr := provider.ToStatus(err)
 		telemetry.RecordError(ctx, statusErr)
 		return statusErr
 	}
 	var sendErr error
-	emit := func(chunk *modelhubv1.VideoChunk) error {
-		sendErr = stream.Send(chunk)
+	emit := func(event *modelhubv2.GenerateEvent) error {
+		sendErr = stream.Send(event)
 		return sendErr
 	}
 	if err := binding.set.Video.GenerateVideo(ctx, binding.model, request, emit); err != nil {
@@ -187,108 +175,140 @@ type binding struct {
 	model string
 }
 
-func (s *Service) resolve(profileName, capability string) (binding, error) {
-	profileCfg, ok := s.profiles[profileName]
+// resolve 用真实模型 ID 找到唯一 provider，并校验该实例能力与 OutputSpec 一致；model 原样下发供应商。
+func (s *Service) resolve(model, capability string) (binding, error) {
+	providerName, ok := s.modelRoutes[model]
 	if !ok {
-		return binding{}, provider.Errorf(provider.ErrorInvalidArgument, "unknown model_profile %s", profileName)
+		return binding{}, provider.Errorf(provider.ErrorInvalidArgument, "unknown model %s", model)
 	}
-	if profileCfg.Capability != capability {
+	providerCfg, ok := s.providerCfg[providerName]
+	if !ok {
+		return binding{}, provider.Errorf(provider.ErrorConfiguration, "model %s references unknown provider %s", model, providerName)
+	}
+	if !config.ProviderSupports(providerCfg, capability) {
 		return binding{}, provider.Errorf(
 			provider.ErrorInvalidArgument,
-			"profile %s capability %s does not match RPC %s",
-			profileName,
-			profileCfg.Capability,
+			"model %s provider %s does not support output %s",
+			model,
+			providerName,
 			capability,
 		)
 	}
-	providerSet, ok := s.providers[profileCfg.Provider]
+	providerSet, ok := s.providers[providerName]
 	if !ok {
-		return binding{}, provider.Errorf(provider.ErrorConfiguration, "profile %s references unknown provider %s", profileName, profileCfg.Provider)
+		return binding{}, provider.Errorf(provider.ErrorConfiguration, "model %s references unknown provider %s", model, providerName)
 	}
-	if profileCfg.Model == "" {
-		return binding{}, provider.Errorf(provider.ErrorConfiguration, "profile %s model is required", profileName)
-	}
-	return binding{set: providerSet, model: profileCfg.Model}, nil
+	return binding{set: providerSet, model: model}, nil
 }
 
-// LookupProfile 仅供测试断言路由结果。
-func (s *Service) LookupProfile(profileName string) (config.ProfileConfig, error) {
-	profileCfg, ok := s.profiles[profileName]
-	if !ok {
-		return config.ProfileConfig{}, fmt.Errorf("unknown profile %s", profileName)
+func capabilityOf(request *modelhubv2.GenerateRequest) (string, error) {
+	if request == nil || request.GetOutput() == nil {
+		return "", provider.New(provider.ErrorInvalidArgument, "output is required")
 	}
-	return profileCfg, nil
+	switch request.GetOutput().GetKind().(type) {
+	case *modelhubv2.OutputSpec_Text:
+		return config.CapabilityText, nil
+	case *modelhubv2.OutputSpec_Image:
+		return config.CapabilityImage, nil
+	case *modelhubv2.OutputSpec_Video:
+		return config.CapabilityVideo, nil
+	default:
+		return "", provider.New(provider.ErrorInvalidArgument, "output kind is required")
+	}
 }
 
-// validateTextRequest 在供应商调用前校验所有内联媒体，确保超限请求得到稳定 ErrorInfo，
-// 而不是把大对象交给 SDK 后才以供应商私有错误失败。
-func validateTextRequest(request *modelhubv1.GenerateTextRequest) error {
+func validateGenerateRequest(request *modelhubv2.GenerateRequest, capability string) error {
 	if request == nil {
-		return provider.New(provider.ErrorInvalidArgument, "text request is required")
+		return provider.New(provider.ErrorInvalidArgument, "generate request is required")
 	}
-	for _, message := range request.GetMessages() {
-		for _, part := range message.GetParts() {
-			if err := validateContentPart(part, provider.ErrorInvalidArgument); err != nil {
-				return err
-			}
+	if request.GetModel() == "" {
+		return provider.New(provider.ErrorInvalidArgument, "model is required")
+	}
+	if err := validateInput(request.GetInput()); err != nil {
+		return err
+	}
+	if capability == config.CapabilityVideo {
+		if provider.FirstImageMedia(request.GetInput()) == nil {
+			return provider.New(provider.ErrorInvalidArgument, "video first_frame image is required in input")
 		}
 	}
-	for _, output := range request.GetToolOutputs() {
-		for _, image := range output.GetImages() {
-			if err := validateMedia(image, provider.ErrorInvalidArgument); err != nil {
-				return err
+	return nil
+}
+
+func validateInput(input *modelhubv2.Input) error {
+	if input == nil {
+		return nil
+	}
+	for _, item := range input.GetItems() {
+		switch value := item.GetItem().(type) {
+		case *modelhubv2.InputItem_Message:
+			for _, part := range value.Message.GetParts() {
+				if err := validateContentPart(part, provider.ErrorInvalidArgument); err != nil {
+					return err
+				}
+			}
+		case *modelhubv2.InputItem_ToolOutput:
+			for _, image := range value.ToolOutput.GetImages() {
+				if err := validateMedia(image, provider.ErrorInvalidArgument); err != nil {
+					return err
+				}
 			}
 		}
 	}
 	return nil
 }
 
-func validateImageRequest(request *modelhubv1.GenerateImageRequest) error {
-	if request == nil {
-		return provider.New(provider.ErrorInvalidArgument, "image request is required")
-	}
-	for _, part := range request.GetParts() {
-		if err := validateContentPart(part, provider.ErrorInvalidArgument); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// validateImageResponse 同样约束供应商输出，避免超大图片突破统一的 64 MiB 消息契约。
-func validateImageResponse(response *modelhubv1.GenerateImageResponse) error {
-	if response == nil {
+func validateImageEvent(event *modelhubv2.GenerateEvent) error {
+	if event == nil {
 		return provider.New(provider.ErrorInvalidResponse, "image provider returned an empty response")
 	}
-	for _, part := range response.GetParts() {
-		if err := validateContentPart(part, provider.ErrorInvalidResponse); err != nil {
-			return err
+	hasText := false
+	hasImage := false
+	for _, item := range event.GetItems() {
+		switch value := item.GetItem().(type) {
+		case *modelhubv2.OutputItem_Text:
+			if strings.TrimSpace(value.Text) != "" {
+				hasText = true
+			}
+		case *modelhubv2.OutputItem_Image:
+			hasImage = true
+			if err := validateMedia(value.Image, provider.ErrorInvalidResponse); err != nil {
+				return err
+			}
+		case *modelhubv2.OutputItem_Video:
+			if err := validateMedia(value.Video, provider.ErrorInvalidResponse); err != nil {
+				return err
+			}
 		}
 	}
-	return nil
+	// 诊断文本或 safety blocked 是合法 final；完全空才算 INVALID_RESPONSE。
+	if hasImage || hasText || event.GetSafety().GetBlocked() {
+		return nil
+	}
+	return provider.New(provider.ErrorInvalidResponse, "image provider returned an empty response")
 }
 
-func validateContentPart(part *modelhubv1.ContentPart, kind provider.ErrorKind) error {
+func validateContentPart(part *modelhubv2.ContentPart, kind provider.ErrorKind) error {
 	if part == nil {
 		return provider.New(kind, "content part is required")
 	}
 	switch value := part.GetContent().(type) {
-	case *modelhubv1.ContentPart_Text:
+	case *modelhubv2.ContentPart_Text:
 		return nil
-	case *modelhubv1.ContentPart_Image:
+	case *modelhubv2.ContentPart_Image:
 		return validateMedia(value.Image, kind)
-	case *modelhubv1.ContentPart_Video:
+	case *modelhubv2.ContentPart_Video:
 		return validateMedia(value.Video, kind)
-	case *modelhubv1.ContentPart_Audio:
+	case *modelhubv2.ContentPart_Audio:
 		return validateMedia(value.Audio, kind)
-	case *modelhubv1.ContentPart_File:
+	case *modelhubv2.ContentPart_File:
 		return validateMedia(value.File, kind)
 	default:
 		return provider.New(kind, "content part value is required")
 	}
 }
 
-func validateMedia(media *modelhubv1.Media, kind provider.ErrorKind) error {
+func validateMedia(media *modelhubv2.Media, kind provider.ErrorKind) error {
 	if media == nil {
 		return provider.New(kind, "media is required")
 	}
@@ -296,14 +316,14 @@ func validateMedia(media *modelhubv1.Media, kind provider.ErrorKind) error {
 		return provider.New(kind, "media mime_type is required")
 	}
 	switch source := media.GetSource().(type) {
-	case *modelhubv1.Media_Data:
+	case *modelhubv2.Media_Data:
 		if len(source.Data) == 0 {
 			return provider.New(kind, "media data is empty")
 		}
 		if len(source.Data) > protocol.MaxMediaBytes {
 			return provider.Errorf(kind, "media exceeds %d bytes", protocol.MaxMediaBytes)
 		}
-	case *modelhubv1.Media_Uri:
+	case *modelhubv2.Media_Uri:
 		if source.Uri == "" {
 			return provider.New(kind, "media uri is empty")
 		}

@@ -14,7 +14,6 @@ import (
 	"github.com/nacos-group/nacos-sdk-go/v2/clients"
 	"github.com/nacos-group/nacos-sdk-go/v2/common/constant"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
-	"github.com/wgdl666/wgModelHub/internal/profile"
 	"gopkg.in/yaml.v3"
 )
 
@@ -34,30 +33,48 @@ type Bootstrap struct {
 	NamespaceID   string `json:"namespace_id"`
 }
 
-// ProviderConfig 是受控的供应商连接配置。字段集合由代码固定，
-// 调用方不能借 profile 注入地址、密钥或任意供应商参数。
+// ProviderConfig 用互斥嵌套字段表达具体供应商；每个实例必须且只能配置一种，
+// 并显式声明该实例承载的真实模型 ID 列表（含版本）。
 type ProviderConfig struct {
-	Type               string  `yaml:"type"`
-	APIKey             string  `yaml:"api_key"`
-	BaseURL            string  `yaml:"base_url"`
-	ProxyURL           string  `yaml:"proxy_url"`
-	Project            string  `yaml:"project"`
-	Location           string  `yaml:"location"`
-	Token              string  `yaml:"token"`
-	SendEnableThinking bool    `yaml:"send_enable_thinking"`
-	Duration           float64 `yaml:"duration"`
-	FPS                int     `yaml:"fps"`
-	Seed               int     `yaml:"seed"`
-	PollInterval       float64 `yaml:"poll_interval"`
-	MaxPollTime        float64 `yaml:"max_poll_time"`
+	Models   []string                `yaml:"models"`
+	Gemini   *GeminiProviderConfig   `yaml:"gemini"`
+	VertexAI *VertexAIProviderConfig `yaml:"vertexai"`
+	Ark      *ArkProviderConfig      `yaml:"ark"`
+	OpenAI   *OpenAIProviderConfig   `yaml:"openai"`
+	LTX      *LTXProviderConfig      `yaml:"ltx"`
 }
 
-// ProfileConfig 把一个逻辑业务 profile 固定到一个供应商模型。
-// 第一版不包含候选列表、权重或自动降级语义。
-type ProfileConfig struct {
-	Capability string `yaml:"capability"`
-	Provider   string `yaml:"provider"`
-	Model      string `yaml:"model"`
+type GeminiProviderConfig struct {
+	APIKey   string `yaml:"api_key"`
+	BaseURL  string `yaml:"base_url"`
+	ProxyURL string `yaml:"proxy_url"`
+}
+
+type VertexAIProviderConfig struct {
+	Project  string `yaml:"project"`
+	Location string `yaml:"location"`
+}
+
+type ArkProviderConfig struct {
+	APIKey  string `yaml:"api_key"`
+	BaseURL string `yaml:"base_url"`
+}
+
+// OpenAIProviderConfig 覆盖 OpenAI-compatible HTTP 端；OminiLink 文本也走这里。
+type OpenAIProviderConfig struct {
+	APIKey             string `yaml:"api_key"`
+	BaseURL            string `yaml:"base_url"`
+	SendEnableThinking bool   `yaml:"send_enable_thinking"`
+}
+
+type LTXProviderConfig struct {
+	BaseURL      string  `yaml:"base_url"`
+	Token        string  `yaml:"token"`
+	Duration     float64 `yaml:"duration"`
+	FPS          int     `yaml:"fps"`
+	Seed         int     `yaml:"seed"`
+	PollInterval float64 `yaml:"poll_interval"`
+	MaxPollTime  float64 `yaml:"max_poll_time"`
 }
 
 type Config struct {
@@ -65,7 +82,6 @@ type Config struct {
 		ListenAddress string `yaml:"listen_address"`
 	} `yaml:"server"`
 	Providers map[string]ProviderConfig `yaml:"providers"`
-	Profiles  map[string]ProfileConfig  `yaml:"profiles"`
 }
 
 func LoadBootstrapFile(path string) (Bootstrap, error) {
@@ -185,72 +201,111 @@ func (c Config) Validate() error {
 	if len(c.Providers) == 0 {
 		return fmt.Errorf("providers are required")
 	}
-	if len(c.Profiles) == 0 {
-		return fmt.Errorf("profiles are required")
-	}
 
+	// 真实模型 ID 全局唯一：启动时建 model -> provider 路由，重复或空模型直接失败。
+	seenModels := make(map[string]string)
 	for name, provider := range c.Providers {
 		if err := validateProvider(name, provider); err != nil {
 			return err
 		}
-	}
-	for name, profileCfg := range c.Profiles {
-		provider, ok := c.Providers[profileCfg.Provider]
-		if !ok {
-			return fmt.Errorf("profile %s references unknown provider %s", name, profileCfg.Provider)
+		if len(provider.Models) == 0 {
+			return fmt.Errorf("provider %s models are required", name)
 		}
-		if strings.TrimSpace(profileCfg.Model) == "" {
-			return fmt.Errorf("profile %s model is required", name)
-		}
-		if !providerSupports(provider.Type, profileCfg.Capability) {
-			return fmt.Errorf("profile %s capability %s is not supported by provider %s", name, profileCfg.Capability, profileCfg.Provider)
-		}
-	}
-	// 稳定 profile 缺一不可：调用方常量与 Nacos 映射必须在启动前对齐。
-	for _, name := range profile.Required() {
-		if _, ok := c.Profiles[name]; !ok {
-			return fmt.Errorf("required profile %s is missing", name)
+		for _, model := range provider.Models {
+			model = strings.TrimSpace(model)
+			if model == "" {
+				return fmt.Errorf("provider %s contains an empty model id", name)
+			}
+			if other, ok := seenModels[model]; ok {
+				return fmt.Errorf("model %s is bound to both provider %s and %s", model, other, name)
+			}
+			seenModels[model] = name
 		}
 	}
 	return nil
+}
+
+// ModelRoutes 返回真实模型 ID -> provider 实例名；Validate 已保证唯一。
+func (c Config) ModelRoutes() map[string]string {
+	routes := make(map[string]string)
+	for name, provider := range c.Providers {
+		for _, model := range provider.Models {
+			model = strings.TrimSpace(model)
+			if model == "" {
+				continue
+			}
+			routes[model] = name
+		}
+	}
+	return routes
 }
 
 func validateProvider(name string, provider ProviderConfig) error {
-	providerType := strings.ToLower(strings.TrimSpace(provider.Type))
-	switch providerType {
-	case "gemini":
-		if strings.TrimSpace(provider.APIKey) == "" {
+	switch countConcreteProviders(provider) {
+	case 0:
+		return fmt.Errorf("provider %s must set exactly one of gemini/vertexai/ark/openai/ltx", name)
+	case 1:
+	default:
+		return fmt.Errorf("provider %s must set exactly one of gemini/vertexai/ark/openai/ltx", name)
+	}
+	switch {
+	case provider.Gemini != nil:
+		if strings.TrimSpace(provider.Gemini.APIKey) == "" {
 			return fmt.Errorf("provider %s api_key is required", name)
 		}
-	case "vertexai":
-		if strings.TrimSpace(provider.Project) == "" || strings.TrimSpace(provider.Location) == "" {
+	case provider.VertexAI != nil:
+		if strings.TrimSpace(provider.VertexAI.Project) == "" || strings.TrimSpace(provider.VertexAI.Location) == "" {
 			return fmt.Errorf("provider %s project and location are required", name)
 		}
-	case "ark", "openai":
-		if strings.TrimSpace(provider.APIKey) == "" {
+	case provider.Ark != nil:
+		if strings.TrimSpace(provider.Ark.APIKey) == "" {
 			return fmt.Errorf("provider %s api_key is required", name)
 		}
-	case "ltx":
-		if strings.TrimSpace(provider.BaseURL) == "" ||
-			provider.Duration <= 0 ||
-			provider.FPS <= 0 ||
-			provider.PollInterval <= 0 ||
-			provider.MaxPollTime <= 0 {
+	case provider.OpenAI != nil:
+		if strings.TrimSpace(provider.OpenAI.APIKey) == "" {
+			return fmt.Errorf("provider %s api_key is required", name)
+		}
+	case provider.LTX != nil:
+		ltx := provider.LTX
+		if strings.TrimSpace(ltx.BaseURL) == "" ||
+			ltx.Duration <= 0 ||
+			ltx.FPS <= 0 ||
+			ltx.PollInterval <= 0 ||
+			ltx.MaxPollTime <= 0 {
 			return fmt.Errorf("provider %s LTX configuration is incomplete", name)
 		}
-	default:
-		return fmt.Errorf("provider %s type %q is unsupported", name, provider.Type)
 	}
 	return nil
 }
 
-func providerSupports(providerType, capability string) bool {
-	switch strings.ToLower(strings.TrimSpace(providerType)) {
-	case "gemini":
+func countConcreteProviders(provider ProviderConfig) int {
+	n := 0
+	if provider.Gemini != nil {
+		n++
+	}
+	if provider.VertexAI != nil {
+		n++
+	}
+	if provider.Ark != nil {
+		n++
+	}
+	if provider.OpenAI != nil {
+		n++
+	}
+	if provider.LTX != nil {
+		n++
+	}
+	return n
+}
+
+// ProviderSupports 根据供应商类型判断能否承接 OutputSpec 对应能力。
+func ProviderSupports(provider ProviderConfig, capability string) bool {
+	switch {
+	case provider.Gemini != nil:
 		return capability == CapabilityText || capability == CapabilityImage
-	case "vertexai", "ark", "openai":
+	case provider.VertexAI != nil, provider.Ark != nil, provider.OpenAI != nil:
 		return capability == CapabilityText
-	case "ltx":
+	case provider.LTX != nil:
 		return capability == CapabilityVideo
 	default:
 		return false

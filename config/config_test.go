@@ -3,53 +3,90 @@ package config
 import (
 	"strings"
 	"testing"
-
-	"github.com/wgdl666/wgModelHub/internal/profile"
 )
 
 func validConfig() Config {
-	cfg := Config{
+	return Config{
 		Server: struct {
 			ListenAddress string `yaml:"listen_address"`
 		}{ListenAddress: ":50053"},
 		Providers: map[string]ProviderConfig{
-			"ark":    {Type: "ark", APIKey: "key"},
-			"gemini": {Type: "gemini", APIKey: "key"},
+			"ark": {
+				Models: []string{"doubao-chat"},
+				Ark:    &ArkProviderConfig{APIKey: "key"},
+			},
+			"gemini": {
+				Models: []string{"gemini-2.5-flash", "gemini-2.5-flash-image"},
+				Gemini: &GeminiProviderConfig{APIKey: "key"},
+			},
 			"ltx": {
-				Type:         "ltx",
-				BaseURL:      "https://ltx.example",
-				Token:        "token",
-				Duration:     4,
-				FPS:          24,
-				PollInterval: 2,
-				MaxPollTime:  300,
+				Models: []string{"ltx"},
+				LTX: &LTXProviderConfig{
+					BaseURL:      "https://ltx.example",
+					Token:        "token",
+					Duration:     4,
+					FPS:          24,
+					PollInterval: 2,
+					MaxPollTime:  120,
+				},
 			},
 		},
-		Profiles: map[string]ProfileConfig{},
-	}
-	for _, name := range profile.Required() {
-		switch {
-		case strings.HasPrefix(name, "hub."):
-			cfg.Profiles[name] = ProfileConfig{Capability: CapabilityText, Provider: "ark", Model: "model"}
-		case name == profile.AsyncLTXVideo:
-			cfg.Profiles[name] = ProfileConfig{Capability: CapabilityVideo, Provider: "ltx", Model: "ltx"}
-		default:
-			cfg.Profiles[name] = ProfileConfig{Capability: CapabilityImage, Provider: "gemini", Model: "image-model"}
-		}
-	}
-	return cfg
-}
-
-func TestValidateRequiresAllProfiles(t *testing.T) {
-	cfg := validConfig()
-	delete(cfg.Profiles, profile.HubChat)
-	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), profile.HubChat) {
-		t.Fatalf("expected missing profile error, got %v", err)
 	}
 }
 
-func TestValidateAcceptsCompleteProfiles(t *testing.T) {
+func TestValidateAcceptsUniqueModels(t *testing.T) {
 	if err := validConfig().Validate(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestValidateRejectsDuplicateModels(t *testing.T) {
+	cfg := validConfig()
+	cfg.Providers["other"] = ProviderConfig{
+		Models: []string{"gemini-2.5-flash"},
+		OpenAI: &OpenAIProviderConfig{APIKey: "key"},
+	}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "gemini-2.5-flash") {
+		t.Fatalf("expected duplicate model error, got %v", err)
+	}
+}
+
+func TestValidateRejectsEmptyModel(t *testing.T) {
+	cfg := validConfig()
+	cfg.Providers["ark"] = ProviderConfig{
+		Models: []string{"  "},
+		Ark:    &ArkProviderConfig{APIKey: "key"},
+	}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "empty model") {
+		t.Fatalf("expected empty model error, got %v", err)
+	}
+}
+
+func TestValidateRejectsProviderWithoutModels(t *testing.T) {
+	cfg := validConfig()
+	cfg.Providers["ark"] = ProviderConfig{
+		Ark: &ArkProviderConfig{APIKey: "key"},
+	}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "models are required") {
+		t.Fatalf("expected models required error, got %v", err)
+	}
+}
+
+func TestValidateRejectsMixedProviderKinds(t *testing.T) {
+	cfg := validConfig()
+	cfg.Providers["mixed"] = ProviderConfig{
+		Models: []string{"mixed-model"},
+		Gemini: &GeminiProviderConfig{APIKey: "key"},
+		Ark:    &ArkProviderConfig{APIKey: "key"},
+	}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "exactly one") {
+		t.Fatalf("expected mixed provider error, got %v", err)
+	}
+}
+
+func TestModelRoutes(t *testing.T) {
+	routes := validConfig().ModelRoutes()
+	if routes["gemini-2.5-flash"] != "gemini" || routes["ltx"] != "ltx" {
+		t.Fatalf("unexpected routes %#v", routes)
 	}
 }

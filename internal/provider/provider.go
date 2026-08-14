@@ -3,24 +3,24 @@ package provider
 import (
 	"context"
 
-	modelhubv1 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v1"
+	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 )
 
-type EmitTextEvent func(*modelhubv1.TextStreamEvent) error
-type EmitVideoChunk func(*modelhubv1.VideoChunk) error
+// EmitEvent 推送文本增量、工具事件或视频分块；文本 stream 的唯一 final 由 service 统一发送。
+type EmitEvent func(*modelhubv2.GenerateEvent) error
 
-// TextProvider 只接收已经由 profile 解析出的模型名；供应商地址与凭据不会进入 RPC。
+// TextProvider 只接收调用方传入的真实供应商模型 ID；供应商地址与凭据不会进入 RPC。
 type TextProvider interface {
-	Generate(context.Context, string, *modelhubv1.GenerateTextRequest) (*modelhubv1.GenerateTextResponse, error)
-	GenerateStream(context.Context, string, *modelhubv1.GenerateTextRequest, EmitTextEvent) (*modelhubv1.GenerateTextResponse, error)
+	Generate(context.Context, string, *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error)
+	GenerateStream(context.Context, string, *modelhubv2.GenerateRequest, EmitEvent) (*modelhubv2.GenerateEvent, error)
 }
 
 type ImageProvider interface {
-	GenerateImage(context.Context, string, *modelhubv1.GenerateImageRequest) (*modelhubv1.GenerateImageResponse, error)
+	GenerateImage(context.Context, string, *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error)
 }
 
 type VideoProvider interface {
-	GenerateVideo(context.Context, string, *modelhubv1.GenerateVideoRequest, EmitVideoChunk) error
+	GenerateVideo(context.Context, string, *modelhubv2.GenerateRequest, EmitEvent) error
 }
 
 // Set 表示一个已配置供应商真正实现的能力，不用空实现伪装未支持的 RPC。

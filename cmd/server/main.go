@@ -11,7 +11,7 @@ import (
 
 	"github.com/wgdl666/kangaroo/logs"
 	"github.com/wgdl666/wgModelHub/config"
-	modelhubv1 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v1"
+	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/factory"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/service/modelhub"
@@ -64,7 +64,7 @@ func main() {
 		grpc.MaxSendMsgSize(protocol.MaxRPCMessageBytes),
 		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 	)
-	modelhubv1.RegisterModelHubServiceServer(grpcServer, modelhub.New(runtimeConfig, providers))
+	modelhubv2.RegisterModelHubServiceServer(grpcServer, modelhub.New(runtimeConfig, providers))
 
 	healthServer := health.NewServer()
 	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)

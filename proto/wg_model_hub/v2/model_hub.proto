@@ -1,0 +1,214 @@
+syntax = "proto3";
+
+package wg_model_hub.v2;
+
+option go_package = "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2;wg_model_hubv2";
+
+// ModelHubService 只暴露统一 Generate；capability 由 OutputSpec oneof 决定，
+// 真实供应商模型 ID 经 request.model 路由到唯一 provider 实例。
+service ModelHubService {
+  rpc Generate(GenerateRequest) returns (stream GenerateEvent);
+}
+
+// GenerateRequest 顶层恰好三字段：业务调用方不得再塞供应商私有配置，
+// 也不得把任务指令抽成独立 prompt 字段。
+message GenerateRequest {
+  // model 是真实供应商模型 ID（含版本），例如 gemini-2.5-flash。
+  string model = 1;
+  // system/用户任务/历史/媒体/tool_calls/tool output 一律按序放入 Input.items。
+  Input input = 2;
+  OutputSpec output = 3;
+}
+
+enum Role {
+  ROLE_UNSPECIFIED = 0;
+  ROLE_SYSTEM = 1;
+  ROLE_USER = 2;
+  ROLE_ASSISTANT = 3;
+  // 工具结果只走 InputItem.tool_output，不再用 ROLE_TOOL 消息表达。
+}
+
+// Media 同时支持内联字节和供应商可访问 URI；mime_type 是协议事实。
+message Media {
+  string mime_type = 1;
+  oneof source {
+    bytes data = 2;
+    string uri = 3;
+  }
+}
+
+message ContentPart {
+  oneof content {
+    string text = 1;
+    Media image = 2;
+    Media video = 3;
+    Media audio = 4;
+    Media file = 5;
+  }
+}
+
+// Message 只承载对话角色内容与助手 tool_calls；工具回执见 InputItem.tool_output。
+message Message {
+  Role role = 1;
+  repeated ContentPart parts = 2;
+  repeated ToolCall tool_calls = 3;
+}
+
+message FunctionDefinition {
+  string name = 1;
+  string description = 2;
+  bytes parameters_json_schema = 3;
+}
+
+message Tool {
+  FunctionDefinition function = 1;
+}
+
+message ToolCall {
+  string id = 1;
+  string name = 2;
+  bytes arguments_json = 3;
+  bytes thought_signature = 4;
+}
+
+// ToolOutput 是工具回执的唯一协议形态；图片紧跟该回执，不另拆成相邻 Message。
+message ToolOutput {
+  string tool_call_id = 1;
+  string tool_name = 2;
+  string output = 3;
+  repeated Media images = 4;
+  bool is_error = 5;
+}
+
+message InputItem {
+  oneof item {
+    Message message = 1;
+    ToolOutput tool_output = 2;
+  }
+}
+
+// Input 承载有序上下文与工具配置；顺序对多模态与 tool loop 有语义。
+message Input {
+  repeated InputItem items = 1;
+  repeated Tool tools = 2;
+  ToolChoice tool_choice = 3;
+  string previous_response_id = 4;
+  CachingConfig caching = 5;
+}
+
+enum ThinkingMode {
+  THINKING_MODE_UNSPECIFIED = 0;
+  THINKING_MODE_DISABLED = 1;
+  THINKING_MODE_ENABLED = 2;
+}
+
+enum ResponseFormatType {
+  RESPONSE_FORMAT_TYPE_UNSPECIFIED = 0;
+  RESPONSE_FORMAT_TYPE_TEXT = 1;
+  RESPONSE_FORMAT_TYPE_JSON_OBJECT = 2;
+  RESPONSE_FORMAT_TYPE_JSON_SCHEMA = 3;
+}
+
+message ResponseFormat {
+  ResponseFormatType type = 1;
+  string name = 2;
+  bytes json_schema = 3;
+}
+
+enum ToolChoiceMode {
+  TOOL_CHOICE_MODE_UNSPECIFIED = 0;
+  TOOL_CHOICE_MODE_AUTO = 1;
+  TOOL_CHOICE_MODE_NONE = 2;
+  TOOL_CHOICE_MODE_REQUIRED = 3;
+  TOOL_CHOICE_MODE_FUNCTION = 4;
+}
+
+message ToolChoice {
+  ToolChoiceMode mode = 1;
+  string function_name = 2;
+}
+
+message CachingConfig {
+  bool enabled = 1;
+  int64 expire_at_unix = 2;
+}
+
+message TextOutput {
+  optional int32 max_output_tokens = 1;
+  // optional 保留显式 0，调用方设置后必须原样下发供应商。
+  optional double temperature = 2;
+  optional double top_p = 3;
+  ResponseFormat response_format = 4;
+  ThinkingMode thinking = 5;
+}
+
+enum ImageOutputModality {
+  IMAGE_OUTPUT_MODALITY_UNSPECIFIED = 0;
+  IMAGE_OUTPUT_MODALITY_IMAGE = 1;
+  IMAGE_OUTPUT_MODALITY_TEXT = 2;
+}
+
+enum ThinkingLevel {
+  THINKING_LEVEL_UNSPECIFIED = 0;
+  THINKING_LEVEL_MINIMAL = 1;
+  THINKING_LEVEL_LOW = 2;
+  THINKING_LEVEL_MEDIUM = 3;
+  THINKING_LEVEL_HIGH = 4;
+}
+
+message ImageOutput {
+  repeated ImageOutputModality output_modalities = 1;
+  optional string aspect_ratio = 2;
+  optional string image_size = 3;
+  optional double temperature = 4;
+  ThinkingLevel thinking_level = 5;
+}
+
+message VideoOutput {
+  string resolution = 1;
+}
+
+// OutputSpec.stream 控制文本是否增量；kind oneof 决定 text/image/video 能力路由。
+message OutputSpec {
+  bool stream = 1;
+  oneof kind {
+    TextOutput text = 2;
+    ImageOutput image = 3;
+    VideoOutput video = 4;
+  }
+}
+
+message Usage {
+  int64 input_tokens = 1;
+  int64 output_tokens = 2;
+  int64 total_tokens = 3;
+  int64 cached_tokens = 4;
+  int64 reasoning_tokens = 5;
+}
+
+message SafetyFeedback {
+  bool blocked = 1;
+  string reason = 2;
+  string message = 3;
+}
+
+// OutputItem 只表达模型产出：正文、媒体与 tool_call；工具回执不属于输出事件。
+message OutputItem {
+  oneof item {
+    string text = 1;
+    Media image = 2;
+    Media video = 3;
+    ToolCall tool_call = 4;
+  }
+}
+
+// GenerateEvent 统一文本增量、图片终态与视频分块；错误仍走 gRPC status，不在事件内造第二套协议。
+message GenerateEvent {
+  uint32 sequence = 1;
+  repeated OutputItem items = 2;
+  bool final = 3;
+  string response_id = 4;
+  string finish_reason = 5;
+  Usage usage = 6;
+  SafetyFeedback safety = 7;
+}

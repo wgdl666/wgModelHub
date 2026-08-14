@@ -5,8 +5,7 @@ import (
 	"testing"
 
 	"github.com/wgdl666/wgModelHub/config"
-	modelhubv1 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v1"
-	"github.com/wgdl666/wgModelHub/internal/profile"
+	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/protocol"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
@@ -16,110 +15,111 @@ import (
 )
 
 type recordingText struct {
-	profile string
 	model   string
+	request *modelhubv2.GenerateRequest
 }
 
-func (r *recordingText) Generate(ctx context.Context, model string, request *modelhubv1.GenerateTextRequest) (*modelhubv1.GenerateTextResponse, error) {
+func (r *recordingText) Generate(_ context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
 	r.model = model
-	return &modelhubv1.GenerateTextResponse{Content: "ok"}, nil
+	r.request = request
+	return provider.TextFinalEvent("ok", nil, "resp", "stop", nil), nil
 }
 
-func (r *recordingText) GenerateStream(ctx context.Context, model string, request *modelhubv1.GenerateTextRequest, emit provider.EmitTextEvent) (*modelhubv1.GenerateTextResponse, error) {
-	r.model = model
-	return &modelhubv1.GenerateTextResponse{}, nil
+func (r *recordingText) GenerateStream(context.Context, string, *modelhubv2.GenerateRequest, provider.EmitEvent) (*modelhubv2.GenerateEvent, error) {
+	return provider.MetadataFinalEvent("", "", nil), nil
 }
 
 type recordingImage struct {
 	model string
 }
 
-func (r *recordingImage) GenerateImage(ctx context.Context, model string, request *modelhubv1.GenerateImageRequest) (*modelhubv1.GenerateImageResponse, error) {
+func (r *recordingImage) GenerateImage(_ context.Context, model string, _ *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
 	r.model = model
-	return &modelhubv1.GenerateImageResponse{}, nil
+	// 路由测试只需合法 final：诊断文本即可，不必真有图片字节。
+	return &modelhubv2.GenerateEvent{
+		Final: true,
+		Items: []*modelhubv2.OutputItem{{Item: &modelhubv2.OutputItem_Text{Text: "ok"}}},
+	}, nil
 }
 
 type streamingText struct{}
 
-func (streamingText) Generate(context.Context, string, *modelhubv1.GenerateTextRequest) (*modelhubv1.GenerateTextResponse, error) {
+func (streamingText) Generate(context.Context, string, *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
 	return nil, nil
 }
 
-func (streamingText) GenerateStream(_ context.Context, _ string, _ *modelhubv1.GenerateTextRequest, emit provider.EmitTextEvent) (*modelhubv1.GenerateTextResponse, error) {
-	_ = emit(&modelhubv1.TextStreamEvent{Event: &modelhubv1.TextStreamEvent_TextChunk{TextChunk: "hello"}})
-	// 即使供应商误发 completed，service 也必须收敛成唯一一次最终事件。
-	_ = emit(&modelhubv1.TextStreamEvent{Event: &modelhubv1.TextStreamEvent_Completed{
-		Completed: &modelhubv1.GenerateTextResponse{Content: "stale"},
-	}})
-	return &modelhubv1.GenerateTextResponse{Content: "hello", ResponseId: "resp-1"}, nil
+func (streamingText) GenerateStream(_ context.Context, _ string, _ *modelhubv2.GenerateRequest, emit provider.EmitEvent) (*modelhubv2.GenerateEvent, error) {
+	_ = emit(provider.TextDeltaEvent("hello"))
+	// 即使供应商误发 final，service 也必须收敛成唯一一次元数据 final。
+	_ = emit(&modelhubv2.GenerateEvent{Final: true, ResponseId: "stale", Items: []*modelhubv2.OutputItem{{Item: &modelhubv2.OutputItem_Text{Text: "stale"}}}})
+	return provider.MetadataFinalEvent("resp-1", "stop", nil), nil
 }
 
-type textStreamRecorder struct {
+type generateRecorder struct {
 	grpc.ServerStream
 	ctx    context.Context
-	events []*modelhubv1.TextStreamEvent
+	events []*modelhubv2.GenerateEvent
 }
 
-func (r *textStreamRecorder) Context() context.Context {
-	return r.ctx
-}
+func (r *generateRecorder) Context() context.Context { return r.ctx }
 
-func (r *textStreamRecorder) Send(event *modelhubv1.TextStreamEvent) error {
+func (r *generateRecorder) Send(event *modelhubv2.GenerateEvent) error {
 	r.events = append(r.events, event)
 	return nil
 }
 
-func TestServiceRoutesTextProfile(t *testing.T) {
+func textRequest(model, userText string) *modelhubv2.GenerateRequest {
+	return &modelhubv2.GenerateRequest{
+		Model: model,
+		Input: &modelhubv2.Input{
+			Items: []*modelhubv2.InputItem{{
+				Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
+					Role:  modelhubv2.Role_ROLE_USER,
+					Parts: []*modelhubv2.ContentPart{{Content: &modelhubv2.ContentPart_Text{Text: userText}}},
+				}},
+			}},
+		},
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{}}},
+	}
+}
+
+func TestServiceRoutesTextByRealModel(t *testing.T) {
 	text := &recordingText{}
 	service := New(config.Config{
-		Profiles: map[string]config.ProfileConfig{
-			profile.HubChat: {
-				Capability: config.CapabilityText,
-				Provider:   "ark",
-				Model:      "chat-model",
-			},
+		Providers: map[string]config.ProviderConfig{
+			"ark": {Models: []string{"chat-model"}, Ark: &config.ArkProviderConfig{APIKey: "k"}},
 		},
-	}, map[string]provider.Set{
-		"ark": {Text: text},
-	})
+	}, map[string]provider.Set{"ark": {Text: text}})
 
-	response, err := service.GenerateText(context.Background(), &modelhubv1.GenerateTextRequest{
-		ModelProfile: profile.HubChat,
-		Messages: []*modelhubv1.Message{
-			{
-				Role: modelhubv1.Role_ROLE_USER,
-				Parts: []*modelhubv1.ContentPart{
-					{Content: &modelhubv1.ContentPart_Text{Text: "hi"}},
-				},
-			},
-		},
-	})
-	if err != nil {
+	stream := &generateRecorder{ctx: context.Background()}
+	if err := service.Generate(textRequest("chat-model", "do"), stream); err != nil {
 		t.Fatal(err)
 	}
-	if response.Content != "ok" || text.model != "chat-model" {
-		t.Fatalf("response=%#v model=%q", response, text.model)
+	if len(stream.events) != 1 || !stream.events[0].GetFinal() || len(stream.events[0].GetItems()) == 0 {
+		t.Fatalf("events=%#v", stream.events)
+	}
+	if stream.events[0].GetItems()[0].GetText() != "ok" || text.model != "chat-model" {
+		t.Fatalf("event=%#v model=%q", stream.events[0], text.model)
+	}
+	// 真实模型 ID 原样下发；任务文本留在 Input.items。
+	if text.request.GetModel() != "chat-model" {
+		t.Fatalf("request=%#v", text.request)
 	}
 }
 
 func TestServiceRejectsCapabilityMismatch(t *testing.T) {
 	service := New(config.Config{
-		Profiles: map[string]config.ProfileConfig{
-			profile.AsyncArtwork: {
-				Capability: config.CapabilityImage,
-				Provider:   "gemini",
-				Model:      "image-model",
-			},
+		Providers: map[string]config.ProviderConfig{
+			"ltx": {Models: []string{"ltx"}, LTX: &config.LTXProviderConfig{
+				BaseURL: "https://x", Duration: 1, FPS: 1, PollInterval: 1, MaxPollTime: 1,
+			}},
 		},
-	}, map[string]provider.Set{
-		"gemini": {Image: &recordingImage{}},
-	})
+	}, map[string]provider.Set{"ltx": {Video: nil}})
 
-	_, err := service.GenerateText(context.Background(), &modelhubv1.GenerateTextRequest{
-		ModelProfile: profile.AsyncArtwork,
-	})
+	stream := &generateRecorder{ctx: context.Background()}
+	err := service.Generate(textRequest("ltx", "x"), stream)
 	if status.Code(err) != codes.InvalidArgument {
-		t.Fatalf("code = %v err = %v", status.Code(err), err)
+		t.Fatalf("code=%v err=%v", status.Code(err), err)
 	}
 	st, _ := status.FromError(err)
 	var reason string
@@ -129,88 +129,88 @@ func TestServiceRejectsCapabilityMismatch(t *testing.T) {
 		}
 	}
 	if reason != string(provider.ErrorInvalidArgument) {
-		t.Fatalf("reason = %q", reason)
+		t.Fatalf("reason=%q", reason)
 	}
 }
 
-func TestServiceRoutesImageProfile(t *testing.T) {
+func TestServiceRoutesImageByRealModel(t *testing.T) {
 	image := &recordingImage{}
 	service := New(config.Config{
-		Profiles: map[string]config.ProfileConfig{
-			profile.AsyncArtwork: {
-				Capability: config.CapabilityImage,
-				Provider:   "gemini",
-				Model:      "artwork-model",
-			},
+		Providers: map[string]config.ProviderConfig{
+			"gemini": {Models: []string{"artwork-model"}, Gemini: &config.GeminiProviderConfig{APIKey: "k"}},
 		},
-	}, map[string]provider.Set{
-		"gemini": {Image: image},
-	})
+	}, map[string]provider.Set{"gemini": {Image: image}})
 
-	_, err := service.GenerateImage(context.Background(), &modelhubv1.GenerateImageRequest{
-		ModelProfile: profile.AsyncArtwork,
-	})
+	stream := &generateRecorder{ctx: context.Background()}
+	err := service.Generate(&modelhubv2.GenerateRequest{
+		Model:  "artwork-model",
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Image{Image: &modelhubv2.ImageOutput{}}},
+	}, stream)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if image.model != "artwork-model" {
-		t.Fatalf("model = %q", image.model)
+		t.Fatalf("model=%q", image.model)
 	}
 }
 
-func TestGenerateTextStreamSendsExactlyOneCompletedEvent(t *testing.T) {
+func TestGenerateStreamSendsExactlyOneMetadataFinal(t *testing.T) {
 	service := New(config.Config{
-		Profiles: map[string]config.ProfileConfig{
-			profile.HubChat: {
-				Capability: config.CapabilityText,
-				Provider:   "gemini",
-				Model:      "chat-model",
-			},
+		Providers: map[string]config.ProviderConfig{
+			"gemini": {Models: []string{"chat-model"}, Gemini: &config.GeminiProviderConfig{APIKey: "k"}},
 		},
-	}, map[string]provider.Set{
-		"gemini": {Text: streamingText{}},
-	})
-	stream := &textStreamRecorder{ctx: context.Background()}
-	if err := service.GenerateTextStream(&modelhubv1.GenerateTextRequest{
-		ModelProfile: profile.HubChat,
-	}, stream); err != nil {
+	}, map[string]provider.Set{"gemini": {Text: streamingText{}}})
+	stream := &generateRecorder{ctx: context.Background()}
+	req := textRequest("chat-model", "hi")
+	req.Output.Stream = true
+	if err := service.Generate(req, stream); err != nil {
 		t.Fatal(err)
 	}
 	if len(stream.events) != 2 {
-		t.Fatalf("events = %#v", stream.events)
+		t.Fatalf("events=%#v", stream.events)
 	}
-	if stream.events[0].GetTextChunk() != "hello" {
-		t.Fatalf("first event = %#v", stream.events[0])
+	if stream.events[0].GetFinal() || stream.events[0].GetItems()[0].GetText() != "hello" {
+		t.Fatalf("first=%#v", stream.events[0])
 	}
-	completed := stream.events[1].GetCompleted()
-	if completed == nil || completed.GetContent() != "hello" || completed.GetResponseId() != "resp-1" {
-		t.Fatalf("completed = %#v", completed)
+	final := stream.events[1]
+	if !final.GetFinal() || final.GetResponseId() != "resp-1" || len(final.GetItems()) != 0 {
+		t.Fatalf("final=%#v", final)
 	}
 }
 
 func TestGenerateImageRejectsOversizedInlineMedia(t *testing.T) {
 	service := New(config.Config{
-		Profiles: map[string]config.ProfileConfig{
-			profile.AsyncArtwork: {
-				Capability: config.CapabilityImage,
-				Provider:   "gemini",
-				Model:      "artwork-model",
-			},
+		Providers: map[string]config.ProviderConfig{
+			"gemini": {Models: []string{"artwork-model"}, Gemini: &config.GeminiProviderConfig{APIKey: "k"}},
 		},
-	}, map[string]provider.Set{
-		"gemini": {Image: &recordingImage{}},
-	})
+	}, map[string]provider.Set{"gemini": {Image: &recordingImage{}}})
 
-	_, err := service.GenerateImage(context.Background(), &modelhubv1.GenerateImageRequest{
-		ModelProfile: profile.AsyncArtwork,
-		Parts: []*modelhubv1.ContentPart{{
-			Content: &modelhubv1.ContentPart_Image{Image: &modelhubv1.Media{
-				MimeType: "image/png",
-				Source:   &modelhubv1.Media_Data{Data: make([]byte, protocol.MaxMediaBytes+1)},
+	stream := &generateRecorder{ctx: context.Background()}
+	err := service.Generate(&modelhubv2.GenerateRequest{
+		Model: "artwork-model",
+		Input: &modelhubv2.Input{Items: []*modelhubv2.InputItem{{
+			Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
+				Role: modelhubv2.Role_ROLE_USER,
+				Parts: []*modelhubv2.ContentPart{{
+					Content: &modelhubv2.ContentPart_Image{Image: &modelhubv2.Media{
+						MimeType: "image/png",
+						Source:   &modelhubv2.Media_Data{Data: make([]byte, protocol.MaxMediaBytes+1)},
+					}},
+				}},
 			}},
-		}},
-	})
+		}}},
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Image{Image: &modelhubv2.ImageOutput{}}},
+	}, stream)
 	if status.Code(err) != codes.InvalidArgument {
-		t.Fatalf("code = %v err = %v", status.Code(err), err)
+		t.Fatalf("code=%v err=%v", status.Code(err), err)
+	}
+}
+
+func TestGenerateRejectsMissingOutputKind(t *testing.T) {
+	service := New(config.Config{}, nil)
+	stream := &generateRecorder{ctx: context.Background()}
+	err := service.Generate(&modelhubv2.GenerateRequest{Model: "chat-model"}, stream)
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("code=%v err=%v", status.Code(err), err)
 	}
 }

@@ -11,7 +11,7 @@ import (
 	"github.com/volcengine/volcengine-go-sdk/service/arkruntime"
 	arkmodel "github.com/volcengine/volcengine-go-sdk/service/arkruntime/model"
 	"github.com/volcengine/volcengine-go-sdk/service/arkruntime/model/responses"
-	modelhubv1 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v1"
+	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 )
 
@@ -42,7 +42,7 @@ func New(name, apiKey, baseURL string) (*Provider, error) {
 	return &Provider{name: name, client: client}, nil
 }
 
-func (p *Provider) Generate(ctx context.Context, model string, request *modelhubv1.GenerateTextRequest) (*modelhubv1.GenerateTextResponse, error) {
+func (p *Provider) Generate(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
 	arkReq, err := p.buildRequest(model, request)
 	if err != nil {
 		return nil, err
@@ -54,7 +54,7 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 	return p.convertResponse(resp), nil
 }
 
-func (p *Provider) GenerateStream(ctx context.Context, model string, request *modelhubv1.GenerateTextRequest, emit provider.EmitTextEvent) (*modelhubv1.GenerateTextResponse, error) {
+func (p *Provider) GenerateStream(ctx context.Context, model string, request *modelhubv2.GenerateRequest, emit provider.EmitEvent) (*modelhubv2.GenerateEvent, error) {
 	arkReq, err := p.buildRequest(model, request)
 	if err != nil {
 		return nil, err
@@ -67,12 +67,10 @@ func (p *Provider) GenerateStream(ctx context.Context, model string, request *mo
 	}
 	defer stream.Close()
 
-	var content strings.Builder
-	var toolCalls []*modelhubv1.ToolCall
-	emittedCalls := make(map[string]struct{})
 	var finishReason string
 	var responseID string
-	var usage *modelhubv1.Usage
+	var usage *modelhubv2.Usage
+	emittedCalls := make(map[string]struct{})
 
 	for {
 		event, err := stream.Recv()
@@ -87,7 +85,7 @@ func (p *Provider) GenerateStream(ctx context.Context, model string, request *mo
 		}
 		if itemEvent := event.GetItemDone(); itemEvent != nil {
 			if fc := itemEvent.Item.GetFunctionToolCall(); fc != nil {
-				call := &modelhubv1.ToolCall{
+				call := &modelhubv2.ToolCall{
 					Id:            fc.CallId,
 					Name:          fc.Name,
 					ArgumentsJson: []byte(fc.Arguments),
@@ -97,21 +95,17 @@ func (p *Provider) GenerateStream(ctx context.Context, model string, request *mo
 					continue
 				}
 				emittedCalls[key] = struct{}{}
-				toolCalls = append(toolCalls, call)
 				if emit != nil {
-					if err := emit(&modelhubv1.TextStreamEvent{Event: &modelhubv1.TextStreamEvent_ToolCall{ToolCall: call}}); err != nil {
+					if err := emit(provider.ToolCallEvent(call)); err != nil {
 						return nil, err
 					}
 				}
 			}
 		} else if textEvent := event.GetText(); textEvent != nil {
 			delta := textEvent.GetDelta()
-			if delta != "" {
-				content.WriteString(delta)
-				if emit != nil {
-					if err := emit(&modelhubv1.TextStreamEvent{Event: &modelhubv1.TextStreamEvent_TextChunk{TextChunk: delta}}); err != nil {
-						return nil, err
-					}
+			if delta != "" && emit != nil {
+				if err := emit(provider.TextDeltaEvent(delta)); err != nil {
+					return nil, err
 				}
 			}
 		}
@@ -122,68 +116,67 @@ func (p *Provider) GenerateStream(ctx context.Context, model string, request *mo
 		}
 	}
 
-	response := &modelhubv1.GenerateTextResponse{
-		Content:      content.String(),
-		ToolCalls:    toolCalls,
-		ResponseId:   responseID,
-		FinishReason: finishReason,
-		Usage:        usage,
-	}
-	return response, nil
+	// stream 调用方累计正文；此处只回传终态元数据给 service 发唯一 final。
+	return provider.MetadataFinalEvent(responseID, finishReason, usage), nil
 }
 
-func (p *Provider) buildRequest(model string, request *modelhubv1.GenerateTextRequest) (*responses.ResponsesRequest, error) {
+func (p *Provider) buildRequest(model string, request *modelhubv2.GenerateRequest) (*responses.ResponsesRequest, error) {
+	input := request.GetInput()
+	if input == nil {
+		input = &modelhubv2.Input{}
+	}
+	text := request.GetOutput().GetText()
 	arkReq := &responses.ResponsesRequest{
 		Model: model,
+		// Input.items 含 SYSTEM/USER/ASSISTANT/ToolOutput；不再使用顶层 prompt 填 Instructions。
 		Input: p.buildInput(request),
 	}
-	if request.Instructions != "" {
-		arkReq.Instructions = ptr(request.Instructions)
-	}
-	if request.MaxOutputTokens != nil {
-		arkReq.MaxOutputTokens = ptr(int64(*request.MaxOutputTokens))
+	if text != nil && text.MaxOutputTokens != nil {
+		arkReq.MaxOutputTokens = ptr(int64(*text.MaxOutputTokens))
 	}
 	// proto optional 已设置时必须原样下发；用 >0 判断会把显式 temperature=0 当成“未配置”而漏传。
-	if request.Temperature != nil {
-		arkReq.Temperature = ptr(*request.Temperature)
+	if text != nil && text.Temperature != nil {
+		arkReq.Temperature = ptr(*text.Temperature)
 	}
-	if request.TopP != nil {
-		arkReq.TopP = ptr(*request.TopP)
+	if text != nil && text.TopP != nil {
+		arkReq.TopP = ptr(*text.TopP)
 	}
-	if request.PreviousResponseId != "" {
-		arkReq.PreviousResponseId = ptr(request.PreviousResponseId)
+	if input.GetPreviousResponseId() != "" {
+		arkReq.PreviousResponseId = ptr(input.GetPreviousResponseId())
 	}
-	if caching := request.Caching; caching != nil && caching.Enabled {
+	if caching := input.GetCaching(); caching != nil && caching.Enabled {
 		arkReq.Caching = &responses.ResponsesCaching{Type: responses.CacheType_enabled.Enum()}
 		if caching.ExpireAtUnix > 0 {
 			arkReq.ExpireAt = ptr(caching.ExpireAtUnix)
 		}
 	}
-	switch request.Thinking {
-	case modelhubv1.ThinkingMode_THINKING_MODE_ENABLED:
-		arkReq.Thinking = &responses.ResponsesThinking{Type: responses.ThinkingType_enabled.Enum()}
-	case modelhubv1.ThinkingMode_THINKING_MODE_DISABLED:
-		arkReq.Thinking = &responses.ResponsesThinking{Type: responses.ThinkingType_disabled.Enum()}
-	}
-	if format := request.ResponseFormat; format != nil {
-		switch format.Type {
-		case modelhubv1.ResponseFormatType_RESPONSE_FORMAT_TYPE_JSON_OBJECT:
-			arkReq.Text = &responses.ResponsesText{
-				Format: &responses.TextFormat{Type: responses.TextType_json_object},
-			}
-		case modelhubv1.ResponseFormatType_RESPONSE_FORMAT_TYPE_JSON_SCHEMA:
-			arkReq.Text = &responses.ResponsesText{
-				Format: &responses.TextFormat{
-					Type:   responses.TextType_json_schema,
-					Name:   format.Name,
-					Schema: &responses.Bytes{Value: format.JsonSchema},
-				},
+	if text != nil {
+		switch text.Thinking {
+		case modelhubv2.ThinkingMode_THINKING_MODE_ENABLED:
+			arkReq.Thinking = &responses.ResponsesThinking{Type: responses.ThinkingType_enabled.Enum()}
+		case modelhubv2.ThinkingMode_THINKING_MODE_DISABLED:
+			arkReq.Thinking = &responses.ResponsesThinking{Type: responses.ThinkingType_disabled.Enum()}
+		}
+		if format := text.ResponseFormat; format != nil {
+			switch format.Type {
+			case modelhubv2.ResponseFormatType_RESPONSE_FORMAT_TYPE_JSON_OBJECT:
+				arkReq.Text = &responses.ResponsesText{
+					Format: &responses.TextFormat{Type: responses.TextType_json_object},
+				}
+			case modelhubv2.ResponseFormatType_RESPONSE_FORMAT_TYPE_JSON_SCHEMA:
+				arkReq.Text = &responses.ResponsesText{
+					Format: &responses.TextFormat{
+						Type:   responses.TextType_json_schema,
+						Name:   format.Name,
+						Schema: &responses.Bytes{Value: format.JsonSchema},
+					},
+				}
 			}
 		}
 	}
 	// 续轮上下文已含工具定义，重复下发会导致 Ark 拒绝或覆盖状态。
-	if request.PreviousResponseId == "" && len(request.Tools) > 0 {
-		tools, err := p.buildTools(request.Tools)
+	if input.GetPreviousResponseId() == "" && len(input.GetTools()) > 0 {
+		tools, err := p.buildTools(input.GetTools())
 		if err != nil {
 			return nil, err
 		}
@@ -192,74 +185,34 @@ func (p *Provider) buildRequest(model string, request *modelhubv1.GenerateTextRe
 	return arkReq, nil
 }
 
-func (p *Provider) buildInput(request *modelhubv1.GenerateTextRequest) *responses.ResponsesInput {
-	if !hasToolResultMessage(request.Messages) && len(request.ToolOutputs) > 0 {
-		var items []*responses.InputItem
-		for _, output := range request.ToolOutputs {
-			items = append(items, &responses.InputItem{
-				Union: &responses.InputItem_FunctionToolCallOutput{
-					FunctionToolCallOutput: &responses.ItemFunctionToolCallOutput{
-						CallId: output.ToolCallId,
-						Output: output.Output,
-						Type:   responses.ItemType_function_call_output,
-					},
-				},
-			})
-			if len(output.Images) > 0 {
-				var contentItems []*responses.ContentItem
-				for _, image := range output.Images {
-					if url := mediaURL(image); url != "" {
-						contentItems = append(contentItems, &responses.ContentItem{
-							Union: &responses.ContentItem_Image{
-								Image: &responses.ContentItemImage{
-									Type:     responses.ContentItemType_input_image,
-									ImageUrl: ptr(url),
-								},
-							},
-						})
-					}
-				}
-				if len(contentItems) > 0 {
-					items = append(items, &responses.InputItem{
-						Union: &responses.InputItem_EasyMessage{
-							EasyMessage: &responses.ItemEasyMessage{
-								Role: roleUser,
-								Content: &responses.MessageContent{
-									Union: &responses.MessageContent_ListValue{
-										ListValue: &responses.ContentItemList{ListValue: contentItems},
-									},
-								},
-							},
-						},
-					})
-				}
-			}
-		}
-		return &responses.ResponsesInput{
-			Union: &responses.ResponsesInput_ListValue{
-				ListValue: &responses.InputItemList{ListValue: items},
-			},
-		}
-	}
-
-	if len(request.Messages) == 0 {
+func (p *Provider) buildInput(request *modelhubv2.GenerateRequest) *responses.ResponsesInput {
+	input := request.GetInput()
+	if input == nil || len(input.GetItems()) == 0 {
 		return &responses.ResponsesInput{
 			Union: &responses.ResponsesInput_StringValue{StringValue: ""},
 		}
 	}
-	if len(request.Messages) == 1 && request.Messages[0].Role == modelhubv1.Role_ROLE_USER {
-		if text := messageText(request.Messages[0]); text != "" && len(request.Messages[0].Parts) == 1 {
-			if _, ok := request.Messages[0].Parts[0].Content.(*modelhubv1.ContentPart_Text); ok {
-				return &responses.ResponsesInput{
-					Union: &responses.ResponsesInput_StringValue{StringValue: text},
+	// 单条纯文本 USER 可走字符串捷径；其余按 Input.items 单遍展开，禁止分组重排。
+	if len(input.GetItems()) == 1 {
+		if message := input.GetItems()[0].GetMessage(); message != nil && message.Role == modelhubv2.Role_ROLE_USER {
+			if text := messageText(message); text != "" && len(message.Parts) == 1 {
+				if _, ok := message.Parts[0].Content.(*modelhubv2.ContentPart_Text); ok {
+					return &responses.ResponsesInput{
+						Union: &responses.ResponsesInput_StringValue{StringValue: text},
+					}
 				}
 			}
 		}
 	}
 
 	var items []*responses.InputItem
-	for _, message := range request.Messages {
-		items = append(items, convertMessageToInputItems(message)...)
+	for _, item := range input.GetItems() {
+		switch value := item.GetItem().(type) {
+		case *modelhubv2.InputItem_Message:
+			items = append(items, convertMessageToInputItems(value.Message)...)
+		case *modelhubv2.InputItem_ToolOutput:
+			items = append(items, convertToolOutputToInputItems(value.ToolOutput)...)
+		}
 	}
 	return &responses.ResponsesInput{
 		Union: &responses.ResponsesInput_ListValue{
@@ -268,13 +221,64 @@ func (p *Provider) buildInput(request *modelhubv1.GenerateTextRequest) *response
 	}
 }
 
+// convertToolOutputToInputItems 把工具回执展开为 function_call_output，图片紧跟该项。
+func convertToolOutputToInputItems(output *modelhubv2.ToolOutput) []*responses.InputItem {
+	if output == nil {
+		return nil
+	}
+	items := []*responses.InputItem{{
+		Union: &responses.InputItem_FunctionToolCallOutput{
+			FunctionToolCallOutput: &responses.ItemFunctionToolCallOutput{
+				CallId: output.ToolCallId,
+				Output: output.Output,
+				Type:   responses.ItemType_function_call_output,
+			},
+		},
+	}}
+	if len(output.Images) == 0 {
+		return items
+	}
+	var contentItems []*responses.ContentItem
+	for _, image := range output.Images {
+		if url := mediaURL(image); url != "" {
+			contentItems = append(contentItems, &responses.ContentItem{
+				Union: &responses.ContentItem_Image{
+					Image: &responses.ContentItemImage{
+						Type:     responses.ContentItemType_input_image,
+						ImageUrl: ptr(url),
+					},
+				},
+			})
+		}
+	}
+	if len(contentItems) == 0 {
+		return items
+	}
+	return append(items, &responses.InputItem{
+		Union: &responses.InputItem_EasyMessage{
+			EasyMessage: &responses.ItemEasyMessage{
+				Role: roleUser,
+				Content: &responses.MessageContent{
+					Union: &responses.MessageContent_ListValue{
+						ListValue: &responses.ContentItemList{ListValue: contentItems},
+					},
+				},
+			},
+		},
+	})
+}
+
 // convertMessageToInputItems 把一条消息展开为 Ark InputItem；多 tool call 必须各占一项，不能沿用 Hub 只取 [0] 的旧缺陷。
-func convertMessageToInputItems(message *modelhubv1.Message) []*responses.InputItem {
+// assistant 若同时有文本 parts 与 tool_calls：先保留文本消息，再保留全部 tool_calls。
+func convertMessageToInputItems(message *modelhubv2.Message) []*responses.InputItem {
 	if message == nil {
 		return nil
 	}
-	if message.Role == modelhubv1.Role_ROLE_ASSISTANT && len(message.ToolCalls) > 0 {
-		items := make([]*responses.InputItem, 0, len(message.ToolCalls))
+	if message.Role == modelhubv2.Role_ROLE_ASSISTANT && len(message.ToolCalls) > 0 {
+		items := make([]*responses.InputItem, 0, 1+len(message.ToolCalls))
+		if textItem := convertEasyMessage(message); textItem != nil {
+			items = append(items, textItem)
+		}
 		for _, call := range message.ToolCalls {
 			callID := call.Id
 			if callID == "" {
@@ -293,17 +297,6 @@ func convertMessageToInputItems(message *modelhubv1.Message) []*responses.InputI
 		}
 		return items
 	}
-	if message.Role == modelhubv1.Role_ROLE_TOOL {
-		return []*responses.InputItem{{
-			Union: &responses.InputItem_FunctionToolCallOutput{
-				FunctionToolCallOutput: &responses.ItemFunctionToolCallOutput{
-					CallId: message.ToolCallId,
-					Output: messageText(message),
-					Type:   responses.ItemType_function_call_output,
-				},
-			},
-		}}
-	}
 	item := convertEasyMessage(message)
 	if item == nil {
 		return nil
@@ -311,11 +304,11 @@ func convertMessageToInputItems(message *modelhubv1.Message) []*responses.InputI
 	return []*responses.InputItem{item}
 }
 
-func convertEasyMessage(message *modelhubv1.Message) *responses.InputItem {
+func convertEasyMessage(message *modelhubv2.Message) *responses.InputItem {
 	var contentItems []*responses.ContentItem
 	for _, part := range message.Parts {
 		switch value := part.Content.(type) {
-		case *modelhubv1.ContentPart_Text:
+		case *modelhubv2.ContentPart_Text:
 			if value.Text == "" {
 				continue
 			}
@@ -327,7 +320,7 @@ func convertEasyMessage(message *modelhubv1.Message) *responses.InputItem {
 					},
 				},
 			})
-		case *modelhubv1.ContentPart_Image:
+		case *modelhubv2.ContentPart_Image:
 			if url := mediaURL(value.Image); url != "" {
 				contentItems = append(contentItems, &responses.ContentItem{
 					Union: &responses.ContentItem_Image{
@@ -338,7 +331,7 @@ func convertEasyMessage(message *modelhubv1.Message) *responses.InputItem {
 					},
 				})
 			}
-		case *modelhubv1.ContentPart_Video:
+		case *modelhubv2.ContentPart_Video:
 			if url := mediaURL(value.Video); url != "" {
 				contentItems = append(contentItems, &responses.ContentItem{
 					Union: &responses.ContentItem_Video{
@@ -382,27 +375,23 @@ func convertEasyMessage(message *modelhubv1.Message) *responses.InputItem {
 	}
 }
 
-func convertRole(role modelhubv1.Role) responses.MessageRole_Enum {
+func convertRole(role modelhubv2.Role) responses.MessageRole_Enum {
 	switch role {
-	case modelhubv1.Role_ROLE_SYSTEM:
+	case modelhubv2.Role_ROLE_SYSTEM:
 		return roleSystem
-	case modelhubv1.Role_ROLE_ASSISTANT:
+	case modelhubv2.Role_ROLE_ASSISTANT:
 		return roleAssistant
 	default:
 		return roleUser
 	}
 }
 
-func (p *Provider) convertResponse(resp *responses.ResponseObject) *modelhubv1.GenerateTextResponse {
+func (p *Provider) convertResponse(resp *responses.ResponseObject) *modelhubv2.GenerateEvent {
 	if resp == nil {
-		return &modelhubv1.GenerateTextResponse{}
-	}
-	result := &modelhubv1.GenerateTextResponse{
-		ResponseId:   resp.Id,
-		FinishReason: resp.Status.String(),
-		Usage:        p.extractUsage(resp),
+		return provider.TextFinalEvent("", nil, "", "", nil)
 	}
 	var content strings.Builder
+	var toolCalls []*modelhubv2.ToolCall
 	for _, item := range resp.Output {
 		if msg := item.GetOutputMessage(); msg != nil {
 			for _, part := range msg.Content {
@@ -412,22 +401,21 @@ func (p *Provider) convertResponse(resp *responses.ResponseObject) *modelhubv1.G
 			}
 		}
 		if fc := item.GetFunctionToolCall(); fc != nil {
-			result.ToolCalls = append(result.ToolCalls, &modelhubv1.ToolCall{
+			toolCalls = append(toolCalls, &modelhubv2.ToolCall{
 				Id:            fc.CallId,
 				Name:          fc.Name,
 				ArgumentsJson: []byte(fc.Arguments),
 			})
 		}
 	}
-	result.Content = content.String()
-	return result
+	return provider.TextFinalEvent(content.String(), toolCalls, resp.Id, resp.Status.String(), p.extractUsage(resp))
 }
 
-func (p *Provider) extractUsage(resp *responses.ResponseObject) *modelhubv1.Usage {
+func (p *Provider) extractUsage(resp *responses.ResponseObject) *modelhubv2.Usage {
 	if resp == nil || resp.Usage == nil {
 		return nil
 	}
-	usage := &modelhubv1.Usage{
+	usage := &modelhubv2.Usage{
 		InputTokens:  resp.Usage.InputTokens,
 		OutputTokens: resp.Usage.OutputTokens,
 		TotalTokens:  resp.Usage.TotalTokens,
@@ -441,7 +429,7 @@ func (p *Provider) extractUsage(resp *responses.ResponseObject) *modelhubv1.Usag
 	return usage
 }
 
-func (p *Provider) buildTools(tools []*modelhubv1.Tool) ([]*responses.ResponsesTool, error) {
+func (p *Provider) buildTools(tools []*modelhubv2.Tool) ([]*responses.ResponsesTool, error) {
 	arkTools := make([]*responses.ResponsesTool, 0, len(tools))
 	for _, tool := range tools {
 		if tool == nil || tool.Function == nil || tool.Function.Name == "" {
@@ -465,33 +453,24 @@ func (p *Provider) buildTools(tools []*modelhubv1.Tool) ([]*responses.ResponsesT
 	return arkTools, nil
 }
 
-func hasToolResultMessage(messages []*modelhubv1.Message) bool {
-	for _, message := range messages {
-		if message.Role == modelhubv1.Role_ROLE_TOOL {
-			return true
-		}
-	}
-	return false
-}
-
-func messageText(message *modelhubv1.Message) string {
+func messageText(message *modelhubv2.Message) string {
 	var text strings.Builder
 	for _, part := range message.Parts {
-		if value, ok := part.Content.(*modelhubv1.ContentPart_Text); ok {
+		if value, ok := part.Content.(*modelhubv2.ContentPart_Text); ok {
 			text.WriteString(value.Text)
 		}
 	}
 	return text.String()
 }
 
-func mediaURL(media *modelhubv1.Media) string {
+func mediaURL(media *modelhubv2.Media) string {
 	if media == nil {
 		return ""
 	}
 	switch source := media.Source.(type) {
-	case *modelhubv1.Media_Uri:
+	case *modelhubv2.Media_Uri:
 		return source.Uri
-	case *modelhubv1.Media_Data:
+	case *modelhubv2.Media_Data:
 		if len(source.Data) == 0 || media.MimeType == "" {
 			return ""
 		}

@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	modelhubv1 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v1"
+	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/protocol"
 )
 
@@ -114,8 +114,8 @@ func TestEmitVideoChunksSequenceAndFinal(t *testing.T) {
 	for i := range payload {
 		payload[i] = byte(i % 251)
 	}
-	var chunks []*modelhubv1.VideoChunk
-	if err := emitVideoChunks(payload, func(chunk *modelhubv1.VideoChunk) error {
+	var chunks []*modelhubv2.GenerateEvent
+	if err := emitVideoChunks(payload, func(chunk *modelhubv2.GenerateEvent) error {
 		chunks = append(chunks, chunk)
 		return nil
 	}); err != nil {
@@ -124,11 +124,31 @@ func TestEmitVideoChunksSequenceAndFinal(t *testing.T) {
 	if len(chunks) != 2 {
 		t.Fatalf("chunks = %d", len(chunks))
 	}
-	if chunks[0].Sequence != 0 || chunks[0].Final || len(chunks[0].Data) != protocol.VideoChunkBytes {
-		t.Fatalf("first chunk = seq=%d final=%v len=%d", chunks[0].Sequence, chunks[0].Final, len(chunks[0].Data))
+	first := chunks[0].GetItems()[0].GetVideo().GetData()
+	second := chunks[1].GetItems()[0].GetVideo().GetData()
+	if chunks[0].Sequence != 0 || chunks[0].Final || len(first) != protocol.VideoChunkBytes {
+		t.Fatalf("first chunk = seq=%d final=%v len=%d", chunks[0].Sequence, chunks[0].Final, len(first))
 	}
-	if chunks[1].Sequence != 1 || !chunks[1].Final || len(chunks[1].Data) != 1024 {
-		t.Fatalf("second chunk = seq=%d final=%v len=%d", chunks[1].Sequence, chunks[1].Final, len(chunks[1].Data))
+	if chunks[1].Sequence != 1 || !chunks[1].Final || len(second) != 1024 {
+		t.Fatalf("second chunk = seq=%d final=%v len=%d", chunks[1].Sequence, chunks[1].Final, len(second))
+	}
+}
+
+func TestEmitVideoChunksRejectsEmptyDownload(t *testing.T) {
+	err := emitVideoChunks(nil, func(*modelhubv2.GenerateEvent) error {
+		t.Fatal("empty download must not emit events")
+		return nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "0 bytes") {
+		t.Fatalf("expected 0-byte invalid response, got %v", err)
+	}
+}
+
+func TestEmitVideoChunksRejectsEmptyEvenWhenEmitNil(t *testing.T) {
+	// emit==nil 不得短路掉 0 字节校验，否则调用方会把空下载当成成功。
+	err := emitVideoChunks(nil, nil)
+	if err == nil || !strings.Contains(err.Error(), "0 bytes") {
+		t.Fatalf("expected 0-byte invalid response with nil emit, got %v", err)
 	}
 }
 
@@ -153,13 +173,21 @@ func TestGenerateVideoHonorsContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- provider.GenerateVideo(ctx, "ltx", &modelhubv1.GenerateVideoRequest{
-			FirstFrame: &modelhubv1.Media{
-				MimeType: "image/png",
-				Source:   &modelhubv1.Media_Data{Data: []byte("png")},
-			},
-			Prompt: "video",
-		}, func(chunk *modelhubv1.VideoChunk) error {
+		done <- provider.GenerateVideo(ctx, "ltx", &modelhubv2.GenerateRequest{
+			Input: &modelhubv2.Input{Items: []*modelhubv2.InputItem{{
+				Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
+					Role: modelhubv2.Role_ROLE_USER,
+					Parts: []*modelhubv2.ContentPart{
+						{Content: &modelhubv2.ContentPart_Image{Image: &modelhubv2.Media{
+							MimeType: "image/png",
+							Source:   &modelhubv2.Media_Data{Data: []byte("png")},
+						}}},
+						{Content: &modelhubv2.ContentPart_Text{Text: "video"}},
+					},
+				}},
+			}}},
+			Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Video{Video: &modelhubv2.VideoOutput{Resolution: "720p"}}},
+		}, func(chunk *modelhubv2.GenerateEvent) error {
 			return nil
 		})
 	}()

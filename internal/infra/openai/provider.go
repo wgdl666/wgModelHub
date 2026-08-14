@@ -12,7 +12,7 @@ import (
 	"sort"
 	"strings"
 
-	modelhubv1 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v1"
+	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/protocol"
@@ -45,7 +45,7 @@ func New(name, apiKey, baseURL string, sendEnableThinking bool) (*Provider, erro
 	}, nil
 }
 
-func (p *Provider) Generate(ctx context.Context, model string, request *modelhubv1.GenerateTextRequest) (*modelhubv1.GenerateTextResponse, error) {
+func (p *Provider) Generate(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
 	body := p.buildRequestBody(model, request, false)
 	respBody, err := p.doRequest(ctx, body)
 	if err != nil {
@@ -60,7 +60,7 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 	return convertResponse(&chatResp), nil
 }
 
-func (p *Provider) GenerateStream(ctx context.Context, model string, request *modelhubv1.GenerateTextRequest, emit provider.EmitTextEvent) (*modelhubv1.GenerateTextResponse, error) {
+func (p *Provider) GenerateStream(ctx context.Context, model string, request *modelhubv2.GenerateRequest, emit provider.EmitEvent) (*modelhubv2.GenerateEvent, error) {
 	body := p.buildRequestBody(model, request, true)
 	respBody, err := p.doRequest(ctx, body)
 	if err != nil {
@@ -68,11 +68,10 @@ func (p *Provider) GenerateStream(ctx context.Context, model string, request *mo
 	}
 	defer respBody.Close()
 
-	var fullContent strings.Builder
-	toolCallAccum := map[int]*modelhubv1.ToolCall{}
+	toolCallAccum := map[int]*modelhubv2.ToolCall{}
 	var finishReason string
 	var responseID string
-	var usage *modelhubv1.Usage
+	var usage *modelhubv2.Usage
 
 	scanner := bufio.NewScanner(respBody)
 	scanner.Buffer(make([]byte, 0, 64*1024), protocol.MaxRPCMessageBytes)
@@ -102,18 +101,15 @@ func (p *Provider) GenerateStream(ctx context.Context, model string, request *mo
 			continue
 		}
 		delta := chunk.Choices[0].Delta
-		if delta.Content != "" {
-			fullContent.WriteString(delta.Content)
-			if emit != nil {
-				if err := emit(&modelhubv1.TextStreamEvent{Event: &modelhubv1.TextStreamEvent_TextChunk{TextChunk: delta.Content}}); err != nil {
-					return nil, err
-				}
+		if delta.Content != "" && emit != nil {
+			if err := emit(provider.TextDeltaEvent(delta.Content)); err != nil {
+				return nil, err
 			}
 		}
 		for _, tc := range delta.ToolCalls {
 			acc, ok := toolCallAccum[tc.Index]
 			if !ok {
-				acc = &modelhubv1.ToolCall{}
+				acc = &modelhubv2.ToolCall{}
 				toolCallAccum[tc.Index] = acc
 			}
 			if tc.ID != "" {
@@ -136,32 +132,27 @@ func (p *Provider) GenerateStream(ctx context.Context, model string, request *mo
 	}
 
 	// 流式增量结束后再按 index 顺序发出完整 tool call，避免半成品重复事件。
-	var toolCalls []*modelhubv1.ToolCall
 	indexes := make([]int, 0, len(toolCallAccum))
 	for index := range toolCallAccum {
 		indexes = append(indexes, index)
 	}
 	sort.Ints(indexes)
 	for _, i := range indexes {
-		tc := toolCallAccum[i]
-		toolCalls = append(toolCalls, tc)
 		if emit != nil {
-			if err := emit(&modelhubv1.TextStreamEvent{Event: &modelhubv1.TextStreamEvent_ToolCall{ToolCall: tc}}); err != nil {
+			if err := emit(provider.ToolCallEvent(toolCallAccum[i])); err != nil {
 				return nil, err
 			}
 		}
 	}
-	response := &modelhubv1.GenerateTextResponse{
-		Content:      fullContent.String(),
-		ToolCalls:    toolCalls,
-		ResponseId:   responseID,
-		FinishReason: finishReason,
-		Usage:        usage,
-	}
-	return response, nil
+	return provider.MetadataFinalEvent(responseID, finishReason, usage), nil
 }
 
-func (p *Provider) buildRequestBody(model string, request *modelhubv1.GenerateTextRequest, stream bool) map[string]any {
+func (p *Provider) buildRequestBody(model string, request *modelhubv2.GenerateRequest, stream bool) map[string]any {
+	input := request.GetInput()
+	if input == nil {
+		input = &modelhubv2.Input{}
+	}
+	text := request.GetOutput().GetText()
 	body := map[string]any{
 		"model":  model,
 		"stream": stream,
@@ -169,56 +160,67 @@ func (p *Provider) buildRequestBody(model string, request *modelhubv1.GenerateTe
 	if stream {
 		body["stream_options"] = map[string]any{"include_usage": true}
 	}
+	// Input.items 单遍转换，保留 Message/ToolOutput 交错顺序；ToolOutput 图片紧跟该项。
 	var messages []map[string]any
-	if request.Instructions != "" {
-		messages = append(messages, map[string]any{"role": "system", "content": request.Instructions})
-	}
-	for _, msg := range request.Messages {
-		messages = append(messages, convertMessage(msg))
-	}
-	if !hasToolResultMessage(request.Messages) {
-		for _, output := range request.ToolOutputs {
+	for _, item := range input.GetItems() {
+		switch value := item.GetItem().(type) {
+		case *modelhubv2.InputItem_Message:
+			messages = append(messages, convertMessage(value.Message))
+		case *modelhubv2.InputItem_ToolOutput:
 			messages = append(messages, map[string]any{
 				"role":         "tool",
-				"tool_call_id": output.ToolCallId,
-				"content":      output.Output,
+				"tool_call_id": value.ToolOutput.GetToolCallId(),
+				"content":      value.ToolOutput.GetOutput(),
 			})
+			for _, image := range value.ToolOutput.GetImages() {
+				if url := mediaURL(image); url != "" {
+					messages = append(messages, map[string]any{
+						"role": "user",
+						"content": []map[string]any{{
+							"type":      "image_url",
+							"image_url": map[string]any{"url": url},
+						}},
+					})
+				}
+			}
 		}
 	}
 	body["messages"] = messages
-	if request.MaxOutputTokens != nil {
-		body["max_tokens"] = *request.MaxOutputTokens
+	if text != nil && text.MaxOutputTokens != nil {
+		body["max_tokens"] = *text.MaxOutputTokens
 	}
 	// optional 已设置时必须原样下发，否则显式 temperature=0 会被误判为“未配置”。
-	if request.Temperature != nil {
-		body["temperature"] = *request.Temperature
+	if text != nil && text.Temperature != nil {
+		body["temperature"] = *text.Temperature
 	}
-	if request.TopP != nil {
-		body["top_p"] = *request.TopP
+	if text != nil && text.TopP != nil {
+		body["top_p"] = *text.TopP
 	}
-	if format := request.ResponseFormat; format != nil {
-		switch format.Type {
-		case modelhubv1.ResponseFormatType_RESPONSE_FORMAT_TYPE_JSON_OBJECT:
-			body["response_format"] = map[string]any{"type": "json_object"}
-		case modelhubv1.ResponseFormatType_RESPONSE_FORMAT_TYPE_JSON_SCHEMA:
-			rf := map[string]any{
-				"type": "json_schema",
-				"json_schema": map[string]any{
-					"name":   format.Name,
-					"strict": true,
-				},
+	if text != nil {
+		if format := text.ResponseFormat; format != nil {
+			switch format.Type {
+			case modelhubv2.ResponseFormatType_RESPONSE_FORMAT_TYPE_JSON_OBJECT:
+				body["response_format"] = map[string]any{"type": "json_object"}
+			case modelhubv2.ResponseFormatType_RESPONSE_FORMAT_TYPE_JSON_SCHEMA:
+				rf := map[string]any{
+					"type": "json_schema",
+					"json_schema": map[string]any{
+						"name":   format.Name,
+						"strict": true,
+					},
+				}
+				if len(format.JsonSchema) > 0 {
+					var schema any
+					_ = json.Unmarshal(format.JsonSchema, &schema)
+					rf["json_schema"].(map[string]any)["schema"] = schema
+				}
+				body["response_format"] = rf
 			}
-			if len(format.JsonSchema) > 0 {
-				var schema any
-				_ = json.Unmarshal(format.JsonSchema, &schema)
-				rf["json_schema"].(map[string]any)["schema"] = schema
-			}
-			body["response_format"] = rf
 		}
 	}
-	if len(request.Tools) > 0 {
+	if len(input.GetTools()) > 0 {
 		var tools []map[string]any
-		for _, t := range request.Tools {
+		for _, t := range input.GetTools() {
 			if t == nil || t.Function == nil {
 				continue
 			}
@@ -240,15 +242,15 @@ func (p *Provider) buildRequestBody(model string, request *modelhubv1.GenerateTe
 			body["tools"] = tools
 		}
 	}
-	if choice := request.ToolChoice; choice != nil {
+	if choice := input.GetToolChoice(); choice != nil {
 		switch choice.Mode {
-		case modelhubv1.ToolChoiceMode_TOOL_CHOICE_MODE_NONE:
+		case modelhubv2.ToolChoiceMode_TOOL_CHOICE_MODE_NONE:
 			body["tool_choice"] = "none"
-		case modelhubv1.ToolChoiceMode_TOOL_CHOICE_MODE_AUTO:
+		case modelhubv2.ToolChoiceMode_TOOL_CHOICE_MODE_AUTO:
 			body["tool_choice"] = "auto"
-		case modelhubv1.ToolChoiceMode_TOOL_CHOICE_MODE_REQUIRED:
+		case modelhubv2.ToolChoiceMode_TOOL_CHOICE_MODE_REQUIRED:
 			body["tool_choice"] = "required"
-		case modelhubv1.ToolChoiceMode_TOOL_CHOICE_MODE_FUNCTION:
+		case modelhubv2.ToolChoiceMode_TOOL_CHOICE_MODE_FUNCTION:
 			body["tool_choice"] = map[string]any{
 				"type":     "function",
 				"function": map[string]any{"name": choice.FunctionName},
@@ -257,23 +259,18 @@ func (p *Provider) buildRequestBody(model string, request *modelhubv1.GenerateTe
 	}
 	if p.sendEnableThinking {
 		// DashScope 等兼容端用该字段关闭思考链；未配置时不得误加，以免破坏普通 OpenAI。
-		body["enable_thinking"] = request.Thinking == modelhubv1.ThinkingMode_THINKING_MODE_ENABLED
+		thinking := modelhubv2.ThinkingMode_THINKING_MODE_UNSPECIFIED
+		if text != nil {
+			thinking = text.Thinking
+		}
+		body["enable_thinking"] = thinking == modelhubv2.ThinkingMode_THINKING_MODE_ENABLED
 	}
 	return body
 }
 
-func hasToolResultMessage(messages []*modelhubv1.Message) bool {
-	for _, msg := range messages {
-		if msg.Role == modelhubv1.Role_ROLE_TOOL {
-			return true
-		}
-	}
-	return false
-}
-
-func convertMessage(msg *modelhubv1.Message) map[string]any {
+func convertMessage(msg *modelhubv2.Message) map[string]any {
 	m := map[string]any{"role": roleString(msg.Role)}
-	if msg.Role == modelhubv1.Role_ROLE_ASSISTANT && len(msg.ToolCalls) > 0 {
+	if msg.Role == modelhubv2.Role_ROLE_ASSISTANT && len(msg.ToolCalls) > 0 {
 		var tcs []map[string]any
 		for _, tc := range msg.ToolCalls {
 			tcs = append(tcs, map[string]any{
@@ -291,14 +288,9 @@ func convertMessage(msg *modelhubv1.Message) map[string]any {
 		}
 		return m
 	}
-	if msg.Role == modelhubv1.Role_ROLE_TOOL {
-		m["tool_call_id"] = msg.ToolCallId
-		m["content"] = messageText(msg)
-		return m
-	}
 	hasMedia := false
 	for _, part := range msg.Parts {
-		if _, ok := part.Content.(*modelhubv1.ContentPart_Text); !ok {
+		if _, ok := part.Content.(*modelhubv2.ContentPart_Text); !ok {
 			hasMedia = true
 			break
 		}
@@ -310,11 +302,11 @@ func convertMessage(msg *modelhubv1.Message) map[string]any {
 	var parts []map[string]any
 	for _, part := range msg.Parts {
 		switch value := part.Content.(type) {
-		case *modelhubv1.ContentPart_Text:
+		case *modelhubv2.ContentPart_Text:
 			if value.Text != "" {
 				parts = append(parts, map[string]any{"type": "text", "text": value.Text})
 			}
-		case *modelhubv1.ContentPart_Image:
+		case *modelhubv2.ContentPart_Image:
 			if url := mediaURL(value.Image); url != "" {
 				parts = append(parts, map[string]any{"type": "image_url", "image_url": map[string]any{"url": url}})
 			}
@@ -324,14 +316,14 @@ func convertMessage(msg *modelhubv1.Message) map[string]any {
 	return m
 }
 
-func mediaURL(media *modelhubv1.Media) string {
+func mediaURL(media *modelhubv2.Media) string {
 	if media == nil {
 		return ""
 	}
 	switch source := media.Source.(type) {
-	case *modelhubv1.Media_Uri:
+	case *modelhubv2.Media_Uri:
 		return source.Uri
-	case *modelhubv1.Media_Data:
+	case *modelhubv2.Media_Data:
 		if len(source.Data) == 0 || media.MimeType == "" {
 			return ""
 		}
@@ -341,24 +333,22 @@ func mediaURL(media *modelhubv1.Media) string {
 	}
 }
 
-func messageText(message *modelhubv1.Message) string {
+func messageText(message *modelhubv2.Message) string {
 	var text strings.Builder
 	for _, part := range message.Parts {
-		if value, ok := part.Content.(*modelhubv1.ContentPart_Text); ok {
+		if value, ok := part.Content.(*modelhubv2.ContentPart_Text); ok {
 			text.WriteString(value.Text)
 		}
 	}
 	return text.String()
 }
 
-func roleString(role modelhubv1.Role) string {
+func roleString(role modelhubv2.Role) string {
 	switch role {
-	case modelhubv1.Role_ROLE_SYSTEM:
+	case modelhubv2.Role_ROLE_SYSTEM:
 		return "system"
-	case modelhubv1.Role_ROLE_ASSISTANT:
+	case modelhubv2.Role_ROLE_ASSISTANT:
 		return "assistant"
-	case modelhubv1.Role_ROLE_TOOL:
-		return "tool"
 	default:
 		return "user"
 	}
@@ -455,32 +445,27 @@ type apiCompletionTokensDetails struct {
 	ReasoningTokens int `json:"reasoning_tokens"`
 }
 
-func convertResponse(resp *chatCompletionResponse) *modelhubv1.GenerateTextResponse {
+func convertResponse(resp *chatCompletionResponse) *modelhubv2.GenerateEvent {
 	if resp == nil || len(resp.Choices) == 0 {
-		return &modelhubv1.GenerateTextResponse{}
+		return provider.TextFinalEvent("", nil, "", "", nil)
 	}
 	choice := resp.Choices[0]
-	result := &modelhubv1.GenerateTextResponse{
-		Content:      choice.Message.Content,
-		ResponseId:   resp.ID,
-		FinishReason: choice.FinishReason,
-		Usage:        convertUsage(resp.Usage),
-	}
+	var toolCalls []*modelhubv2.ToolCall
 	for _, tc := range choice.Message.ToolCalls {
-		result.ToolCalls = append(result.ToolCalls, &modelhubv1.ToolCall{
+		toolCalls = append(toolCalls, &modelhubv2.ToolCall{
 			Id:            tc.ID,
 			Name:          tc.Function.Name,
 			ArgumentsJson: []byte(tc.Function.Arguments),
 		})
 	}
-	return result
+	return provider.TextFinalEvent(choice.Message.Content, toolCalls, resp.ID, choice.FinishReason, convertUsage(resp.Usage))
 }
 
-func convertUsage(u *apiUsage) *modelhubv1.Usage {
+func convertUsage(u *apiUsage) *modelhubv2.Usage {
 	if u == nil {
 		return nil
 	}
-	usage := &modelhubv1.Usage{
+	usage := &modelhubv2.Usage{
 		InputTokens:  int64(u.PromptTokens),
 		OutputTokens: int64(u.CompletionTokens),
 		TotalTokens:  int64(u.TotalTokens),

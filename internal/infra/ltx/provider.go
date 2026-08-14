@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	modelhubv1 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v1"
+	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/protocol"
@@ -57,15 +57,21 @@ func New(name, baseURL, token string, duration float64, fps, seed int, pollInter
 }
 
 // GenerateVideo 在 ModelHub 内同步完成提交、轮询与下载，再按 1MiB 分块回传；不持久化 job，断连不会自动重提。
-func (p *Provider) GenerateVideo(ctx context.Context, model string, request *modelhubv1.GenerateVideoRequest, emit provider.EmitVideoChunk) error {
+func (p *Provider) GenerateVideo(ctx context.Context, model string, request *modelhubv2.GenerateRequest, emit provider.EmitEvent) error {
 	if request == nil {
 		return provider.New(provider.ErrorInvalidArgument, "video request is required")
 	}
-	imageBytes, err := p.loadFirstFrame(ctx, request.FirstFrame)
+	firstFrame := provider.FirstImageMedia(request.GetInput())
+	imageBytes, err := p.loadFirstFrame(ctx, firstFrame)
 	if err != nil {
 		return err
 	}
-	jobID, err := p.submit(ctx, model, imageBytes, request.Prompt, request.Resolution)
+	resolution := ""
+	if video := request.GetOutput().GetVideo(); video != nil {
+		resolution = video.GetResolution()
+	}
+	// 视频任务文案来自 Input.items 文本 parts，与首帧同属有序上下文。
+	jobID, err := p.submit(ctx, model, imageBytes, provider.JoinedText(request.GetInput()), resolution)
 	if err != nil {
 		return err
 	}
@@ -80,12 +86,12 @@ func (p *Provider) GenerateVideo(ctx context.Context, model string, request *mod
 	return emitVideoChunks(videoBytes, emit)
 }
 
-func (p *Provider) loadFirstFrame(ctx context.Context, media *modelhubv1.Media) ([]byte, error) {
+func (p *Provider) loadFirstFrame(ctx context.Context, media *modelhubv2.Media) ([]byte, error) {
 	if media == nil {
 		return nil, provider.New(provider.ErrorInvalidArgument, "first_frame is required")
 	}
 	switch source := media.Source.(type) {
-	case *modelhubv1.Media_Data:
+	case *modelhubv2.Media_Data:
 		if len(source.Data) == 0 {
 			return nil, provider.New(provider.ErrorInvalidArgument, "first_frame data is empty")
 		}
@@ -93,7 +99,7 @@ func (p *Provider) loadFirstFrame(ctx context.Context, media *modelhubv1.Media) 
 			return nil, provider.Errorf(provider.ErrorInvalidArgument, "first_frame exceeds %d bytes", protocol.MaxMediaBytes)
 		}
 		return source.Data, nil
-	case *modelhubv1.Media_Uri:
+	case *modelhubv2.Media_Uri:
 		if strings.TrimSpace(source.Uri) == "" {
 			return nil, provider.New(provider.ErrorInvalidArgument, "first_frame uri is empty")
 		}
@@ -285,16 +291,13 @@ func (p *Provider) download(ctx context.Context, job map[string]any) ([]byte, er
 	return data, nil
 }
 
-func emitVideoChunks(data []byte, emit provider.EmitVideoChunk) error {
+func emitVideoChunks(data []byte, emit provider.EmitEvent) error {
+	// 0 字节下载是无效响应；必须先于 emit==nil 判定，避免任何路径把空载荷当成成功。
+	if len(data) == 0 {
+		return provider.New(provider.ErrorInvalidResponse, "ltx video download returned 0 bytes")
+	}
 	if emit == nil {
 		return nil
-	}
-	if len(data) == 0 {
-		return emit(&modelhubv1.VideoChunk{
-			Sequence: 0,
-			MimeType: videoMIMEType,
-			Final:    true,
-		})
 	}
 	var sequence uint32
 	for offset := 0; offset < len(data); offset += protocol.VideoChunkBytes {
@@ -302,11 +305,13 @@ func emitVideoChunks(data []byte, emit provider.EmitVideoChunk) error {
 		if end > len(data) {
 			end = len(data)
 		}
-		chunk := &modelhubv1.VideoChunk{
+		chunk := &modelhubv2.GenerateEvent{
 			Sequence: sequence,
-			Data:     append([]byte(nil), data[offset:end]...),
-			MimeType: videoMIMEType,
 			Final:    end == len(data),
+			Items: []*modelhubv2.OutputItem{{Item: &modelhubv2.OutputItem_Video{Video: &modelhubv2.Media{
+				MimeType: videoMIMEType,
+				Source:   &modelhubv2.Media_Data{Data: append([]byte(nil), data[offset:end]...)},
+			}}}},
 		}
 		if err := emit(chunk); err != nil {
 			return err
