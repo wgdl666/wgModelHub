@@ -311,7 +311,7 @@ func (p *Provider) buildConfig(request *modelhubv2.GenerateRequest) *genaisdk.Ge
 			}}
 		}
 	}
-	// 保持迁移前行为：业务内容安全判定仍由 Hub/Async 自己负责。
+	// 保持迁移前行为：业务内容安全判定仍由 Hub/Wardrobe 自己负责。
 	cfg.SafetySettings = []*genaisdk.SafetySetting{
 		{Category: genaisdk.HarmCategoryHarassment, Threshold: genaisdk.HarmBlockThresholdBlockNone},
 		{Category: genaisdk.HarmCategoryHateSpeech, Threshold: genaisdk.HarmBlockThresholdBlockNone},

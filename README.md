@@ -8,7 +8,7 @@
 - 传播 OpenTelemetry TraceContext，但不记录 Prompt、媒体正文或密钥。
 
 Prompt 编排、业务重试、质量验收、任务状态、OSS、数据库和 MQ 始终由 `wgHub` 或
-`wgAsyncTask` 持有。仓库只部署一个 `wg-model-hub` 服务，单个
+`wgWardrobe` 持有。仓库只部署一个 `wg-model-hub` 服务，单个
 `ModelHubService` 只暴露 server-streaming `Generate`：
 
 ```text

@@ -1,7 +1,7 @@
 # wgModelHub 仓库边界
 
 - `wgModelHub` 是 WG 内部统一的大模型协议适配层，只负责真实供应商模型 ID（`request.model`）路由、供应商凭据托管、协议转换与错误归一化。
-- Prompt 编排、业务重试、质量验收、任务状态、OSS/DB/MQ 始终留在 `wgHub` 或 `wgAsyncTask`；ModelHub 成功只表示供应商调用完成，不表示业务任务终态。
+- Prompt 编排、业务重试、质量验收、任务状态、OSS/DB/MQ 始终留在 `wgHub` 或 `wgWardrobe`；ModelHub 成功只表示供应商调用完成，不表示业务任务终态。
 - 单个 Deployment、单个 gRPC `ModelHubService.Generate`、端口 `50053`；不提供任意路径代理、万能 RPC 或调用方注入供应商地址/密钥。
 
 # 配置与模型路由
