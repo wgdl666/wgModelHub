@@ -3,6 +3,8 @@ package config
 import (
 	"strings"
 	"testing"
+
+	"github.com/wgdl666/wgModelHub/models"
 )
 
 func validConfig() Config {
@@ -21,11 +23,11 @@ func validConfig() Config {
 				Ark:    &ArkProviderConfig{APIKey: "key"},
 			},
 			"gemini": {
-				Models: []string{"gemini-2.5-flash", "gemini-2.5-flash-image"},
+				Models: []string{models.Gemini25Flash, models.Gemini25FlashImage},
 				Gemini: &GeminiProviderConfig{APIKey: "key"},
 			},
 			"ltx": {
-				Models: []string{"ltx"},
+				Models: []string{models.LTX},
 				LTX: &LTXProviderConfig{
 					BaseURL:      "https://ltx.example",
 					Token:        "token",
@@ -48,10 +50,10 @@ func TestValidateAcceptsUniqueModels(t *testing.T) {
 func TestValidateRejectsDuplicateModels(t *testing.T) {
 	cfg := validConfig()
 	cfg.Providers["other"] = ProviderConfig{
-		Models: []string{"gemini-2.5-flash"},
+		Models: []string{models.Gemini25Flash},
 		OpenAI: &OpenAIProviderConfig{APIKey: "key"},
 	}
-	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "gemini-2.5-flash") {
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), models.Gemini25Flash) {
 		t.Fatalf("expected duplicate model error, got %v", err)
 	}
 }
@@ -91,7 +93,7 @@ func TestValidateRejectsMixedProviderKinds(t *testing.T) {
 
 func TestModelRoutes(t *testing.T) {
 	routes := validConfig().ModelRoutes()
-	if routes["gemini-2.5-flash"] != "gemini" || routes["ltx"] != "ltx" {
+	if routes[models.Gemini25Flash] != "gemini" || routes[models.LTX] != "ltx" {
 		t.Fatalf("unexpected routes %#v", routes)
 	}
 }

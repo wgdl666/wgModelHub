@@ -10,6 +10,7 @@
 - 每个 provider 实例用互斥嵌套字段表达 Gemini/VertexAI/Ark/OpenAI/LTX，并声明 `models: [真实模型 ID...]`。
 - OpenAI 实例同时承接 chat/completions 与 Images API；`gpt-image-2` 必须单独绑到 OpenAI 实例走 `/v1/images/generations`，不能并入 OminiLink Gemini generateContent 生图实例。
 - 启动时建立「真实模型 ID → 唯一 provider 实例」路由；空模型或重复模型 ID 直接配置错误。无 profile、alias、fallback 或双路径。
+- 全部真实模型 ID 是 `models` 包常量（`github.com/wgdl666/wgModelHub/models`）；Nacos / example YAML / 调用方 `request.model` 必须引用这些常量，不能另起业务名。
 
 # 协议不变量
 

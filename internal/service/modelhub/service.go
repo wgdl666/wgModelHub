@@ -171,7 +171,8 @@ func (s *Service) generateVideo(ctx context.Context, binding binding, request *m
 }
 
 type binding struct {
-	set   provider.Set
+	set provider.Set
+	// model 是真实供应商模型 ID，必须全局唯一；完整清单见 models 包，调用方可直接引用。
 	model string
 }
 

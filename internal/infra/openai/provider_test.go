@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/models"
 )
 
 func TestBuildRequestBodyKeepsMessageAndToolOutputOrder(t *testing.T) {
@@ -64,7 +65,7 @@ func TestConvertMessageKeepsTextWithToolCalls(t *testing.T) {
 func TestBuildRequestBodyPreservesZeroTemperature(t *testing.T) {
 	zero := 0.0
 	p := &Provider{sendEnableThinking: true}
-	body := p.buildRequestBody("qwen-flash", &modelhubv2.GenerateRequest{
+	body := p.buildRequestBody(models.QwenFlash, &modelhubv2.GenerateRequest{
 		Input: &modelhubv2.Input{
 			Items: []*modelhubv2.InputItem{{
 				Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{

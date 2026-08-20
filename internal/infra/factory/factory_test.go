@@ -5,13 +5,14 @@ import (
 	"testing"
 
 	"github.com/wgdl666/wgModelHub/config"
+	"github.com/wgdl666/wgModelHub/models"
 )
 
 func TestBuildOpenAIExposesImage(t *testing.T) {
 	sets, err := Build(context.Background(), config.Config{
 		Providers: map[string]config.ProviderConfig{
 			"ominilink_gpt_image": {
-				Models: []string{"gpt-image-2"},
+				Models: []string{models.GPTImage2},
 				OpenAI: &config.OpenAIProviderConfig{
 					APIKey:  "k",
 					BaseURL: "https://api.ominilink.ai/v1",

@@ -2,6 +2,7 @@ server:
   listen_address: ":50053"
 
 # 每个 provider 实例声明其承载的真实模型 ID；同一模型 ID 只能绑定一个实例。
+# 字面量清单见 models 包，调用方引用 github.com/wgdl666/wgModelHub/models，禁止在这里发明 alias。
 providers:
   gemini_main:
     models: [gemini-2.5-flash]

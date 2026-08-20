@@ -7,6 +7,7 @@ import (
 	"github.com/wgdl666/wgModelHub/config"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/provider"
+	"github.com/wgdl666/wgModelHub/models"
 	"github.com/wgdl666/wgModelHub/protocol"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
@@ -110,14 +111,14 @@ func TestServiceRoutesTextByRealModel(t *testing.T) {
 func TestServiceRejectsCapabilityMismatch(t *testing.T) {
 	service := New(config.Config{
 		Providers: map[string]config.ProviderConfig{
-			"ltx": {Models: []string{"ltx"}, LTX: &config.LTXProviderConfig{
+			"ltx": {Models: []string{models.LTX}, LTX: &config.LTXProviderConfig{
 				BaseURL: "https://x", Duration: 1, FPS: 1, PollInterval: 1, MaxPollTime: 1,
 			}},
 		},
 	}, map[string]provider.Set{"ltx": {Video: nil}})
 
 	stream := &generateRecorder{ctx: context.Background()}
-	err := service.Generate(textRequest("ltx", "x"), stream)
+	err := service.Generate(textRequest(models.LTX, "x"), stream)
 	if status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("code=%v err=%v", status.Code(err), err)
 	}
@@ -137,19 +138,19 @@ func TestServiceRoutesImageByRealModel(t *testing.T) {
 	image := &recordingImage{}
 	service := New(config.Config{
 		Providers: map[string]config.ProviderConfig{
-			"openai": {Models: []string{"gpt-image-2"}, OpenAI: &config.OpenAIProviderConfig{APIKey: "k"}},
+			"openai": {Models: []string{models.GPTImage2}, OpenAI: &config.OpenAIProviderConfig{APIKey: "k"}},
 		},
 	}, map[string]provider.Set{"openai": {Image: image}})
 
 	stream := &generateRecorder{ctx: context.Background()}
 	err := service.Generate(&modelhubv2.GenerateRequest{
-		Model:  "gpt-image-2",
+		Model:  models.GPTImage2,
 		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Image{Image: &modelhubv2.ImageOutput{}}},
 	}, stream)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if image.model != "gpt-image-2" {
+	if image.model != models.GPTImage2 {
 		t.Fatalf("model=%q", image.model)
 	}
 }

@@ -21,4 +21,5 @@ capability 由 `OutputSpec` oneof（text / image / video）决定；供应商地
 不会进入 RPC。
 
 配置中每个 provider 实例声明 `models: [...]`；启动时建立「真实模型 ID → 唯一
-provider」路由，空模型或重复模型 ID 直接配置错误。
+provider」路由，空模型或重复模型 ID 直接配置错误。调用方应引用
+`github.com/wgdl666/wgModelHub/models` 常量，例如 `models.GPTImage2`。

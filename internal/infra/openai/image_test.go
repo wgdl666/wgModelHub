@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/models"
 )
 
 const tinyPNG = "\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82"
@@ -39,14 +40,14 @@ func imageRequest(prompt, ratio, size string, images ...*modelhubv2.Media) *mode
 }
 
 func TestBuildImageRequestBodyMapsRatioAndSingleReference(t *testing.T) {
-	body, err := buildImageRequestBody("gpt-image-2", imageRequest("red apple", "3:4", "2K", &modelhubv2.Media{
+	body, err := buildImageRequestBody(models.GPTImage2, imageRequest("red apple", "3:4", "2K", &modelhubv2.Media{
 		MimeType: "image/png",
 		Source:   &modelhubv2.Media_Data{Data: []byte("ref")},
 	}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if body["model"] != "gpt-image-2" || body["prompt"] != "red apple" || body["n"] != 1 {
+	if body["model"] != models.GPTImage2 || body["prompt"] != "red apple" || body["n"] != 1 {
 		t.Fatalf("body=%#v", body)
 	}
 	if _, ok := body["response_format"]; ok {
@@ -62,7 +63,7 @@ func TestBuildImageRequestBodyMapsRatioAndSingleReference(t *testing.T) {
 }
 
 func TestBuildImageRequestBodyPrefersPixelImageSize(t *testing.T) {
-	body, err := buildImageRequestBody("gpt-image-2", imageRequest("hi", "3:4", "1024x1024"))
+	body, err := buildImageRequestBody(models.GPTImage2, imageRequest("hi", "3:4", "1024x1024"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +73,7 @@ func TestBuildImageRequestBodyPrefersPixelImageSize(t *testing.T) {
 }
 
 func TestBuildImageRequestBodyKeepsMultipleReferences(t *testing.T) {
-	body, err := buildImageRequestBody("gpt-image-2", imageRequest("edit", "", "",
+	body, err := buildImageRequestBody(models.GPTImage2, imageRequest("edit", "", "",
 		&modelhubv2.Media{MimeType: "image/png", Source: &modelhubv2.Media_Data{Data: []byte("a")}},
 		&modelhubv2.Media{MimeType: "image/jpeg", Source: &modelhubv2.Media_Uri{Uri: "https://cdn.example/b.jpg"}},
 	))
@@ -86,7 +87,7 @@ func TestBuildImageRequestBodyKeepsMultipleReferences(t *testing.T) {
 }
 
 func TestBuildImageRequestBodyRejectsEmptyPrompt(t *testing.T) {
-	_, err := buildImageRequestBody("gpt-image-2", imageRequest("  ", "", ""))
+	_, err := buildImageRequestBody(models.GPTImage2, imageRequest("  ", "", ""))
 	if err == nil || !strings.Contains(err.Error(), "prompt") {
 		t.Fatalf("err=%v", err)
 	}
@@ -132,11 +133,11 @@ func TestGenerateImagePostsImagesAPIAndReturnsInlinePNG(t *testing.T) {
 	}
 	p.client = server.Client()
 
-	event, err := p.GenerateImage(context.Background(), "gpt-image-2", imageRequest("red apple", "1:1", ""))
+	event, err := p.GenerateImage(context.Background(), models.GPTImage2, imageRequest("red apple", "1:1", ""))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if captured["model"] != "gpt-image-2" || captured["size"] != "1024x1024" {
+	if captured["model"] != models.GPTImage2 || captured["size"] != "1024x1024" {
 		t.Fatalf("captured=%#v", captured)
 	}
 	if len(event.GetItems()) != 2 {
@@ -175,7 +176,7 @@ func TestGenerateImageFetchesURLResult(t *testing.T) {
 	}
 	p.client = server.Client()
 
-	event, err := p.GenerateImage(context.Background(), "gpt-image-2", imageRequest("hi", "", ""))
+	event, err := p.GenerateImage(context.Background(), models.GPTImage2, imageRequest("hi", "", ""))
 	if err != nil {
 		t.Fatal(err)
 	}

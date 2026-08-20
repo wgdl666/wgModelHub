@@ -8,6 +8,7 @@ import (
 	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/models"
 )
 
 func TestLiveOminiLinkGPTImage2(t *testing.T) {
@@ -33,7 +34,7 @@ func TestLiveOminiLinkGPTImage2(t *testing.T) {
 	defer cancel()
 
 	ratio := "1:1"
-	event, err := p.GenerateImage(ctx, "gpt-image-2", &modelhubv2.GenerateRequest{
+	event, err := p.GenerateImage(ctx, models.GPTImage2, &modelhubv2.GenerateRequest{
 		Input: &modelhubv2.Input{Items: []*modelhubv2.InputItem{{
 			Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
 				Role: modelhubv2.Role_ROLE_USER,
