@@ -39,14 +39,6 @@ spec:
           ports:
             - name: grpc
               containerPort: 50053
-          env:
-            - name: LOGFIRE_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: wg-hub-env
-                  key: LOGFIRE_TOKEN
-            - name: DEPLOYMENT_ENVIRONMENT
-              value: production
           startupProbe:
             grpc:
               port: 50053

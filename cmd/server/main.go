@@ -26,16 +26,6 @@ func main() {
 	ctx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
 
-	telemetryRuntime, err := telemetry.Setup(ctx)
-	if err != nil {
-		fatal("telemetry_setup_failed", err)
-	}
-	defer func() {
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer shutdownCancel()
-		_ = telemetryRuntime.Shutdown(shutdownCtx)
-	}()
-
 	bootstrap, err := config.LoadBootstrapFile(config.BootstrapFilePath)
 	if err != nil {
 		fatal("nacos_bootstrap_load_failed", err)
@@ -53,6 +43,17 @@ func main() {
 	if runtimeConfig.Server.ListenAddress == "" {
 		runtimeConfig.Server.ListenAddress = ":50053"
 	}
+
+	// Logfire 凭据随业务配置同文进 Nacos；必须在 Load 之后再装配，避免再依赖 wg-hub-env。
+	telemetryRuntime, err := telemetry.Setup(ctx, runtimeConfig.Logfire)
+	if err != nil {
+		fatal("telemetry_setup_failed", err)
+	}
+	defer func() {
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		_ = telemetryRuntime.Shutdown(shutdownCtx)
+	}()
 
 	providers, err := factory.Build(ctx, runtimeConfig)
 	if err != nil {

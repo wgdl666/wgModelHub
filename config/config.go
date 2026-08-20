@@ -82,6 +82,17 @@ type Config struct {
 		ListenAddress string `yaml:"listen_address"`
 	} `yaml:"server"`
 	Providers map[string]ProviderConfig `yaml:"providers"`
+	// Logfire 与 Hub 等同项目；token 写在本服务 Nacos，禁止再挂 wg-hub-env。
+	Logfire LogfireConfig `yaml:"logfire"`
+}
+
+// LogfireConfig 是跨服务 Trace 导出到同一 Logfire 项目的凭据与身份。
+type LogfireConfig struct {
+	Token        string `yaml:"token"`
+	Env          string `yaml:"env"`
+	Service      string `yaml:"service"`
+	Version      string `yaml:"version"`
+	OtelLogLevel string `yaml:"otel_log_level"`
 }
 
 func LoadBootstrapFile(path string) (Bootstrap, error) {
@@ -197,6 +208,9 @@ func (l *NacosConfigLoader) Close() {
 func (c Config) Validate() error {
 	if strings.TrimSpace(c.Server.ListenAddress) == "" {
 		return fmt.Errorf("server.listen_address is required")
+	}
+	if strings.TrimSpace(c.Logfire.Token) == "" {
+		return fmt.Errorf("logfire.token is required")
 	}
 	if len(c.Providers) == 0 {
 		return fmt.Errorf("providers are required")

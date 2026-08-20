@@ -4,11 +4,11 @@ import (
 	"context"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 
 	"github.com/wgdl666/kangaroo/logs"
+	"github.com/wgdl666/wgModelHub/config"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -22,21 +22,26 @@ type Runtime struct {
 	shared *logs.Runtime
 }
 
-func Setup(ctx context.Context) (*Runtime, error) {
-	token := strings.TrimSpace(os.Getenv("LOGFIRE_TOKEN"))
+// Setup 在 Nacos 配置加载后装配；token/env 来自本服务 Data ID，不再读 LOGFIRE_* 环境变量。
+func Setup(ctx context.Context, cfg config.LogfireConfig) (*Runtime, error) {
+	token := strings.TrimSpace(cfg.Token)
 	endpoint := ""
 	headers := map[string]string{}
 	if token != "" {
 		endpoint = logfireEndpoint
 		headers["Authorization"] = token
 	}
+	serviceName := strings.TrimSpace(cfg.Service)
+	if serviceName == "" {
+		serviceName = "wg-model-hub"
+	}
 	shared, err := logs.Setup(ctx, logs.Config{
-		ServiceName:    "wg-model-hub",
-		ServiceVersion: strings.TrimSpace(os.Getenv("SERVICE_VERSION")),
-		Environment:    strings.TrimSpace(os.Getenv("DEPLOYMENT_ENVIRONMENT")),
+		ServiceName:    serviceName,
+		ServiceVersion: strings.TrimSpace(cfg.Version),
+		Environment:    strings.TrimSpace(cfg.Env),
 		Endpoint:       endpoint,
 		Headers:        headers,
-		MinLevel:       strings.TrimSpace(os.Getenv("OTEL_LOG_LEVEL")),
+		MinLevel:       strings.TrimSpace(cfg.OtelLogLevel),
 		Console:        true,
 	})
 	if err != nil {

@@ -10,6 +10,11 @@ func validConfig() Config {
 		Server: struct {
 			ListenAddress string `yaml:"listen_address"`
 		}{ListenAddress: ":50053"},
+		Logfire: LogfireConfig{
+			Token:   "logfire-token",
+			Env:     "production",
+			Service: "wg-model-hub",
+		},
 		Providers: map[string]ProviderConfig{
 			"ark": {
 				Models: []string{"doubao-chat"},
