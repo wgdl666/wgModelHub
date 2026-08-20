@@ -60,7 +60,7 @@ type ArkProviderConfig struct {
 	BaseURL string `yaml:"base_url"`
 }
 
-// OpenAIProviderConfig 覆盖 OpenAI-compatible HTTP 端；OminiLink 文本也走这里。
+// OpenAIProviderConfig 覆盖 OpenAI-compatible HTTP 端；OminiLink 文本与 gpt-image-2 都走这里。
 type OpenAIProviderConfig struct {
 	APIKey             string `yaml:"api_key"`
 	BaseURL            string `yaml:"base_url"`
@@ -315,9 +315,9 @@ func countConcreteProviders(provider ProviderConfig) int {
 // ProviderSupports 根据供应商类型判断能否承接 OutputSpec 对应能力。
 func ProviderSupports(provider ProviderConfig, capability string) bool {
 	switch {
-	case provider.Gemini != nil:
+	case provider.Gemini != nil, provider.OpenAI != nil:
 		return capability == CapabilityText || capability == CapabilityImage
-	case provider.VertexAI != nil, provider.Ark != nil, provider.OpenAI != nil:
+	case provider.VertexAI != nil, provider.Ark != nil:
 		return capability == CapabilityText
 	case provider.LTX != nil:
 		return capability == CapabilityVideo

@@ -20,7 +20,7 @@ import (
 
 const DefaultBaseURL = "https://api.openai.com/v1"
 
-// Provider 适配任意 OpenAI-compatible /chat/completions 端点。
+// Provider 适配 OpenAI-compatible 端点：文本走 /chat/completions，生图走 /images/generations。
 type Provider struct {
 	name               string
 	apiKey             string

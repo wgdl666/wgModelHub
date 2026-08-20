@@ -47,6 +47,12 @@ providers:
     gemini:
       api_key: "${OMINILINK_IMAGE_API_KEY}"
       base_url: https://api.ominilink.ai
+  # gpt-image-2 必须走 OpenAI Images API，不能并入上面的 Gemini generateContent 实例。
+  ominilink_gpt_image:
+    models: [gpt-image-2]
+    openai:
+      api_key: "${OMINILINK_IMAGE_API_KEY}"
+      base_url: https://api.ominilink.ai/v1
   # LTX 供应商请求体里的 model 字段值就是 ltx，不是业务别名。
   ltx_video:
     models: [ltx]

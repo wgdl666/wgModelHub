@@ -95,3 +95,13 @@ func TestModelRoutes(t *testing.T) {
 		t.Fatalf("unexpected routes %#v", routes)
 	}
 }
+
+func TestProviderSupportsOpenAIImage(t *testing.T) {
+	openai := ProviderConfig{OpenAI: &OpenAIProviderConfig{APIKey: "k"}}
+	if !ProviderSupports(openai, CapabilityText) || !ProviderSupports(openai, CapabilityImage) {
+		t.Fatalf("openai should support text and image")
+	}
+	if ProviderSupports(openai, CapabilityVideo) {
+		t.Fatalf("openai should not support video")
+	}
+}

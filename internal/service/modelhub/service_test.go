@@ -137,19 +137,19 @@ func TestServiceRoutesImageByRealModel(t *testing.T) {
 	image := &recordingImage{}
 	service := New(config.Config{
 		Providers: map[string]config.ProviderConfig{
-			"gemini": {Models: []string{"artwork-model"}, Gemini: &config.GeminiProviderConfig{APIKey: "k"}},
+			"openai": {Models: []string{"gpt-image-2"}, OpenAI: &config.OpenAIProviderConfig{APIKey: "k"}},
 		},
-	}, map[string]provider.Set{"gemini": {Image: image}})
+	}, map[string]provider.Set{"openai": {Image: image}})
 
 	stream := &generateRecorder{ctx: context.Background()}
 	err := service.Generate(&modelhubv2.GenerateRequest{
-		Model:  "artwork-model",
+		Model:  "gpt-image-2",
 		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Image{Image: &modelhubv2.ImageOutput{}}},
 	}, stream)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if image.model != "artwork-model" {
+	if image.model != "gpt-image-2" {
 		t.Fatalf("model=%q", image.model)
 	}
 }
