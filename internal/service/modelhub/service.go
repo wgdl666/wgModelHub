@@ -123,6 +123,38 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 	return stream.Send(event)
 }
 
+// CreateCachedContent 将 system+tools 前缀落到支持显式缓存的 TextProvider（当前为 Gemini）。
+func (s *Service) CreateCachedContent(ctx context.Context, request *modelhubv2.CreateCachedContentRequest) (*modelhubv2.CreateCachedContentResponse, error) {
+	ctx, span := telemetry.StartSpan(ctx, "modelhub.CreateCachedContent")
+	defer span.End()
+	if request == nil || strings.TrimSpace(request.GetModel()) == "" {
+		err := provider.New(provider.ErrorInvalidArgument, "model is required")
+		statusErr := provider.ToStatus(err)
+		telemetry.RecordError(ctx, statusErr)
+		return nil, statusErr
+	}
+	binding, err := s.resolve(request.GetModel(), config.CapabilityText)
+	if err != nil {
+		statusErr := provider.ToStatus(err)
+		telemetry.RecordError(ctx, statusErr)
+		return nil, statusErr
+	}
+	creator, ok := binding.set.Text.(provider.CachedContentCreator)
+	if !ok || creator == nil {
+		err := provider.Errorf(provider.ErrorConfiguration, "model %s does not support explicit cached content", request.GetModel())
+		statusErr := provider.ToStatus(err)
+		telemetry.RecordError(ctx, statusErr)
+		return nil, statusErr
+	}
+	resp, err := creator.CreateCachedContent(ctx, binding.model, request)
+	if err != nil {
+		statusErr := provider.ToStatus(err)
+		telemetry.RecordError(ctx, statusErr)
+		return nil, statusErr
+	}
+	return resp, nil
+}
+
 func (s *Service) generateImage(ctx context.Context, binding binding, request *modelhubv2.GenerateRequest, stream modelhubv2.ModelHubService_GenerateServer) error {
 	if binding.set.Image == nil {
 		err := provider.Errorf(provider.ErrorConfiguration, "model %s does not support image", request.GetModel())

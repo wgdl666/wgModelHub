@@ -7,12 +7,16 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	genaisdk "google.golang.org/genai"
 )
+
+// 浏览态 Session 级前缀默认缓存 1 小时；Hub 可按 ttl_seconds 覆盖。
+const defaultCachedContentTTL = time.Hour
 
 type Provider struct {
 	name   string
@@ -62,6 +66,46 @@ func NewVertexAI(ctx context.Context, name, project, location string) (*Provider
 		return nil, provider.Wrap(provider.ErrorConfiguration, "create "+name+" client", err)
 	}
 	return &Provider{name: name, client: client}, nil
+}
+
+// CreateCachedContent 把 system + tools 落到 Gemini CachedContent，供后续 Generate 引用。
+func (p *Provider) CreateCachedContent(ctx context.Context, model string, request *modelhubv2.CreateCachedContentRequest) (*modelhubv2.CreateCachedContentResponse, error) {
+	if request == nil {
+		return nil, provider.New(provider.ErrorInvalidArgument, p.name+" create cached content request is required")
+	}
+	systemText := strings.TrimSpace(request.GetSystemInstruction())
+	tools := buildTools(request.GetTools())
+	if systemText == "" && len(tools) == 0 {
+		return nil, provider.New(provider.ErrorInvalidArgument, p.name+" cached content requires system_instruction or tools")
+	}
+	ttl := defaultCachedContentTTL
+	if request.GetTtlSeconds() > 0 {
+		ttl = time.Duration(request.GetTtlSeconds()) * time.Second
+	}
+	cfg := &genaisdk.CreateCachedContentConfig{
+		TTL:         ttl,
+		DisplayName: strings.TrimSpace(request.GetDisplayName()),
+		Tools:       tools,
+	}
+	if systemText != "" {
+		cfg.SystemInstruction = genaisdk.NewContentFromText(systemText, genaisdk.RoleUser)
+	}
+	if len(tools) > 0 {
+		// 与后续 Generate 默认 auto 对齐，避免 cache 内外 toolConfig 不一致。
+		cfg.ToolConfig = &genaisdk.ToolConfig{FunctionCallingConfig: &genaisdk.FunctionCallingConfig{Mode: genaisdk.FunctionCallingConfigModeAuto}}
+	}
+	cached, err := p.client.Caches.Create(ctx, model, cfg)
+	if err != nil {
+		return nil, p.mapError(ctx, "create cached content", err)
+	}
+	if cached == nil || strings.TrimSpace(cached.Name) == "" {
+		return nil, provider.New(provider.ErrorInvalidResponse, p.name+" create cached content returned empty name")
+	}
+	resp := &modelhubv2.CreateCachedContentResponse{CachedContent: cached.Name}
+	if !cached.ExpireTime.IsZero() {
+		resp.ExpireAtUnix = cached.ExpireTime.Unix()
+	}
+	return resp, nil
 }
 
 func (p *Provider) Generate(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
@@ -248,19 +292,25 @@ func (p *Provider) buildConfig(request *modelhubv2.GenerateRequest) *genaisdk.Ge
 	}
 	textSpec := request.GetOutput().GetText()
 	cfg := &genaisdk.GenerateContentConfig{}
-	// 仅拼接前置连续 SYSTEM 文本进 SystemInstruction；中途 SYSTEM 不造复杂状态机。
-	var systemTexts []string
-	for _, item := range input.GetItems() {
-		message := item.GetMessage()
-		if message == nil || message.Role != modelhubv2.Role_ROLE_SYSTEM {
-			break
+	cachedContent := strings.TrimSpace(input.GetCachedContent())
+	if cachedContent != "" {
+		// 显式 cache 已含 system/tools；再下发会与资源冲突或拆掉前缀命中。
+		cfg.CachedContent = cachedContent
+	} else {
+		// 仅拼接前置连续 SYSTEM 文本进 SystemInstruction；中途 SYSTEM 不造复杂状态机。
+		var systemTexts []string
+		for _, item := range input.GetItems() {
+			message := item.GetMessage()
+			if message == nil || message.Role != modelhubv2.Role_ROLE_SYSTEM {
+				break
+			}
+			if text := strings.TrimSpace(messageText(message)); text != "" {
+				systemTexts = append(systemTexts, text)
+			}
 		}
-		if text := strings.TrimSpace(messageText(message)); text != "" {
-			systemTexts = append(systemTexts, text)
+		if len(systemTexts) > 0 {
+			cfg.SystemInstruction = genaisdk.NewContentFromText(strings.Join(systemTexts, "\n"), genaisdk.RoleUser)
 		}
-	}
-	if len(systemTexts) > 0 {
-		cfg.SystemInstruction = genaisdk.NewContentFromText(strings.Join(systemTexts, "\n"), genaisdk.RoleUser)
 	}
 	if textSpec != nil && textSpec.MaxOutputTokens != nil {
 		cfg.MaxOutputTokens = *textSpec.MaxOutputTokens
@@ -294,9 +344,11 @@ func (p *Provider) buildConfig(request *modelhubv2.GenerateRequest) *genaisdk.Ge
 			}
 		}
 	}
-	cfg.Tools = buildTools(input.GetTools())
-	if len(cfg.Tools) > 0 {
-		cfg.ToolConfig = &genaisdk.ToolConfig{FunctionCallingConfig: &genaisdk.FunctionCallingConfig{Mode: genaisdk.FunctionCallingConfigModeAuto}}
+	if cachedContent == "" {
+		cfg.Tools = buildTools(input.GetTools())
+		if len(cfg.Tools) > 0 {
+			cfg.ToolConfig = &genaisdk.ToolConfig{FunctionCallingConfig: &genaisdk.FunctionCallingConfig{Mode: genaisdk.FunctionCallingConfigModeAuto}}
+		}
 	}
 	if choice := input.GetToolChoice(); choice != nil {
 		switch choice.Mode {

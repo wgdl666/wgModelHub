@@ -4,10 +4,12 @@ package wg_model_hub.v2;
 
 option go_package = "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2;wg_model_hubv2";
 
-// ModelHubService 只暴露统一 Generate；capability 由 OutputSpec oneof 决定，
-// 真实供应商模型 ID 经 request.model 路由到唯一 provider 实例。
+// ModelHubService 以 Generate 为主；CreateCachedContent 仅服务 Gemini 等显式前缀缓存。
+// capability 由 OutputSpec oneof 决定，真实供应商模型 ID 经 request.model 路由到唯一 provider 实例。
 service ModelHubService {
   rpc Generate(GenerateRequest) returns (stream GenerateEvent);
+  // 将会话级 system + 工具定义落到供应商 CachedContent，供后续 Generate.input.cached_content 引用。
+  rpc CreateCachedContent(CreateCachedContentRequest) returns (CreateCachedContentResponse);
 }
 
 // GenerateRequest 顶层恰好三字段：业务调用方不得再塞供应商私有配置，
@@ -94,6 +96,25 @@ message Input {
   ToolChoice tool_choice = 3;
   string previous_response_id = 4;
   CachingConfig caching = 5;
+  // Gemini 显式 CachedContent 资源名；与 Ark previous_response_id / caching.enabled 互不替代。
+  // 引用时 system/tools 已在 cache 内，调用方不应再按屏裁剪 tools，也不应重复下发 system。
+  string cached_content = 6;
+}
+
+// CreateCachedContentRequest 只缓存会话级稳定前缀：system_instruction + tools。
+message CreateCachedContentRequest {
+  string model = 1;
+  string system_instruction = 2;
+  repeated Tool tools = 3;
+  // TTL 秒数；0 表示由供应商/实现默认（常见 1h）。
+  int64 ttl_seconds = 4;
+  string display_name = 5;
+}
+
+message CreateCachedContentResponse {
+  // 供应商返回的资源名，原样填回后续 GenerateRequest.input.cached_content。
+  string cached_content = 1;
+  int64 expire_at_unix = 2;
 }
 
 enum ThinkingMode {

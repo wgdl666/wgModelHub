@@ -15,6 +15,11 @@ type TextProvider interface {
 	GenerateStream(context.Context, string, *modelhubv2.GenerateRequest, EmitEvent) (*modelhubv2.GenerateEvent, error)
 }
 
+// CachedContentCreator 由支持显式前缀缓存的 TextProvider（如 Gemini）实现。
+type CachedContentCreator interface {
+	CreateCachedContent(context.Context, string, *modelhubv2.CreateCachedContentRequest) (*modelhubv2.CreateCachedContentResponse, error)
+}
+
 type ImageProvider interface {
 	GenerateImage(context.Context, string, *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error)
 }
