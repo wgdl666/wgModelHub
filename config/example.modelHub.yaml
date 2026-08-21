@@ -38,6 +38,13 @@ providers:
     openai:
       api_key: "${ASYNC_CANDIDATE_API_KEY}"
       base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  # Hub 主对话：必须 send_enable_thinking，才能把 Hub 的 ThinkingDisabled 落成 enable_thinking=false。
+  hub_chat:
+    models: [qwen3.7-flash]
+    openai:
+      api_key: "${DASHSCOPE_API_KEY}"
+      base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+      send_enable_thinking: true
   # OminiLink 生图使用 Gemini generateContent 协议，不是 OpenAI chat/completions。
   # 三个真实图片模型共用同一 OminiLink Gemini 凭据；每个 ID 全局只绑定本实例。
   ominilink_image:

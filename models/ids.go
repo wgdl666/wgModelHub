@@ -9,6 +9,7 @@ const (
 	QwenFlash          = "qwen-flash"
 	Qwen3VLPlus        = "qwen3-vl-plus"
 	Qwen35Flash        = "qwen3.5-flash"
+	Qwen37Flash        = "qwen3.7-flash"
 	Gemini3ProImage    = "gemini-3-pro-image"
 	Gemini25FlashImage = "gemini-2.5-flash-image"
 	Gemini31FlashImage = "gemini-3.1-flash-image"
@@ -25,6 +26,7 @@ func All() []string {
 		QwenFlash,
 		Qwen3VLPlus,
 		Qwen35Flash,
+		Qwen37Flash,
 		Gemini3ProImage,
 		Gemini25FlashImage,
 		Gemini31FlashImage,
