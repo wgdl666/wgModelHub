@@ -109,6 +109,9 @@ func (p *Provider) CreateCachedContent(ctx context.Context, model string, reques
 }
 
 func (p *Provider) Generate(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
+	if err := validateGeminiGenerateInput(request); err != nil {
+		return nil, err
+	}
 	response, err := p.client.Models.GenerateContent(ctx, model, p.buildContents(request), p.buildConfig(request))
 	if err != nil {
 		return nil, p.mapError(ctx, "generate content", err)
@@ -117,6 +120,9 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 }
 
 func (p *Provider) GenerateStream(ctx context.Context, model string, request *modelhubv2.GenerateRequest, emit provider.EmitEvent) (*modelhubv2.GenerateEvent, error) {
+	if err := validateGeminiGenerateInput(request); err != nil {
+		return nil, err
+	}
 	var finishReason string
 	var responseID string
 	var usage *modelhubv2.Usage

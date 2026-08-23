@@ -8,7 +8,7 @@
 
 - Nacos Data ID：`wg.mirror.modelHub`；bootstrap 只保存 Nacos 定位信息，凭据与模型映射在 YAML 正文中。
 - 每个 provider 实例用互斥嵌套字段表达 Gemini/VertexAI/Ark/OpenAI/LTX，并声明 `models: [真实模型 ID...]`。
-- OpenAI 实例同时承接 chat/completions 与 Images API；`gpt-image-2` 必须单独绑到 OpenAI 实例走 `/v1/images/generations`，不能并入 OminiLink Gemini generateContent 生图实例。
+- OpenAI 实例同时承接 chat/completions 与 Images API；`gpt-image-2` 必须单独绑到 OpenAI 实例（无参考图走 `/v1/images/generations`，有参考图走 `/v1/images/edits`），不能并入 OminiLink Gemini generateContent 生图实例。
 - 启动时建立「真实模型 ID → 唯一 provider 实例」路由；空模型或重复模型 ID 直接配置错误。无 profile、alias、fallback 或双路径。
 - 全部真实模型 ID 是 `models` 包常量（`github.com/wgdl666/wgModelHub/models`）；Nacos / example YAML / 调用方 `request.model` 必须引用这些常量，不能另起业务名。
 
@@ -21,7 +21,8 @@
 - 文本必须保留 `ThoughtSignature`、`response_id`、`previous_response_id`、工具调用历史、usage、finish reason、JSON Schema、thinking 与流式取消。
 - 文本 stream：非 final 为增量，唯一 final 只带终态元数据；non-stream：仅一个 final，含完整文本/工具调用与元数据。
 - `optional` 标量（含 `temperature=0`）已设置时必须原样下发供应商。
-- LTX 在 ModelHub 内同步提交/轮询/下载，再按 1MiB 视频 `OutputItem` 分块返回；最大 200MiB，0 字节下载与超限必须失败；不持久化 job。
+- LTX 在 ModelHub 内同步提交/轮询/下载，再按 1MiB 视频 `OutputItem` 分块返回；最大 200MiB，0 字节下载与超限必须失败；不持久化 job。DashScope/OminiLink/Gemini 视频 provider 共用 `provider.EmitVideoChunks`。
+- `VideoOutput` 除 `resolution` 外支持 `duration_seconds` 与 `aspect_ratio`；`GenerateEvent.generation_elapsed_ms` 保留 Gemini 等供应商生成耗时。
 
 # 错误与观测
 

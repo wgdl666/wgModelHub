@@ -30,7 +30,8 @@ enum Role {
   // 工具结果只走 InputItem.tool_output，不再用 ROLE_TOOL 消息表达。
 }
 
-// Media 同时支持内联字节和供应商可访问 URI；mime_type 是协议事实。
+// Media 同时支持内联字节和供应商可访问 URI。
+// 内联 data 必须带 mime_type；URI 的 mime_type 为可选提示，具体 provider 自行决定是否必需。
 message Media {
   string mime_type = 1;
   oneof source {
@@ -187,6 +188,9 @@ message ImageOutput {
 
 message VideoOutput {
   string resolution = 1;
+  // duration_seconds 与 aspect_ratio 供 DashScope/OminiLink/Gemini 视频生成保留原业务参数语义。
+  optional int32 duration_seconds = 2;
+  optional string aspect_ratio = 3;
 }
 
 // OutputSpec.stream 控制文本是否增量；kind oneof 决定 text/image/video 能力路由。
@@ -232,4 +236,6 @@ message GenerateEvent {
   string finish_reason = 5;
   Usage usage = 6;
   SafetyFeedback safety = 7;
+  // generation_elapsed_ms 保留 Gemini Interactions 等供应商上报的生成耗时；缺失时为 0。
+  int64 generation_elapsed_ms = 8;
 }

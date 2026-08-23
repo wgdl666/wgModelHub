@@ -107,3 +107,20 @@ func TestProviderSupportsOpenAIImage(t *testing.T) {
 		t.Fatalf("openai should not support video")
 	}
 }
+
+func TestProviderSupportsVideoProviders(t *testing.T) {
+	cases := []ProviderConfig{
+		{DashScopeVideo: &DashScopeVideoProviderConfig{APIKey: "k"}},
+		{OminilinkVideo: &OminilinkVideoProviderConfig{APIKey: "k"}},
+		{GeminiVideo: &GeminiVideoProviderConfig{APIKey: "k"}},
+		{LTX: &LTXProviderConfig{BaseURL: "https://ltx", Duration: 4, FPS: 24, PollInterval: 1, MaxPollTime: 60}},
+	}
+	for i, provider := range cases {
+		if !ProviderSupports(provider, CapabilityVideo) {
+			t.Fatalf("provider %d should support video", i)
+		}
+		if ProviderSupports(provider, CapabilityText) || ProviderSupports(provider, CapabilityImage) {
+			t.Fatalf("provider %d should only support video", i)
+		}
+	}
+}

@@ -20,16 +20,15 @@ import (
 
 const DefaultBaseURL = "https://api.openai.com/v1"
 
-// Provider 适配 OpenAI-compatible 端点：文本走 /chat/completions，生图走 /images/generations。
+// Provider 适配 OpenAI-compatible 端点：文本走 /chat/completions，生图按有无参考图走 /images/generations 或 /images/edits。
 type Provider struct {
-	name               string
-	apiKey             string
-	baseURL            string
-	sendEnableThinking bool
-	client             *http.Client
+	name    string
+	apiKey  string
+	baseURL string
+	client  *http.Client
 }
 
-func New(name, apiKey, baseURL string, sendEnableThinking bool) (*Provider, error) {
+func New(name, apiKey, baseURL string) (*Provider, error) {
 	if strings.TrimSpace(apiKey) == "" {
 		return nil, provider.New(provider.ErrorConfiguration, name+" API key is required")
 	}
@@ -37,11 +36,10 @@ func New(name, apiKey, baseURL string, sendEnableThinking bool) (*Provider, erro
 		baseURL = DefaultBaseURL
 	}
 	return &Provider{
-		name:               name,
-		apiKey:             apiKey,
-		baseURL:            strings.TrimRight(baseURL, "/"),
-		sendEnableThinking: sendEnableThinking,
-		client:             telemetry.NewHTTPClient(),
+		name:    name,
+		apiKey:  apiKey,
+		baseURL: strings.TrimRight(baseURL, "/"),
+		client:  telemetry.NewHTTPClient(),
 	}, nil
 }
 
@@ -257,13 +255,9 @@ func (p *Provider) buildRequestBody(model string, request *modelhubv2.GenerateRe
 			}
 		}
 	}
-	if p.sendEnableThinking {
-		// DashScope 等兼容端用该字段关闭思考链；未配置时不得误加，以免破坏普通 OpenAI。
-		thinking := modelhubv2.ThinkingMode_THINKING_MODE_UNSPECIFIED
-		if text != nil {
-			thinking = text.Thinking
-		}
-		body["enable_thinking"] = thinking == modelhubv2.ThinkingMode_THINKING_MODE_ENABLED
+	if text != nil && text.Thinking != modelhubv2.ThinkingMode_THINKING_MODE_UNSPECIFIED {
+		// thinking 是统一协议语义：显式启停必须下发，UNSPECIFIED 才保留供应商默认行为。
+		body["enable_thinking"] = text.Thinking == modelhubv2.ThinkingMode_THINKING_MODE_ENABLED
 	}
 	return body
 }

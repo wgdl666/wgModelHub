@@ -64,7 +64,7 @@ func TestConvertMessageKeepsTextWithToolCalls(t *testing.T) {
 
 func TestBuildRequestBodyPreservesZeroTemperature(t *testing.T) {
 	zero := 0.0
-	p := &Provider{sendEnableThinking: true}
+	p := &Provider{}
 	body := p.buildRequestBody(models.QwenFlash, &modelhubv2.GenerateRequest{
 		Input: &modelhubv2.Input{
 			Items: []*modelhubv2.InputItem{{
@@ -85,6 +85,28 @@ func TestBuildRequestBodyPreservesZeroTemperature(t *testing.T) {
 	}
 	thinking, ok := body["enable_thinking"].(bool)
 	if !ok || thinking {
+		t.Fatalf("enable_thinking = %#v", body["enable_thinking"])
+	}
+}
+
+func TestBuildRequestBodyOmitsUnspecifiedThinking(t *testing.T) {
+	p := &Provider{}
+	body := p.buildRequestBody(models.Qwen35Flash, &modelhubv2.GenerateRequest{
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{}}},
+	}, false)
+	if _, ok := body["enable_thinking"]; ok {
+		t.Fatalf("unspecified thinking must preserve provider default: %#v", body["enable_thinking"])
+	}
+}
+
+func TestBuildRequestBodySendsEnabledThinking(t *testing.T) {
+	p := &Provider{}
+	body := p.buildRequestBody(models.Qwen35Flash, &modelhubv2.GenerateRequest{
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{
+			Thinking: modelhubv2.ThinkingMode_THINKING_MODE_ENABLED,
+		}}},
+	}, false)
+	if thinking, ok := body["enable_thinking"].(bool); !ok || !thinking {
 		t.Fatalf("enable_thinking = %#v", body["enable_thinking"])
 	}
 }

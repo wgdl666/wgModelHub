@@ -1,10 +1,12 @@
 package genai
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/provider"
 	genaisdk "google.golang.org/genai"
 )
 
@@ -206,5 +208,84 @@ func TestBuildImageConfigPreservesZeroTemperature(t *testing.T) {
 	}
 	if cfg.ThinkingConfig == nil || cfg.ThinkingConfig.ThinkingLevel != genaisdk.ThinkingLevelLow {
 		t.Fatalf("thinking = %#v", cfg.ThinkingConfig)
+	}
+}
+
+func TestGenerateImageRejectsURIWithoutMIME(t *testing.T) {
+	p := &Provider{name: "gemini"}
+	_, err := p.GenerateImage(context.Background(), "gemini-2.5-flash-image", geminiImageWithURI(""))
+	if err == nil || provider.Kind(err) != provider.ErrorInvalidArgument {
+		t.Fatalf("err=%v kind=%s", err, provider.Kind(err))
+	}
+}
+
+func TestGenerateRejectsURIWithoutMIME(t *testing.T) {
+	p := &Provider{name: "gemini"}
+	_, err := p.Generate(context.Background(), "gemini-2.5-flash", geminiTextWithURI(""))
+	if err == nil || provider.Kind(err) != provider.ErrorInvalidArgument {
+		t.Fatalf("err=%v kind=%s", err, provider.Kind(err))
+	}
+}
+
+func TestGenerateStreamRejectsURIWithoutMIME(t *testing.T) {
+	p := &Provider{name: "gemini"}
+	_, err := p.GenerateStream(context.Background(), "gemini-2.5-flash", geminiTextWithURI(""), nil)
+	if err == nil || provider.Kind(err) != provider.ErrorInvalidArgument {
+		t.Fatalf("err=%v kind=%s", err, provider.Kind(err))
+	}
+}
+
+func TestGenerateRejectsInlineImageWithoutMIME(t *testing.T) {
+	p := &Provider{name: "gemini"}
+	_, err := p.Generate(context.Background(), "gemini-2.5-flash", &modelhubv2.GenerateRequest{
+		Input: &modelhubv2.Input{Items: []*modelhubv2.InputItem{{
+			Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
+				Role: modelhubv2.Role_ROLE_USER,
+				Parts: []*modelhubv2.ContentPart{{
+					Content: &modelhubv2.ContentPart_Image{Image: &modelhubv2.Media{
+						Source: &modelhubv2.Media_Data{Data: []byte("png-bytes")},
+					}},
+				}},
+			}},
+		}}},
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{}}},
+	})
+	if err == nil || provider.Kind(err) != provider.ErrorInvalidArgument {
+		t.Fatalf("err=%v kind=%s", err, provider.Kind(err))
+	}
+}
+
+func geminiTextWithURI(mimeType string) *modelhubv2.GenerateRequest {
+	return &modelhubv2.GenerateRequest{
+		Input: &modelhubv2.Input{Items: []*modelhubv2.InputItem{{
+			Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
+				Role: modelhubv2.Role_ROLE_USER,
+				Parts: []*modelhubv2.ContentPart{
+					{Content: &modelhubv2.ContentPart_Text{Text: "describe this"}},
+					{Content: &modelhubv2.ContentPart_Image{Image: &modelhubv2.Media{
+						MimeType: mimeType,
+						Source:   &modelhubv2.Media_Uri{Uri: "https://cdn.example.com/v1/assets/proxy?key=foo"},
+					}}},
+				},
+			}},
+		}}},
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{}}},
+	}
+}
+
+func geminiImageWithURI(mimeType string) *modelhubv2.GenerateRequest {
+	return &modelhubv2.GenerateRequest{
+		Input: &modelhubv2.Input{Items: []*modelhubv2.InputItem{{
+			Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
+				Role: modelhubv2.Role_ROLE_USER,
+				Parts: []*modelhubv2.ContentPart{{
+					Content: &modelhubv2.ContentPart_Image{Image: &modelhubv2.Media{
+						MimeType: mimeType,
+						Source:   &modelhubv2.Media_Uri{Uri: "https://cdn.example.com/v1/assets/proxy?key=foo"},
+					}},
+				}},
+			}},
+		}}},
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Image{Image: &modelhubv2.ImageOutput{}}},
 	}
 }

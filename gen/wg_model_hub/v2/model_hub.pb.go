@@ -397,7 +397,8 @@ func (x *GenerateRequest) GetOutput() *OutputSpec {
 	return nil
 }
 
-// Media 同时支持内联字节和供应商可访问 URI；mime_type 是协议事实。
+// Media 同时支持内联字节和供应商可访问 URI。
+// 内联 data 必须带 mime_type；URI 的 mime_type 为可选提示，具体 provider 自行决定是否必需。
 type Media struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
 	MimeType string                 `protobuf:"bytes,1,opt,name=mime_type,json=mimeType,proto3" json:"mime_type,omitempty"`
@@ -1546,10 +1547,13 @@ func (x *ImageOutput) GetThinkingLevel() ThinkingLevel {
 }
 
 type VideoOutput struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Resolution    string                 `protobuf:"bytes,1,opt,name=resolution,proto3" json:"resolution,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Resolution string                 `protobuf:"bytes,1,opt,name=resolution,proto3" json:"resolution,omitempty"`
+	// duration_seconds 与 aspect_ratio 供 DashScope/OminiLink/Gemini 视频生成保留原业务参数语义。
+	DurationSeconds *int32  `protobuf:"varint,2,opt,name=duration_seconds,json=durationSeconds,proto3,oneof" json:"duration_seconds,omitempty"`
+	AspectRatio     *string `protobuf:"bytes,3,opt,name=aspect_ratio,json=aspectRatio,proto3,oneof" json:"aspect_ratio,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *VideoOutput) Reset() {
@@ -1585,6 +1589,20 @@ func (*VideoOutput) Descriptor() ([]byte, []int) {
 func (x *VideoOutput) GetResolution() string {
 	if x != nil {
 		return x.Resolution
+	}
+	return ""
+}
+
+func (x *VideoOutput) GetDurationSeconds() int32 {
+	if x != nil && x.DurationSeconds != nil {
+		return *x.DurationSeconds
+	}
+	return 0
+}
+
+func (x *VideoOutput) GetAspectRatio() string {
+	if x != nil && x.AspectRatio != nil {
+		return *x.AspectRatio
 	}
 	return ""
 }
@@ -1949,16 +1967,18 @@ func (*OutputItem_ToolCall) isOutputItem_Item() {}
 
 // GenerateEvent 统一文本增量、图片终态与视频分块；错误仍走 gRPC status，不在事件内造第二套协议。
 type GenerateEvent struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Sequence      uint32                 `protobuf:"varint,1,opt,name=sequence,proto3" json:"sequence,omitempty"`
-	Items         []*OutputItem          `protobuf:"bytes,2,rep,name=items,proto3" json:"items,omitempty"`
-	Final         bool                   `protobuf:"varint,3,opt,name=final,proto3" json:"final,omitempty"`
-	ResponseId    string                 `protobuf:"bytes,4,opt,name=response_id,json=responseId,proto3" json:"response_id,omitempty"`
-	FinishReason  string                 `protobuf:"bytes,5,opt,name=finish_reason,json=finishReason,proto3" json:"finish_reason,omitempty"`
-	Usage         *Usage                 `protobuf:"bytes,6,opt,name=usage,proto3" json:"usage,omitempty"`
-	Safety        *SafetyFeedback        `protobuf:"bytes,7,opt,name=safety,proto3" json:"safety,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Sequence     uint32                 `protobuf:"varint,1,opt,name=sequence,proto3" json:"sequence,omitempty"`
+	Items        []*OutputItem          `protobuf:"bytes,2,rep,name=items,proto3" json:"items,omitempty"`
+	Final        bool                   `protobuf:"varint,3,opt,name=final,proto3" json:"final,omitempty"`
+	ResponseId   string                 `protobuf:"bytes,4,opt,name=response_id,json=responseId,proto3" json:"response_id,omitempty"`
+	FinishReason string                 `protobuf:"bytes,5,opt,name=finish_reason,json=finishReason,proto3" json:"finish_reason,omitempty"`
+	Usage        *Usage                 `protobuf:"bytes,6,opt,name=usage,proto3" json:"usage,omitempty"`
+	Safety       *SafetyFeedback        `protobuf:"bytes,7,opt,name=safety,proto3" json:"safety,omitempty"`
+	// generation_elapsed_ms 保留 Gemini Interactions 等供应商上报的生成耗时；缺失时为 0。
+	GenerationElapsedMs int64 `protobuf:"varint,8,opt,name=generation_elapsed_ms,json=generationElapsedMs,proto3" json:"generation_elapsed_ms,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *GenerateEvent) Reset() {
@@ -2038,6 +2058,13 @@ func (x *GenerateEvent) GetSafety() *SafetyFeedback {
 		return x.Safety
 	}
 	return nil
+}
+
+func (x *GenerateEvent) GetGenerationElapsedMs() int64 {
+	if x != nil {
+		return x.GenerationElapsedMs
+	}
+	return 0
 }
 
 var File_proto_wg_model_hub_v2_model_hub_proto protoreflect.FileDescriptor
@@ -2139,11 +2166,15 @@ const file_proto_wg_model_hub_v2_model_hub_proto_rawDesc = "" +
 	"\x0ethinking_level\x18\x05 \x01(\x0e2\x1e.wg_model_hub.v2.ThinkingLevelR\rthinkingLevelB\x0f\n" +
 	"\r_aspect_ratioB\r\n" +
 	"\v_image_sizeB\x0e\n" +
-	"\f_temperature\"-\n" +
+	"\f_temperature\"\xab\x01\n" +
 	"\vVideoOutput\x12\x1e\n" +
 	"\n" +
 	"resolution\x18\x01 \x01(\tR\n" +
-	"resolution\"\xcb\x01\n" +
+	"resolution\x12.\n" +
+	"\x10duration_seconds\x18\x02 \x01(\x05H\x00R\x0fdurationSeconds\x88\x01\x01\x12&\n" +
+	"\faspect_ratio\x18\x03 \x01(\tH\x01R\vaspectRatio\x88\x01\x01B\x13\n" +
+	"\x11_duration_secondsB\x0f\n" +
+	"\r_aspect_ratio\"\xcb\x01\n" +
 	"\n" +
 	"OutputSpec\x12\x16\n" +
 	"\x06stream\x18\x01 \x01(\bR\x06stream\x121\n" +
@@ -2167,7 +2198,7 @@ const file_proto_wg_model_hub_v2_model_hub_proto_rawDesc = "" +
 	"\x05image\x18\x02 \x01(\v2\x16.wg_model_hub.v2.MediaH\x00R\x05image\x12.\n" +
 	"\x05video\x18\x03 \x01(\v2\x16.wg_model_hub.v2.MediaH\x00R\x05video\x128\n" +
 	"\ttool_call\x18\x04 \x01(\v2\x19.wg_model_hub.v2.ToolCallH\x00R\btoolCallB\x06\n" +
-	"\x04item\"\xa1\x02\n" +
+	"\x04item\"\xd5\x02\n" +
 	"\rGenerateEvent\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\rR\bsequence\x121\n" +
 	"\x05items\x18\x02 \x03(\v2\x1b.wg_model_hub.v2.OutputItemR\x05items\x12\x14\n" +
@@ -2176,7 +2207,8 @@ const file_proto_wg_model_hub_v2_model_hub_proto_rawDesc = "" +
 	"responseId\x12#\n" +
 	"\rfinish_reason\x18\x05 \x01(\tR\ffinishReason\x12,\n" +
 	"\x05usage\x18\x06 \x01(\v2\x16.wg_model_hub.v2.UsageR\x05usage\x127\n" +
-	"\x06safety\x18\a \x01(\v2\x1f.wg_model_hub.v2.SafetyFeedbackR\x06safety*P\n" +
+	"\x06safety\x18\a \x01(\v2\x1f.wg_model_hub.v2.SafetyFeedbackR\x06safety\x122\n" +
+	"\x15generation_elapsed_ms\x18\b \x01(\x03R\x13generationElapsedMs*P\n" +
 	"\x04Role\x12\x14\n" +
 	"\x10ROLE_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vROLE_SYSTEM\x10\x01\x12\r\n" +
@@ -2323,6 +2355,7 @@ func file_proto_wg_model_hub_v2_model_hub_proto_init() {
 	}
 	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[15].OneofWrappers = []any{}
 	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[16].OneofWrappers = []any{}
+	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[17].OneofWrappers = []any{}
 	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[18].OneofWrappers = []any{
 		(*OutputSpec_Text)(nil),
 		(*OutputSpec_Image)(nil),

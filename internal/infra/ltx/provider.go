@@ -83,7 +83,7 @@ func (p *Provider) GenerateVideo(ctx context.Context, model string, request *mod
 	if err != nil {
 		return err
 	}
-	return emitVideoChunks(videoBytes, emit)
+	return provider.EmitVideoChunks(videoBytes, videoMIMEType, jobID, 0, emit)
 }
 
 func (p *Provider) loadFirstFrame(ctx context.Context, media *modelhubv2.Media) ([]byte, error) {
@@ -289,36 +289,6 @@ func (p *Provider) download(ctx context.Context, job map[string]any) ([]byte, er
 		return nil, provider.Errorf(provider.ErrorInvalidResponse, "%s video exceeds %d bytes", p.name, protocol.MaxVideoBytes)
 	}
 	return data, nil
-}
-
-func emitVideoChunks(data []byte, emit provider.EmitEvent) error {
-	// 0 字节下载是无效响应；必须先于 emit==nil 判定，避免任何路径把空载荷当成成功。
-	if len(data) == 0 {
-		return provider.New(provider.ErrorInvalidResponse, "ltx video download returned 0 bytes")
-	}
-	if emit == nil {
-		return nil
-	}
-	var sequence uint32
-	for offset := 0; offset < len(data); offset += protocol.VideoChunkBytes {
-		end := offset + protocol.VideoChunkBytes
-		if end > len(data) {
-			end = len(data)
-		}
-		chunk := &modelhubv2.GenerateEvent{
-			Sequence: sequence,
-			Final:    end == len(data),
-			Items: []*modelhubv2.OutputItem{{Item: &modelhubv2.OutputItem_Video{Video: &modelhubv2.Media{
-				MimeType: videoMIMEType,
-				Source:   &modelhubv2.Media_Data{Data: append([]byte(nil), data[offset:end]...)},
-			}}}},
-		}
-		if err := emit(chunk); err != nil {
-			return err
-		}
-		sequence++
-	}
-	return nil
 }
 
 func (p *Provider) setToken(request *http.Request) {

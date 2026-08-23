@@ -25,7 +25,6 @@ providers:
     openai:
       api_key: "${DASHSCOPE_API_KEY}"
       base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
-      send_enable_thinking: true
   # Async 视觉：独立 OpenAI-compatible 实例，避免与 speech/candidate 共用路由。
   async_vision:
     models: [qwen3-vl-plus]
@@ -38,13 +37,12 @@ providers:
     openai:
       api_key: "${ASYNC_CANDIDATE_API_KEY}"
       base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
-  # Hub 主对话：必须 send_enable_thinking，才能把 Hub 的 ThinkingDisabled 落成 enable_thinking=false。
+  # Hub 主对话：ThinkingDisabled 会由统一协议直接映射为 enable_thinking=false。
   hub_chat:
     models: [qwen3.7-flash]
     openai:
       api_key: "${DASHSCOPE_API_KEY}"
       base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
-      send_enable_thinking: true
   # OminiLink 生图使用 Gemini generateContent 协议，不是 OpenAI chat/completions。
   # 三个真实图片模型共用同一 OminiLink Gemini 凭据；每个 ID 全局只绑定本实例。
   ominilink_image:
@@ -55,7 +53,7 @@ providers:
     gemini:
       api_key: "${OMINILINK_IMAGE_API_KEY}"
       base_url: https://api.ominilink.ai
-  # gpt-image-2 必须走 OpenAI Images API，不能并入上面的 Gemini generateContent 实例。
+  # gpt-image-2 必须走 OpenAI Images API（无参考图 generations、有参考图 edits），不能并入 Gemini generateContent 实例。
   ominilink_gpt_image:
     models: [gpt-image-2]
     openai:
@@ -71,5 +69,57 @@ providers:
       fps: 24
       seed: 42
       poll_interval: 2
-      # 120s 与 ACK terminationGracePeriodSeconds=180 对齐，留出收尾余量。
       max_poll_time: 120
+  # DashScope Wan/HappyHorse/Kling 图生视频与 wan2.7-videoedit。
+  dashscope_video:
+    models:
+      - wan2.2-i2v-flash
+      - wan2.2-i2v-plus
+      - wan2.2-i2v-turbo
+      - wan2.6-i2v
+      - wan2.6-i2v-flash
+      - wan2.7-i2v
+      - happyhorse-1.1-i2v
+      - happyhorse-1.0-i2v
+      - kling/kling-v3-video-generation
+      - kling/kling-v3-omni-video-generation
+      - wan2.7-videoedit
+    dashscope_video:
+      api_key: "${DASHSCOPE_API_KEY}"
+      base_url: https://dashscope.aliyuncs.com/api/v1
+      poll_interval: 3
+      max_poll_time: 600
+  # OminiLink vg-api 视频生成（含 UI 未展示的 Dreamina）。
+  ominilink_video:
+    models:
+      - dreamina-seedance-2-0-mini
+      - dreamina-seedance-2-0
+      - dreamina-seedance-2-0-fast
+      - kling-v2-master
+      - kling-v2-1-master
+      - kling-v2-5-turbo
+      - kling-v2-6
+      - kling-video-o1
+      - kling-v3-omni
+      - kling-v3
+      - viduq3
+      - viduq3-mix
+      - viduq3-turbo
+      - viduq3-pro-fast
+      - viduq3-pro
+      - veo-3.1-lite-generate-001
+      - veo-3.1-fast-generate-001
+      - veo-3.1-generate-001
+    ominilink_video:
+      api_key: "${OMINILINK_VIDEO_API_KEY}"
+      base_url: https://vg-api.aig-ai.com/v1
+      poll_interval: 3
+      max_poll_time: 600
+  # Gemini Interactions 图生视频与编辑；auth_header 可指向 OminiLink 网关。
+  gemini_video:
+    models: [gemini-omni-flash-preview]
+    gemini_video:
+      api_key: "${GEMINI_VIDEO_API_KEY}"
+      base_url: https://generativelanguage.googleapis.com/v1beta
+      auth_header: x-goog-api-key
+      poll_interval: 5

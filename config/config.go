@@ -36,12 +36,15 @@ type Bootstrap struct {
 // ProviderConfig 用互斥嵌套字段表达具体供应商；每个实例必须且只能配置一种，
 // 并显式声明该实例承载的真实模型 ID 列表（含版本）。
 type ProviderConfig struct {
-	Models   []string                `yaml:"models"`
-	Gemini   *GeminiProviderConfig   `yaml:"gemini"`
-	VertexAI *VertexAIProviderConfig `yaml:"vertexai"`
-	Ark      *ArkProviderConfig      `yaml:"ark"`
-	OpenAI   *OpenAIProviderConfig   `yaml:"openai"`
-	LTX      *LTXProviderConfig      `yaml:"ltx"`
+	Models         []string                      `yaml:"models"`
+	Gemini         *GeminiProviderConfig         `yaml:"gemini"`
+	VertexAI       *VertexAIProviderConfig       `yaml:"vertexai"`
+	Ark            *ArkProviderConfig            `yaml:"ark"`
+	OpenAI         *OpenAIProviderConfig         `yaml:"openai"`
+	LTX            *LTXProviderConfig            `yaml:"ltx"`
+	DashScopeVideo *DashScopeVideoProviderConfig `yaml:"dashscope_video"`
+	OminilinkVideo *OminilinkVideoProviderConfig `yaml:"ominilink_video"`
+	GeminiVideo    *GeminiVideoProviderConfig    `yaml:"gemini_video"`
 }
 
 type GeminiProviderConfig struct {
@@ -62,9 +65,8 @@ type ArkProviderConfig struct {
 
 // OpenAIProviderConfig 覆盖 OpenAI-compatible HTTP 端；OminiLink 文本与 gpt-image-2 都走这里。
 type OpenAIProviderConfig struct {
-	APIKey             string `yaml:"api_key"`
-	BaseURL            string `yaml:"base_url"`
-	SendEnableThinking bool   `yaml:"send_enable_thinking"`
+	APIKey  string `yaml:"api_key"`
+	BaseURL string `yaml:"base_url"`
 }
 
 type LTXProviderConfig struct {
@@ -75,6 +77,30 @@ type LTXProviderConfig struct {
 	Seed         int     `yaml:"seed"`
 	PollInterval float64 `yaml:"poll_interval"`
 	MaxPollTime  float64 `yaml:"max_poll_time"`
+}
+
+// DashScopeVideoProviderConfig 承接 Wan/HappyHorse/Kling 图生视频与 wan2.7-videoedit。
+type DashScopeVideoProviderConfig struct {
+	APIKey       string  `yaml:"api_key"`
+	BaseURL      string  `yaml:"base_url"`
+	PollInterval float64 `yaml:"poll_interval"`
+	MaxPollTime  float64 `yaml:"max_poll_time"`
+}
+
+// OminilinkVideoProviderConfig 承接 vg-api.aig-ai.com 异步视频生成。
+type OminilinkVideoProviderConfig struct {
+	APIKey       string  `yaml:"api_key"`
+	BaseURL      string  `yaml:"base_url"`
+	PollInterval float64 `yaml:"poll_interval"`
+	MaxPollTime  float64 `yaml:"max_poll_time"`
+}
+
+// GeminiVideoProviderConfig 承接 Gemini Interactions 图生视频与编辑；auth_header 支持 OminiLink 网关。
+type GeminiVideoProviderConfig struct {
+	APIKey       string  `yaml:"api_key"`
+	BaseURL      string  `yaml:"base_url"`
+	AuthHeader   string  `yaml:"auth_header"`
+	PollInterval float64 `yaml:"poll_interval"`
 }
 
 type Config struct {
@@ -257,10 +283,10 @@ func (c Config) ModelRoutes() map[string]string {
 func validateProvider(name string, provider ProviderConfig) error {
 	switch countConcreteProviders(provider) {
 	case 0:
-		return fmt.Errorf("provider %s must set exactly one of gemini/vertexai/ark/openai/ltx", name)
+		return fmt.Errorf("provider %s must set exactly one concrete provider type", name)
 	case 1:
 	default:
-		return fmt.Errorf("provider %s must set exactly one of gemini/vertexai/ark/openai/ltx", name)
+		return fmt.Errorf("provider %s must set exactly one concrete provider type", name)
 	}
 	switch {
 	case provider.Gemini != nil:
@@ -288,6 +314,18 @@ func validateProvider(name string, provider ProviderConfig) error {
 			ltx.MaxPollTime <= 0 {
 			return fmt.Errorf("provider %s LTX configuration is incomplete", name)
 		}
+	case provider.DashScopeVideo != nil:
+		if strings.TrimSpace(provider.DashScopeVideo.APIKey) == "" {
+			return fmt.Errorf("provider %s api_key is required", name)
+		}
+	case provider.OminilinkVideo != nil:
+		if strings.TrimSpace(provider.OminilinkVideo.APIKey) == "" {
+			return fmt.Errorf("provider %s api_key is required", name)
+		}
+	case provider.GeminiVideo != nil:
+		if strings.TrimSpace(provider.GeminiVideo.APIKey) == "" {
+			return fmt.Errorf("provider %s api_key is required", name)
+		}
 	}
 	return nil
 }
@@ -309,6 +347,15 @@ func countConcreteProviders(provider ProviderConfig) int {
 	if provider.LTX != nil {
 		n++
 	}
+	if provider.DashScopeVideo != nil {
+		n++
+	}
+	if provider.OminilinkVideo != nil {
+		n++
+	}
+	if provider.GeminiVideo != nil {
+		n++
+	}
 	return n
 }
 
@@ -320,6 +367,8 @@ func ProviderSupports(provider ProviderConfig, capability string) bool {
 	case provider.VertexAI != nil, provider.Ark != nil:
 		return capability == CapabilityText
 	case provider.LTX != nil:
+		return capability == CapabilityVideo
+	case provider.DashScopeVideo != nil, provider.OminilinkVideo != nil, provider.GeminiVideo != nil:
 		return capability == CapabilityVideo
 	default:
 		return false

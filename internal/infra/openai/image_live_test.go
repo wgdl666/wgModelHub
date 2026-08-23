@@ -26,7 +26,7 @@ func TestLiveOminiLinkGPTImage2(t *testing.T) {
 		t.Fatal("WG_MODELHUB_LIVE_OUT is required for live test")
 	}
 
-	p, err := New("ominilink_gpt_image", apiKey, baseURL, false)
+	p, err := New("ominilink_gpt_image", apiKey, baseURL)
 	if err != nil {
 		t.Fatal(err)
 	}

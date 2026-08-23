@@ -15,6 +15,42 @@ const (
 	Gemini31FlashImage = "gemini-3.1-flash-image"
 	GPTImage2          = "gpt-image-2"
 	LTX                = "ltx"
+
+	// DashScope Wan / HappyHorse / Kling 图生视频。
+	Wan22I2VFlash              = "wan2.2-i2v-flash"
+	Wan22I2VPlus               = "wan2.2-i2v-plus"
+	Wan22I2VTurbo              = "wan2.2-i2v-turbo"
+	Wan26I2V                   = "wan2.6-i2v"
+	Wan26I2VFlash              = "wan2.6-i2v-flash"
+	Wan27I2V                   = "wan2.7-i2v"
+	HappyHorse11I2V            = "happyhorse-1.1-i2v"
+	HappyHorse10I2V            = "happyhorse-1.0-i2v"
+	KlingV3VideoGeneration     = "kling/kling-v3-video-generation"
+	KlingV3OmniVideoGeneration = "kling/kling-v3-omni-video-generation"
+	Wan27VideoEdit             = "wan2.7-videoedit"
+
+	// OminiLink vg-api 视频生成（含 UI 未展示但 client 已识别的 Dreamina）。
+	DreaminaSeedance20Mini = "dreamina-seedance-2-0-mini"
+	DreaminaSeedance20     = "dreamina-seedance-2-0"
+	DreaminaSeedance20Fast = "dreamina-seedance-2-0-fast"
+	KlingV2Master          = "kling-v2-master"
+	KlingV21Master         = "kling-v2-1-master"
+	KlingV25Turbo          = "kling-v2-5-turbo"
+	KlingV26               = "kling-v2-6"
+	KlingVideoO1           = "kling-video-o1"
+	KlingV3Omni            = "kling-v3-omni"
+	KlingV3                = "kling-v3"
+	ViduQ3                 = "viduq3"
+	ViduQ3Mix              = "viduq3-mix"
+	ViduQ3Turbo            = "viduq3-turbo"
+	ViduQ3ProFast          = "viduq3-pro-fast"
+	ViduQ3Pro              = "viduq3-pro"
+	Veo31LiteGenerate001   = "veo-3.1-lite-generate-001"
+	Veo31FastGenerate001   = "veo-3.1-fast-generate-001"
+	Veo31Generate001       = "veo-3.1-generate-001"
+
+	// Gemini Interactions 图生视频与编辑共用同一真实模型 ID。
+	GeminiOmniFlashPreview = "gemini-omni-flash-preview"
 )
 
 // All 返回当前仓库承认的全部真实模型 ID，顺序稳定便于对照。
@@ -32,5 +68,35 @@ func All() []string {
 		Gemini31FlashImage,
 		GPTImage2,
 		LTX,
+		Wan22I2VFlash,
+		Wan22I2VPlus,
+		Wan22I2VTurbo,
+		Wan26I2V,
+		Wan26I2VFlash,
+		Wan27I2V,
+		HappyHorse11I2V,
+		HappyHorse10I2V,
+		KlingV3VideoGeneration,
+		KlingV3OmniVideoGeneration,
+		Wan27VideoEdit,
+		DreaminaSeedance20Mini,
+		DreaminaSeedance20,
+		DreaminaSeedance20Fast,
+		KlingV2Master,
+		KlingV21Master,
+		KlingV25Turbo,
+		KlingV26,
+		KlingVideoO1,
+		KlingV3Omni,
+		KlingV3,
+		ViduQ3,
+		ViduQ3Mix,
+		ViduQ3Turbo,
+		ViduQ3ProFast,
+		ViduQ3Pro,
+		Veo31LiteGenerate001,
+		Veo31FastGenerate001,
+		Veo31Generate001,
+		GeminiOmniFlashPreview,
 	}
 }

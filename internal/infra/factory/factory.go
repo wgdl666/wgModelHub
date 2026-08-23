@@ -6,8 +6,11 @@ import (
 
 	"github.com/wgdl666/wgModelHub/config"
 	"github.com/wgdl666/wgModelHub/internal/infra/ark"
+	"github.com/wgdl666/wgModelHub/internal/infra/dashscopevideo"
+	"github.com/wgdl666/wgModelHub/internal/infra/geminivideo"
 	"github.com/wgdl666/wgModelHub/internal/infra/genai"
 	"github.com/wgdl666/wgModelHub/internal/infra/ltx"
+	"github.com/wgdl666/wgModelHub/internal/infra/ominilinkvideo"
 	"github.com/wgdl666/wgModelHub/internal/infra/openai"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 )
@@ -50,7 +53,7 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 		return provider.Set{Text: client}, nil
 	case providerCfg.OpenAI != nil:
 		cfg := providerCfg.OpenAI
-		client, err := openai.New(name, cfg.APIKey, cfg.BaseURL, cfg.SendEnableThinking)
+		client, err := openai.New(name, cfg.APIKey, cfg.BaseURL)
 		if err != nil {
 			return provider.Set{}, err
 		}
@@ -69,6 +72,27 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 			cfg.PollInterval,
 			cfg.MaxPollTime,
 		)
+		if err != nil {
+			return provider.Set{}, err
+		}
+		return provider.Set{Video: client}, nil
+	case providerCfg.DashScopeVideo != nil:
+		cfg := providerCfg.DashScopeVideo
+		client, err := dashscopevideo.New(name, cfg.APIKey, cfg.BaseURL, cfg.PollInterval, cfg.MaxPollTime)
+		if err != nil {
+			return provider.Set{}, err
+		}
+		return provider.Set{Video: client}, nil
+	case providerCfg.OminilinkVideo != nil:
+		cfg := providerCfg.OminilinkVideo
+		client, err := ominilinkvideo.New(name, cfg.APIKey, cfg.BaseURL, cfg.PollInterval, cfg.MaxPollTime)
+		if err != nil {
+			return provider.Set{}, err
+		}
+		return provider.Set{Video: client}, nil
+	case providerCfg.GeminiVideo != nil:
+		cfg := providerCfg.GeminiVideo
+		client, err := geminivideo.New(name, cfg.APIKey, cfg.BaseURL, cfg.AuthHeader, cfg.PollInterval)
 		if err != nil {
 			return provider.Set{}, err
 		}

@@ -109,49 +109,6 @@ func TestDownloadAcceptsExactlyMaxVideoSize(t *testing.T) {
 	}
 }
 
-func TestEmitVideoChunksSequenceAndFinal(t *testing.T) {
-	payload := make([]byte, protocol.VideoChunkBytes+1024)
-	for i := range payload {
-		payload[i] = byte(i % 251)
-	}
-	var chunks []*modelhubv2.GenerateEvent
-	if err := emitVideoChunks(payload, func(chunk *modelhubv2.GenerateEvent) error {
-		chunks = append(chunks, chunk)
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if len(chunks) != 2 {
-		t.Fatalf("chunks = %d", len(chunks))
-	}
-	first := chunks[0].GetItems()[0].GetVideo().GetData()
-	second := chunks[1].GetItems()[0].GetVideo().GetData()
-	if chunks[0].Sequence != 0 || chunks[0].Final || len(first) != protocol.VideoChunkBytes {
-		t.Fatalf("first chunk = seq=%d final=%v len=%d", chunks[0].Sequence, chunks[0].Final, len(first))
-	}
-	if chunks[1].Sequence != 1 || !chunks[1].Final || len(second) != 1024 {
-		t.Fatalf("second chunk = seq=%d final=%v len=%d", chunks[1].Sequence, chunks[1].Final, len(second))
-	}
-}
-
-func TestEmitVideoChunksRejectsEmptyDownload(t *testing.T) {
-	err := emitVideoChunks(nil, func(*modelhubv2.GenerateEvent) error {
-		t.Fatal("empty download must not emit events")
-		return nil
-	})
-	if err == nil || !strings.Contains(err.Error(), "0 bytes") {
-		t.Fatalf("expected 0-byte invalid response, got %v", err)
-	}
-}
-
-func TestEmitVideoChunksRejectsEmptyEvenWhenEmitNil(t *testing.T) {
-	// emit==nil 不得短路掉 0 字节校验，否则调用方会把空下载当成成功。
-	err := emitVideoChunks(nil, nil)
-	if err == nil || !strings.Contains(err.Error(), "0 bytes") {
-		t.Fatalf("expected 0-byte invalid response with nil emit, got %v", err)
-	}
-}
-
 func TestGenerateVideoHonorsContextCancel(t *testing.T) {
 	block := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {

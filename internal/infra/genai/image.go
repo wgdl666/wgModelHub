@@ -2,6 +2,7 @@ package genai
 
 import (
 	"context"
+	"strings"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/provider"
@@ -10,6 +11,9 @@ import (
 
 // GenerateImage 走 Gemini 多模态生图；Input 中 Message.parts 顺序与 RPC 一致，响应也按供应商返回顺序展开。
 func (p *Provider) GenerateImage(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
+	if err := validateGeminiGenerateInput(request); err != nil {
+		return nil, err
+	}
 	parts := buildImageParts(request)
 	contents := []*genaisdk.Content{genaisdk.NewContentFromParts(parts, genaisdk.RoleUser)}
 	response, err := p.client.Models.GenerateContent(ctx, model, contents, buildImageConfig(request))
@@ -17,6 +21,78 @@ func (p *Provider) GenerateImage(ctx context.Context, model string, request *mod
 		return nil, p.mapError(ctx, "generate image", err)
 	}
 	return convertImageResponse(response), nil
+}
+
+func mediaParts(part *modelhubv2.ContentPart) []*modelhubv2.Media {
+	switch value := part.GetContent().(type) {
+	case *modelhubv2.ContentPart_Image:
+		return []*modelhubv2.Media{value.Image}
+	case *modelhubv2.ContentPart_Video:
+		return []*modelhubv2.Media{value.Video}
+	case *modelhubv2.ContentPart_Audio:
+		return []*modelhubv2.Media{value.Audio}
+	case *modelhubv2.ContentPart_File:
+		return []*modelhubv2.Media{value.File}
+	default:
+		return nil
+	}
+}
+
+// validateGeminiGenerateInput 文本/VLM/生图在进入 SDK 前统一校验媒体 MIME，避免 convertMedia 静默丢图。
+func validateGeminiGenerateInput(request *modelhubv2.GenerateRequest) error {
+	input := request.GetInput()
+	if input == nil {
+		return nil
+	}
+	for _, item := range input.GetItems() {
+		switch value := item.GetItem().(type) {
+		case *modelhubv2.InputItem_Message:
+			message := value.Message
+			if message == nil {
+				continue
+			}
+			for _, part := range message.Parts {
+				for _, media := range mediaParts(part) {
+					if err := validateGeminiInputMedia(media); err != nil {
+						return err
+					}
+				}
+			}
+		case *modelhubv2.InputItem_ToolOutput:
+			for _, image := range value.ToolOutput.GetImages() {
+				if err := validateGeminiInputMedia(image); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// validateGeminiInputMedia Gemini NewPartFromBytes/URI 需要 MIME；在 provider 边界给出明确错误。
+func validateGeminiInputMedia(media *modelhubv2.Media) error {
+	if media == nil {
+		return provider.New(provider.ErrorInvalidArgument, "media is required")
+	}
+	switch source := media.GetSource().(type) {
+	case *modelhubv2.Media_Data:
+		if strings.TrimSpace(media.GetMimeType()) == "" {
+			return provider.New(provider.ErrorInvalidArgument, "gemini requires media mime_type for inline data")
+		}
+		if len(source.Data) == 0 {
+			return provider.New(provider.ErrorInvalidArgument, "media data is empty")
+		}
+	case *modelhubv2.Media_Uri:
+		if strings.TrimSpace(source.Uri) == "" {
+			return provider.New(provider.ErrorInvalidArgument, "media uri is empty")
+		}
+		if strings.TrimSpace(media.GetMimeType()) == "" {
+			return provider.New(provider.ErrorInvalidArgument, "gemini requires media mime_type for uri")
+		}
+	default:
+		return provider.New(provider.ErrorInvalidArgument, "media source is required")
+	}
+	return nil
 }
 
 func buildImageConfig(request *modelhubv2.GenerateRequest) *genaisdk.GenerateContentConfig {

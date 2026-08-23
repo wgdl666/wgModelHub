@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"regexp"
 	"strings"
 
@@ -29,15 +31,23 @@ var horizontalRatios = map[string]struct{}{
 	"3:2": {}, "4:3": {}, "5:4": {}, "16:9": {}, "21:9": {},
 }
 
-// GenerateImage 走 OpenAI Images API（/v1/images/generations）。
-// gpt-image-2 经 OminiLink 中转时必须用这条协议，不能复用 chat/completions，
-// 也不能挂到 ominilink_image 的 Gemini generateContent 实例上。
+// GenerateImage 按 Input 是否含参考图分流 OpenAI Images API：
+// 无参考图走 /v1/images/generations（JSON），有参考图走 /v1/images/edits（multipart）。
+// gpt-image-2 经 OminiLink 中转时不能复用 chat/completions，也不能挂到 Gemini generateContent 实例。
 func (p *Provider) GenerateImage(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
-	body, err := buildImageRequestBody(model, request)
-	if err != nil {
-		return nil, err
+	prompt := strings.TrimSpace(provider.JoinedText(request.GetInput()))
+	if prompt == "" {
+		return nil, provider.New(provider.ErrorInvalidArgument, "image prompt is required")
 	}
-	raw, err := p.doJSON(ctx, p.imagesGenerationsURL(), body)
+	refs := imageReferenceMedias(request.GetInput())
+	var raw []byte
+	var err error
+	if len(refs) == 0 {
+		body := buildImageGenerationsBody(model, prompt, request)
+		raw, err = p.doJSON(ctx, p.imagesAPIURL("generations"), body)
+	} else {
+		raw, err = p.doImageEdits(ctx, model, prompt, request, refs)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -48,21 +58,17 @@ func (p *Provider) GenerateImage(ctx context.Context, model string, request *mod
 	return p.convertImageResponse(ctx, &resp)
 }
 
-func (p *Provider) imagesGenerationsURL() string {
+func (p *Provider) imagesAPIURL(endpoint string) string {
 	// 文本 OpenAI 实例的 base_url 已带 /v1；OminiLink Gemini 实例常用裸主机。
-	// Images API 固定在 /v1/images/generations，缺后缀时补上以免打到错误路径。
+	// Images API 固定在 /v1/images/*，缺后缀时补上以免打到错误路径。
 	base := strings.TrimRight(p.baseURL, "/")
 	if !strings.HasSuffix(base, "/v1") {
 		base += "/v1"
 	}
-	return base + "/images/generations"
+	return base + "/images/" + endpoint
 }
 
-func buildImageRequestBody(model string, request *modelhubv2.GenerateRequest) (map[string]any, error) {
-	prompt := strings.TrimSpace(provider.JoinedText(request.GetInput()))
-	if prompt == "" {
-		return nil, provider.New(provider.ErrorInvalidArgument, "image prompt is required")
-	}
+func buildImageGenerationsBody(model, prompt string, request *modelhubv2.GenerateRequest) map[string]any {
 	body := map[string]any{
 		"model":  model,
 		"prompt": prompt,
@@ -72,16 +78,7 @@ func buildImageRequestBody(model string, request *modelhubv2.GenerateRequest) (m
 	if size := imageSize(request.GetOutput().GetImage()); size != "" {
 		body["size"] = size
 	}
-	// OpenAI Images API 没有 Gemini 那种交错 parts，只能把全部参考图放进 image 字段。
-	refs := imageReferences(request.GetInput())
-	switch len(refs) {
-	case 0:
-	case 1:
-		body["image"] = refs[0]
-	default:
-		body["image"] = refs
-	}
-	return body, nil
+	return body
 }
 
 func imageSize(image *modelhubv2.ImageOutput) string {
@@ -123,18 +120,143 @@ func imageSize(image *modelhubv2.ImageOutput) string {
 	return "1536x1024"
 }
 
-func imageReferences(input *modelhubv2.Input) []string {
-	var refs []string
+func imageReferenceMedias(input *modelhubv2.Input) []*modelhubv2.Media {
+	var refs []*modelhubv2.Media
 	for _, part := range provider.MessageParts(input) {
-		media := part.GetImage()
-		if media == nil {
-			continue
-		}
-		if url := mediaURL(media); url != "" {
-			refs = append(refs, url)
+		if media := part.GetImage(); media != nil {
+			refs = append(refs, media)
 		}
 	}
 	return refs
+}
+
+// materializeReferenceImage 把参考图物化为 edits 可上传字节与权威 MIME；URI 按 LTX 首帧约定用 p.client 拉取。
+func (p *Provider) materializeReferenceImage(ctx context.Context, media *modelhubv2.Media) ([]byte, string, error) {
+	switch source := media.Source.(type) {
+	case *modelhubv2.Media_Data:
+		// 内联 data 的 MIME 由协议必填，不在此处嗅探。
+		return source.Data, media.GetMimeType(), nil
+	case *modelhubv2.Media_Uri:
+		httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, source.Uri, nil)
+		if err != nil {
+			return nil, "", provider.Wrap(provider.ErrorInvalidArgument, "create reference image request", err)
+		}
+		resp, err := p.client.Do(httpReq)
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil, "", ctx.Err()
+			}
+			return nil, "", provider.Wrap(provider.ErrorUnavailable, p.name+" fetch reference image failed", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return nil, "", provider.FromHTTP(p.name, resp.StatusCode)
+		}
+		data, err := io.ReadAll(io.LimitReader(resp.Body, int64(protocol.MaxMediaBytes)+1))
+		if err != nil {
+			return nil, "", provider.Wrap(provider.ErrorUnavailable, p.name+" read reference image failed", err)
+		}
+		if len(data) > protocol.MaxMediaBytes {
+			return nil, "", provider.Errorf(provider.ErrorInvalidArgument, "reference image exceeds %d bytes", protocol.MaxMediaBytes)
+		}
+		mimeType, err := resolveReferenceImageMIME(resp.Header.Get("Content-Type"), data)
+		if err != nil {
+			return nil, "", err
+		}
+		return data, mimeType, nil
+	default:
+		return nil, "", nil
+	}
+}
+
+// resolveReferenceImageMIME URI 参考图优先信任 HTTP Content-Type；缺失或非 image/* 时用标准库内容嗅探，仍非 image/* 则拒绝。
+// 不可信输入不得走 sniffImageMIME（未知内容默认 PNG 仅用于供应商响应兜底）。
+func resolveReferenceImageMIME(contentType string, data []byte) (string, error) {
+	if mime := normalizedImageMIME(contentType); mime != "" {
+		return mime, nil
+	}
+	if mime := normalizedImageMIME(http.DetectContentType(data)); mime != "" {
+		return mime, nil
+	}
+	return "", provider.New(provider.ErrorInvalidArgument, "reference image MIME is not image/*")
+}
+
+func normalizedImageMIME(contentType string) string {
+	baseType := strings.TrimSpace(contentType)
+	if i := strings.Index(baseType, ";"); i >= 0 {
+		baseType = strings.TrimSpace(baseType[:i])
+	}
+	if strings.HasPrefix(strings.ToLower(baseType), "image/") {
+		return baseType
+	}
+	return ""
+}
+
+func (p *Provider) doImageEdits(ctx context.Context, model, prompt string, request *modelhubv2.GenerateRequest, refs []*modelhubv2.Media) ([]byte, error) {
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	if err := writer.WriteField("model", model); err != nil {
+		return nil, provider.Wrap(provider.ErrorInvalidArgument, p.name+" build edits request failed", err)
+	}
+	if err := writer.WriteField("prompt", prompt); err != nil {
+		return nil, provider.Wrap(provider.ErrorInvalidArgument, p.name+" build edits request failed", err)
+	}
+	if err := writer.WriteField("n", "1"); err != nil {
+		return nil, provider.Wrap(provider.ErrorInvalidArgument, p.name+" build edits request failed", err)
+	}
+	if size := imageSize(request.GetOutput().GetImage()); size != "" {
+		if err := writer.WriteField("size", size); err != nil {
+			return nil, provider.Wrap(provider.ErrorInvalidArgument, p.name+" build edits request failed", err)
+		}
+	}
+	for i, media := range refs {
+		data, mimeType, err := p.materializeReferenceImage(ctx, media)
+		if err != nil {
+			_ = writer.Close()
+			return nil, err
+		}
+		if len(data) == 0 {
+			_ = writer.Close()
+			return nil, provider.New(provider.ErrorInvalidArgument, "reference image has no uploadable content")
+		}
+		partHeader := make(textproto.MIMEHeader)
+		partHeader.Set("Content-Disposition", fmt.Sprintf(`form-data; name="image"; filename="%s"`, referenceImageFilename(mimeType, i)))
+		partHeader.Set("Content-Type", mimeType)
+		part, err := writer.CreatePart(partHeader)
+		if err != nil {
+			_ = writer.Close()
+			return nil, provider.Wrap(provider.ErrorInvalidArgument, p.name+" build edits request failed", err)
+		}
+		if _, err := part.Write(data); err != nil {
+			_ = writer.Close()
+			return nil, provider.Wrap(provider.ErrorInvalidArgument, p.name+" build edits request failed", err)
+		}
+	}
+	contentType := writer.FormDataContentType()
+	if err := writer.Close(); err != nil {
+		return nil, provider.Wrap(provider.ErrorInvalidArgument, p.name+" build edits request failed", err)
+	}
+	return p.doImageHTTP(ctx, p.imagesAPIURL("edits"), contentType, &buf)
+}
+
+func referenceImageFilename(mimeType string, index int) string {
+	// 扩展名只看主类型；multipart Content-Type 仍用调用方原值（可含 charset 等参数）。
+	baseType := strings.TrimSpace(mimeType)
+	if i := strings.Index(baseType, ";"); i >= 0 {
+		baseType = strings.TrimSpace(baseType[:i])
+	}
+	ext := ".bin"
+	switch strings.ToLower(baseType) {
+	case "image/png":
+		ext = ".png"
+	case "image/jpeg", "image/jpg":
+		ext = ".jpg"
+	case "image/webp":
+		ext = ".webp"
+	case "image/gif":
+		ext = ".gif"
+	}
+	return fmt.Sprintf("reference-%d%s", index+1, ext)
 }
 
 func (p *Provider) convertImageResponse(ctx context.Context, resp *imagesGenerationResponse) (*modelhubv2.GenerateEvent, error) {
@@ -212,11 +334,16 @@ func (p *Provider) doJSON(ctx context.Context, url string, body map[string]any) 
 	if err := enc.Encode(body); err != nil {
 		return nil, provider.Wrap(provider.ErrorInvalidArgument, p.name+" marshal failed", err)
 	}
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(buf.Bytes()))
+	return p.doImageHTTP(ctx, url, "application/json", bytes.NewReader(buf.Bytes()))
+}
+
+// doImageHTTP 统一 generations/edits 的鉴权、状态码分类与响应体大小限制。
+func (p *Provider) doImageHTTP(ctx context.Context, url, contentType string, body io.Reader) ([]byte, error) {
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, body)
 	if err != nil {
 		return nil, provider.Wrap(provider.ErrorInvalidArgument, p.name+" create request failed", err)
 	}
-	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Content-Type", contentType)
 	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 	resp, err := p.client.Do(httpReq)
 	if err != nil {

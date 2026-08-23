@@ -31,3 +31,61 @@ func TestBuildOpenAIExposesImage(t *testing.T) {
 		t.Fatalf("openai should not expose video")
 	}
 }
+
+func TestBuildVideoProvidersExposeVideoOnly(t *testing.T) {
+	sets, err := Build(context.Background(), config.Config{
+		Providers: map[string]config.ProviderConfig{
+			"dashscope_video": {
+				Models: []string{models.Wan22I2VFlash, models.Wan27VideoEdit},
+				DashScopeVideo: &config.DashScopeVideoProviderConfig{
+					APIKey: "k",
+				},
+			},
+			"ominilink_video": {
+				Models: []string{models.KlingV3},
+				OminilinkVideo: &config.OminilinkVideoProviderConfig{
+					APIKey: "k",
+				},
+			},
+			"gemini_video": {
+				Models: []string{models.GeminiOmniFlashPreview},
+				GeminiVideo: &config.GeminiVideoProviderConfig{
+					APIKey: "k",
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, set := range sets {
+		if set.Video == nil {
+			t.Fatalf("%s missing video capability", name)
+		}
+		if set.Text != nil || set.Image != nil {
+			t.Fatalf("%s should only expose video: %#v", name, set)
+		}
+	}
+}
+
+func TestBuildVideoProvidersAcceptZeroPollConfig(t *testing.T) {
+	_, err := Build(context.Background(), config.Config{
+		Providers: map[string]config.ProviderConfig{
+			"dashscope_video": {
+				Models:         []string{models.Wan22I2VFlash},
+				DashScopeVideo: &config.DashScopeVideoProviderConfig{APIKey: "k"},
+			},
+			"ominilink_video": {
+				Models:         []string{models.KlingV3},
+				OminilinkVideo: &config.OminilinkVideoProviderConfig{APIKey: "k"},
+			},
+			"gemini_video": {
+				Models:      []string{models.GeminiOmniFlashPreview},
+				GeminiVideo: &config.GeminiVideoProviderConfig{APIKey: "k"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}

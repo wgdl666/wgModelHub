@@ -261,7 +261,11 @@ func validateGenerateRequest(request *modelhubv2.GenerateRequest, capability str
 		return err
 	}
 	if capability == config.CapabilityVideo {
-		if provider.FirstImageMedia(request.GetInput()) == nil {
+		if provider.FirstVideoMedia(request.GetInput()) != nil {
+			if strings.TrimSpace(provider.JoinedText(request.GetInput())) == "" {
+				return provider.New(provider.ErrorInvalidArgument, "video edit prompt text is required in input")
+			}
+		} else if provider.FirstImageMedia(request.GetInput()) == nil {
 			return provider.New(provider.ErrorInvalidArgument, "video first_frame image is required in input")
 		}
 	}
@@ -345,11 +349,12 @@ func validateMedia(media *modelhubv2.Media, kind provider.ErrorKind) error {
 	if media == nil {
 		return provider.New(kind, "media is required")
 	}
-	if media.GetMimeType() == "" {
-		return provider.New(kind, "media mime_type is required")
-	}
 	switch source := media.GetSource().(type) {
 	case *modelhubv2.Media_Data:
+		// 内联字节在 service 边界必须声明 MIME，避免 provider 无法构造 data URI 或 multipart。
+		if strings.TrimSpace(media.GetMimeType()) == "" {
+			return provider.New(kind, "media mime_type is required for inline data")
+		}
 		if len(source.Data) == 0 {
 			return provider.New(kind, "media data is empty")
 		}
@@ -357,9 +362,10 @@ func validateMedia(media *modelhubv2.Media, kind provider.ErrorKind) error {
 			return provider.Errorf(kind, "media exceeds %d bytes", protocol.MaxMediaBytes)
 		}
 	case *modelhubv2.Media_Uri:
-		if source.Uri == "" {
+		if strings.TrimSpace(source.Uri) == "" {
 			return provider.New(kind, "media uri is empty")
 		}
+		// URI 的 mime_type 为可选提示；是否必需由下游 provider 协议决定。
 	default:
 		return provider.New(kind, "media source is required")
 	}

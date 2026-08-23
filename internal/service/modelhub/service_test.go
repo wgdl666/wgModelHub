@@ -215,3 +215,53 @@ func TestGenerateRejectsMissingOutputKind(t *testing.T) {
 		t.Fatalf("code=%v err=%v", status.Code(err), err)
 	}
 }
+
+func TestValidateMediaAcceptsURIWithoutMIME(t *testing.T) {
+	err := validateMedia(&modelhubv2.Media{
+		Source: &modelhubv2.Media_Uri{Uri: "https://cdn.example.com/v1/assets/proxy?key=foo"},
+	}, provider.ErrorInvalidArgument)
+	if err != nil {
+		t.Fatalf("validateMedia: %v", err)
+	}
+}
+
+func TestValidateMediaRejectsInlineDataWithoutMIME(t *testing.T) {
+	err := validateMedia(&modelhubv2.Media{
+		Source: &modelhubv2.Media_Data{Data: []byte("x")},
+	}, provider.ErrorInvalidArgument)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestGenerateImageAcceptsURIWithoutMIMEAtService(t *testing.T) {
+	image := &recordingImage{}
+	service := New(config.Config{
+		Providers: map[string]config.ProviderConfig{
+			"openai": {Models: []string{models.GPTImage2}, OpenAI: &config.OpenAIProviderConfig{APIKey: "k"}},
+		},
+	}, map[string]provider.Set{"openai": {Image: image}})
+
+	stream := &generateRecorder{ctx: context.Background()}
+	err := service.Generate(&modelhubv2.GenerateRequest{
+		Model: models.GPTImage2,
+		Input: &modelhubv2.Input{Items: []*modelhubv2.InputItem{{
+			Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
+				Role: modelhubv2.Role_ROLE_USER,
+				Parts: []*modelhubv2.ContentPart{
+					{Content: &modelhubv2.ContentPart_Text{Text: "hi"}},
+					{Content: &modelhubv2.ContentPart_Image{Image: &modelhubv2.Media{
+						Source: &modelhubv2.Media_Uri{Uri: "https://cdn.example.com/v1/assets/proxy?key=foo"},
+					}}},
+				},
+			}},
+		}}},
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Image{Image: &modelhubv2.ImageOutput{}}},
+	}, stream)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if image.model != models.GPTImage2 {
+		t.Fatalf("model=%q", image.model)
+	}
+}
