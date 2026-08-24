@@ -23,6 +23,14 @@ providers:
     ark:
       api_key: "${ARK_API_KEY}"
       base_url: https://ark.cn-beijing.volces.com/api/v3
+  # 方舟 Seedance 2.5 首帧图生视频；与 ark_chat 分实例，避免文本 Responses 与视频任务混用能力集。
+  ark_video:
+    models: [doubao-seedance-2-5-260628]
+    ark_video:
+      api_key: "${ARK_API_KEY}"
+      base_url: https://ark.cn-beijing.volces.com/api/v3
+      poll_interval: 3
+      max_poll_time: 600
   # Quick Speech：DashScope OpenAI-compatible，模型 ID 与线上一致。
   quick_speech:
     models: [qwen-flash]

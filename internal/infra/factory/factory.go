@@ -6,6 +6,7 @@ import (
 
 	"github.com/wgdl666/wgModelHub/config"
 	"github.com/wgdl666/wgModelHub/internal/infra/ark"
+	"github.com/wgdl666/wgModelHub/internal/infra/arkvideo"
 	"github.com/wgdl666/wgModelHub/internal/infra/dashscopevideo"
 	"github.com/wgdl666/wgModelHub/internal/infra/geminivideo"
 	"github.com/wgdl666/wgModelHub/internal/infra/genai"
@@ -93,6 +94,13 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 	case providerCfg.GeminiVideo != nil:
 		cfg := providerCfg.GeminiVideo
 		client, err := geminivideo.New(name, cfg.APIKey, cfg.BaseURL, cfg.AuthHeader, cfg.PollInterval)
+		if err != nil {
+			return provider.Set{}, err
+		}
+		return provider.Set{Video: client}, nil
+	case providerCfg.ArkVideo != nil:
+		cfg := providerCfg.ArkVideo
+		client, err := arkvideo.New(name, cfg.APIKey, cfg.BaseURL, cfg.PollInterval, cfg.MaxPollTime)
 		if err != nil {
 			return provider.Set{}, err
 		}

@@ -122,6 +122,7 @@ func TestProviderSupportsVideoProviders(t *testing.T) {
 		{DashScopeVideo: &DashScopeVideoProviderConfig{APIKey: "k"}},
 		{OminilinkVideo: &OminilinkVideoProviderConfig{APIKey: "k"}},
 		{GeminiVideo: &GeminiVideoProviderConfig{APIKey: "k"}},
+		{ArkVideo: &ArkVideoProviderConfig{APIKey: "k"}},
 		{LTX: &LTXProviderConfig{BaseURL: "https://ltx", Duration: 4, FPS: 24, PollInterval: 1, MaxPollTime: 60}},
 	}
 	for i, provider := range cases {

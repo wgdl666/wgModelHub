@@ -53,6 +53,12 @@ func TestBuildVideoProvidersExposeVideoOnly(t *testing.T) {
 					APIKey: "k",
 				},
 			},
+			"ark_video": {
+				Models: []string{models.DoubaoSeedance25},
+				ArkVideo: &config.ArkVideoProviderConfig{
+					APIKey: "k",
+				},
+			},
 		},
 	})
 	if err != nil {
@@ -82,6 +88,10 @@ func TestBuildVideoProvidersAcceptZeroPollConfig(t *testing.T) {
 			"gemini_video": {
 				Models:      []string{models.GeminiOmniFlashPreview},
 				GeminiVideo: &config.GeminiVideoProviderConfig{APIKey: "k"},
+			},
+			"ark_video": {
+				Models:   []string{models.DoubaoSeedance25},
+				ArkVideo: &config.ArkVideoProviderConfig{APIKey: "k"},
 			},
 		},
 	})

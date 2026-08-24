@@ -7,7 +7,8 @@
 # 配置与模型路由
 
 - Nacos Data ID：`wg.mirror.modelHub`；bootstrap 只保存 Nacos 定位信息，凭据与模型映射在 YAML 正文中。
-- 每个 provider 实例用互斥嵌套字段表达 Gemini/VertexAI/Ark/OpenAI/LTX，并声明 `models: [真实模型 ID...]`。
+- 每个 provider 实例用互斥嵌套字段表达 Gemini/VertexAI/Ark/OpenAI/LTX 以及各类视频供应商，并声明 `models: [真实模型 ID...]`。
+- `ark_video` 承接方舟 Seedance 2.5（`doubao-seedance-2-5-260628`）首帧图生视频；与 `ark_chat` 文本实例分绑，不能共用一套能力。
 - OpenAI 实例同时承接 chat/completions 与 Images API；`gpt-image-2` 必须单独绑到 OpenAI 实例（无参考图走 `/v1/images/generations`，有参考图走 `/v1/images/edits`），不能并入 OminiLink Gemini generateContent 生图实例。
 - 启动时建立「真实模型 ID → 唯一 provider 实例」路由；空模型或重复模型 ID 直接配置错误。无 profile、alias、fallback 或双路径。
 - 全部真实模型 ID 是 `models` 包常量（`github.com/wgdl666/wgModelHub/models`）；Nacos / example YAML / 调用方 `request.model` 必须引用这些常量，不能另起业务名。

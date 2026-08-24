@@ -28,6 +28,8 @@ const (
 	KlingV3VideoGeneration     = "kling/kling-v3-video-generation"
 	KlingV3OmniVideoGeneration = "kling/kling-v3-omni-video-generation"
 	Wan27VideoEdit             = "wan2.7-videoedit"
+	// 火山方舟 Seedance 2.5 官方视频任务 ID。与 Dreamina 2.0 别名不能互换，也不走 OminiLink。
+	DoubaoSeedance25 = "doubao-seedance-2-5-260628"
 
 	// OminiLink vg-api 视频生成（含 UI 未展示但 client 已识别的 Dreamina）。
 	DreaminaSeedance20Mini = "dreamina-seedance-2-0-mini"
@@ -79,6 +81,7 @@ func All() []string {
 		KlingV3VideoGeneration,
 		KlingV3OmniVideoGeneration,
 		Wan27VideoEdit,
+		DoubaoSeedance25,
 		DreaminaSeedance20Mini,
 		DreaminaSeedance20,
 		DreaminaSeedance20Fast,

@@ -45,6 +45,7 @@ type ProviderConfig struct {
 	DashScopeVideo *DashScopeVideoProviderConfig `yaml:"dashscope_video"`
 	OminilinkVideo *OminilinkVideoProviderConfig `yaml:"ominilink_video"`
 	GeminiVideo    *GeminiVideoProviderConfig    `yaml:"gemini_video"`
+	ArkVideo       *ArkVideoProviderConfig       `yaml:"ark_video"`
 }
 
 type GeminiProviderConfig struct {
@@ -101,6 +102,14 @@ type GeminiVideoProviderConfig struct {
 	BaseURL      string  `yaml:"base_url"`
 	AuthHeader   string  `yaml:"auth_header"`
 	PollInterval float64 `yaml:"poll_interval"`
+}
+
+// ArkVideoProviderConfig 承接方舟 contents/generations 视频任务；当前只绑 Seedance 2.5。
+type ArkVideoProviderConfig struct {
+	APIKey       string  `yaml:"api_key"`
+	BaseURL      string  `yaml:"base_url"`
+	PollInterval float64 `yaml:"poll_interval"`
+	MaxPollTime  float64 `yaml:"max_poll_time"`
 }
 
 type Config struct {
@@ -336,6 +345,10 @@ func validateProvider(name string, provider ProviderConfig) error {
 		if strings.TrimSpace(provider.GeminiVideo.APIKey) == "" {
 			return fmt.Errorf("provider %s api_key is required", name)
 		}
+	case provider.ArkVideo != nil:
+		if strings.TrimSpace(provider.ArkVideo.APIKey) == "" {
+			return fmt.Errorf("provider %s api_key is required", name)
+		}
 	}
 	return nil
 }
@@ -366,6 +379,9 @@ func countConcreteProviders(provider ProviderConfig) int {
 	if provider.GeminiVideo != nil {
 		n++
 	}
+	if provider.ArkVideo != nil {
+		n++
+	}
 	return n
 }
 
@@ -378,7 +394,7 @@ func ProviderSupports(provider ProviderConfig, capability string) bool {
 		return capability == CapabilityText
 	case provider.LTX != nil:
 		return capability == CapabilityVideo
-	case provider.DashScopeVideo != nil, provider.OminilinkVideo != nil, provider.GeminiVideo != nil:
+	case provider.DashScopeVideo != nil, provider.OminilinkVideo != nil, provider.GeminiVideo != nil, provider.ArkVideo != nil:
 		return capability == CapabilityVideo
 	default:
 		return false
