@@ -90,7 +90,7 @@ func TestServiceRoutesTextByRealModel(t *testing.T) {
 		Providers: map[string]config.ProviderConfig{
 			"ark": {Models: []string{"chat-model"}, Ark: &config.ArkProviderConfig{APIKey: "k"}},
 		},
-	}, map[string]provider.Set{"ark": {Text: text}})
+	}, map[string]provider.Set{"ark": {Text: text}}, nil)
 
 	stream := &generateRecorder{ctx: context.Background()}
 	if err := service.Generate(textRequest("chat-model", "do"), stream); err != nil {
@@ -115,7 +115,7 @@ func TestServiceRejectsCapabilityMismatch(t *testing.T) {
 				BaseURL: "https://x", Duration: 1, FPS: 1, PollInterval: 1, MaxPollTime: 1,
 			}},
 		},
-	}, map[string]provider.Set{"ltx": {Video: nil}})
+	}, map[string]provider.Set{"ltx": {Video: nil}}, nil)
 
 	stream := &generateRecorder{ctx: context.Background()}
 	err := service.Generate(textRequest(models.LTX, "x"), stream)
@@ -140,7 +140,7 @@ func TestServiceRoutesImageByRealModel(t *testing.T) {
 		Providers: map[string]config.ProviderConfig{
 			"openai": {Models: []string{models.GPTImage2}, OpenAI: &config.OpenAIProviderConfig{APIKey: "k"}},
 		},
-	}, map[string]provider.Set{"openai": {Image: image}})
+	}, map[string]provider.Set{"openai": {Image: image}}, nil)
 
 	stream := &generateRecorder{ctx: context.Background()}
 	err := service.Generate(&modelhubv2.GenerateRequest{
@@ -160,7 +160,7 @@ func TestGenerateStreamSendsExactlyOneMetadataFinal(t *testing.T) {
 		Providers: map[string]config.ProviderConfig{
 			"gemini": {Models: []string{"chat-model"}, Gemini: &config.GeminiProviderConfig{APIKey: "k"}},
 		},
-	}, map[string]provider.Set{"gemini": {Text: streamingText{}}})
+	}, map[string]provider.Set{"gemini": {Text: streamingText{}}}, nil)
 	stream := &generateRecorder{ctx: context.Background()}
 	req := textRequest("chat-model", "hi")
 	req.Output.Stream = true
@@ -184,7 +184,7 @@ func TestGenerateImageRejectsOversizedInlineMedia(t *testing.T) {
 		Providers: map[string]config.ProviderConfig{
 			"gemini": {Models: []string{"artwork-model"}, Gemini: &config.GeminiProviderConfig{APIKey: "k"}},
 		},
-	}, map[string]provider.Set{"gemini": {Image: &recordingImage{}}})
+	}, map[string]provider.Set{"gemini": {Image: &recordingImage{}}}, nil)
 
 	stream := &generateRecorder{ctx: context.Background()}
 	err := service.Generate(&modelhubv2.GenerateRequest{
@@ -208,7 +208,7 @@ func TestGenerateImageRejectsOversizedInlineMedia(t *testing.T) {
 }
 
 func TestGenerateRejectsMissingOutputKind(t *testing.T) {
-	service := New(config.Config{}, nil)
+	service := New(config.Config{}, nil, nil)
 	stream := &generateRecorder{ctx: context.Background()}
 	err := service.Generate(&modelhubv2.GenerateRequest{Model: "chat-model"}, stream)
 	if status.Code(err) != codes.InvalidArgument {
@@ -240,7 +240,7 @@ func TestGenerateImageAcceptsURIWithoutMIMEAtService(t *testing.T) {
 		Providers: map[string]config.ProviderConfig{
 			"openai": {Models: []string{models.GPTImage2}, OpenAI: &config.OpenAIProviderConfig{APIKey: "k"}},
 		},
-	}, map[string]provider.Set{"openai": {Image: image}})
+	}, map[string]provider.Set{"openai": {Image: image}}, nil)
 
 	stream := &generateRecorder{ctx: context.Background()}
 	err := service.Generate(&modelhubv2.GenerateRequest{

@@ -9,6 +9,9 @@ const (
 	MaxMediaBytes = 60 << 20
 	// VideoChunkBytes 固定 LTX 视频分块大小，调用方据此校验流协议而不接收任意大消息。
 	VideoChunkBytes = 1 << 20
-	// MaxVideoBytes 是一次同步 LTX 调用允许返回的完整视频上限。
+	// MaxVideoBytes 是所有 ModelHub 视频结果（同步 Generate 与异步 GetGeneration 输出）共用的单视频上限。
 	MaxVideoBytes = 200 << 20
+
+	// CallerMetadataKey 是 SubmitGeneration 幂等命名空间与来源归因用的 gRPC metadata 键；不做鉴权。
+	CallerMetadataKey = "x-wg-caller-service"
 )

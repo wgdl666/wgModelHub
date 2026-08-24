@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -56,34 +57,83 @@ func New(name, baseURL, token string, duration float64, fps, seed int, pollInter
 	}, nil
 }
 
-// GenerateVideo 在 ModelHub 内同步完成提交、轮询与下载，再按 1MiB 分块回传；不持久化 job，断连不会自动重提。
+// GenerateVideo 复用 Submit/Get/ReadResult；前台等待受 maxPollTime 限制，异步 Submit/Get 不受影响。
 func (p *Provider) GenerateVideo(ctx context.Context, model string, request *modelhubv2.GenerateRequest, emit provider.EmitEvent) error {
+	ctx, cancel := context.WithTimeout(ctx, p.maxPollTime)
+	defer cancel()
+	err := provider.RunVideoJob(ctx, p, model, request, emit)
+	if errors.Is(err, context.DeadlineExceeded) {
+		return provider.Errorf(provider.ErrorTimeout, "%s video generation timed out", p.name)
+	}
+	return err
+}
+
+// SubmitVideo 加载首帧并提交 LTX /vton，返回 job_id 供后续 Get/Read 使用。
+func (p *Provider) SubmitVideo(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (string, error) {
 	if request == nil {
-		return provider.New(provider.ErrorInvalidArgument, "video request is required")
+		return "", provider.New(provider.ErrorInvalidArgument, "video request is required")
 	}
 	firstFrame := provider.FirstImageMedia(request.GetInput())
 	imageBytes, err := p.loadFirstFrame(ctx, firstFrame)
 	if err != nil {
-		return err
+		return "", err
 	}
 	resolution := ""
 	if video := request.GetOutput().GetVideo(); video != nil {
 		resolution = video.GetResolution()
 	}
-	// 视频任务文案来自 Input.items 文本 parts，与首帧同属有序上下文。
-	jobID, err := p.submit(ctx, model, imageBytes, provider.JoinedText(request.GetInput()), resolution)
+	return p.submit(ctx, model, imageBytes, provider.JoinedText(request.GetInput()), resolution)
+}
+
+// GetVideo 单次查询 /jobs/{id}；done/error/进行中分别映射为 Succeeded/Failed/Running。
+func (p *Provider) GetVideo(ctx context.Context, _ string, providerTaskID string) (provider.VideoJob, error) {
+	job, err := p.getJob(ctx, providerTaskID)
+	if err != nil {
+		return provider.VideoJob{}, err
+	}
+	pollMs := int32(p.pollInterval / time.Millisecond)
+	switch job["status"] {
+	case "done":
+		return provider.VideoJob{State: provider.VideoJobSucceeded, PollAfterMs: pollMs}, nil
+	case "error":
+		// 三方错误正文可能包含输入片段，只保留稳定分类，不写入 gRPC status 或遥测。
+		return provider.VideoJob{
+			State:       provider.VideoJobFailed,
+			PollAfterMs: pollMs,
+			Err:         provider.Errorf(provider.ErrorUnavailable, "%s job failed", p.name),
+		}, nil
+	default:
+		return provider.VideoJob{State: provider.VideoJobRunning, PollAfterMs: pollMs}, nil
+	}
+}
+
+// ReadVideoResult 解析 job 内 video_url 并带鉴权流式下载，按 1MiB 分块 emit。
+func (p *Provider) ReadVideoResult(ctx context.Context, _ string, providerTaskID string, emit provider.EmitEvent) error {
+	job, err := p.getJob(ctx, providerTaskID)
 	if err != nil {
 		return err
 	}
-	job, err := p.poll(ctx, jobID)
+	target, err := p.videoURLFromJob(job)
 	if err != nil {
 		return err
 	}
-	videoBytes, err := p.download(ctx, job)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
-		return err
+		return provider.Wrap(provider.ErrorInvalidArgument, "create download request", err)
 	}
-	return provider.EmitVideoChunks(videoBytes, videoMIMEType, jobID, 0, emit)
+	p.setToken(request)
+	response, err := p.client.Do(request)
+	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return provider.Wrap(provider.ErrorUnavailable, p.name+" download failed", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return provider.FromHTTP(p.name, response.StatusCode)
+	}
+	return provider.EmitVideoChunksFromReader(response.Body, videoMIMEType, providerTaskID, 0, emit)
 }
 
 func (p *Provider) loadFirstFrame(ctx context.Context, media *modelhubv2.Media) ([]byte, error) {
@@ -192,9 +242,9 @@ func (p *Provider) submit(ctx context.Context, model string, imageBytes []byte, 
 		}
 		_, _ = io.ReadAll(io.LimitReader(response.Body, 1000))
 		response.Body.Close()
+		// 404/429 明确未受理可重试；5xx 可能已受理，禁止自动重提。
 		retryable := response.StatusCode == http.StatusNotFound ||
-			response.StatusCode == http.StatusTooManyRequests ||
-			response.StatusCode >= http.StatusInternalServerError
+			response.StatusCode == http.StatusTooManyRequests
 		if !retryable || attempt == 3 {
 			return "", provider.FromHTTP(p.name, response.StatusCode)
 		}
@@ -209,64 +259,11 @@ func (p *Provider) submit(ctx context.Context, model string, imageBytes []byte, 
 	return "", provider.New(provider.ErrorUnavailable, p.name+" submit exhausted retry budget")
 }
 
-func (p *Provider) poll(ctx context.Context, jobID string) (map[string]any, error) {
-	deadline := time.Now().Add(p.maxPollTime)
-	for {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		if time.Now().After(deadline) {
-			return nil, provider.Errorf(provider.ErrorTimeout, "%s job %s timed out", p.name, jobID)
-		}
-		request, err := http.NewRequestWithContext(ctx, http.MethodGet, p.baseURL+"/jobs/"+jobID, nil)
-		if err != nil {
-			return nil, provider.Wrap(provider.ErrorInvalidArgument, "create poll request", err)
-		}
-		p.setToken(request)
-		response, err := p.client.Do(request)
-		if err != nil {
-			if ctx.Err() != nil {
-				return nil, ctx.Err()
-			}
-			return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" poll failed", err)
-		}
-		var job map[string]any
-		decodeErr := json.NewDecoder(io.LimitReader(response.Body, 2<<20)).Decode(&job)
-		response.Body.Close()
-		if response.StatusCode < 200 || response.StatusCode >= 300 {
-			return nil, provider.FromHTTP(p.name, response.StatusCode)
-		}
-		if decodeErr != nil {
-			return nil, provider.Wrap(provider.ErrorInvalidResponse, p.name+" decode poll response", decodeErr)
-		}
-		switch job["status"] {
-		case "done":
-			return job, nil
-		case "error":
-			// 三方错误正文可能包含输入片段，只保留稳定分类，不写入 gRPC status 或遥测。
-			return nil, provider.Errorf(provider.ErrorUnavailable, "%s job failed", p.name)
-		}
-		timer := time.NewTimer(p.pollInterval)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return nil, ctx.Err()
-		case <-timer.C:
-		}
-	}
-}
-
-func (p *Provider) download(ctx context.Context, job map[string]any) ([]byte, error) {
-	target, _ := job["video_url"].(string)
-	if target == "" {
-		return nil, provider.New(provider.ErrorInvalidResponse, p.name+" job returned no video_url")
-	}
-	if !strings.HasPrefix(target, "http") {
-		target = p.baseURL + "/" + strings.TrimLeft(target, "/")
-	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+// getJob 单次 GET /jobs/{id}，供 GetVideo 与 ReadVideoResult 共用，不在此层 sleep 轮询。
+func (p *Provider) getJob(ctx context.Context, jobID string) (map[string]any, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, p.baseURL+"/jobs/"+jobID, nil)
 	if err != nil {
-		return nil, provider.Wrap(provider.ErrorInvalidArgument, "create download request", err)
+		return nil, provider.Wrap(provider.ErrorInvalidArgument, "create poll request", err)
 	}
 	p.setToken(request)
 	response, err := p.client.Do(request)
@@ -274,21 +271,29 @@ func (p *Provider) download(ctx context.Context, job map[string]any) ([]byte, er
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" download failed", err)
+		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" poll failed", err)
 	}
 	defer response.Body.Close()
+	var job map[string]any
+	decodeErr := json.NewDecoder(io.LimitReader(response.Body, 2<<20)).Decode(&job)
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return nil, provider.FromHTTP(p.name, response.StatusCode)
 	}
-	// 多读 1 字节用于区分“恰好 200MiB”与“超限”，避免静默截断。
-	data, err := io.ReadAll(io.LimitReader(response.Body, protocol.MaxVideoBytes+1))
-	if err != nil {
-		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" read video failed", err)
+	if decodeErr != nil {
+		return nil, provider.Wrap(provider.ErrorInvalidResponse, p.name+" decode poll response", decodeErr)
 	}
-	if len(data) > protocol.MaxVideoBytes {
-		return nil, provider.Errorf(provider.ErrorInvalidResponse, "%s video exceeds %d bytes", p.name, protocol.MaxVideoBytes)
+	return job, nil
+}
+
+func (p *Provider) videoURLFromJob(job map[string]any) (string, error) {
+	target, _ := job["video_url"].(string)
+	if target == "" {
+		return "", provider.New(provider.ErrorInvalidResponse, p.name+" job returned no video_url")
 	}
-	return data, nil
+	if !strings.HasPrefix(target, "http") {
+		target = p.baseURL + "/" + strings.TrimLeft(target, "/")
+	}
+	return target, nil
 }
 
 func (p *Provider) setToken(request *http.Request) {

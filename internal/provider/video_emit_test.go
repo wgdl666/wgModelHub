@@ -1,51 +1,60 @@
 package provider
 
 import (
+	"bytes"
+	"strings"
 	"testing"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/protocol"
 )
 
-func TestEmitVideoChunksFinalMetadata(t *testing.T) {
-	payload := []byte("video-data")
-	var final *modelhubv2.GenerateEvent
-	if err := EmitVideoChunks(payload, "video/mp4", "task-42", 1500, func(chunk *modelhubv2.GenerateEvent) error {
-		if chunk.GetFinal() {
-			final = chunk
-		}
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if final == nil || !final.GetFinal() {
-		t.Fatalf("expected single final chunk")
-	}
-	if final.GetResponseId() != "task-42" || final.GetGenerationElapsedMs() != 1500 {
-		t.Fatalf("final metadata=%q elapsed=%d", final.GetResponseId(), final.GetGenerationElapsedMs())
+func TestEmitVideoChunksFromReaderRejectsEmpty(t *testing.T) {
+	err := EmitVideoChunksFromReader(bytes.NewReader(nil), "video/mp4", "", 0, nil)
+	if err == nil || !strings.Contains(err.Error(), "0 bytes") {
+		t.Fatalf("err=%v", err)
 	}
 }
 
-func TestEmitVideoChunksRejectsEmpty(t *testing.T) {
-	err := EmitVideoChunks(nil, "video/mp4", "", 0, nil)
-	if err == nil {
-		t.Fatal("expected error for empty download")
+func TestEmitVideoChunksFromReaderRejectsOverMax(t *testing.T) {
+	payload := make([]byte, protocol.MaxVideoBytes+1)
+	err := EmitVideoChunksFromReader(bytes.NewReader(payload), "video/mp4", "", 0, nil)
+	if err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("err=%v", err)
 	}
 }
 
-func TestEmitVideoChunksSequence(t *testing.T) {
-	payload := make([]byte, protocol.VideoChunkBytes+100)
+func TestEmitVideoChunksFromReaderMultiChunk(t *testing.T) {
+	payload := bytes.Repeat([]byte("x"), protocol.VideoChunkBytes+50)
 	var chunks []*modelhubv2.GenerateEvent
-	if err := EmitVideoChunks(payload, "video/mp4", "id", 0, func(chunk *modelhubv2.GenerateEvent) error {
+	err := EmitVideoChunksFromReader(bytes.NewReader(payload), "video/mp4", "rid", 99, func(chunk *modelhubv2.GenerateEvent) error {
 		chunks = append(chunks, chunk)
 		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chunks) != 2 {
+		t.Fatalf("chunks=%d", len(chunks))
+	}
+	if chunks[0].GetFinal() || !chunks[1].GetFinal() {
+		t.Fatalf("final flags %#v %#v", chunks[0].GetFinal(), chunks[1].GetFinal())
+	}
+	if chunks[1].GetResponseId() != "rid" || chunks[1].GetGenerationElapsedMs() != 99 {
+		t.Fatalf("metadata %#v", chunks[1])
+	}
+}
+
+func TestEmitVideoChunksFromReaderSingleChunk(t *testing.T) {
+	payload := []byte("small")
+	var got *modelhubv2.GenerateEvent
+	if err := EmitVideoChunksFromReader(bytes.NewReader(payload), "video/mp4", "id-1", 0, func(chunk *modelhubv2.GenerateEvent) error {
+		got = chunk
+		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if len(chunks) != 2 || chunks[0].Sequence != 0 || chunks[1].Sequence != 1 {
-		t.Fatalf("chunks=%d", len(chunks))
-	}
-	if chunks[0].Final || !chunks[1].Final {
-		t.Fatalf("final flags wrong")
+	if got == nil || !got.GetFinal() || got.GetResponseId() != "id-1" {
+		t.Fatalf("got=%#v", got)
 	}
 }

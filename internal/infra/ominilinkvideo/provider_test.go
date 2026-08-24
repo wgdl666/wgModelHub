@@ -10,6 +10,7 @@ import (
 	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
 )
 
@@ -252,4 +253,58 @@ func TestGenerateHonorsContextCancel(t *testing.T) {
 		t.Fatal("expected cancel")
 	}
 	close(block)
+}
+
+func TestGetVideoStatusMapping(t *testing.T) {
+	const model = models.KlingV3
+	tests := []struct {
+		status string
+		want   provider.VideoJobState
+	}{
+		{"success", provider.VideoJobSucceeded},
+		{"failed", provider.VideoJobFailed},
+		{"processing", provider.VideoJobRunning},
+	}
+	for _, tc := range tests {
+		t.Run(tc.status, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte(`{"status":"` + tc.status + `"}`))
+			}))
+			defer server.Close()
+			p := newTestProvider(server)
+			job, err := p.GetVideo(context.Background(), model, "tid")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if job.State != tc.want {
+				t.Fatalf("state=%v want=%v", job.State, tc.want)
+			}
+		})
+	}
+}
+
+func TestGenerateVideoHonorsMaxPollTime(t *testing.T) {
+	// 迁移期 Generate 受 maxPollTime；异步 GetVideo 单次查询不受此上限。
+	const model = models.KlingV3
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			_, _ = w.Write([]byte(`{"Response":{"JobId":"tid"}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"status":"processing"}`))
+	}))
+	defer server.Close()
+	p, err := New("ominilink", "sk", server.URL, 0.05, 0.15)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.client = server.Client()
+	start := time.Now()
+	err = p.GenerateVideo(context.Background(), model, testGenRequest("https://cdn.example/frame.png"), nil)
+	if err == nil || provider.Kind(err) != provider.ErrorTimeout {
+		t.Fatalf("err=%v kind=%v", err, provider.Kind(err))
+	}
+	if time.Since(start) > 2*time.Second {
+		t.Fatalf("maxPollTime ineffective")
+	}
 }

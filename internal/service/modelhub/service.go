@@ -8,6 +8,7 @@ import (
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
+	"github.com/wgdl666/wgModelHub/internal/taskstore"
 	"github.com/wgdl666/wgModelHub/protocol"
 )
 
@@ -17,13 +18,16 @@ type Service struct {
 	modelRoutes map[string]string
 	providers   map[string]provider.Set
 	providerCfg map[string]config.ProviderConfig
+	// tasks 仅服务 Submit/Get 视频长任务；前台 Generate 不经过此存储。
+	tasks taskstore.Store
 }
 
-func New(cfg config.Config, providers map[string]provider.Set) *Service {
+func New(cfg config.Config, providers map[string]provider.Set, tasks taskstore.Store) *Service {
 	return &Service{
 		modelRoutes: cfg.ModelRoutes(),
 		providers:   providers,
 		providerCfg: cfg.Providers,
+		tasks:       tasks,
 	}
 }
 

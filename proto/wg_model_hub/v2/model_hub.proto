@@ -2,14 +2,21 @@ syntax = "proto3";
 
 package wg_model_hub.v2;
 
+import "google/rpc/status.proto";
+
 option go_package = "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2;wg_model_hubv2";
 
-// ModelHubService 以 Generate 为主；CreateCachedContent 仅服务 Gemini 等显式前缀缓存。
+// ModelHubService：Generate 承接文本/图片与迁移期同步视频；视频长任务走 Submit/Get。
+// CreateCachedContent 仅服务 Gemini 等显式前缀缓存。
 // capability 由 OutputSpec oneof 决定，真实供应商模型 ID 经 request.model 路由到唯一 provider 实例。
 service ModelHubService {
   rpc Generate(GenerateRequest) returns (stream GenerateEvent);
   // 将会话级 system + 工具定义落到供应商 CachedContent，供后续 Generate.input.cached_content 引用。
   rpc CreateCachedContent(CreateCachedContentRequest) returns (CreateCachedContentResponse);
+  // SubmitGeneration 第一阶段只接受 output.video；幂等键为 (x-wg-caller-service, request_id)。
+  rpc SubmitGeneration(SubmitGenerationRequest) returns (GenerationTask);
+  // GetGeneration 按调用查询任务；PENDING/RUNNING/FAILED 只回一个 status 事件，SUCCEEDED 先 status 再流式 output。
+  rpc GetGeneration(GetGenerationRequest) returns (stream GenerationTaskEvent);
 }
 
 // GenerateRequest 顶层恰好三字段：业务调用方不得再塞供应商私有配置，
@@ -238,4 +245,45 @@ message GenerateEvent {
   SafetyFeedback safety = 7;
   // generation_elapsed_ms 保留 Gemini Interactions 等供应商上报的生成耗时；缺失时为 0。
   int64 generation_elapsed_ms = 8;
+}
+
+// SubmitGenerationRequest 只增加幂等 request_id；业务载荷仍是原 GenerateRequest。
+message SubmitGenerationRequest {
+  string request_id = 1;
+  GenerateRequest request = 2;
+}
+
+message GetGenerationRequest {
+  string task_id = 1;
+}
+
+// 公开任务状态；provider/supplier 细节不出现在对外协议。
+enum GenerationTaskState {
+  GENERATION_TASK_STATE_UNSPECIFIED = 0;
+  GENERATION_TASK_STATE_PENDING = 1;
+  GENERATION_TASK_STATE_RUNNING = 2;
+  GENERATION_TASK_STATE_SUCCEEDED = 3;
+  GENERATION_TASK_STATE_FAILED = 4;
+}
+
+// GenerationTask 只回 task_id + state；供应商 task id 仅存内部表。
+message GenerationTask {
+  string task_id = 1;
+  GenerationTaskState state = 2;
+}
+
+message GenerationTaskStatus {
+  GenerationTaskState state = 1;
+  // PENDING/RUNNING 时提示调用方下次 Get 的间隔；终态可为 0。
+  int32 poll_after_ms = 2;
+  // 仅 FAILED 时填充；成功与运行中不携带。
+  google.rpc.Status error = 3;
+}
+
+// GenerationTaskEvent：非终态与失败只走 status；成功先 status=SUCCEEDED，再复用 GenerateEvent 分块。
+message GenerationTaskEvent {
+  oneof event {
+    GenerationTaskStatus status = 1;
+    GenerateEvent output = 2;
+  }
 }

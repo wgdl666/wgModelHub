@@ -10,6 +10,7 @@ import (
 	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
 )
 
@@ -272,4 +273,59 @@ func TestWaitHonorsContextCancel(t *testing.T) {
 		t.Fatal("expected cancel/timeout")
 	}
 	close(block)
+}
+
+func TestGenerateVideoHonorsMaxPollTime(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/services/aigc/video-generation/video-synthesis" {
+			_, _ = w.Write([]byte(`{"output":{"task_id":"tid"}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"output":{"task_status":"RUNNING"}}`))
+	}))
+	defer server.Close()
+	p, err := New("dashscope", "sk", server.URL, 0.05, 0.15)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.client = server.Client()
+	start := time.Now()
+	err = p.GenerateVideo(context.Background(), models.Wan22I2VFlash, testGenRequest(), nil)
+	if err == nil || provider.Kind(err) != provider.ErrorTimeout {
+		t.Fatalf("err=%v kind=%v", err, provider.Kind(err))
+	}
+	if time.Since(start) > 2*time.Second {
+		t.Fatalf("maxPollTime ineffective")
+	}
+}
+
+func TestGetVideoStatusMapping(t *testing.T) {
+	tests := []struct {
+		status string
+		want   provider.VideoJobState
+	}{
+		{"SUCCEEDED", provider.VideoJobSucceeded},
+		{"FAILED", provider.VideoJobFailed},
+		{"RUNNING", provider.VideoJobRunning},
+	}
+	for _, tc := range tests {
+		t.Run(tc.status, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte(`{"output":{"task_status":"` + tc.status + `"}}`))
+			}))
+			defer server.Close()
+			p, err := New("dashscope", "sk", server.URL, 1, 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			p.client = server.Client()
+			job, err := p.GetVideo(context.Background(), models.Wan22I2VFlash, "tid")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if job.State != tc.want {
+				t.Fatalf("state=%v want=%v", job.State, tc.want)
+			}
+		})
+	}
 }

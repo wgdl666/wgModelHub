@@ -24,7 +24,11 @@ type ImageProvider interface {
 	GenerateImage(context.Context, string, *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error)
 }
 
+// VideoProvider 把视频拆成 Submit/Get/ReadResult；GenerateVideo 必须复用这三者，禁止第二套供应商协议。
 type VideoProvider interface {
+	SubmitVideo(context.Context, string, *modelhubv2.GenerateRequest) (providerTaskID string, err error)
+	GetVideo(context.Context, string, string) (VideoJob, error)
+	ReadVideoResult(context.Context, string, string, EmitEvent) error
 	GenerateVideo(context.Context, string, *modelhubv2.GenerateRequest, EmitEvent) error
 }
 

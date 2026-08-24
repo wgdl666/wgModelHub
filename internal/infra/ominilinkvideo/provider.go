@@ -59,20 +59,32 @@ func New(name, apiKey, baseURL string, pollInterval, maxPollTime float64) (*Prov
 	}, nil
 }
 
+// GenerateVideo 复用 Submit/Get/ReadResult；前台等待受 maxPollTime 限制，异步 Submit/Get 不受影响。
 func (p *Provider) GenerateVideo(ctx context.Context, model string, request *modelhubv2.GenerateRequest, emit provider.EmitEvent) error {
+	ctx, cancel := context.WithTimeout(ctx, p.maxPollTime)
+	defer cancel()
+	err := provider.RunVideoJob(ctx, p, model, request, emit)
+	if errors.Is(err, context.DeadlineExceeded) {
+		return provider.Errorf(provider.ErrorTimeout, "%s video generation timed out", p.name)
+	}
+	return err
+}
+
+// SubmitVideo 按 family 创建 OminiLink 异步任务，task id 足以后续 getTask 查询。
+func (p *Provider) SubmitVideo(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (string, error) {
 	if request == nil {
-		return provider.New(provider.ErrorInvalidArgument, "video request is required")
+		return "", provider.New(provider.ErrorInvalidArgument, "video request is required")
 	}
 	if provider.FirstVideoMedia(request.GetInput()) != nil {
-		return provider.New(provider.ErrorInvalidArgument, "ominilink video generation does not accept video input")
+		return "", provider.New(provider.ErrorInvalidArgument, "ominilink video generation does not accept video input")
 	}
 	prompt := provider.JoinedText(request.GetInput())
 	if strings.TrimSpace(prompt) == "" {
-		return provider.New(provider.ErrorInvalidArgument, "video prompt text is required in input")
+		return "", provider.New(provider.ErrorInvalidArgument, "video prompt text is required in input")
 	}
 	imageURL, err := p.resolveImageURL(provider.FirstImageMedia(request.GetInput()))
 	if err != nil {
-		return err
+		return "", err
 	}
 	videoOut := request.GetOutput().GetVideo()
 	resolution := ""
@@ -85,19 +97,51 @@ func (p *Provider) GenerateVideo(ctx context.Context, model string, request *mod
 		}
 		aspectRatio = videoOut.GetAspectRatio()
 	}
-	taskID, err := p.createTask(ctx, model, imageURL, prompt, resolution, duration, aspectRatio)
+	return p.createTask(ctx, model, imageURL, prompt, resolution, duration, aspectRatio)
+}
+
+// GetVideo 单次 query/{model}/{id}；成功态即使缺 URL 也 Succeeded，空 URL 留 ReadVideoResult 处理。
+func (p *Provider) GetVideo(ctx context.Context, model, providerTaskID string) (provider.VideoJob, error) {
+	res, err := p.getTask(ctx, model, providerTaskID)
+	if err != nil {
+		return provider.VideoJob{}, err
+	}
+	pollMs := int32(p.pollInterval / time.Millisecond)
+	switch strings.ToLower(strings.TrimSpace(res.status)) {
+	case "succeeded", "success", "completed", "done":
+		return provider.VideoJob{State: provider.VideoJobSucceeded, PollAfterMs: pollMs}, nil
+	case "failed", "failure", "fail", "error", "cancelled", "canceled", "expired":
+		msg := strings.TrimSpace(res.errorMessage)
+		if msg == "" {
+			msg = res.status
+		}
+		var jobErr error
+		if code := strings.TrimSpace(res.errorCode); code != "" {
+			jobErr = provider.Errorf(provider.ErrorUnavailable, "%s task %s: %s: %s", p.name, res.status, code, msg)
+		} else {
+			jobErr = provider.Errorf(provider.ErrorUnavailable, "%s task %s: %s", p.name, res.status, msg)
+		}
+		return provider.VideoJob{State: provider.VideoJobFailed, PollAfterMs: pollMs, Err: jobErr}, nil
+	default:
+		return provider.VideoJob{State: provider.VideoJobRunning, PollAfterMs: pollMs}, nil
+	}
+}
+
+// ReadVideoResult 取 result_url 并流式下载；query 需 model 与 Submit 一致。
+func (p *Provider) ReadVideoResult(ctx context.Context, model, providerTaskID string, emit provider.EmitEvent) error {
+	res, err := p.getTask(ctx, model, providerTaskID)
 	if err != nil {
 		return err
 	}
-	videoURL, err := p.waitResult(ctx, model, taskID)
+	if res.videoURL == "" {
+		return provider.New(provider.ErrorInvalidResponse, p.name+" task succeeded but video_url empty")
+	}
+	response, err := provider.OpenPublicURL(ctx, p.client, p.name, res.videoURL)
 	if err != nil {
 		return err
 	}
-	data, err := provider.DownloadPublicURL(ctx, p.client, p.name, videoURL, protocol.MaxVideoBytes)
-	if err != nil {
-		return err
-	}
-	return provider.EmitVideoChunks(data, videoMIMEType, taskID, 0, emit)
+	defer response.Body.Close()
+	return provider.EmitVideoChunksFromReader(response.Body, videoMIMEType, providerTaskID, 0, emit)
 }
 
 func (p *Provider) resolveImageURL(media *modelhubv2.Media) (string, error) {
@@ -225,48 +269,6 @@ func (p *Provider) fetchImageBase64(ctx context.Context, imageURL string) (b64, 
 	}
 	mimeType = mimeFromURL(imageURL)
 	return base64.StdEncoding.EncodeToString(data), mimeType, nil
-}
-
-func (p *Provider) waitResult(ctx context.Context, model, taskID string) (string, error) {
-	deadline := time.Now().Add(p.maxPollTime)
-	for {
-		if err := ctx.Err(); err != nil {
-			return "", err
-		}
-		if time.Now().After(deadline) {
-			return "", provider.Errorf(provider.ErrorTimeout, "%s task %s timed out", p.name, taskID)
-		}
-		res, err := p.getTask(ctx, model, taskID)
-		if err != nil {
-			return "", err
-		}
-		switch strings.ToLower(strings.TrimSpace(res.status)) {
-		case "succeeded", "success", "completed", "done":
-			if res.videoURL == "" {
-				return "", provider.New(provider.ErrorInvalidResponse, p.name+" task succeeded but video_url empty")
-			}
-			return res.videoURL, nil
-		case "failed", "failure", "fail", "error", "cancelled", "canceled", "expired":
-			msg := strings.TrimSpace(res.errorMessage)
-			if msg == "" {
-				msg = res.status
-			}
-			if code := strings.TrimSpace(res.errorCode); code != "" {
-				return "", provider.Errorf(provider.ErrorUnavailable, "%s task %s: %s: %s", p.name, res.status, code, msg)
-			}
-			return "", provider.Errorf(provider.ErrorUnavailable, "%s task %s: %s", p.name, res.status, msg)
-		}
-		timer := time.NewTimer(p.pollInterval)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-				return "", provider.Errorf(provider.ErrorTimeout, "%s task %s timed out", p.name, taskID)
-			}
-			return "", ctx.Err()
-		case <-timer.C:
-		}
-	}
 }
 
 type taskPollResult struct {

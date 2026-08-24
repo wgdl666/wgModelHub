@@ -108,8 +108,15 @@ type Config struct {
 		ListenAddress string `yaml:"listen_address"`
 	} `yaml:"server"`
 	Providers map[string]ProviderConfig `yaml:"providers"`
+	// Database 仅服务视频长任务跨 Pod 查询；启动不做 DDL，migration 需显式执行。
+	Database DatabaseConfig `yaml:"database"`
 	// Logfire 与 Hub 等同项目；token 写在本服务 Nacos，禁止再挂 wg-hub-env。
 	Logfire LogfireConfig `yaml:"logfire"`
+}
+
+// DatabaseConfig 只接受 DSN；连接参数由 DSN 自身表达，避免散落多字段半配置。
+type DatabaseConfig struct {
+	DSN string `yaml:"dsn"`
 }
 
 // LogfireConfig 是跨服务 Trace 导出到同一 Logfire 项目的凭据与身份。
@@ -237,6 +244,9 @@ func (c Config) Validate() error {
 	}
 	if strings.TrimSpace(c.Logfire.Token) == "" {
 		return fmt.Errorf("logfire.token is required")
+	}
+	if strings.TrimSpace(c.Database.DSN) == "" {
+		return fmt.Errorf("database.dsn is required")
 	}
 	if len(c.Providers) == 0 {
 		return fmt.Errorf("providers are required")

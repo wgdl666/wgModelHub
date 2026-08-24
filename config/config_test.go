@@ -17,6 +17,7 @@ func validConfig() Config {
 			Env:     "production",
 			Service: "wg-model-hub",
 		},
+		Database: DatabaseConfig{DSN: "postgres://modelhub:modelhub@127.0.0.1:5432/modelhub?sslmode=disable"},
 		Providers: map[string]ProviderConfig{
 			"ark": {
 				Models: []string{"doubao-chat"},
@@ -76,6 +77,14 @@ func TestValidateRejectsProviderWithoutModels(t *testing.T) {
 	}
 	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "models are required") {
 		t.Fatalf("expected models required error, got %v", err)
+	}
+}
+
+func TestValidateRejectsEmptyDSN(t *testing.T) {
+	cfg := validConfig()
+	cfg.Database.DSN = ""
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "database.dsn") {
+		t.Fatalf("expected database.dsn error, got %v", err)
 	}
 }
 

@@ -15,6 +15,7 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/infra/factory"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/service/modelhub"
+	"github.com/wgdl666/wgModelHub/internal/taskstore"
 	"github.com/wgdl666/wgModelHub/protocol"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
@@ -60,12 +61,18 @@ func main() {
 		fatal("provider_factory_failed", err)
 	}
 
+	dbPool, err := taskstore.OpenPool(ctx, runtimeConfig.Database.DSN)
+	if err != nil {
+		fatal("database_connect_failed", err)
+	}
+	defer dbPool.Close()
+
 	grpcServer := grpc.NewServer(
 		grpc.MaxRecvMsgSize(protocol.MaxRPCMessageBytes),
 		grpc.MaxSendMsgSize(protocol.MaxRPCMessageBytes),
 		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 	)
-	modelhubv2.RegisterModelHubServiceServer(grpcServer, modelhub.New(runtimeConfig, providers))
+	modelhubv2.RegisterModelHubServiceServer(grpcServer, modelhub.New(runtimeConfig, providers, taskstore.NewPostgres(dbPool)))
 
 	healthServer := health.NewServer()
 	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)

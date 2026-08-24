@@ -51,6 +51,8 @@ func mapKind(kind ErrorKind, message string) (codes.Code, string) {
 		return codes.DeadlineExceeded, message
 	case ErrorInvalidResponse:
 		return codes.Internal, message
+	case ErrorSubmitOutcomeUnknown:
+		return codes.Unavailable, message
 	default:
 		return codes.Unavailable, message
 	}

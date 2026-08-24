@@ -7,10 +7,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
 	"github.com/wgdl666/wgModelHub/protocol"
 )
@@ -37,12 +39,22 @@ func testI2VRequest() *modelhubv2.GenerateRequest {
 func ptr(s string) *string { return &s }
 
 func newTestProvider(baseURL string, client *http.Client) *Provider {
-	p, err := New("gemini", "sk-test", baseURL, "", 0)
+	p, err := New("gemini", "sk-test", baseURL, "", 0.001)
 	if err != nil {
 		panic(err)
 	}
 	p.client = client
 	return p
+}
+
+func completedInteractionJSON(id string, videoField string) string {
+	return `{
+		"id":"` + id + `",
+		"status":"completed",
+		"created":"2026-01-01T00:00:00Z",
+		"updated":"2026-01-01T00:00:05Z",
+		"output_video":` + videoField + `
+	}`
 }
 
 func TestNewUsesDefaultPollWhenZero(t *testing.T) {
@@ -53,26 +65,32 @@ func TestNewUsesDefaultPollWhenZero(t *testing.T) {
 	if p.pollInterval != defaultPollInterval {
 		t.Fatalf("poll=%v", p.pollInterval)
 	}
+	if p.maxPollTime != defaultHTTPTimeout {
+		t.Fatalf("maxPollTime=%v want=%v", p.maxPollTime, defaultHTTPTimeout)
+	}
 }
 
 func TestGenerateI2VInteractionPayload(t *testing.T) {
 	var body map[string]any
+	var apiBase string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/v1beta/interactions":
+		switch {
+		case r.URL.Path == "/v1beta/interactions" && r.Method == http.MethodPost:
 			_ = json.NewDecoder(r.Body).Decode(&body)
-			_, _ = w.Write([]byte(`{
-				"id":"int-1",
-				"status":"completed",
-				"created":"2026-01-01T00:00:00Z",
-				"updated":"2026-01-01T00:00:05Z",
-				"output_video":{"type":"video","mime_type":"video/mp4","data":"` + base64.StdEncoding.EncodeToString([]byte("mp4-bytes")) + `"}
-			}`))
+			_, _ = w.Write([]byte(`{"id":"int-1","status":"running"}`))
+		case r.URL.Path == "/v1beta/interactions/int-1":
+			downloadURI := apiBase + "/v1beta/files/out/content"
+			_, _ = w.Write([]byte(completedInteractionJSON("int-1", `{"type":"video","mime_type":"video/mp4","uri":"`+downloadURI+`"}`)))
+		case r.URL.Path == "/v1beta/files/out":
+			_, _ = w.Write([]byte(`{"state":"ACTIVE"}`))
+		case r.URL.Path == "/v1beta/files/out/content":
+			_, _ = w.Write([]byte("mp4-bytes"))
 		default:
 			t.Fatalf("path %s", r.URL.Path)
 		}
 	}))
 	defer server.Close()
+	apiBase = server.URL
 
 	p := newTestProvider(server.URL+"/v1beta", server.Client())
 	var final *modelhubv2.GenerateEvent
@@ -88,9 +106,16 @@ func TestGenerateI2VInteractionPayload(t *testing.T) {
 	if final == nil || final.GetResponseId() != "int-1" || final.GetGenerationElapsedMs() <= 0 {
 		t.Fatalf("final=%#v", final)
 	}
+	if body["background"] != true {
+		t.Fatalf("background=%v", body["background"])
+	}
 	input, ok := body["input"].([]any)
 	if !ok || len(input) != 2 {
 		t.Fatalf("input=%v", body["input"])
+	}
+	rf, _ := body["response_format"].(map[string]any)
+	if rf["delivery"] != "uri" {
+		t.Fatalf("delivery=%v", rf["delivery"])
 	}
 }
 
@@ -101,15 +126,11 @@ func TestGenerateI2VURIOutputDownloadsWithAuth(t *testing.T) {
 	var sawFilePoll, sawAuthDownload bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.Path == "/v1beta/interactions":
+		case r.URL.Path == "/v1beta/interactions" && r.Method == http.MethodPost:
+			_, _ = w.Write([]byte(`{"id":"` + interactionID + `","status":"running"}`))
+		case r.URL.Path == "/v1beta/interactions/"+interactionID:
 			downloadURI := apiBase + "/v1beta/files/" + fileID + "/content"
-			_, _ = w.Write([]byte(`{
-				"id":"` + interactionID + `",
-				"status":"completed",
-				"created":"2026-01-01T00:00:00Z",
-				"updated":"2026-01-01T00:00:10Z",
-				"output_video":{"type":"video","mime_type":"video/mp4","uri":"` + downloadURI + `"}
-			}`))
+			_, _ = w.Write([]byte(completedInteractionJSON(interactionID, `{"type":"video","mime_type":"video/mp4","uri":"`+downloadURI+`"}`)))
 		case r.URL.Path == "/v1beta/files/"+fileID:
 			sawFilePoll = true
 			_, _ = w.Write([]byte(`{"state":"ACTIVE"}`))
@@ -165,13 +186,16 @@ func TestGenerateEditUploadsFilesAndOrdersParts(t *testing.T) {
 			_, _ = w.Write([]byte(`{"file":{"name":"files/vid123","uri":"https://generativelanguage.googleapis.com/v1beta/files/vid123"}}`))
 		case strings.Contains(r.URL.Path, "/files/vid123"):
 			_, _ = w.Write([]byte(`{"state":"ACTIVE"}`))
-		case r.URL.Path == "/v1beta/interactions":
+		case r.URL.Path == "/v1beta/interactions" && r.Method == http.MethodPost:
 			_ = json.NewDecoder(r.Body).Decode(&interactionBody)
-			_, _ = w.Write([]byte(`{
-				"id":"edit-1",
-				"status":"completed",
-				"output_video":{"type":"video","mime_type":"video/mp4","data":"` + base64.StdEncoding.EncodeToString([]byte("edited")) + `"}
-			}`))
+			_, _ = w.Write([]byte(`{"id":"edit-1","status":"running"}`))
+		case r.URL.Path == "/v1beta/interactions/edit-1":
+			downloadURI := serverURL + "/v1beta/files/out-edit/content"
+			_, _ = w.Write([]byte(completedInteractionJSON("edit-1", `{"type":"video","mime_type":"video/mp4","uri":"`+downloadURI+`"}`)))
+		case r.URL.Path == "/v1beta/files/out-edit":
+			_, _ = w.Write([]byte(`{"state":"ACTIVE"}`))
+		case r.URL.Path == "/v1beta/files/out-edit/content":
+			_, _ = w.Write([]byte("edited"))
 		default:
 			t.Fatalf("path %s cmd=%s", r.URL.Path, r.Header.Get("X-Goog-Upload-Command"))
 		}
@@ -204,6 +228,9 @@ func TestGenerateEditUploadsFilesAndOrdersParts(t *testing.T) {
 	if !uploadFinalize {
 		t.Fatal("expected files upload finalize")
 	}
+	if interactionBody["background"] != true {
+		t.Fatalf("background=%v", interactionBody["background"])
+	}
 	input, ok := interactionBody["input"].([]any)
 	if !ok || len(input) != 3 {
 		t.Fatalf("input=%v", interactionBody["input"])
@@ -216,6 +243,45 @@ func TestGenerateEditUploadsFilesAndOrdersParts(t *testing.T) {
 	videoCfg, _ := genCfg["video_config"].(map[string]any)
 	if videoCfg["task"] != "edit" {
 		t.Fatalf("task=%v", videoCfg)
+	}
+}
+
+func TestReadVideoResultRejectsInlineData(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(completedInteractionJSON("int-1", `{"type":"video","mime_type":"video/mp4","data":"`+base64.StdEncoding.EncodeToString([]byte("mp4"))+`"}`)))
+	}))
+	defer server.Close()
+	p := newTestProvider(server.URL+"/v1beta", server.Client())
+	err := p.ReadVideoResult(context.Background(), models.GeminiOmniFlashPreview, "int-1", nil)
+	if err == nil || !strings.Contains(err.Error(), "missing uri") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestGetVideoStatusMapping(t *testing.T) {
+	tests := []struct {
+		status string
+		want   provider.VideoJobState
+	}{
+		{"completed", provider.VideoJobSucceeded},
+		{"failed", provider.VideoJobFailed},
+		{"running", provider.VideoJobRunning},
+	}
+	for _, tc := range tests {
+		t.Run(tc.status, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte(`{"id":"int-1","status":"` + tc.status + `"}`))
+			}))
+			defer server.Close()
+			p := newTestProvider(server.URL+"/v1beta", server.Client())
+			job, err := p.GetVideo(context.Background(), models.GeminiOmniFlashPreview, "int-1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if job.State != tc.want {
+				t.Fatalf("state=%v want=%v", job.State, tc.want)
+			}
+		})
 	}
 }
 
@@ -241,10 +307,42 @@ func TestLoadMediaBytesEnforcesCallerMaxBytes(t *testing.T) {
 	}
 }
 
+func TestGenerateVideoHonorsMaxPollTime(t *testing.T) {
+	// 迁移期 Generate 受 maxPollTime；异步 GetVideo 单次查询不受此上限。
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v1beta/interactions" && r.Method == http.MethodPost:
+			_, _ = w.Write([]byte(`{"id":"int-1","status":"running"}`))
+		case r.URL.Path == "/v1beta/interactions/int-1":
+			_, _ = w.Write([]byte(`{"id":"int-1","status":"running"}`))
+		default:
+			t.Fatalf("path %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	p := newTestProvider(server.URL+"/v1beta", server.Client())
+	p.pollInterval = 50 * time.Millisecond
+	p.maxPollTime = 150 * time.Millisecond
+	start := time.Now()
+	err := p.GenerateVideo(context.Background(), models.GeminiOmniFlashPreview, testI2VRequest(), nil)
+	if err == nil || provider.Kind(err) != provider.ErrorTimeout {
+		t.Fatalf("err=%v kind=%v", err, provider.Kind(err))
+	}
+	if time.Since(start) > 2*time.Second {
+		t.Fatalf("maxPollTime ineffective")
+	}
+}
+
 func TestGenerateHonorsContextCancel(t *testing.T) {
 	block := make(chan struct{})
+	var pollCalls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v1beta/interactions" {
+		switch {
+		case r.URL.Path == "/v1beta/interactions" && r.Method == http.MethodPost:
+			_, _ = w.Write([]byte(`{"id":"int-1","status":"running"}`))
+		case r.URL.Path == "/v1beta/interactions/int-1":
+			pollCalls.Add(1)
 			select {
 			case <-block:
 			case <-r.Context().Done():

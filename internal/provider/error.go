@@ -16,6 +16,8 @@ const (
 	ErrorUnavailable     ErrorKind = "PROVIDER_UNAVAILABLE"
 	ErrorTimeout         ErrorKind = "TIMEOUT"
 	ErrorInvalidResponse ErrorKind = "INVALID_RESPONSE"
+	// ErrorSubmitOutcomeUnknown：Submit 受理结果不确定（timeout/cancel/unavailable）时落库 FAILED 的稳定 reason；禁止自动重提。
+	ErrorSubmitOutcomeUnknown ErrorKind = "SUBMIT_OUTCOME_UNKNOWN"
 )
 
 // Error 把供应商差异收敛为稳定分类；Message 不携带 Prompt、媒体正文或密钥。
