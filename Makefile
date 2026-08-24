@@ -4,6 +4,7 @@
 export PATH := $(shell go env GOPATH)/bin:$(PATH)
 
 generate:
+	go generate ./ent
 	protoc \
 		-I . \
 		-I third_party/googleapis \

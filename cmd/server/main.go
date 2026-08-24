@@ -61,18 +61,19 @@ func main() {
 		fatal("provider_factory_failed", err)
 	}
 
-	dbPool, err := taskstore.OpenPool(ctx, runtimeConfig.Database.DSN)
+	// Ent client 仅做运行时 CRUD；表结构仍依赖显式 migrations，禁止启动 DDL。
+	entClient, err := taskstore.Open(ctx, runtimeConfig.Database.DSN)
 	if err != nil {
 		fatal("database_connect_failed", err)
 	}
-	defer dbPool.Close()
+	defer entClient.Close()
 
 	grpcServer := grpc.NewServer(
 		grpc.MaxRecvMsgSize(protocol.MaxRPCMessageBytes),
 		grpc.MaxSendMsgSize(protocol.MaxRPCMessageBytes),
 		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 	)
-	modelhubv2.RegisterModelHubServiceServer(grpcServer, modelhub.New(runtimeConfig, providers, taskstore.NewPostgres(dbPool)))
+	modelhubv2.RegisterModelHubServiceServer(grpcServer, modelhub.New(runtimeConfig, providers, taskstore.NewPostgres(entClient)))
 
 	healthServer := health.NewServer()
 	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)

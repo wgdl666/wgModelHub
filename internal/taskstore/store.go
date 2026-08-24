@@ -2,12 +2,17 @@ package taskstore
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"entgo.io/ent/dialect"
+	entsql "entgo.io/ent/dialect/sql"
+	"github.com/wgdl666/wgModelHub/ent"
+	"github.com/wgdl666/wgModelHub/ent/generationtask"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 // 与对外 GenerationTaskState 对齐的本地持久化状态；不含供应商语义字段外泄。
@@ -50,49 +55,56 @@ type Store interface {
 	MarkSucceeded(ctx context.Context, taskID string) error
 }
 
-// Postgres 访问 generation_task；不做启动 DDL。
+// Postgres 经 Ent 访问 generation_task；不做启动 DDL。
 type Postgres struct {
-	pool *pgxpool.Pool
+	client *ent.Client
 }
 
-func NewPostgres(pool *pgxpool.Pool) *Postgres {
-	return &Postgres{pool: pool}
+func NewPostgres(client *ent.Client) *Postgres {
+	return &Postgres{client: client}
 }
 
-func OpenPool(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
-	pool, err := pgxpool.New(ctx, dsn)
+// Open 用 Ent + pgx stdlib 建连；显式 Ping，失败时关闭底层连接。
+func Open(ctx context.Context, dsn string) (*ent.Client, error) {
+	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("connect database: %w", err)
 	}
-	if err := pool.Ping(ctx); err != nil {
-		pool.Close()
+	if err := db.PingContext(ctx); err != nil {
+		_ = db.Close()
 		return nil, fmt.Errorf("ping database: %w", err)
 	}
-	return pool, nil
+	drv := entsql.OpenDB(dialect.Postgres, db)
+	return ent.NewClient(ent.Driver(drv)), nil
 }
 
 func (p *Postgres) InsertPending(ctx context.Context, task Task) (Task, bool, error) {
-	const insertSQL = `
-INSERT INTO generation_task (
-	task_id, caller, request_id, request_hash, model, provider, provider_task_id, state,
-	error_code, error_message, error_reason
-) VALUES ($1,$2,$3,$4,$5,$6,'',$7,0,'','')
-ON CONFLICT (caller, request_id) DO NOTHING
-RETURNING task_id, caller, request_id, request_hash, model, provider, provider_task_id, state,
-	error_code, error_message, error_reason, created_at, updated_at`
-
-	stored, err := scanTask(p.pool.QueryRow(ctx, insertSQL,
-		task.TaskID, task.Caller, task.RequestID, task.RequestHash, task.Model, task.Provider, StatePending,
-	))
+	// 并发安全依赖库唯一键；冲突后只按 (caller, request_id) 回查，避免 task_id 等其它冲突被当成幂等成功。
+	created, err := p.client.GenerationTask.Create().
+		SetID(task.TaskID).
+		SetCaller(task.Caller).
+		SetRequestID(task.RequestID).
+		SetRequestHash(task.RequestHash).
+		SetModel(task.Model).
+		SetProvider(task.Provider).
+		SetProviderTaskID("").
+		SetState(StatePending).
+		SetErrorCode(0).
+		SetErrorMessage("").
+		SetErrorReason("").
+		Save(ctx)
 	if err == nil {
-		return stored, true, nil
+		return fromEnt(created), true, nil
 	}
-	if !errors.Is(err, pgx.ErrNoRows) {
+	if !ent.IsConstraintError(err) {
 		return Task{}, false, err
 	}
-	existing, err := p.getByCallerRequest(ctx, task.Caller, task.RequestID)
-	if err != nil {
-		return Task{}, false, err
+	existing, getErr := p.getByCallerRequest(ctx, task.Caller, task.RequestID)
+	if getErr != nil {
+		if errors.Is(getErr, ErrNotFound) {
+			return Task{}, false, err
+		}
+		return Task{}, false, getErr
 	}
 	if existing.RequestHash != task.RequestHash {
 		return Task{}, false, ErrRequestHashConflict
@@ -101,39 +113,49 @@ RETURNING task_id, caller, request_id, request_hash, model, provider, provider_t
 }
 
 func (p *Postgres) GetByTaskID(ctx context.Context, taskID string) (Task, error) {
-	const q = `
-SELECT task_id, caller, request_id, request_hash, model, provider, provider_task_id, state,
-	error_code, error_message, error_reason, created_at, updated_at
-FROM generation_task WHERE task_id = $1`
-	task, err := scanTask(p.pool.QueryRow(ctx, q, taskID))
-	if errors.Is(err, pgx.ErrNoRows) {
+	row, err := p.client.GenerationTask.Query().
+		Where(generationtask.IDEQ(taskID)).
+		Only(ctx)
+	if ent.IsNotFound(err) {
 		return Task{}, ErrNotFound
 	}
-	return task, err
+	if err != nil {
+		return Task{}, err
+	}
+	return fromEnt(row), nil
 }
 
 func (p *Postgres) getByCallerRequest(ctx context.Context, caller, requestID string) (Task, error) {
-	const q = `
-SELECT task_id, caller, request_id, request_hash, model, provider, provider_task_id, state,
-	error_code, error_message, error_reason, created_at, updated_at
-FROM generation_task WHERE caller = $1 AND request_id = $2`
-	task, err := scanTask(p.pool.QueryRow(ctx, q, caller, requestID))
-	if errors.Is(err, pgx.ErrNoRows) {
+	row, err := p.client.GenerationTask.Query().
+		Where(
+			generationtask.CallerEQ(caller),
+			generationtask.RequestIDEQ(requestID),
+		).
+		Only(ctx)
+	if ent.IsNotFound(err) {
 		return Task{}, ErrNotFound
 	}
-	return task, err
+	if err != nil {
+		return Task{}, err
+	}
+	return fromEnt(row), nil
 }
 
 // MarkRunning 仅 PENDING→RUNNING；禁止 FAILED/SUCCEEDED 被后到写入复活。
 func (p *Postgres) MarkRunning(ctx context.Context, taskID, providerName, providerTaskID string) error {
-	tag, err := p.pool.Exec(ctx, `
-UPDATE generation_task
-SET provider = $2, provider_task_id = $3, state = $4, updated_at = CURRENT_TIMESTAMP
-WHERE task_id = $1 AND state = $5`, taskID, providerName, providerTaskID, StateRunning, StatePending)
+	n, err := p.client.GenerationTask.Update().
+		Where(
+			generationtask.IDEQ(taskID),
+			generationtask.StateEQ(StatePending),
+		).
+		SetProvider(providerName).
+		SetProviderTaskID(providerTaskID).
+		SetState(StateRunning).
+		Save(ctx)
 	if err != nil {
 		return err
 	}
-	if tag.RowsAffected() == 0 {
+	if n == 0 {
 		return ErrNotFound
 	}
 	return nil
@@ -141,14 +163,20 @@ WHERE task_id = $1 AND state = $5`, taskID, providerName, providerTaskID, StateR
 
 // MarkFailed 仅允许 expectedState→FAILED；避免过期 PENDING 收口误杀已被 MarkRunning 的有效任务。
 func (p *Postgres) MarkFailed(ctx context.Context, taskID, expectedState string, code int32, message, reason string) error {
-	tag, err := p.pool.Exec(ctx, `
-UPDATE generation_task
-SET state = $2, error_code = $3, error_message = $4, error_reason = $5, updated_at = CURRENT_TIMESTAMP
-WHERE task_id = $1 AND state = $6`, taskID, StateFailed, code, message, reason, expectedState)
+	n, err := p.client.GenerationTask.Update().
+		Where(
+			generationtask.IDEQ(taskID),
+			generationtask.StateEQ(expectedState),
+		).
+		SetState(StateFailed).
+		SetErrorCode(code).
+		SetErrorMessage(message).
+		SetErrorReason(reason).
+		Save(ctx)
 	if err != nil {
 		return err
 	}
-	if tag.RowsAffected() == 0 {
+	if n == 0 {
 		return ErrNotFound
 	}
 	return nil
@@ -156,29 +184,40 @@ WHERE task_id = $1 AND state = $6`, taskID, StateFailed, code, message, reason, 
 
 // MarkSucceeded 仅 RUNNING→SUCCEEDED；禁止覆盖 FAILED。
 func (p *Postgres) MarkSucceeded(ctx context.Context, taskID string) error {
-	tag, err := p.pool.Exec(ctx, `
-UPDATE generation_task
-SET state = $2, error_code = 0, error_message = '', error_reason = '', updated_at = CURRENT_TIMESTAMP
-WHERE task_id = $1 AND state = $3`, taskID, StateSucceeded, StateRunning)
+	n, err := p.client.GenerationTask.Update().
+		Where(
+			generationtask.IDEQ(taskID),
+			generationtask.StateEQ(StateRunning),
+		).
+		SetState(StateSucceeded).
+		SetErrorCode(0).
+		SetErrorMessage("").
+		SetErrorReason("").
+		Save(ctx)
 	if err != nil {
 		return err
 	}
-	if tag.RowsAffected() == 0 {
+	if n == 0 {
 		return ErrNotFound
 	}
 	return nil
 }
 
-type scannable interface {
-	Scan(dest ...any) error
-}
-
-func scanTask(row scannable) (Task, error) {
-	var task Task
-	err := row.Scan(
-		&task.TaskID, &task.Caller, &task.RequestID, &task.RequestHash, &task.Model, &task.Provider,
-		&task.ProviderTaskID, &task.State, &task.ErrorCode, &task.ErrorMessage, &task.ErrorReason,
-		&task.CreatedAt, &task.UpdatedAt,
-	)
-	return task, err
+// fromEnt 只做 Ent 实体到稳定 Store DTO 的边界映射，避免上层依赖生成代码字段形状。
+func fromEnt(row *ent.GenerationTask) Task {
+	return Task{
+		TaskID:         row.ID,
+		Caller:         row.Caller,
+		RequestID:      row.RequestID,
+		RequestHash:    row.RequestHash,
+		Model:          row.Model,
+		Provider:       row.Provider,
+		ProviderTaskID: row.ProviderTaskID,
+		State:          row.State,
+		ErrorCode:      row.ErrorCode,
+		ErrorMessage:   row.ErrorMessage,
+		ErrorReason:    row.ErrorReason,
+		CreatedAt:      row.CreatedAt,
+		UpdatedAt:      row.UpdatedAt,
+	}
 }
