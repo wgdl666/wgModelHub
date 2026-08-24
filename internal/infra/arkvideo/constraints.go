@@ -2,10 +2,25 @@ package arkvideo
 
 import "strings"
 
-// NormalizeParams 只服务 Seedance 2.5 第一刀首帧图生视频。
-// 官方首帧任务强制 ratio=adaptive；时长是 4–30 或 -1，不能复用 2.0 的 15 秒上限。
-func NormalizeParams(resolution string, duration int, _ string) (res string, dur int, aspect string) {
-	return normalizeResolution(resolution), normalizeDuration(duration), "adaptive"
+// NormalizeParams 按任务形态收口方舟参数：文生视频与首帧共用同一模型 ID，
+// 不能再拆第二套枚举。首帧官方强制 ratio=adaptive；文生视频 ratio 原样下发。
+// 时长都是 4–30 或 -1，不能复用 Seedance 2.0 的 15 秒上限。
+func NormalizeParams(resolution string, duration int, aspectRatio string, firstFrame bool) (res string, dur int, aspect string) {
+	aspect = normalizeAspectRatio(aspectRatio)
+	if firstFrame {
+		aspect = "adaptive"
+	}
+	return normalizeResolution(resolution), normalizeDuration(duration), aspect
+}
+
+func normalizeAspectRatio(aspectRatio string) string {
+	switch strings.TrimSpace(aspectRatio) {
+	case "21:9", "16:9", "4:3", "1:1", "3:4", "9:16", "adaptive":
+		return strings.TrimSpace(aspectRatio)
+	default:
+		// 文生视频官方示例默认 16:9；未设置或非法值不能再误写成 adaptive。
+		return "16:9"
+	}
 }
 
 func normalizeResolution(resolution string) string {

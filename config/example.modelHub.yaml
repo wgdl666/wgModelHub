@@ -23,7 +23,7 @@ providers:
     ark:
       api_key: "${ARK_API_KEY}"
       base_url: https://ark.cn-beijing.volces.com/api/v3
-  # 方舟 Seedance 2.5 首帧图生视频；与 ark_chat 分实例，避免文本 Responses 与视频任务混用能力集。
+  # 方舟 Seedance 2.5 文生视频 / 首帧图生视频；与 ark_chat 分实例，避免文本 Responses 与视频任务混用能力集。
   ark_video:
     models: [doubao-seedance-2-5-260628]
     ark_video:

@@ -265,3 +265,28 @@ func TestGenerateImageAcceptsURIWithoutMIMEAtService(t *testing.T) {
 		t.Fatalf("model=%q", image.model)
 	}
 }
+
+func TestValidateGenerateRequestAllowsTextOnlyVideo(t *testing.T) {
+	err := validateGenerateRequest(&modelhubv2.GenerateRequest{
+		Model: models.DoubaoSeedance25,
+		Input: &modelhubv2.Input{Items: []*modelhubv2.InputItem{{
+			Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
+				Parts: []*modelhubv2.ContentPart{{Content: &modelhubv2.ContentPart_Text{Text: "a cat walks"}}},
+			}},
+		}}},
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Video{Video: &modelhubv2.VideoOutput{}}},
+	}, config.CapabilityVideo)
+	if err != nil {
+		t.Fatalf("T2V should pass service validation: %v", err)
+	}
+}
+
+func TestValidateGenerateRequestRejectsEmptyVideo(t *testing.T) {
+	err := validateGenerateRequest(&modelhubv2.GenerateRequest{
+		Model:  models.DoubaoSeedance25,
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Video{Video: &modelhubv2.VideoOutput{}}},
+	}, config.CapabilityVideo)
+	if err == nil {
+		t.Fatal("expected empty video request to fail")
+	}
+}

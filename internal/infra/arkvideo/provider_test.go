@@ -13,6 +13,26 @@ import (
 	"github.com/wgdl666/wgModelHub/models"
 )
 
+func testTextRequest(duration int32, aspect string) *modelhubv2.GenerateRequest {
+	out := &modelhubv2.VideoOutput{Resolution: "720p"}
+	if duration != 0 {
+		out.DurationSeconds = &duration
+	}
+	if aspect != "" {
+		out.AspectRatio = &aspect
+	}
+	return &modelhubv2.GenerateRequest{
+		Input: &modelhubv2.Input{Items: []*modelhubv2.InputItem{{
+			Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
+				Parts: []*modelhubv2.ContentPart{
+					{Content: &modelhubv2.ContentPart_Text{Text: "a cat walks on the street"}},
+				},
+			}},
+		}}},
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Video{Video: out}},
+	}
+}
+
 func testGenRequest(imageURL string, duration int32, aspect string) *modelhubv2.GenerateRequest {
 	out := &modelhubv2.VideoOutput{
 		Resolution:  "4k",
@@ -134,21 +154,57 @@ func TestSubmitRejectsVideoInput(t *testing.T) {
 	}
 }
 
-func TestSubmitRequiresFirstFrame(t *testing.T) {
+func TestSubmitTextToVideoPayload(t *testing.T) {
+	var createPayload map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("method %s", r.Method)
+		}
+		_ = json.NewDecoder(r.Body).Decode(&createPayload)
+		_, _ = w.Write([]byte(`{"id":"cgt-t2v"}`))
+	}))
+	defer server.Close()
+	p, err := New("ark_video", "sk-test", server.URL, 0.01, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.client = server.Client()
+	id, err := p.SubmitVideo(context.Background(), models.DoubaoSeedance25, testTextRequest(12, "9:16"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id != "cgt-t2v" {
+		t.Fatalf("id=%s", id)
+	}
+	if createPayload["model"] != models.DoubaoSeedance25 {
+		t.Fatalf("model=%v", createPayload["model"])
+	}
+	if createPayload["ratio"] != "9:16" {
+		t.Fatalf("ratio=%v, T2V must keep caller aspect", createPayload["ratio"])
+	}
+	if createPayload["duration"] != float64(12) {
+		t.Fatalf("duration=%v", createPayload["duration"])
+	}
+	content, _ := createPayload["content"].([]any)
+	if len(content) != 1 {
+		t.Fatalf("content=%v", createPayload["content"])
+	}
+	textBlock, _ := content[0].(map[string]any)
+	if textBlock["type"] != "text" || textBlock["text"] == "" {
+		t.Fatalf("text block=%v", textBlock)
+	}
+}
+
+func TestSubmitRequiresPromptText(t *testing.T) {
 	p, err := New("ark_video", "sk", "https://example.com", 1, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	req := &modelhubv2.GenerateRequest{
-		Input: &modelhubv2.Input{Items: []*modelhubv2.InputItem{{
-			Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
-				Parts: []*modelhubv2.ContentPart{{Content: &modelhubv2.ContentPart_Text{Text: "walk"}}},
-			}},
-		}}},
 		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Video{Video: &modelhubv2.VideoOutput{}}},
 	}
 	_, err = p.SubmitVideo(context.Background(), models.DoubaoSeedance25, req)
-	if err == nil || !strings.Contains(err.Error(), "first_frame") {
+	if err == nil || !strings.Contains(err.Error(), "prompt text") {
 		t.Fatalf("err=%v", err)
 	}
 }

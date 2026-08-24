@@ -104,7 +104,7 @@ type GeminiVideoProviderConfig struct {
 	PollInterval float64 `yaml:"poll_interval"`
 }
 
-// ArkVideoProviderConfig 承接方舟 contents/generations 视频任务；当前只绑 Seedance 2.5。
+// ArkVideoProviderConfig 承接方舟 contents/generations 视频任务；当前只绑 Seedance 2.5 文生/首帧。
 type ArkVideoProviderConfig struct {
 	APIKey       string  `yaml:"api_key"`
 	BaseURL      string  `yaml:"base_url"`

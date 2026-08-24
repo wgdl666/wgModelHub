@@ -265,12 +265,15 @@ func validateGenerateRequest(request *modelhubv2.GenerateRequest, capability str
 		return err
 	}
 	if capability == config.CapabilityVideo {
-		if provider.FirstVideoMedia(request.GetInput()) != nil {
-			if strings.TrimSpace(provider.JoinedText(request.GetInput())) == "" {
-				return provider.New(provider.ErrorInvalidArgument, "video edit prompt text is required in input")
-			}
-		} else if provider.FirstImageMedia(request.GetInput()) == nil {
-			return provider.New(provider.ErrorInvalidArgument, "video first_frame image is required in input")
+		hasVideo := provider.FirstVideoMedia(request.GetInput()) != nil
+		hasImage := provider.FirstImageMedia(request.GetInput()) != nil
+		hasText := strings.TrimSpace(provider.JoinedText(request.GetInput())) != ""
+		if hasVideo && !hasText {
+			return provider.New(provider.ErrorInvalidArgument, "video edit prompt text is required in input")
+		}
+		// 文生视频只有文本；不能在 service 层一律要求首帧，否则 Seedance 2.5 T2V 进不了 provider。
+		if !hasVideo && !hasImage && !hasText {
+			return provider.New(provider.ErrorInvalidArgument, "video prompt text or first_frame image is required in input")
 		}
 	}
 	return nil

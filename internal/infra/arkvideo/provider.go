@@ -73,21 +73,26 @@ func (p *Provider) GenerateVideo(ctx context.Context, model string, request *mod
 	return err
 }
 
-// SubmitVideo 只做 Seedance 2.5 第一刀：文本 + 首帧图 URI。视频参考/编辑/延长另开阶段。
+// SubmitVideo 按 Input 推断任务：无图=文生视频，有图=首帧图生视频。
+// 同一真实模型 ID，不另开 capability / 模式枚举。视频参考/编辑/延长另开阶段。
 func (p *Provider) SubmitVideo(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (string, error) {
 	if request == nil {
 		return "", provider.New(provider.ErrorInvalidArgument, "video request is required")
 	}
 	if provider.FirstVideoMedia(request.GetInput()) != nil {
-		return "", provider.New(provider.ErrorInvalidArgument, "ark seedance 2.5 first cut does not accept video input")
+		return "", provider.New(provider.ErrorInvalidArgument, "ark seedance 2.5 does not accept video input")
 	}
 	prompt := provider.JoinedText(request.GetInput())
 	if strings.TrimSpace(prompt) == "" {
 		return "", provider.New(provider.ErrorInvalidArgument, "video prompt text is required in input")
 	}
-	imageURL, err := p.resolveImageURL(provider.FirstImageMedia(request.GetInput()))
-	if err != nil {
-		return "", err
+	imageURL := ""
+	if image := provider.FirstImageMedia(request.GetInput()); image != nil {
+		resolved, err := p.resolveImageURL(image)
+		if err != nil {
+			return "", err
+		}
+		imageURL = resolved
 	}
 	videoOut := request.GetOutput().GetVideo()
 	resolution := ""
@@ -159,13 +164,23 @@ func (p *Provider) resolveImageURL(media *modelhubv2.Media) (string, error) {
 }
 
 func (p *Provider) createTask(ctx context.Context, model, imageURL, prompt, resolution string, duration int, aspectRatio string) (string, error) {
-	resolution, duration, aspectRatio = NormalizeParams(resolution, duration, aspectRatio)
+	imageURL = strings.TrimSpace(imageURL)
+	firstFrame := imageURL != ""
+	resolution, duration, aspectRatio = NormalizeParams(resolution, duration, aspectRatio, firstFrame)
+	content := []map[string]any{
+		{"type": "text", "text": strings.TrimSpace(prompt)},
+	}
+	// 有图才带 first_frame；纯文本不能塞空 image_url，否则方舟会按首帧任务校验 adaptive。
+	if firstFrame {
+		content = append(content, map[string]any{
+			"type":      "image_url",
+			"image_url": map[string]string{"url": imageURL},
+			"role":      "first_frame",
+		})
+	}
 	body, err := json.Marshal(map[string]any{
-		"model": strings.TrimSpace(model),
-		"content": []map[string]any{
-			{"type": "text", "text": strings.TrimSpace(prompt)},
-			{"type": "image_url", "image_url": map[string]string{"url": strings.TrimSpace(imageURL)}, "role": "first_frame"},
-		},
+		"model":          strings.TrimSpace(model),
+		"content":        content,
 		"resolution":     resolution,
 		"ratio":          aspectRatio,
 		"duration":       duration,
