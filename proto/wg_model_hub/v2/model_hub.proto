@@ -103,6 +103,8 @@ message Input {
   repeated Tool tools = 2;
   ToolChoice tool_choice = 3;
   string previous_response_id = 4;
+  // 文本 Generate 省略本字段时，ModelHub 默认写入 enabled=true；显式 enabled=false 可关闭。
+  // 是否实际命中仍以 usage.cached_tokens > 0 为准，请求开启不等于命中。
   CachingConfig caching = 5;
   // Gemini 显式 CachedContent 资源名；与 Ark previous_response_id / caching.enabled 互不替代。
   // 引用时 system/tools 已在 cache 内，调用方不应再按屏裁剪 tools，也不应重复下发 system。
@@ -157,6 +159,9 @@ message ToolChoice {
   string function_name = 2;
 }
 
+// CachingConfig 控制供应商侧 KV/前缀缓存开关（如 Ark caching.enabled）。
+// 仅文本 Generate 缺省时由 ModelHub 默认 enabled；显式 false 保留关闭语义。
+// 命中证据只看响应 usage.cached_tokens > 0，勿与 enabled 混读。
 message CachingConfig {
   bool enabled = 1;
   int64 expire_at_unix = 2;

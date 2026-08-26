@@ -144,6 +144,8 @@ func (p *Provider) buildRequest(model string, request *modelhubv2.GenerateReques
 	if input.GetPreviousResponseId() != "" {
 		arkReq.PreviousResponseId = ptr(input.GetPreviousResponseId())
 	}
+	// Ark Responses 需显式 Caching.enabled；ModelHub 文本路径会在 service 层把缺省填成 enabled=true。
+	// OpenAI/Gemini 的自动或显式资源缓存不在此发明私有参数。expire_at 只在真正启用时下发。
 	if caching := input.GetCaching(); caching != nil && caching.Enabled {
 		arkReq.Caching = &responses.ResponsesCaching{Type: responses.CacheType_enabled.Enum()}
 		if caching.ExpireAtUnix > 0 {

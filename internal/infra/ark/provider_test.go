@@ -128,3 +128,48 @@ func TestBuildInputKeepsMessageAndToolOutputOrder(t *testing.T) {
 		t.Fatalf("third should remain message, got %#v", list.ListValue[2])
 	}
 }
+
+func TestBuildRequestCachingExplicitSemantics(t *testing.T) {
+	p := &Provider{name: "ark"}
+	base := func(caching *modelhubv2.CachingConfig) *modelhubv2.GenerateRequest {
+		return &modelhubv2.GenerateRequest{
+			Input: &modelhubv2.Input{
+				Caching: caching,
+				Items: []*modelhubv2.InputItem{{
+					Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
+						Role:  modelhubv2.Role_ROLE_USER,
+						Parts: []*modelhubv2.ContentPart{{Content: &modelhubv2.ContentPart_Text{Text: "hi"}}},
+					}},
+				}},
+			},
+			Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{}}},
+		}
+	}
+
+	arkReq, err := p.buildRequest("model-x", base(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if arkReq.Caching != nil || arkReq.ExpireAt != nil {
+		t.Fatalf("provider must not invent caching when omitted: %#v", arkReq)
+	}
+
+	arkReq, err = p.buildRequest("model-x", base(&modelhubv2.CachingConfig{Enabled: true, ExpireAtUnix: 1700000000}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if arkReq.Caching == nil || arkReq.Caching.Type == nil || *arkReq.Caching.Type != responses.CacheType_enabled {
+		t.Fatalf("explicit enabled caching = %#v", arkReq.Caching)
+	}
+	if arkReq.ExpireAt == nil || *arkReq.ExpireAt != 1700000000 {
+		t.Fatalf("expire_at = %#v", arkReq.ExpireAt)
+	}
+
+	arkReq, err = p.buildRequest("model-x", base(&modelhubv2.CachingConfig{Enabled: false, ExpireAtUnix: 1700000000}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if arkReq.Caching != nil || arkReq.ExpireAt != nil {
+		t.Fatalf("explicit disabled must not enable caching: caching=%#v expire=%#v", arkReq.Caching, arkReq.ExpireAt)
+	}
+}

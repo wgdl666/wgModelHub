@@ -76,6 +76,9 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 		telemetry.RecordError(ctx, statusErr)
 		return statusErr
 	}
+	// 先记下调用方原始配置模式，再填缺省；否则 default_enabled 会被改写后的 enabled=true 掩盖。
+	cachingMode := textCachingMode(request.GetInput())
+	applyTextCachingDefault(request)
 	if request.GetOutput().GetStream() {
 		var sendErr error
 		var sequence uint32
@@ -102,6 +105,8 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 		if final == nil {
 			final = &modelhubv2.GenerateEvent{}
 		}
+		// 供应商 usage 先落 span，再 Send；客户端最终 Send 失败也不能丢掉已完成打点。
+		recordTextGenerateTelemetry(ctx, binding.model, binding.provider, cachingMode, final.GetUsage())
 		// 调用方自行累计增量；final 只携带 response_id/finish_reason/usage 等终态元数据。
 		return stream.Send(&modelhubv2.GenerateEvent{
 			Sequence:     sequence,
@@ -124,6 +129,7 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 	}
 	event.Sequence = 0
 	event.Final = true
+	recordTextGenerateTelemetry(ctx, binding.model, binding.provider, cachingMode, event.GetUsage())
 	return stream.Send(event)
 }
 
@@ -210,6 +216,8 @@ type binding struct {
 	set provider.Set
 	// model 是真实供应商模型 ID，必须全局唯一；完整清单见 models 包，调用方可直接引用。
 	model string
+	// provider 是配置里的实例名，写入 span 供按供应商对照缓存命中，不是业务别名。
+	provider string
 }
 
 // resolve 用真实模型 ID 找到唯一 provider，并校验该实例能力与 OutputSpec 一致；model 原样下发供应商。
@@ -235,7 +243,7 @@ func (s *Service) resolve(model, capability string) (binding, error) {
 	if !ok {
 		return binding{}, provider.Errorf(provider.ErrorConfiguration, "model %s references unknown provider %s", model, providerName)
 	}
-	return binding{set: providerSet, model: model}, nil
+	return binding{set: providerSet, model: model, provider: providerName}, nil
 }
 
 func capabilityOf(request *modelhubv2.GenerateRequest) (string, error) {
