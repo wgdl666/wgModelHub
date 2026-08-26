@@ -92,3 +92,21 @@ spec:
     - name: grpc
       port: 50053
       targetPort: grpc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wg-model-hub-external
+  namespace: default
+  annotations:
+    # 仅供同 VPC 的旧 Muse 宿主机稳定访问 ModelHub gRPC（50053）。
+    # TLS 终止与公网暴露均不在此入口；不得增加 DNS、Caddy、其它端口或额外机制。
+    service.beta.kubernetes.io/alibaba-cloud-loadbalancer-address-type: intranet
+spec:
+  type: LoadBalancer
+  selector:
+    app: wg-model-hub
+  ports:
+    - name: grpc
+      port: 50053
+      targetPort: grpc
