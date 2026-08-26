@@ -121,7 +121,7 @@ func findGenerateSpan(t *testing.T, recorder *tracetest.SpanRecorder) sdktrace.R
 func TestGenerateTextDefaultsCachingAndRecordsUsage(t *testing.T) {
 	recorder := installSpanRecorder(t)
 	text := &usageText{usage: &modelhubv2.Usage{InputTokens: 100, CachedTokens: 40}}
-	service := New(config.Config{
+	service := newTestService(config.Config{
 		Providers: map[string]config.ProviderConfig{
 			"ark": {Models: []string{"chat-model"}, Ark: &config.ArkProviderConfig{APIKey: "k"}},
 		},
@@ -162,7 +162,7 @@ func TestGenerateTextHonorsExplicitCachingSwitch(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			recorder := installSpanRecorder(t)
 			text := &usageText{usage: &modelhubv2.Usage{InputTokens: 10}}
-			service := New(config.Config{
+			service := newTestService(config.Config{
 				Providers: map[string]config.ProviderConfig{
 					"ark": {Models: []string{"chat-model"}, Ark: &config.ArkProviderConfig{APIKey: "k"}},
 				},
@@ -192,7 +192,7 @@ func TestGenerateTextStreamAndNonStreamUsageAttrsMatch(t *testing.T) {
 	readAttrs := func(stream bool) map[string]attribute.Value {
 		recorder := installSpanRecorder(t)
 		text := &usageText{usage: usage}
-		service := New(config.Config{
+		service := newTestService(config.Config{
 			Providers: map[string]config.ProviderConfig{
 				"ark": {Models: []string{"chat-model"}, Ark: &config.ArkProviderConfig{APIKey: "k"}},
 			},
@@ -216,7 +216,7 @@ func TestGenerateTextStreamAndNonStreamUsageAttrsMatch(t *testing.T) {
 func TestGenerateTextRecordsUsageEvenIfFinalSendFails(t *testing.T) {
 	recorder := installSpanRecorder(t)
 	text := &usageText{usage: &modelhubv2.Usage{InputTokens: 50, CachedTokens: 5}}
-	service := New(config.Config{
+	service := newTestService(config.Config{
 		Providers: map[string]config.ProviderConfig{
 			"ark": {Models: []string{"chat-model"}, Ark: &config.ArkProviderConfig{APIKey: "k"}},
 		},
@@ -233,7 +233,7 @@ func TestGenerateTextRecordsUsageEvenIfFinalSendFails(t *testing.T) {
 
 func TestGenerateImageDoesNotApplyTextCachingDefault(t *testing.T) {
 	image := &recordingImage{}
-	service := New(config.Config{
+	service := newTestService(config.Config{
 		Providers: map[string]config.ProviderConfig{
 			"openai": {Models: []string{"img-model"}, OpenAI: &config.OpenAIProviderConfig{APIKey: "k"}},
 		},

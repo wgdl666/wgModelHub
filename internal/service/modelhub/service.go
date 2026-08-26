@@ -14,17 +14,19 @@ import (
 
 type Service struct {
 	modelhubv2.UnimplementedModelHubServiceServer
-	// modelRoutes：真实模型 ID -> provider 实例名；启动时由 Config.ModelRoutes 确定（含 model_routes 显式选择）。
-	modelRoutes map[string]string
+	live        *config.LiveConfig
 	providers   map[string]provider.Set
 	providerCfg map[string]config.ProviderConfig
-	// tasks 仅服务 Submit/Get 视频长任务；前台 Generate 不经过此存储。
-	tasks taskstore.Store
+	tasks       taskstore.Store
 }
 
-func New(cfg config.Config, providers map[string]provider.Set, tasks taskstore.Store) *Service {
+func New(live *config.LiveConfig, providers map[string]provider.Set, tasks taskstore.Store) *Service {
+	cfg := config.Config{}
+	if live != nil {
+		cfg = live.Load()
+	}
 	return &Service{
-		modelRoutes: cfg.ModelRoutes(),
+		live:        live,
 		providers:   providers,
 		providerCfg: cfg.Providers,
 		tasks:       tasks,
@@ -222,7 +224,11 @@ type binding struct {
 
 // resolve 用真实模型 ID 找到唯一 provider，并校验该实例能力与 OutputSpec 一致；model 原样下发供应商。
 func (s *Service) resolve(model, capability string) (binding, error) {
-	providerName, ok := s.modelRoutes[model]
+	routes := map[string]string(nil)
+	if s.live != nil {
+		routes = s.live.Load().ModelRoutes()
+	}
+	providerName, ok := routes[model]
 	if !ok {
 		return binding{}, provider.Errorf(provider.ErrorInvalidArgument, "unknown model %s", model)
 	}

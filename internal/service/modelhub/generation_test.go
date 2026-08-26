@@ -172,7 +172,7 @@ func (r *generationStreamRecorder) Send(event *modelhubv2.GenerationTaskEvent) e
 }
 
 func videoService(video provider.VideoProvider, store taskstore.Store) *Service {
-	return New(config.Config{
+	return newTestService(config.Config{
 		Providers: map[string]config.ProviderConfig{
 			"ltx": {Models: []string{"ltx"}, LTX: &config.LTXProviderConfig{
 				BaseURL: "https://x", Duration: 1, FPS: 1, PollInterval: 1, MaxPollTime: 1,
@@ -204,7 +204,7 @@ func videoSubmitRequest(model, requestID string) *modelhubv2.SubmitGenerationReq
 }
 
 func TestSubmitGenerationRejectsNonVideo(t *testing.T) {
-	service := New(config.Config{
+	service := newTestService(config.Config{
 		Providers: map[string]config.ProviderConfig{
 			"ark": {Models: []string{"chat-model"}, Ark: &config.ArkProviderConfig{APIKey: "k"}},
 		},
@@ -251,7 +251,7 @@ func TestSubmitGenerationPersistsModelRouteSelectedProvider(t *testing.T) {
 		BaseURL: "https://x", Duration: 1, FPS: 1, PollInterval: 1, MaxPollTime: 1,
 	}
 	const modelID = "shared-video"
-	service := New(config.Config{
+	service := newTestService(config.Config{
 		Providers: map[string]config.ProviderConfig{
 			"video_primary": {Models: []string{modelID}, LTX: ltxCfg},
 			"video_backup":  {Models: []string{modelID}, LTX: ltxCfg},

@@ -15,7 +15,6 @@ import (
 	"github.com/nacos-group/nacos-sdk-go/v2/clients"
 	"github.com/nacos-group/nacos-sdk-go/v2/common/constant"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
-	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -118,8 +117,7 @@ type Config struct {
 		ListenAddress string `yaml:"listen_address"`
 	} `yaml:"server"`
 	Providers map[string]ProviderConfig `yaml:"providers"`
-	// ModelRouteOverrides：真实模型 ID -> 显式选中的 provider 实例名。
-	// 仅当多个 provider 声明同一模型时必须填写；改配置后重启生效，无自动 failover/热更新。
+	// ModelRouteOverrides：真实模型 ID -> 显式选中的 provider 实例名；provider 不变时可经 ListenConfig 热更新。
 	ModelRouteOverrides map[string]string `yaml:"model_routes"`
 	// Database 仅服务视频长任务跨 Pod 查询；启动不做 DDL，migration 需显式执行。
 	Database DatabaseConfig `yaml:"database"`
@@ -197,6 +195,8 @@ func newNacosClientConfig(namespaceID string) *constant.ClientConfig {
 
 type configGetter interface {
 	GetConfig(vo.ConfigParam) (string, error)
+	ListenConfig(vo.ConfigParam) error
+	CancelListenConfig(vo.ConfigParam) error
 }
 
 // NacosConfigLoader 只读取固定 Data ID，并在建立供应商客户端前完成严格校验。
@@ -222,32 +222,53 @@ func NewNacosConfigLoader(bootstrap Bootstrap) (*NacosConfigLoader, error) {
 	return &NacosConfigLoader{client: client, close: client.CloseClient}, nil
 }
 
-func (l *NacosConfigLoader) Load(ctx context.Context) (Config, error) {
+func (l *NacosConfigLoader) Load(ctx context.Context) (Config, string, error) {
 	if err := ctx.Err(); err != nil {
-		return Config{}, err
+		return Config{}, "", err
 	}
 	content, err := l.client.GetConfig(vo.ConfigParam{DataId: NacosDataID, Group: NacosGroup})
 	if err != nil {
-		return Config{}, fmt.Errorf("read Nacos config: %w", err)
+		return Config{}, "", fmt.Errorf("read Nacos config: %w", err)
 	}
-	decoder := yaml.NewDecoder(strings.NewReader(content))
-	decoder.KnownFields(true)
-	var cfg Config
-	if err := decoder.Decode(&cfg); err != nil {
-		return Config{}, fmt.Errorf("decode Nacos YAML: %w", err)
+	cfg, err := ParseAndValidateYAML(content)
+	if err != nil {
+		return Config{}, "", err
 	}
-	if err := decoder.Decode(&struct{}{}); err != io.EOF {
-		return Config{}, fmt.Errorf("Nacos YAML contains multiple documents")
+	return cfg, content, nil
+}
+
+// Listen 贯穿进程生命周期；断线恢复交给 SDK。
+func (l *NacosConfigLoader) Listen(onChange func(dataID, group, content string)) error {
+	if l == nil || l.client == nil {
+		return fmt.Errorf("Nacos config client is not initialized")
 	}
-	if err := cfg.Validate(); err != nil {
-		return Config{}, err
+	return l.client.ListenConfig(vo.ConfigParam{
+		DataId: NacosDataID,
+		Group:  NacosGroup,
+		OnChange: func(_, group, dataID, data string) {
+			if onChange != nil {
+				onChange(dataID, group, data)
+			}
+		},
+	})
+}
+
+// StopListen 取消当前 Data ID 的监听。
+func (l *NacosConfigLoader) StopListen() {
+	if l == nil || l.client == nil {
+		return
 	}
-	return cfg, nil
+	_ = l.client.CancelListenConfig(vo.ConfigParam{DataId: NacosDataID, Group: NacosGroup})
 }
 
 func (l *NacosConfigLoader) Close() {
-	if l != nil && l.close != nil {
+	if l == nil {
+		return
+	}
+	l.StopListen()
+	if l.close != nil {
 		l.close()
+		l.close = nil
 	}
 }
 

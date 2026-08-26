@@ -7,6 +7,7 @@ import (
 	"github.com/wgdl666/wgModelHub/config"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/provider"
+	"github.com/wgdl666/wgModelHub/internal/taskstore"
 	"github.com/wgdl666/wgModelHub/models"
 	"github.com/wgdl666/wgModelHub/protocol"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
@@ -14,6 +15,11 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
+
+// newTestService 为单测构造带 LiveConfig 的 Service，与生产 Listen 路径一致。
+func newTestService(cfg config.Config, providers map[string]provider.Set, tasks taskstore.Store) *Service {
+	return New(config.NewLiveConfig(cfg), providers, tasks)
+}
 
 type recordingText struct {
 	model   string
@@ -86,7 +92,7 @@ func textRequest(model, userText string) *modelhubv2.GenerateRequest {
 
 func TestServiceRoutesTextByRealModel(t *testing.T) {
 	text := &recordingText{}
-	service := New(config.Config{
+	service := newTestService(config.Config{
 		Providers: map[string]config.ProviderConfig{
 			"ark": {Models: []string{"chat-model"}, Ark: &config.ArkProviderConfig{APIKey: "k"}},
 		},
@@ -109,7 +115,7 @@ func TestServiceRoutesTextByRealModel(t *testing.T) {
 }
 
 func TestServiceRejectsCapabilityMismatch(t *testing.T) {
-	service := New(config.Config{
+	service := newTestService(config.Config{
 		Providers: map[string]config.ProviderConfig{
 			"ltx": {Models: []string{models.LTX}, LTX: &config.LTXProviderConfig{
 				BaseURL: "https://x", Duration: 1, FPS: 1, PollInterval: 1, MaxPollTime: 1,
@@ -136,7 +142,7 @@ func TestServiceRejectsCapabilityMismatch(t *testing.T) {
 
 func TestServiceRoutesImageByRealModel(t *testing.T) {
 	image := &recordingImage{}
-	service := New(config.Config{
+	service := newTestService(config.Config{
 		Providers: map[string]config.ProviderConfig{
 			"openai": {Models: []string{models.GPTImage2}, OpenAI: &config.OpenAIProviderConfig{APIKey: "k"}},
 		},
@@ -156,7 +162,7 @@ func TestServiceRoutesImageByRealModel(t *testing.T) {
 }
 
 func TestGenerateStreamSendsExactlyOneMetadataFinal(t *testing.T) {
-	service := New(config.Config{
+	service := newTestService(config.Config{
 		Providers: map[string]config.ProviderConfig{
 			"gemini": {Models: []string{"chat-model"}, Gemini: &config.GeminiProviderConfig{APIKey: "k"}},
 		},
@@ -180,7 +186,7 @@ func TestGenerateStreamSendsExactlyOneMetadataFinal(t *testing.T) {
 }
 
 func TestGenerateImageRejectsOversizedInlineMedia(t *testing.T) {
-	service := New(config.Config{
+	service := newTestService(config.Config{
 		Providers: map[string]config.ProviderConfig{
 			"gemini": {Models: []string{"artwork-model"}, Gemini: &config.GeminiProviderConfig{APIKey: "k"}},
 		},
@@ -208,7 +214,7 @@ func TestGenerateImageRejectsOversizedInlineMedia(t *testing.T) {
 }
 
 func TestGenerateRejectsMissingOutputKind(t *testing.T) {
-	service := New(config.Config{}, nil, nil)
+	service := newTestService(config.Config{}, nil, nil)
 	stream := &generateRecorder{ctx: context.Background()}
 	err := service.Generate(&modelhubv2.GenerateRequest{Model: "chat-model"}, stream)
 	if status.Code(err) != codes.InvalidArgument {
@@ -236,7 +242,7 @@ func TestValidateMediaRejectsInlineDataWithoutMIME(t *testing.T) {
 
 func TestGenerateImageAcceptsURIWithoutMIMEAtService(t *testing.T) {
 	image := &recordingImage{}
-	service := New(config.Config{
+	service := newTestService(config.Config{
 		Providers: map[string]config.ProviderConfig{
 			"openai": {Models: []string{models.GPTImage2}, OpenAI: &config.OpenAIProviderConfig{APIKey: "k"}},
 		},

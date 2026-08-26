@@ -37,7 +37,7 @@ func main() {
 	}
 	defer configLoader.Close()
 
-	runtimeConfig, err := configLoader.Load(ctx)
+	runtimeConfig, _, err := configLoader.Load(ctx)
 	if err != nil {
 		fatal("runtime_config_load_failed", err)
 	}
@@ -45,7 +45,13 @@ func main() {
 		runtimeConfig.Server.ListenAddress = ":50053"
 	}
 
-	// Logfire 凭据随业务配置同文进 Nacos；必须在 Load 之后再装配，避免再依赖 wg-hub-env。
+	live := config.NewLiveConfig(runtimeConfig)
+	if err := configLoader.Listen(func(_, _, data string) {
+		live.ApplyYAML(data)
+	}); err != nil {
+		fatal("nacos_listen_failed", err)
+	}
+
 	telemetryRuntime, err := telemetry.Setup(ctx, runtimeConfig.Logfire)
 	if err != nil {
 		fatal("telemetry_setup_failed", err)
@@ -61,7 +67,6 @@ func main() {
 		fatal("provider_factory_failed", err)
 	}
 
-	// Ent client 仅做运行时 CRUD；表结构仍依赖显式 migrations，禁止启动 DDL。
 	entClient, err := taskstore.Open(ctx, runtimeConfig.Database.DSN)
 	if err != nil {
 		fatal("database_connect_failed", err)
@@ -73,7 +78,7 @@ func main() {
 		grpc.MaxSendMsgSize(protocol.MaxRPCMessageBytes),
 		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 	)
-	modelhubv2.RegisterModelHubServiceServer(grpcServer, modelhub.New(runtimeConfig, providers, taskstore.NewPostgres(entClient)))
+	modelhubv2.RegisterModelHubServiceServer(grpcServer, modelhub.New(live, providers, taskstore.NewPostgres(entClient)))
 
 	healthServer := health.NewServer()
 	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
@@ -95,7 +100,6 @@ func main() {
 			fatal("grpc_server_failed", err)
 		}
 	case <-ctx.Done():
-		// ACK 的 180 秒终止宽限只有在进程优雅停服时才有效；先摘健康状态，再等待在途 LTX 流结束。
 		healthServer.Shutdown()
 		grpcServer.GracefulStop()
 		if err := <-serveErr; err != nil && !errors.Is(err, grpc.ErrServerStopped) {
