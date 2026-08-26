@@ -9,12 +9,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
+	"github.com/wgdl666/wgModelHub/models"
 	"github.com/wgdl666/wgModelHub/protocol"
 )
 
@@ -184,6 +186,10 @@ func (p *Provider) buildRequestBody(model string, request *modelhubv2.GenerateRe
 		}
 	}
 	body["messages"] = messages
+	// DashScope qwen3.5-flash 显式上下文缓存：仅在受信 hostname、显式 enabled 且存在带文本的 system 消息时标记稳定前缀。
+	if p.dashScopeExplicitCacheEligible(model, input) {
+		applyDashScopeSystemCacheControl(messages)
+	}
 	if text != nil && text.MaxOutputTokens != nil {
 		body["max_tokens"] = *text.MaxOutputTokens
 	}
@@ -260,6 +266,61 @@ func (p *Provider) buildRequestBody(model string, request *modelhubv2.GenerateRe
 		body["enable_thinking"] = text.Thinking == modelhubv2.ThinkingMode_THINKING_MODE_ENABLED
 	}
 	return body
+}
+
+// dashScopeExplicitCacheEligible 判定是否应向 DashScope 下发显式 cache_control。
+// 仅 qwen3.5-flash 支持该协议；其它 Qwen 与 OminiLink/OpenAI 默认实例不得携带该字段。
+func (p *Provider) dashScopeExplicitCacheEligible(model string, input *modelhubv2.Input) bool {
+	if model != models.Qwen35Flash {
+		return false
+	}
+	if input == nil || input.Caching == nil || !input.Caching.Enabled {
+		return false
+	}
+	u, err := url.Parse(p.baseURL)
+	if err != nil || u.Hostname() != "dashscope.aliyuncs.com" {
+		return false
+	}
+	return true
+}
+
+// applyDashScopeSystemCacheControl 把首条含文本的 system 消息等价转为 content array，并在最后一个 text block 上附加 ephemeral 标记。
+// 无 system 文本时不改 user/assistant/tool 消息，避免把非稳定前缀误标为缓存块。
+func applyDashScopeSystemCacheControl(messages []map[string]any) {
+	for _, msg := range messages {
+		if msg["role"] != "system" {
+			continue
+		}
+		switch content := msg["content"].(type) {
+		case string:
+			if strings.TrimSpace(content) == "" {
+				return
+			}
+			msg["content"] = []map[string]any{{
+				"type":          "text",
+				"text":          content,
+				"cache_control": map[string]any{"type": "ephemeral"},
+			}}
+			return
+		case []map[string]any:
+			lastText := -1
+			for i, part := range content {
+				if part["type"] != "text" {
+					continue
+				}
+				if text, _ := part["text"].(string); strings.TrimSpace(text) != "" {
+					lastText = i
+				}
+			}
+			if lastText < 0 {
+				return
+			}
+			content[lastText]["cache_control"] = map[string]any{"type": "ephemeral"}
+			return
+		default:
+			return
+		}
+	}
 }
 
 func convertMessage(msg *modelhubv2.Message) map[string]any {

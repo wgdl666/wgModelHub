@@ -1,11 +1,127 @@
 package openai
 
 import (
+	"strings"
 	"testing"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/models"
 )
+
+const dashScopeBaseURL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+func dashScopeProvider() *Provider {
+	return &Provider{baseURL: dashScopeBaseURL}
+}
+
+func systemUserRequest(systemText, userText string, caching *modelhubv2.CachingConfig) *modelhubv2.GenerateRequest {
+	return &modelhubv2.GenerateRequest{
+		Input: &modelhubv2.Input{
+			Caching: caching,
+			Items: []*modelhubv2.InputItem{
+				{Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
+					Role:  modelhubv2.Role_ROLE_SYSTEM,
+					Parts: []*modelhubv2.ContentPart{{Content: &modelhubv2.ContentPart_Text{Text: systemText}}},
+				}}},
+				{Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
+					Role:  modelhubv2.Role_ROLE_USER,
+					Parts: []*modelhubv2.ContentPart{{Content: &modelhubv2.ContentPart_Text{Text: userText}}},
+				}}},
+			},
+		},
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{
+			Thinking: modelhubv2.ThinkingMode_THINKING_MODE_DISABLED,
+		}}},
+	}
+}
+
+func systemCacheControl(t *testing.T, body map[string]any) (map[string]any, bool) {
+	t.Helper()
+	messages, ok := body["messages"].([]map[string]any)
+	if !ok || len(messages) == 0 {
+		t.Fatalf("messages = %#v", body["messages"])
+	}
+	if messages[0]["role"] != "system" {
+		t.Fatalf("first message = %#v", messages[0])
+	}
+	parts, ok := messages[0]["content"].([]map[string]any)
+	if !ok || len(parts) == 0 {
+		t.Fatalf("system content = %#v", messages[0]["content"])
+	}
+	last := parts[len(parts)-1]
+	cc, ok := last["cache_control"].(map[string]any)
+	return cc, ok
+}
+
+func TestBuildRequestBodyDashScopeQwen35FlashSystemCacheControl(t *testing.T) {
+	systemText := strings.Repeat("缓存前缀。", 400) // 稳定 system 文本，语义上等价于 >1024 token 前缀。
+	p := dashScopeProvider()
+	body := p.buildRequestBody(models.Qwen35Flash, systemUserRequest(systemText, "hi", &modelhubv2.CachingConfig{Enabled: true}), false)
+
+	cc, ok := systemCacheControl(t, body)
+	if !ok || cc["type"] != "ephemeral" {
+		t.Fatalf("cache_control = %#v", cc)
+	}
+	messages := body["messages"].([]map[string]any)
+	parts := messages[0]["content"].([]map[string]any)
+	if parts[0]["text"] != systemText {
+		t.Fatalf("system text changed: %q", parts[0]["text"])
+	}
+	if messages[1]["content"] != "hi" {
+		t.Fatalf("user message must stay plain string: %#v", messages[1])
+	}
+}
+
+func TestBuildRequestBodyDashScopeQwen35FlashCachingDisabled(t *testing.T) {
+	p := dashScopeProvider()
+	body := p.buildRequestBody(models.Qwen35Flash, systemUserRequest("sys", "hi", &modelhubv2.CachingConfig{Enabled: false}), false)
+	messages := body["messages"].([]map[string]any)
+	if messages[0]["content"] != "sys" {
+		t.Fatalf("explicit disabled must keep plain system string: %#v", messages[0]["content"])
+	}
+}
+
+func TestBuildRequestBodyNonDashScopeNoCacheControl(t *testing.T) {
+	p := &Provider{baseURL: "https://api.ominilink.ai/v1"}
+	body := p.buildRequestBody(models.Qwen35Flash, systemUserRequest("sys", "hi", &modelhubv2.CachingConfig{Enabled: true}), false)
+	messages := body["messages"].([]map[string]any)
+	if messages[0]["content"] != "sys" {
+		t.Fatalf("non-DashScope must not rewrite system content: %#v", messages[0]["content"])
+	}
+}
+
+func TestBuildRequestBodyDashScopeOtherQwenNoCacheControl(t *testing.T) {
+	p := dashScopeProvider()
+	for _, model := range []string{models.Qwen37Flash, models.QwenFlash, models.Qwen3VLPlus} {
+		t.Run(model, func(t *testing.T) {
+			body := p.buildRequestBody(model, systemUserRequest("sys", "hi", &modelhubv2.CachingConfig{Enabled: true}), false)
+			messages := body["messages"].([]map[string]any)
+			if messages[0]["content"] != "sys" {
+				t.Fatalf("model %s must not attach cache_control: %#v", model, messages[0]["content"])
+			}
+		})
+	}
+}
+
+func TestBuildRequestBodyDashScopeNoSystemNoCacheControl(t *testing.T) {
+	p := dashScopeProvider()
+	body := p.buildRequestBody(models.Qwen35Flash, &modelhubv2.GenerateRequest{
+		Input: &modelhubv2.Input{
+			Caching: &modelhubv2.CachingConfig{Enabled: true},
+			Items: []*modelhubv2.InputItem{{
+				Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
+					Role:  modelhubv2.Role_ROLE_USER,
+					Parts: []*modelhubv2.ContentPart{{Content: &modelhubv2.ContentPart_Text{Text: "only user"}}},
+				}},
+			}},
+		},
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{}}},
+	}, false)
+	messages := body["messages"].([]map[string]any)
+	if messages[0]["content"] != "only user" {
+		t.Fatalf("user-only request must not be marked: %#v", messages[0])
+	}
+}
 
 func TestBuildRequestBodyKeepsMessageAndToolOutputOrder(t *testing.T) {
 	p := &Provider{}
