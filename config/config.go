@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -117,6 +118,9 @@ type Config struct {
 		ListenAddress string `yaml:"listen_address"`
 	} `yaml:"server"`
 	Providers map[string]ProviderConfig `yaml:"providers"`
+	// ModelRouteOverrides：真实模型 ID -> 显式选中的 provider 实例名。
+	// 仅当多个 provider 声明同一模型时必须填写；改配置后重启生效，无自动 failover/热更新。
+	ModelRouteOverrides map[string]string `yaml:"model_routes"`
 	// Database 仅服务视频长任务跨 Pod 查询；启动不做 DDL，migration 需显式执行。
 	Database DatabaseConfig `yaml:"database"`
 	// Logfire 与 Hub 等同项目；token 写在本服务 Nacos，禁止再挂 wg-hub-env。
@@ -261,8 +265,8 @@ func (c Config) Validate() error {
 		return fmt.Errorf("providers are required")
 	}
 
-	// 真实模型 ID 全局唯一：启动时建 model -> provider 路由，重复或空模型直接失败。
-	seenModels := make(map[string]string)
+	// 先校验每个实例，再按真实模型 ID 汇总声明方；单声明可隐式路由，多声明必须靠 model_routes 显式选定。
+	declaredBy := make(map[string][]string)
 	for name, provider := range c.Providers {
 		if err := validateProvider(name, provider); err != nil {
 			return err
@@ -270,30 +274,87 @@ func (c Config) Validate() error {
 		if len(provider.Models) == 0 {
 			return fmt.Errorf("provider %s models are required", name)
 		}
+		seenInProvider := make(map[string]struct{})
 		for _, model := range provider.Models {
 			model = strings.TrimSpace(model)
 			if model == "" {
 				return fmt.Errorf("provider %s contains an empty model id", name)
 			}
-			if other, ok := seenModels[model]; ok {
-				return fmt.Errorf("model %s is bound to both provider %s and %s", model, other, name)
+			if _, dup := seenInProvider[model]; dup {
+				return fmt.Errorf("provider %s declares model %s more than once", name, model)
 			}
-			seenModels[model] = name
+			seenInProvider[model] = struct{}{}
+			declaredBy[model] = append(declaredBy[model], name)
+		}
+	}
+
+	explicit := make(map[string]string, len(c.ModelRouteOverrides))
+	for model, providerName := range c.ModelRouteOverrides {
+		model = strings.TrimSpace(model)
+		providerName = strings.TrimSpace(providerName)
+		if model == "" {
+			return fmt.Errorf("model_routes contains an empty model id")
+		}
+		if providerName == "" {
+			return fmt.Errorf("model_routes[%s] provider is required", model)
+		}
+		providers, ok := declaredBy[model]
+		if !ok {
+			return fmt.Errorf("model_routes[%s] is not declared by any provider", model)
+		}
+		if _, exists := c.Providers[providerName]; !exists {
+			return fmt.Errorf("model_routes[%s] references unknown provider %s", model, providerName)
+		}
+		found := false
+		for _, declared := range providers {
+			if declared == providerName {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("model_routes[%s] provider %s does not declare that model", model, providerName)
+		}
+		explicit[model] = providerName
+	}
+
+	for model, providers := range declaredBy {
+		if len(providers) == 1 {
+			continue
+		}
+		if _, ok := explicit[model]; !ok {
+			sorted := append([]string(nil), providers...)
+			sort.Strings(sorted)
+			return fmt.Errorf("model %s is declared by multiple providers %s; set model_routes[%s]", model, strings.Join(sorted, ", "), model)
 		}
 	}
 	return nil
 }
 
-// ModelRoutes 返回真实模型 ID -> provider 实例名；Validate 已保证唯一。
+// ModelRoutes 返回真实模型 ID -> provider 实例名；单声明隐式选定，多声明取 model_routes。
 func (c Config) ModelRoutes() map[string]string {
-	routes := make(map[string]string)
+	overrides := make(map[string]string, len(c.ModelRouteOverrides))
+	for model, providerName := range c.ModelRouteOverrides {
+		overrides[strings.TrimSpace(model)] = strings.TrimSpace(providerName)
+	}
+	declaredBy := make(map[string][]string)
 	for name, provider := range c.Providers {
 		for _, model := range provider.Models {
 			model = strings.TrimSpace(model)
 			if model == "" {
 				continue
 			}
-			routes[model] = name
+			declaredBy[model] = append(declaredBy[model], name)
+		}
+	}
+	routes := make(map[string]string, len(declaredBy))
+	for model, providers := range declaredBy {
+		if selected, ok := overrides[model]; ok && selected != "" {
+			routes[model] = selected
+			continue
+		}
+		if len(providers) == 1 {
+			routes[model] = providers[0]
 		}
 	}
 	return routes

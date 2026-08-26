@@ -48,14 +48,73 @@ func TestValidateAcceptsUniqueModels(t *testing.T) {
 	}
 }
 
-func TestValidateRejectsDuplicateModels(t *testing.T) {
+func TestValidateRejectsDuplicateModelsWithoutRoute(t *testing.T) {
 	cfg := validConfig()
 	cfg.Providers["other"] = ProviderConfig{
 		Models: []string{models.Gemini25Flash},
 		OpenAI: &OpenAIProviderConfig{APIKey: "key"},
 	}
-	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), models.Gemini25Flash) {
-		t.Fatalf("expected duplicate model error, got %v", err)
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "model_routes") {
+		t.Fatalf("expected model_routes required error, got %v", err)
+	}
+}
+
+func TestValidateAcceptsDuplicateModelsWithExplicitRoute(t *testing.T) {
+	cfg := validConfig()
+	cfg.Providers["aws_gemini"] = ProviderConfig{
+		Models: []string{models.Gemini25FlashImage},
+		Gemini: &GeminiProviderConfig{APIKey: "aws-key"},
+	}
+	cfg.ModelRouteOverrides = map[string]string{
+		models.Gemini25FlashImage: "aws_gemini",
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	routes := cfg.ModelRoutes()
+	if routes[models.Gemini25FlashImage] != "aws_gemini" {
+		t.Fatalf("expected aws_gemini route, got %#v", routes)
+	}
+	if routes[models.Gemini25Flash] != "gemini" {
+		t.Fatalf("single-provider model should keep implicit route, got %#v", routes)
+	}
+}
+
+func TestValidateRejectsUnknownRouteProvider(t *testing.T) {
+	cfg := validConfig()
+	cfg.Providers["aws_gemini"] = ProviderConfig{
+		Models: []string{models.Gemini25FlashImage},
+		Gemini: &GeminiProviderConfig{APIKey: "aws-key"},
+	}
+	cfg.ModelRouteOverrides = map[string]string{
+		models.Gemini25FlashImage: "missing",
+	}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "unknown provider") {
+		t.Fatalf("expected unknown provider error, got %v", err)
+	}
+}
+
+func TestValidateRejectsRouteProviderMissingModel(t *testing.T) {
+	cfg := validConfig()
+	cfg.Providers["aws_gemini"] = ProviderConfig{
+		Models: []string{models.Gemini25FlashImage},
+		Gemini: &GeminiProviderConfig{APIKey: "aws-key"},
+	}
+	cfg.ModelRouteOverrides = map[string]string{
+		models.Gemini25FlashImage: "ark",
+	}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "does not declare") {
+		t.Fatalf("expected undeclared model route error, got %v", err)
+	}
+}
+
+func TestValidateRejectsRouteForUndeclaredModel(t *testing.T) {
+	cfg := validConfig()
+	cfg.ModelRouteOverrides = map[string]string{
+		models.Gemini31FlashImage: "gemini",
+	}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "not declared by any provider") {
+		t.Fatalf("expected undeclared model error, got %v", err)
 	}
 }
 

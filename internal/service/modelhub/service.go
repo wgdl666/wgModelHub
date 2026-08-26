@@ -14,7 +14,7 @@ import (
 
 type Service struct {
 	modelhubv2.UnimplementedModelHubServiceServer
-	// modelRoutes：真实模型 ID -> provider 实例名；启动时由配置唯一确定。
+	// modelRoutes：真实模型 ID -> provider 实例名；启动时由 Config.ModelRoutes 确定（含 model_routes 显式选择）。
 	modelRoutes map[string]string
 	providers   map[string]provider.Set
 	providerCfg map[string]config.ProviderConfig

@@ -17,17 +17,33 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 		Providers map[string]struct {
 			Models []string `yaml:"models"`
 		} `yaml:"providers"`
+		ModelRoutes map[string]string `yaml:"model_routes"`
 	}
 	if err := yaml.Unmarshal(raw, &parsed); err != nil {
 		t.Fatal(err)
 	}
-	fromYAML := map[string]string{}
+	// 允许双渠道声明同一真实模型，但必须有 model_routes 显式选定，且目标实例确实声明了该模型。
+	declaredBy := map[string]map[string]struct{}{}
+	fromYAML := map[string]struct{}{}
 	for name, provider := range parsed.Providers {
 		for _, model := range provider.Models {
-			if other, ok := fromYAML[model]; ok {
-				t.Fatalf("example yaml binds %s to both %s and %s", model, other, name)
+			fromYAML[model] = struct{}{}
+			if declaredBy[model] == nil {
+				declaredBy[model] = map[string]struct{}{}
 			}
-			fromYAML[model] = name
+			declaredBy[model][name] = struct{}{}
+		}
+	}
+	for model, providers := range declaredBy {
+		if len(providers) == 1 {
+			continue
+		}
+		selected, ok := parsed.ModelRoutes[model]
+		if !ok {
+			t.Fatalf("example yaml multi-binds %s without model_routes", model)
+		}
+		if _, ok := providers[selected]; !ok {
+			t.Fatalf("example model_routes[%s]=%s is not among declaring providers", model, selected)
 		}
 	}
 	known := map[string]struct{}{}

@@ -87,7 +87,8 @@ func (s *Service) SubmitGeneration(ctx context.Context, req *modelhubv2.SubmitGe
 		telemetry.RecordError(ctx, statusErr)
 		return nil, statusErr
 	}
-	providerName := s.modelRoutes[generateReq.GetModel()]
+	// 落库 provider 必须取 resolve 已选定实例；视频任务跨 Pod 查询只认当时写入名，不受重启后 model_routes 改写。
+	providerName := bound.provider
 
 	requestHash, err := hashGenerateRequest(generateReq)
 	if err != nil {

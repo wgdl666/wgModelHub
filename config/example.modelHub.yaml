@@ -5,7 +5,7 @@ server:
 database:
   dsn: "postgres://modelhub:modelhub@127.0.0.1:5432/modelhub?sslmode=disable"
 
-# 每个 provider 实例声明其承载的真实模型 ID；同一模型 ID 只能绑定一个实例。
+# 每个 provider 实例声明其承载的真实模型 ID；同一模型可被多个实例声明，但必须由顶层 model_routes 显式选定当前走哪一个。
 # 字面量清单见 models 包，调用方引用 github.com/wgdl666/wgModelHub/models，禁止在这里发明 alias。
 providers:
   gemini_main:
@@ -55,16 +55,24 @@ providers:
     openai:
       api_key: "${DASHSCOPE_API_KEY}"
       base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
-  # OminiLink 生图使用 Gemini generateContent 协议，不是 OpenAI chat/completions。
-  # 三个真实图片模型共用同一 OminiLink Gemini 凭据；每个 ID 全局只绑定本实例。
-  ominilink_image:
+  # 当前生图主渠道：api.aig-ai.com 上的 Gemini generateContent（非 OpenAI Images）。
+  # gemini-3-pro-image 仅绑此实例；两个 flash-image 与 aws_gemini 双声明，由 model_routes 手动切换。
+  aig_gemini_image:
     models:
       - gemini-3-pro-image
       - gemini-2.5-flash-image
       - gemini-3.1-flash-image
     gemini:
-      api_key: "${OMINILINK_IMAGE_API_KEY}"
-      base_url: https://api.ominilink.ai
+      api_key: "${AIG_GEMINI_IMAGE_API_KEY}"
+      base_url: https://api.aig-ai.com
+  # AWS ECS workflow 备用渠道：仍用现有 gemini provider，留空 base_url 直连 Google 官方 Gemini API；不是 Bedrock。
+  aws_gemini:
+    models:
+      - gemini-2.5-flash-image
+      - gemini-3.1-flash-image
+    gemini:
+      api_key: "${AWS_GEMINI_API_KEY}"
+      # base_url 留空：google.golang.org/genai BackendGeminiAPI 默认官方 endpoint。
   # gpt-image-2 必须走 OpenAI Images API（无参考图 generations、有参考图 edits），不能并入 Gemini generateContent 实例。
   ominilink_gpt_image:
     models: [gpt-image-2]
@@ -135,3 +143,9 @@ providers:
       base_url: https://generativelanguage.googleapis.com/v1beta
       auth_header: x-goog-api-key
       poll_interval: 5
+
+# 多 provider 声明同一真实模型时必须显式选定；切换渠道只改这里并重启，无自动 failover。
+# 切到 AWS workflow 备用渠道（底层直连 Google 官方 Gemini）时改为 aws_gemini。
+model_routes:
+  gemini-2.5-flash-image: aig_gemini_image
+  gemini-3.1-flash-image: aig_gemini_image

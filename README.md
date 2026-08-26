@@ -20,6 +20,7 @@ system 指令、用户任务、对话历史、媒体与 tool 回执一律按序�
 capability 由 `OutputSpec` oneof（text / image / video）决定；供应商地址与密钥
 不会进入 RPC。
 
-配置中每个 provider 实例声明 `models: [...]`；启动时建立「真实模型 ID → 唯一
-provider」路由，空模型或重复模型 ID 直接配置错误。调用方应引用
+配置中每个 provider 实例声明 `models: [...]`；启动时建立「真实模型 ID →
+provider」路由。同一模型仅被一个实例声明时可隐式选定；被多个实例声明时必须在
+`model_routes` 显式选定，改配置后重启生效。调用方应引用
 `github.com/wgdl666/wgModelHub/models` 常量，例如 `models.GPTImage2`。

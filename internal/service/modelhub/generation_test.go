@@ -241,6 +241,44 @@ func TestSubmitGenerationIdempotentSameHash(t *testing.T) {
 	}
 }
 
+// TestSubmitGenerationPersistsModelRouteSelectedProvider：多 provider 声明同一视频模型时，
+// 落库 Provider 必须是 model_routes 显式选定实例，不能落成 map 遍历到的第一个声明方。
+func TestSubmitGenerationPersistsModelRouteSelectedProvider(t *testing.T) {
+	primary := &fakeVideo{}
+	backup := &fakeVideo{}
+	store := newMemoryStore()
+	ltxCfg := &config.LTXProviderConfig{
+		BaseURL: "https://x", Duration: 1, FPS: 1, PollInterval: 1, MaxPollTime: 1,
+	}
+	const modelID = "shared-video"
+	service := New(config.Config{
+		Providers: map[string]config.ProviderConfig{
+			"video_primary": {Models: []string{modelID}, LTX: ltxCfg},
+			"video_backup":  {Models: []string{modelID}, LTX: ltxCfg},
+		},
+		ModelRouteOverrides: map[string]string{modelID: "video_backup"},
+	}, map[string]provider.Set{
+		"video_primary": {Video: primary},
+		"video_backup":  {Video: backup},
+	}, store)
+
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(protocol.CallerMetadataKey, "wg-hub"))
+	task, err := service.SubmitGeneration(ctx, videoSubmitRequest(modelID, "req-route"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := store.GetByTaskID(ctx, task.GetTaskId())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Provider != "video_backup" {
+		t.Fatalf("Provider=%q want video_backup (model_routes selection)", stored.Provider)
+	}
+	if primary.submitCount != 0 || backup.submitCount != 1 {
+		t.Fatalf("primary.submit=%d backup.submit=%d", primary.submitCount, backup.submitCount)
+	}
+}
+
 func TestSubmitGenerationConflictDifferentHash(t *testing.T) {
 	video := &fakeVideo{job: provider.VideoJob{State: provider.VideoJobRunning, PollAfterMs: 1000}}
 	service := videoService(video, newMemoryStore())
