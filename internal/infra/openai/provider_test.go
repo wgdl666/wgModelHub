@@ -53,74 +53,76 @@ func systemCacheControl(t *testing.T, body map[string]any) (map[string]any, bool
 	return cc, ok
 }
 
-func TestBuildRequestBodyDashScopeQwen35FlashSystemCacheControl(t *testing.T) {
+func TestBuildRequestBodyDashScopeExplicitCacheControl(t *testing.T) {
 	systemText := strings.Repeat("缓存前缀。", 400) // 稳定 system 文本，语义上等价于 >1024 token 前缀。
 	p := dashScopeProvider()
-	body := p.buildRequestBody(models.Qwen35Flash, systemUserRequest(systemText, "hi", &modelhubv2.CachingConfig{Enabled: true}), false)
+	caching := &modelhubv2.CachingConfig{Enabled: true}
 
-	cc, ok := systemCacheControl(t, body)
-	if !ok || cc["type"] != "ephemeral" {
-		t.Fatalf("cache_control = %#v", cc)
-	}
-	messages := body["messages"].([]map[string]any)
-	parts := messages[0]["content"].([]map[string]any)
-	if parts[0]["text"] != systemText {
-		t.Fatalf("system text changed: %q", parts[0]["text"])
-	}
-	if messages[1]["content"] != "hi" {
-		t.Fatalf("user message must stay plain string: %#v", messages[1])
-	}
-}
-
-func TestBuildRequestBodyDashScopeQwen35FlashCachingDisabled(t *testing.T) {
-	p := dashScopeProvider()
-	body := p.buildRequestBody(models.Qwen35Flash, systemUserRequest("sys", "hi", &modelhubv2.CachingConfig{Enabled: false}), false)
-	messages := body["messages"].([]map[string]any)
-	if messages[0]["content"] != "sys" {
-		t.Fatalf("explicit disabled must keep plain system string: %#v", messages[0]["content"])
-	}
-}
-
-func TestBuildRequestBodyNonDashScopeNoCacheControl(t *testing.T) {
-	p := &Provider{baseURL: "https://api.ominilink.ai/v1"}
-	body := p.buildRequestBody(models.Qwen35Flash, systemUserRequest("sys", "hi", &modelhubv2.CachingConfig{Enabled: true}), false)
-	messages := body["messages"].([]map[string]any)
-	if messages[0]["content"] != "sys" {
-		t.Fatalf("non-DashScope must not rewrite system content: %#v", messages[0]["content"])
-	}
-}
-
-func TestBuildRequestBodyDashScopeOtherQwenNoCacheControl(t *testing.T) {
-	p := dashScopeProvider()
-	for _, model := range []string{models.Qwen37Flash, models.QwenFlash, models.Qwen3VLPlus} {
-		t.Run(model, func(t *testing.T) {
-			body := p.buildRequestBody(model, systemUserRequest("sys", "hi", &modelhubv2.CachingConfig{Enabled: true}), false)
+	for _, model := range []string{models.QwenFlash, models.Qwen37Flash, models.Qwen35Flash, models.Qwen3VLPlus} {
+		t.Run(model+"_attaches_ephemeral", func(t *testing.T) {
+			body := p.buildRequestBody(model, systemUserRequest(systemText, "hi", caching), false)
+			cc, ok := systemCacheControl(t, body)
+			if !ok || cc["type"] != "ephemeral" {
+				t.Fatalf("cache_control = %#v", cc)
+			}
 			messages := body["messages"].([]map[string]any)
-			if messages[0]["content"] != "sys" {
-				t.Fatalf("model %s must not attach cache_control: %#v", model, messages[0]["content"])
+			parts := messages[0]["content"].([]map[string]any)
+			if parts[0]["text"] != systemText {
+				t.Fatalf("system text changed: %q", parts[0]["text"])
+			}
+			if messages[1]["content"] != "hi" {
+				t.Fatalf("user message must stay plain string: %#v", messages[1])
 			}
 		})
 	}
+
+	t.Run("unsupported_model", func(t *testing.T) {
+		body := p.buildRequestBody("gpt-4.1-mini", systemUserRequest("sys", "hi", caching), false)
+		messages := body["messages"].([]map[string]any)
+		if messages[0]["content"] != "sys" {
+			t.Fatalf("unsupported model must not attach cache_control: %#v", messages[0]["content"])
+		}
+	})
 }
 
-func TestBuildRequestBodyDashScopeNoSystemNoCacheControl(t *testing.T) {
+func TestBuildRequestBodyDashScopeExplicitCacheInvariants(t *testing.T) {
 	p := dashScopeProvider()
-	body := p.buildRequestBody(models.Qwen35Flash, &modelhubv2.GenerateRequest{
-		Input: &modelhubv2.Input{
-			Caching: &modelhubv2.CachingConfig{Enabled: true},
-			Items: []*modelhubv2.InputItem{{
-				Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
-					Role:  modelhubv2.Role_ROLE_USER,
-					Parts: []*modelhubv2.ContentPart{{Content: &modelhubv2.ContentPart_Text{Text: "only user"}}},
+
+	t.Run("caching_disabled", func(t *testing.T) {
+		body := p.buildRequestBody(models.Qwen35Flash, systemUserRequest("sys", "hi", &modelhubv2.CachingConfig{Enabled: false}), false)
+		messages := body["messages"].([]map[string]any)
+		if messages[0]["content"] != "sys" {
+			t.Fatalf("explicit disabled must keep plain system string: %#v", messages[0]["content"])
+		}
+	})
+
+	t.Run("non_dashscope_host", func(t *testing.T) {
+		other := &Provider{baseURL: "https://api.ominilink.ai/v1"}
+		body := other.buildRequestBody(models.Qwen35Flash, systemUserRequest("sys", "hi", &modelhubv2.CachingConfig{Enabled: true}), false)
+		messages := body["messages"].([]map[string]any)
+		if messages[0]["content"] != "sys" {
+			t.Fatalf("non-DashScope must not rewrite system content: %#v", messages[0]["content"])
+		}
+	})
+
+	t.Run("no_system", func(t *testing.T) {
+		body := p.buildRequestBody(models.Qwen35Flash, &modelhubv2.GenerateRequest{
+			Input: &modelhubv2.Input{
+				Caching: &modelhubv2.CachingConfig{Enabled: true},
+				Items: []*modelhubv2.InputItem{{
+					Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
+						Role:  modelhubv2.Role_ROLE_USER,
+						Parts: []*modelhubv2.ContentPart{{Content: &modelhubv2.ContentPart_Text{Text: "only user"}}},
+					}},
 				}},
-			}},
-		},
-		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{}}},
-	}, false)
-	messages := body["messages"].([]map[string]any)
-	if messages[0]["content"] != "only user" {
-		t.Fatalf("user-only request must not be marked: %#v", messages[0])
-	}
+			},
+			Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{}}},
+		}, false)
+		messages := body["messages"].([]map[string]any)
+		if messages[0]["content"] != "only user" {
+			t.Fatalf("user-only request must not be marked: %#v", messages[0])
+		}
+	})
 }
 
 func TestBuildRequestBodyKeepsMessageAndToolOutputOrder(t *testing.T) {

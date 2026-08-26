@@ -269,9 +269,12 @@ func (p *Provider) buildRequestBody(model string, request *modelhubv2.GenerateRe
 }
 
 // dashScopeExplicitCacheEligible 判定是否应向 DashScope 下发显式 cache_control。
-// 仅 qwen3.5-flash 支持该协议；其它 Qwen 与 OminiLink/OpenAI 默认实例不得携带该字段。
+// 仅 DashScope 官方 host 上已开通显式 ephemeral 缓存的 Qwen 文本模型可携带该字段；
+// OminiLink/OpenAI 默认实例与其它模型不得误标。
 func (p *Provider) dashScopeExplicitCacheEligible(model string, input *modelhubv2.Input) bool {
-	if model != models.Qwen35Flash {
+	switch model {
+	case models.QwenFlash, models.Qwen37Flash, models.Qwen35Flash, models.Qwen3VLPlus:
+	default:
 		return false
 	}
 	if input == nil || input.Caching == nil || !input.Caching.Enabled {
