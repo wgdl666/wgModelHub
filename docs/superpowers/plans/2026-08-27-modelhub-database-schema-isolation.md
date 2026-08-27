@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Move ModelHub's generation task persistence from the shared default namespace to the explicitly isolated `modelhub.generation_task` table.
+**Goal:** Move all ModelHub relational persistence into the explicit `modelhub` schema, including `modelhub.generation_task` and `modelhub.modelhub_api_key`.
 
-**Architecture:** The explicit `001` migration creates the `modelhub` PostgreSQL schema and its generation task table in one advisory-locked transaction. Ent's schema annotation and regenerated builders qualify every runtime operation with `modelhub`, while the test-only SQLite client attaches a `modelhub` database and directs Ent's test migration there. The shared Recommend dev DSN remains unchanged and application startup continues to perform no DDL.
+**Architecture:** The explicit `001` migration creates the `modelhub` PostgreSQL schema and its generation task table in one advisory-locked transaction; the separately controlled `002/003` definitions target the API Key table in the same schema but remain excluded from the AWS first release. Ent's schema annotations and regenerated builders qualify every runtime operation with `modelhub`, while the test-only SQLite client attaches a `modelhub` database and directs Ent's test migration there. The shared Recommend dev DSN remains unchanged and application startup continues to perform no DDL.
 
 **Tech Stack:** Go 1.26, Ent 0.14.5, pgx 5.7.6, PostgreSQL 18, sqlmock, modernc SQLite, AWS AppConfig, ECS Fargate, TypeScript 5.9, Vitest 4, AWS CDK 2.263.0
 
@@ -113,8 +113,13 @@ git commit -m "feat(db): isolate generation tasks in modelhub schema"
 
 **Files:**
 - Create: `ent/schema/generation_task_test.go`
+- Create: `ent/schema/modelhub_api_key_test.go`
 - Create: `ent/schema_config_test.go`
+- Create: `migrations/api_key_schema_test.go`
 - Modify: `ent/schema/generation_task.go`
+- Modify: `ent/schema/modelhub_api_key.go`
+- Modify: `migrations/002_modelhub_api_key.sql`
+- Modify: `migrations/003_modelhub_api_key_expires_nullable.sql`
 - Generate: `ent/config.go`
 - Generate: `ent/internal/schema.go`
 - Regenerate: `ent/client.go`
@@ -128,8 +133,8 @@ git commit -m "feat(db): isolate generation tasks in modelhub schema"
 - Regenerate: `ent/modelhubapikey_update.go`
 
 **Interfaces:**
-- Consumes: `GenerationTask.Annotations() []schema.Annotation` and Ent's `entsql.Annotation.Schema` multi-schema generator support.
-- Produces: `ent.DefaultSchemaConfig.GenerationTask == "modelhub"`; all generated GenerationTask create/query/update/delete specs use that schema.
+- Consumes: `GenerationTask.Annotations() []schema.Annotation`, `ModelhubAPIKey.Annotations() []schema.Annotation`, and Ent's `entsql.Annotation.Schema` multi-schema generator support.
+- Produces: both generated Ent entities use schema `modelhub`; migrations `002/003` also target `modelhub.modelhub_api_key` but remain excluded from the AWS first release.
 
 - [ ] **Step 1: Write the failing source annotation test**
 
@@ -159,15 +164,23 @@ func TestGenerationTaskUsesModelhubSchema(t *testing.T) {
 }
 ```
 
+Create `ent/schema/modelhub_api_key_test.go` with the same annotation-shape checks and these expected values:
+
+```go
+if annotation.Table != "modelhub_api_key" || annotation.Schema != "modelhub" {
+	t.Fatalf("table=%q schema=%q", annotation.Table, annotation.Schema)
+}
+```
+
 - [ ] **Step 2: Verify the annotation test fails**
 
 Run:
 
 ```bash
-go test ./ent/schema -run TestGenerationTaskUsesModelhubSchema -count=1
+go test ./ent/schema -run 'TestGenerationTaskUsesModelhubSchema|TestModelhubAPIKeyUsesModelhubSchema' -count=1
 ```
 
-Expected: FAIL with `schema=""`.
+Expected: FAIL with `schema=""` for both entities.
 
 - [ ] **Step 3: Add the Ent schema annotation**
 
@@ -184,7 +197,50 @@ func (GenerationTask) Annotations() []schema.Annotation {
 
 Update the adjacent comment to name `modelhub.generation_task` and retain the prohibition on runtime `Schema.Create`.
 
-- [ ] **Step 4: Add the generated schema contract before regeneration**
+Change `ModelhubAPIKey.Annotations` in `ent/schema/modelhub_api_key.go` to the same schema-qualified form with table `modelhub_api_key`, and update its comment to name `modelhub.modelhub_api_key` while retaining the prohibition on startup DDL.
+
+- [ ] **Step 4: Write and run the failing API Key migration contract**
+
+Create `migrations/api_key_schema_test.go`. Read `002_modelhub_api_key.sql` and `003_modelhub_api_key_expires_nullable.sql` with `os.ReadFile`, then assert:
+
+```go
+for _, fragment := range []string{
+	"CREATE SCHEMA IF NOT EXISTS modelhub",
+	"CREATE TABLE IF NOT EXISTS modelhub.modelhub_api_key",
+	"ON modelhub.modelhub_api_key",
+} {
+	if !strings.Contains(migration002, fragment) {
+		t.Fatalf("002 migration missing %q", fragment)
+	}
+}
+if !strings.Contains(migration003, "ALTER TABLE modelhub.modelhub_api_key") {
+	t.Fatal("003 migration must alter modelhub.modelhub_api_key")
+}
+```
+
+Also reject the unqualified fragments `CREATE TABLE IF NOT EXISTS modelhub_api_key` and `ALTER TABLE modelhub_api_key`.
+
+Run:
+
+```bash
+go test ./migrations -run TestAPIKeyMigrationsTargetModelhubSchema -count=1
+```
+
+Expected: FAIL because migrations `002/003` currently use unqualified table names.
+
+- [ ] **Step 5: Qualify migrations `002/003` without enabling them for AWS**
+
+Make `002` idempotently create the `modelhub` schema, create `modelhub.modelhub_api_key`, and create both indexes on the qualified table. Make `003` alter `modelhub.modelhub_api_key`. Do not add either migration to `migrations/embed.go`, the migration image, or the AWS runbook's allowed execution list.
+
+Run:
+
+```bash
+go test ./migrations -run 'TestGenerationTaskSQLTargetsModelhubSchema|TestAPIKeyMigrationsTargetModelhubSchema' -count=1
+```
+
+Expected: PASS.
+
+- [ ] **Step 6: Add the generated schema contract before regeneration**
 
 Create `ent/schema_config_test.go`:
 
@@ -197,12 +253,12 @@ import (
 	"github.com/wgdl666/wgModelHub/ent"
 )
 
-func TestDefaultSchemaConfigQualifiesOnlyGenerationTask(t *testing.T) {
+func TestDefaultSchemaConfigQualifiesModelhubTables(t *testing.T) {
 	if got := ent.DefaultSchemaConfig.GenerationTask; got != "modelhub" {
 		t.Fatalf("GenerationTask schema=%q, want modelhub", got)
 	}
-	if got := ent.DefaultSchemaConfig.ModelhubAPIKey; got != "" {
-		t.Fatalf("ModelhubAPIKey schema=%q, want empty", got)
+	if got := ent.DefaultSchemaConfig.ModelhubAPIKey; got != "modelhub" {
+		t.Fatalf("ModelhubAPIKey schema=%q, want modelhub", got)
 	}
 }
 ```
@@ -210,37 +266,37 @@ func TestDefaultSchemaConfigQualifiesOnlyGenerationTask(t *testing.T) {
 Run:
 
 ```bash
-go test ./ent -run TestDefaultSchemaConfigQualifiesOnlyGenerationTask -count=1
+go test ./ent -run TestDefaultSchemaConfigQualifiesModelhubTables -count=1
 ```
 
 Expected: compilation FAIL because the checked-in generated client does not yet expose `DefaultSchemaConfig`.
 
-- [ ] **Step 5: Regenerate Ent code**
+- [ ] **Step 7: Regenerate Ent code**
 
 ```bash
 go generate ./ent
-gofmt -w ent/schema/generation_task.go ent/schema/generation_task_test.go ent/schema_config_test.go
+gofmt -w ent/schema/generation_task.go ent/schema/generation_task_test.go ent/schema/modelhub_api_key.go ent/schema/modelhub_api_key_test.go ent/schema_config_test.go migrations/api_key_schema_test.go
 git diff --check
 ```
 
-Review every generated diff. It may add schema configuration plumbing to both generated entity builders, but `DefaultSchemaConfig.ModelhubAPIKey` must stay empty and no generated file may call schema migration at application startup.
+Review every generated diff. Both generated entity builders must default to schema `modelhub`, and no generated file may call schema migration at application startup.
 
-- [ ] **Step 6: Verify generated runtime qualification**
+- [ ] **Step 8: Verify generated runtime qualification**
 
 Run:
 
 ```bash
-go test ./ent ./ent/schema -run 'TestDefaultSchemaConfigQualifiesOnlyGenerationTask|TestGenerationTaskUsesModelhubSchema' -count=1
-rg -n 'Schema = .*GenerationTask|t1.Schema\(' ent/generationtask_create.go ent/generationtask_query.go ent/generationtask_update.go ent/generationtask_delete.go
+go test ./ent ./ent/schema -run 'TestDefaultSchemaConfigQualifiesModelhubTables|TestGenerationTaskUsesModelhubSchema|TestModelhubAPIKeyUsesModelhubSchema' -count=1
+rg -n 'Schema = |t1.Schema\(' ent/generationtask_create.go ent/generationtask_query.go ent/generationtask_update.go ent/generationtask_delete.go ent/modelhubapikey_create.go ent/modelhubapikey_query.go ent/modelhubapikey_update.go ent/modelhubapikey_delete.go
 ```
 
 Expected: tests PASS and generated CRUD specs/selector contain schema configuration assignments.
 
-- [ ] **Step 7: Commit source and generated Ent output**
+- [ ] **Step 9: Commit source, migration definitions, and generated Ent output**
 
 ```bash
-git add ent
-git commit -m "feat(db): qualify generation task Ent queries"
+git add ent migrations/002_modelhub_api_key.sql migrations/003_modelhub_api_key_expires_nullable.sql migrations/api_key_schema_test.go
+git commit -m "feat(db): qualify ModelHub tables in isolated schema"
 ```
 
 ---
@@ -302,7 +358,7 @@ Expected: all create, idempotency, lookup, conditional transition, and terminal-
 - [ ] **Step 4: Prove startup still has no automatic DDL**
 
 ```bash
-if rg -n 'Schema\.Create|CREATE SCHEMA|CREATE TABLE' cmd/server internal --glob '*.go'; then
+if rg -n 'Schema\.Create|CREATE SCHEMA|CREATE TABLE' cmd/server internal --glob '*.go' --glob '!**/*_test.go'; then
   echo 'unexpected production startup DDL' >&2
   exit 1
 fi
@@ -325,18 +381,19 @@ git commit -m "test(db): exercise ModelHub schema in task store"
 - Modify: `AGENTS.md`
 - Modify: `README.md`
 - Modify: `docs/superpowers/specs/2026-08-27-wgmodelhub-aws-dev-deployment-design.md`
-- Modify: `docs/superpowers/specs/2026-08-27-modelhub-database-schema-isolation-design.md` only if implementation evidence requires a wording correction
+- Modify: `docs/superpowers/specs/2026-08-27-modelhub-database-schema-isolation-design.md`
+- Modify: `docs/superpowers/plans/2026-08-27-modelhub-database-schema-isolation.md`
 
 **Interfaces:**
-- Consumes: the qualified migration and generated Ent runtime from Tasks 1-3.
-- Produces: repository guidance and deployment acceptance criteria that consistently name `modelhub.generation_task`.
+- Consumes: the qualified migration definitions and generated Ent runtime from Tasks 1-3.
+- Produces: repository guidance and deployment acceptance criteria that consistently place both `modelhub.generation_task` and `modelhub.modelhub_api_key` in the `modelhub` schema, while retaining the AWS first-release ban on executing `002/003`.
 
 - [ ] **Step 1: Write a failing repository contract check**
 
 Run before editing documentation:
 
 ```bash
-if rg -n '`generation_task`| generation_task ' AGENTS.md README.md docs/superpowers/specs/2026-08-27-wgmodelhub-aws-dev-deployment-design.md; then
+if rg -n '`generation_task`|`modelhub_api_key`| generation_task | modelhub_api_key ' AGENTS.md README.md docs/superpowers/specs/2026-08-27-wgmodelhub-aws-dev-deployment-design.md docs/superpowers/specs/2026-08-27-modelhub-database-schema-isolation-design.md; then
   exit 1
 fi
 ```
@@ -345,7 +402,7 @@ Expected: exit code 1 because current documentation still names the unqualified 
 
 - [ ] **Step 2: Qualify the documentation**
 
-Use `modelhub.generation_task` wherever the documents describe migration `001`, runtime persistence, post-migration verification, or rollback. Preserve all statements that startup performs no DDL and that migrations `002/003` are excluded.
+Use `modelhub.generation_task` wherever the documents describe migration `001` or generation persistence. Use `modelhub.modelhub_api_key` wherever they describe migrations `002/003` or API Key persistence. State that all ModelHub relational tables are schema-qualified, while preserving all statements that startup performs no DDL and that migrations `002/003` are excluded from the AWS first release.
 
 - [ ] **Step 3: Run complete ModelHub verification**
 
@@ -365,11 +422,9 @@ Expected: all tests PASS, vet emits no diagnostics, the shell contract test pass
 git status --short
 git diff --stat
 git diff -- AGENTS.md README.md docs/superpowers/specs
-git add AGENTS.md README.md docs/superpowers/specs/2026-08-27-wgmodelhub-aws-dev-deployment-design.md docs/superpowers/specs/2026-08-27-modelhub-database-schema-isolation-design.md
-git commit -m "docs: qualify ModelHub generation task storage"
+git add AGENTS.md README.md docs/superpowers/specs/2026-08-27-wgmodelhub-aws-dev-deployment-design.md docs/superpowers/specs/2026-08-27-modelhub-database-schema-isolation-design.md docs/superpowers/plans/2026-08-27-modelhub-database-schema-isolation.md
+git commit -m "docs: qualify ModelHub storage schema"
 ```
-
-If the isolation design required no wording correction, omit that unchanged file from `git add`.
 
 - [ ] **Step 5: Push the reviewed ModelHub commits**
 

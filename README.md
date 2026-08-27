@@ -39,7 +39,8 @@ Gemini 的 `proxy_url` 留空即直连，AWS dev 不需要额外代理开关。
 AWS 新加坡 dev 仅通过 VPC 内的 `modelhub.internal.dev:50053` 提供 gRPC；不映射
 `50054`，不创建公网负载均衡、证书或公网 DNS。数据库表也不会在服务启动时创建；
 首次发布必须显式运行独立的 `migration` 镜像，该镜像只执行
-`migrations/001_generation_task.sql`。本次内网部署不得执行 `002` 或 `003`。
+`migrations/001_generation_task.sql` 以创建 `modelhub.generation_task`。所有 ModelHub
+关系表均显式限定在 `modelhub` schema；本次内网部署不得执行 `002` 或 `003`。
 
 ## 公网 API Key（可选）
 
@@ -58,7 +59,7 @@ authorization: Bearer <从工程平台复制的 API Key>
 - 真正可用仍需：部署清单生效、Nacos 配置、`migrations/002_modelhub_api_key.sql` + `003`（expires_at 可空）、受限 DB 账号，以及 `8.129.236.215` 上 TLS/SNI + gRPC HTTP/2 反代实际生效并完成验收。
 - Nacos 开启 `public_listen_address` 后，公网前置**只能**转发到 **50054**（鉴权 gRPC），**绝不能**转发到未鉴权的 **50053**。
 - 建议反代：gRPC over HTTP/2、透传 `Authorization`、单消息 ≥ 64MiB、超时 ≥ 15 分钟（长视频任务）。
-- Key 数据存 `modelhub_api_key` 表（见 `migrations/002` / `003`）；DDL 仅由部署 migration 身份执行，Ops 受限账号仅 `SELECT` / `INSERT` / `UPDATE(revoked_at)`。
+- Key 数据存 `modelhub.modelhub_api_key` 表（见 `migrations/002` / `003`）；DDL 仅由部署 migration 身份执行，Ops 受限账号仅 `SELECT` / `INSERT` / `UPDATE(revoked_at)`。
 - 明文 secret 仅创建/轮换时通过工程平台返回一次（JSON 字段 `api_key`）。
 - 吊销阻止后续 RPC 鉴权，不中断已经开始的流式 RPC。
 - 鉴权成功后 caller 固定为 `public:<principal_id>`，覆盖客户端自报的 `x-wg-caller-service`。

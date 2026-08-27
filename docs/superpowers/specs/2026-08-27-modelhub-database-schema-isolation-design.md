@@ -6,10 +6,11 @@
 
 ## 1. Goal
 
-Store ModelHub's long-running generation task state in
-`modelhub.generation_task` inside the shared `wgdl` development database used
-by `wgRecommendService`, without creating database objects during application
-startup and without changing the shared Recommend dev DSN.
+Store all ModelHub relational state in the `modelhub` schema inside the shared
+`wgdl` development database used by `wgRecommendService`: long-running
+generation state in `modelhub.generation_task` and public API Key state in
+`modelhub.modelhub_api_key`. Do not create database objects during application
+startup or change the shared Recommend dev DSN.
 
 ## 2. Current state
 
@@ -17,7 +18,8 @@ startup and without changing the shared Recommend dev DSN.
   DSN as `wgRecommendService / dev / config-dev`.
 - The active database is the Singapore RDS instance `wg-dev-pg`, database
   `wgdl`.
-- Neither the `modelhub` schema nor `public.generation_task` currently exists.
+- Neither the `modelhub` schema nor the legacy public-schema ModelHub tables
+  currently exist.
 - The configured database role has `CREATE` privilege on `wgdl`.
 - Runtime persistence uses Ent-generated builders and predicates. Application
   startup never calls `Schema.Create` or otherwise executes DDL.
@@ -42,20 +44,21 @@ operations before the advisory lock is released.
 The server and migration binaries remain separate. The server does not invoke
 the migration runner, and the migration is executed only after explicit human
 approval. Migrations `002_modelhub_api_key.sql` and
-`003_modelhub_api_key_expires_nullable.sql` remain forbidden for this release.
+`003_modelhub_api_key_expires_nullable.sql`, which target
+`modelhub.modelhub_api_key`, remain forbidden for this release.
 
 ### 3.2 Runtime table qualification
 
-The Ent `GenerationTask` schema will declare both:
+Both Ent schemas declare their tables in PostgreSQL schema `modelhub`:
 
-- table: `generation_task`
-- PostgreSQL schema: `modelhub`
+- `GenerationTask` resolves to `modelhub.generation_task`.
+- `ModelhubAPIKey` resolves to `modelhub.modelhub_api_key`.
 
 Ent code will be regenerated with the repository's existing
 `go generate ./ent` command. Generated create, query, update, and delete specs
 must carry the `modelhub` schema, so runtime access resolves explicitly to
-`modelhub.generation_task` and does not depend on the connection's
-`search_path`.
+`modelhub.generation_task` and `modelhub.modelhub_api_key` and does not depend
+on the connection's `search_path`.
 
 No handwritten business SQL or DSN `search_path` override will be introduced.
 The AppConfig DSN therefore remains byte-for-byte equal to Recommend dev.
@@ -74,6 +77,8 @@ Tests will assert all of the following:
 - the table DDL names `modelhub.generation_task` and does not create
   `public.generation_task` or an unqualified production table;
 - generated Ent metadata identifies the schema as `modelhub`;
+- API Key migration definitions target `modelhub.modelhub_api_key` while
+  remaining excluded from the AWS first release;
 - existing task-store create, idempotency, lookup, and state-transition tests
   still pass against the attached SQLite database;
 - application startup paths still contain no `Schema.Create` call.
@@ -110,10 +115,13 @@ Tests will assert all of the following:
 
 ## 6. Acceptance criteria
 
+- Every ModelHub relational table is schema-qualified in `modelhub`; runtime
+  task-store SQL resolves to `modelhub.generation_task` and API Key SQL resolves
+  to `modelhub.modelhub_api_key` through generated Ent code.
 - The only ModelHub table created by the approved AWS migration is
-  `modelhub.generation_task`.
-- `public.generation_task` remains absent.
-- All runtime task-store SQL is schema-qualified through generated Ent code.
+  `modelhub.generation_task`; migrations `002/003` for
+  `modelhub.modelhub_api_key` remain excluded from the first release.
+- Legacy public-schema ModelHub tables remain absent.
 - ModelHub and Recommend dev retain an identical AppConfig database DSN.
 - Application startup performs no schema or table creation.
 - Only migration `001` is embedded in and executable by the approved migration

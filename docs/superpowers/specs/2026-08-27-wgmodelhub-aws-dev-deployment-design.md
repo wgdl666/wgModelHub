@@ -25,7 +25,7 @@ The delivery includes:
 - fail-closed AppConfig loading through a local AppConfig Agent sidecar;
 - an internal ECS Fargate service with two tasks and Cloud Map discovery;
 - a `dev`-triggered CodePipeline following the existing Recommend/Sibyl delivery model;
-- an explicit, one-time migration task for `001_generation_task.sql`;
+- an explicit, one-time migration task for `001_generation_task.sql` that creates `modelhub.generation_task`;
 - repository and infrastructure tests, image contract verification, rollout verification, and rollback controls.
 
 The delivery explicitly excludes:
@@ -33,7 +33,7 @@ The delivery explicitly excludes:
 - a public load balancer, public DNS, TLS termination, or port `50054` exposure;
 - API Key creation, rotation, or revocation tooling;
 - changes to `wgDevPlatform`;
-- execution of public API Key migrations `002_modelhub_api_key.sql` and `003_modelhub_api_key_expires_nullable.sql`;
+- execution of public API Key migrations `002_modelhub_api_key.sql` and `003_modelhub_api_key_expires_nullable.sql` for `modelhub.modelhub_api_key`;
 - automatic DDL from the ModelHub server process;
 - changes to the existing Gemini proxy behavior. A blank `proxy_url` continues to mean direct access, which is the AWS configuration.
 
@@ -185,17 +185,18 @@ If tasks do not become healthy, the ECS circuit breaker rolls back to the previo
 
 The application server must continue to contain no `Schema.Create`, automatic migration, or startup DDL path.
 
+All ModelHub relational tables are explicitly schema-qualified in `modelhub`.
 The first AWS release uses an independently invoked migration target:
 
 1. Provision the ECS service with desired count zero.
 2. Start the AppConfig Agent and migration container as a one-time Fargate task.
 3. Load the database DSN from the same `modelhub/dev/config-dev` AppConfig document.
 4. Acquire a PostgreSQL advisory lock to prevent concurrent migration execution.
-5. Execute only `migrations/001_generation_task.sql` inside a transaction.
+5. Execute only `migrations/001_generation_task.sql` inside a transaction to create `modelhub.generation_task`.
 6. Record success or failure in the dedicated migration log group without logging the DSN or SQL parameter values.
 7. Start the two service tasks only after a successful migration task exit.
 
-The migration is idempotent because `001` uses `CREATE TABLE IF NOT EXISTS`. Public API Key migrations remain unexecuted until a separate public-access design is approved.
+The migration is idempotent because `001` uses `CREATE TABLE IF NOT EXISTS`. Public API Key migrations for `modelhub.modelhub_api_key` remain unexecuted until a separate public-access design is approved.
 
 ## 8. AppConfig schema and secret handling
 
@@ -260,7 +261,7 @@ After rollout:
 - configuration loader abstraction and AppConfig Agent loader;
 - server startup selection and lifecycle wiring;
 - JSON Schema and tests;
-- migration command and image target for explicit `001` execution;
+- migration command and image target for explicit `001` execution of `modelhub.generation_task`;
 - platform service metadata and image verification script;
 - Docker image contract updates and deployment documentation.
 
@@ -278,7 +279,7 @@ The existing dirty `wgPlatformInfra` checkout is user-owned. Implementation must
 The initial rollout order is:
 
 1. merge and provision infrastructure with desired count zero;
-2. run the explicit `001` migration and verify exit zero;
+2. run the explicit `001` migration for `modelhub.generation_task` and verify exit zero;
 3. run `wg-dev-modelhub` for the selected `dev` commit; its managed release activates desired count two;
 4. complete the internal health and streaming smoke tests;
 5. observe ECS, CloudWatch, and Logfire before declaring the service healthy.
@@ -293,7 +294,7 @@ The work is complete when all of the following are true:
 - the existing Nacos deployment behavior remains compatible;
 - AWS tasks load all runtime configuration only from `modelhub/dev/config-dev`;
 - no configuration secret or body appears in source, artifacts, or logs;
-- `001_generation_task.sql` was executed only by the approved migration task;
+- `001_generation_task.sql` created only `modelhub.generation_task` through the approved migration task; `002/003` for `modelhub.modelhub_api_key` remain unexecuted;
 - two healthy ModelHub tasks run in private subnets;
 - `modelhub.internal.dev:50053` serves gRPC Health and a minimal streaming request from an approved caller;
 - port `50054` has no ECS mapping or public exposure;

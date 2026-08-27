@@ -12,7 +12,7 @@
 - OpenAI 实例同时承接 chat/completions 与 Images API；`gpt-image-2` 必须单独绑到 OpenAI 实例（无参考图走 `/v1/images/generations`，有参考图走 `/v1/images/edits`），不能并入 OminiLink Gemini generateContent 生图实例。
 - 启动时建立「真实模型 ID → provider 实例」路由：单 provider 声明可隐式选定；多 provider 声明同一模型时必须在顶层 `model_routes` 显式选定其一，不能依赖 map 顺序。无 profile、alias、自动 failover 或热更新；改配置后重启生效。
 - 全部真实模型 ID 是 `models` 包常量（`github.com/wgdl666/wgModelHub/models`）；Nacos / example YAML / 调用方 `request.model` 必须引用这些常量，不能另起业务名。
-- `database.dsn` 仅服务视频长任务跨 Pod 查询；运行时 CRUD 经 Ent（`ent/` schema + client），启动不自动 DDL，须显式执行 `migrations/`。
+- `database.dsn` 仅服务视频长任务跨 Pod 查询；运行时 CRUD 经 Ent（`ent/` schema + client），所有 ModelHub 关系表都显式限定在 `modelhub` schema；启动不自动 DDL，须显式执行 `migrations/`。
 
 # 协议不变量
 
@@ -31,7 +31,7 @@
 
 # 视频长任务持久化（技术表，非业务任务）
 
-- PostgreSQL 表 `generation_task` 只存跨 Pod 查询所需最小事实：`task_id`、`caller`、`request_id`、`request_hash`、`model`、`provider`、`provider_task_id`、`state`、归一化错误、时间戳；不存 prompt、媒体正文或最终视频。
+- PostgreSQL 表 `modelhub.generation_task` 只存跨 Pod 查询所需最小事实：`task_id`、`caller`、`request_id`、`request_hash`、`model`、`provider`、`provider_task_id`、`state`、归一化错误、时间戳；不存 prompt、媒体正文或最终视频。
 - 唯一键 `(caller, request_id)`：同哈希返回原任务，不同哈希返回 `ALREADY_EXISTS`。先落库再调上游；上游可能已接受但本地未拿到确定结果时不得自动重提。
 - 运行时经 Ent builder/predicate 访问；业务代码禁止手写 SQL。历史 `migrations/001_generation_task.sql` 保留且须显式执行；禁止 `Schema.Create` 或启动自动 DDL。`go generate ./ent` 只再生 Ent 代码。
 - 前台 `Generate`（含文字/图片）不经过任务表。
