@@ -10,6 +10,7 @@ import (
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
+	entschema "entgo.io/ent/dialect/sql/schema"
 	"github.com/wgdl666/wgModelHub/ent"
 	"github.com/wgdl666/wgModelHub/ent/enttest"
 
@@ -34,9 +35,16 @@ func openTestStore(t *testing.T) *Postgres {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
+	if _, err := db.Exec(`ATTACH DATABASE ':memory:' AS modelhub`); err != nil {
+		t.Fatalf("attach modelhub SQLite database: %v", err)
+	}
 	t.Cleanup(func() { _ = db.Close() })
 	drv := entsql.OpenDB(dialect.SQLite, db)
-	client := enttest.NewClient(t, enttest.WithOptions(ent.Driver(drv)))
+	client := enttest.NewClient(
+		t,
+		enttest.WithOptions(ent.Driver(drv)),
+		enttest.WithMigrateOptions(entschema.WithSchemaName("modelhub")),
+	)
 	t.Cleanup(func() { _ = client.Close() })
 	return NewPostgres(client)
 }
