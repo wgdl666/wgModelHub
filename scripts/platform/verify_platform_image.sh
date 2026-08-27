@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-: "${PLATFORM_IMAGE:?set PLATFORM_IMAGE to the production image}"
-: "${EXPECTED_REVISION:?set EXPECTED_REVISION to the exact source revision}"
-
 fail() {
   printf 'verify_platform_image: %s\n' "$*" >&2
   exit 1
@@ -30,6 +27,13 @@ reject_path() {
   local match
   match="$(find "$rootfs" "$@" -print -quit)" || fail "could not scan $description"
   [[ -z "$match" ]] || fail "$description: ${match#"$rootfs"}"
+}
+
+reject_private_key_paths() {
+  reject_path 'private key path' \( -iname '*.key' -o -iname '*.pem' \) \
+    ! -path "$rootfs/etc/ssl/certs/*" \
+    ! -path "$rootfs/etc/ssl/cert.pem" \
+    ! -path "$rootfs/etc/ssl1.1/cert.pem"
 }
 
 scan_credentials() {
@@ -69,6 +73,16 @@ PY
     *) fail "credential scan failed with status $status" ;;
   esac
 }
+
+if [[ "${1:-}" == "--verify-private-key-paths" ]]; then
+  [[ "$#" == "2" && -d "$2" ]] || fail 'self-test root must be an existing directory'
+  rootfs="$2"
+  reject_private_key_paths
+  exit 0
+fi
+
+: "${PLATFORM_IMAGE:?set PLATFORM_IMAGE to the production image}"
+: "${EXPECTED_REVISION:?set EXPECTED_REVISION to the exact source revision}"
 
 [[ "$EXPECTED_REVISION" =~ ^[0-9a-f]{40}$ ]] \
   || fail 'EXPECTED_REVISION must be a full lowercase Git SHA'
@@ -136,10 +150,7 @@ reject_path 'Git metadata' -name '.git'
 reject_path 'local configuration' \( -name '.config.yaml' -o -name 'bootstrap.json' -o -name 'example.modelHub.yaml' -o -name '.env' -o -name '.env.*' \)
 reject_path 'SQL migration file' -type f -name '*.sql'
 reject_path 'Go source file' -type f -name '*.go'
-reject_path 'private key path' \( -iname '*.key' -o -iname '*.pem' \) \
-  ! -path "$rootfs/etc/ssl/certs/*" \
-  ! -path "$rootfs/etc/ssl/cert.pem" \
-  ! -path "$rootfs/etc/ssl1.1/cert.pem"
+reject_private_key_paths
 scan_credentials
 
 printf 'verify_platform_image: %s satisfies the ModelHub production contract\n' "$PLATFORM_IMAGE"
