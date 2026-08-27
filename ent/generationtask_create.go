@@ -276,6 +276,7 @@ func (_c *GenerationTaskCreate) createSpec() (*GenerationTask, *sqlgraph.CreateS
 		_node = &GenerationTask{config: _c.config}
 		_spec = sqlgraph.NewCreateSpec(generationtask.Table, sqlgraph.NewFieldSpec(generationtask.FieldID, field.TypeString))
 	)
+	_spec.Schema = _c.schemaConfig.GenerationTask
 	if id, ok := _c.mutation.ID(); ok {
 		_node.ID = id
 		_spec.ID.Value = id

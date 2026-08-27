@@ -11,14 +11,17 @@ import (
 	"entgo.io/ent/schema/index"
 )
 
-// GenerationTask 映射已上线的 generation_task 表；列名/唯一键须与 migrations/001 及存量数据兼容。
+// GenerationTask 映射已上线的 modelhub.generation_task 表；列名/唯一键须与 migrations/001 及存量数据兼容。
 // 运行时禁止 Schema.Create；表仍由显式 migration 维护。
 type GenerationTask struct {
 	ent.Schema
 }
 
 func (GenerationTask) Annotations() []schema.Annotation {
-	return []schema.Annotation{entsql.Annotation{Table: "generation_task"}}
+	return []schema.Annotation{entsql.Annotation{
+		Schema: "modelhub",
+		Table:  "generation_task",
+	}}
 }
 
 func (GenerationTask) Fields() []ent.Field {

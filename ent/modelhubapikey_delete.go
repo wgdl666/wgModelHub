@@ -8,6 +8,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/wgdl666/wgModelHub/ent/internal"
 	"github.com/wgdl666/wgModelHub/ent/modelhubapikey"
 	"github.com/wgdl666/wgModelHub/ent/predicate"
 )
@@ -41,6 +42,8 @@ func (_d *ModelhubAPIKeyDelete) ExecX(ctx context.Context) int {
 
 func (_d *ModelhubAPIKeyDelete) sqlExec(ctx context.Context) (int, error) {
 	_spec := sqlgraph.NewDeleteSpec(modelhubapikey.Table, sqlgraph.NewFieldSpec(modelhubapikey.FieldID, field.TypeString))
+	_spec.Node.Schema = _d.schemaConfig.ModelhubAPIKey
+	ctx = internal.NewSchemaConfigContext(ctx, _d.schemaConfig)
 	if ps := _d.mutation.predicates; len(ps) > 0 {
 		_spec.Predicate = func(selector *sql.Selector) {
 			for i := range ps {

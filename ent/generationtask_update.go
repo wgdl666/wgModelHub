@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/wgdl666/wgModelHub/ent/generationtask"
+	"github.com/wgdl666/wgModelHub/ent/internal"
 	"github.com/wgdl666/wgModelHub/ent/predicate"
 )
 
@@ -267,6 +268,8 @@ func (_u *GenerationTaskUpdate) sqlSave(ctx context.Context) (_node int, err err
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(generationtask.FieldUpdatedAt, field.TypeTime, value)
 	}
+	_spec.Node.Schema = _u.schemaConfig.GenerationTask
+	ctx = internal.NewSchemaConfigContext(ctx, _u.schemaConfig)
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{generationtask.Label}
@@ -556,6 +559,8 @@ func (_u *GenerationTaskUpdateOne) sqlSave(ctx context.Context) (_node *Generati
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(generationtask.FieldUpdatedAt, field.TypeTime, value)
 	}
+	_spec.Node.Schema = _u.schemaConfig.GenerationTask
+	ctx = internal.NewSchemaConfigContext(ctx, _u.schemaConfig)
 	_node = &GenerationTask{config: _u.config}
 	_spec.Assign = _node.assignValues
 	_spec.ScanValues = _node.scanValues

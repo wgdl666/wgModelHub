@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/wgdl666/wgModelHub/ent/internal"
 	"github.com/wgdl666/wgModelHub/ent/modelhubapikey"
 	"github.com/wgdl666/wgModelHub/ent/predicate"
 )
@@ -155,6 +156,8 @@ func (_u *ModelhubAPIKeyUpdate) sqlSave(ctx context.Context) (_node int, err err
 	if _u.mutation.RevokedAtCleared() {
 		_spec.ClearField(modelhubapikey.FieldRevokedAt, field.TypeTime)
 	}
+	_spec.Node.Schema = _u.schemaConfig.ModelhubAPIKey
+	ctx = internal.NewSchemaConfigContext(ctx, _u.schemaConfig)
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{modelhubapikey.Label}
@@ -332,6 +335,8 @@ func (_u *ModelhubAPIKeyUpdateOne) sqlSave(ctx context.Context) (_node *Modelhub
 	if _u.mutation.RevokedAtCleared() {
 		_spec.ClearField(modelhubapikey.FieldRevokedAt, field.TypeTime)
 	}
+	_spec.Node.Schema = _u.schemaConfig.ModelhubAPIKey
+	ctx = internal.NewSchemaConfigContext(ctx, _u.schemaConfig)
 	_node = &ModelhubAPIKey{config: _u.config}
 	_spec.Assign = _node.assignValues
 	_spec.ScanValues = _node.scanValues

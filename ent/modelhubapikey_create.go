@@ -202,6 +202,7 @@ func (_c *ModelhubAPIKeyCreate) createSpec() (*ModelhubAPIKey, *sqlgraph.CreateS
 		_node = &ModelhubAPIKey{config: _c.config}
 		_spec = sqlgraph.NewCreateSpec(modelhubapikey.Table, sqlgraph.NewFieldSpec(modelhubapikey.FieldID, field.TypeString))
 	)
+	_spec.Schema = _c.schemaConfig.ModelhubAPIKey
 	if id, ok := _c.mutation.ID(); ok {
 		_node.ID = id
 		_spec.ID.Value = id

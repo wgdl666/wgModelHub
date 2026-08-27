@@ -11,14 +11,17 @@ import (
 	"entgo.io/ent/schema/index"
 )
 
-// ModelhubAPIKey 映射公网 gRPC 鉴权用的 API Key 表；明文 secret 永不落库。
+// ModelhubAPIKey 映射 modelhub.modelhub_api_key 公网 gRPC 鉴权用的 API Key 表；明文 secret 永不落库。
 // 表结构由 migrations/002 维护，进程启动不做 DDL。
 type ModelhubAPIKey struct {
 	ent.Schema
 }
 
 func (ModelhubAPIKey) Annotations() []schema.Annotation {
-	return []schema.Annotation{entsql.Annotation{Table: "modelhub_api_key"}}
+	return []schema.Annotation{entsql.Annotation{
+		Schema: "modelhub",
+		Table:  "modelhub_api_key",
+	}}
 }
 
 func (ModelhubAPIKey) Fields() []ent.Field {
