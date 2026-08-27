@@ -9,7 +9,8 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 )
 
-const generationTaskDDL = `CREATE TABLE IF NOT EXISTS generation_task (
+const generationTaskDDL = `CREATE SCHEMA IF NOT EXISTS modelhub;
+CREATE TABLE IF NOT EXISTS modelhub.generation_task (
     task_id text PRIMARY KEY
 );`
 

@@ -1,6 +1,8 @@
 -- 视频长任务最小技术表：只存可跨 Pod 查询的归因与上游定位信息。
 -- 不保存 prompt、媒体正文或最终视频；不在进程启动时自动执行本文件。
-CREATE TABLE IF NOT EXISTS generation_task (
+CREATE SCHEMA IF NOT EXISTS modelhub;
+
+CREATE TABLE IF NOT EXISTS modelhub.generation_task (
     task_id text PRIMARY KEY,
     caller text NOT NULL,
     request_id text NOT NULL,
