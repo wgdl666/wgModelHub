@@ -40,9 +40,13 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" \
     GOPROXY="$GOPROXY" go test ./... \
     && CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" \
-    GOPROXY="$GOPROXY" go build -trimpath -ldflags="-s -w" -o /out/wg-model-hub ./cmd/server
+    GOPROXY="$GOPROXY" go build -trimpath -ldflags="-s -w" -o /out/wg-model-hub ./cmd/server \
+    && CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" \
+    GOPROXY="$GOPROXY" go build -trimpath -ldflags="-s -w" -o /out/wg-model-hub-healthcheck ./cmd/healthcheck \
+    && CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" \
+    GOPROXY="$GOPROXY" go build -trimpath -ldflags="-s -w" -o /out/wg-model-hub-migrate ./cmd/migrate
 
-FROM ${ALPINE_RUNTIME_IMAGE}
+FROM ${ALPINE_RUNTIME_IMAGE} AS runtime
 
 ARG ALPINE_MIRROR=""
 RUN if [ -n "$ALPINE_MIRROR" ]; then \
@@ -53,7 +57,14 @@ RUN if [ -n "$ALPINE_MIRROR" ]; then \
     && adduser -D -u 10001 -G app app
 
 COPY --from=builder /out/wg-model-hub /usr/local/bin/wg-model-hub
+COPY --from=builder /out/wg-model-hub-healthcheck /usr/local/bin/wg-model-hub-healthcheck
 
 USER app
 EXPOSE 50053
 ENTRYPOINT ["/usr/local/bin/wg-model-hub"]
+
+FROM runtime AS migration
+
+COPY --from=builder /out/wg-model-hub-migrate /usr/local/bin/wg-model-hub-migrate
+
+ENTRYPOINT ["/usr/local/bin/wg-model-hub-migrate"]
