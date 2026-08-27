@@ -114,13 +114,9 @@ type ArkVideoProviderConfig struct {
 
 type Config struct {
 	Server struct {
-		// ListenAddress 仅迁移兼容：旧版 Nacos 仍可能带 server.listen_address，解析后永远忽略。
-		// 删除条件：线上 Nacos 字段清理并完成一轮发布后移除此字段与相关兼容逻辑。
-		ListenAddress string `yaml:"listen_address"`
-		// PublicListenAddress 仅迁移兼容：公网 listener 改由 WG_SERVER_PUBLIC_GRPC_PORT 在启动边界装配，默认关闭。
-		// 删除条件：线上 Nacos 字段清理并完成一轮发布后移除此字段与相关兼容逻辑。
-		PublicListenAddress string `yaml:"public_listen_address"`
-	} `yaml:"server"`
+		ListenAddress       string
+		PublicListenAddress string
+	} `yaml:"-"`
 	Providers map[string]ProviderConfig `yaml:"providers"`
 	// ModelRouteOverrides：真实模型 ID -> 显式选中的 provider 实例名；provider 不变时可经 ListenConfig 热更新。
 	ModelRouteOverrides map[string]string `yaml:"model_routes"`

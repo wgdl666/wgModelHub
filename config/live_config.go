@@ -53,7 +53,7 @@ func (lc *LiveConfig) ApplyYAML(content string) {
 		return
 	}
 
-	// 监听地址只在 Pod 启动时由环境变量注入；Nacos 无 listen_address 或带旧值都不能覆盖运行时绑定。
+	// 监听地址由 env 注入，不在 YAML 中；热更新须保留当前运行时值。
 	next.Server.ListenAddress = previous.Server.ListenAddress
 	next.Server.PublicListenAddress = previous.Server.PublicListenAddress
 	lc.Store(next)

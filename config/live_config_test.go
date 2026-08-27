@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"sync"
 	"testing"
 
@@ -30,22 +31,34 @@ func TestLiveConfigRejectsInvalidYAML(t *testing.T) {
 	}
 }
 
-func TestParseAndValidateYAMLWithoutListenAddress(t *testing.T) {
-	content, err := yaml.Marshal(validConfig())
-	if err != nil {
-		t.Fatal(err)
+func TestConfigYAMLOmitsListenAddresses(t *testing.T) {
+	content := mustYAML(t, validConfig())
+	if strings.Contains(content, "listen_address") || strings.Contains(content, "public_listen_address") {
+		t.Fatalf("serialized YAML must not contain listen addresses: %q", content)
 	}
-	var document map[string]any
-	if err := yaml.Unmarshal(content, &document); err != nil {
-		t.Fatal(err)
+}
+
+func TestLiveConfigPreservesEnvListenAddressesOnHotReload(t *testing.T) {
+	initial := validConfigWithDualGeminiFlash()
+	initial.Server.ListenAddress = ":50053"
+	initial.Server.PublicListenAddress = ":50054"
+	lc := NewLiveConfig(initial)
+
+	next := initial
+	next.ModelRouteOverrides = map[string]string{models.Gemini25Flash: "gemini_backup"}
+	hotYAML := mustYAML(t, next)
+	if strings.Contains(hotYAML, "listen_address") || strings.Contains(hotYAML, "public_listen_address") {
+		t.Fatalf("serialized YAML must not contain listen addresses: %q", hotYAML)
 	}
-	delete(document, "server")
-	content, err = yaml.Marshal(document)
-	if err != nil {
-		t.Fatal(err)
+
+	lc.ApplyYAML(hotYAML)
+	got := lc.Load()
+	if got.ModelRoutes()[models.Gemini25Flash] != "gemini_backup" {
+		t.Fatalf("hot field not applied: routes=%v", got.ModelRoutes())
 	}
-	if _, err := ParseAndValidateYAML(string(content)); err != nil {
-		t.Fatalf("Nacos without server section must parse: %v", err)
+	if got.Server.ListenAddress != ":50053" || got.Server.PublicListenAddress != ":50054" {
+		t.Fatalf("listen addresses=%q/%q, want env-injected :50053/:50054",
+			got.Server.ListenAddress, got.Server.PublicListenAddress)
 	}
 }
 
@@ -76,22 +89,9 @@ func TestApplyListenPortOverridesFromEnv(t *testing.T) {
 
 func TestLiveConfigRejectsRestartRequiredFields(t *testing.T) {
 	initial := validConfigWithDualGeminiFlash()
-	initial.Server.ListenAddress = ":50053"
 	lc := NewLiveConfig(initial)
 
 	next := initial
-	next.Server.ListenAddress = ":50099"
-	next.ModelRouteOverrides = map[string]string{models.Gemini25Flash: "gemini_backup"}
-	lc.ApplyYAML(mustYAML(t, next))
-	got := lc.Load()
-	if got.ModelRoutes()[models.Gemini25Flash] != "gemini_backup" {
-		t.Fatal("listen_address in Nacos YAML must be ignored; hot fields should still apply")
-	}
-	if got.Server.ListenAddress != ":50053" {
-		t.Fatalf("runtime listen_address=%q, want env value :50053", got.Server.ListenAddress)
-	}
-
-	next = initial
 	body := mustYAML(t, initial)
 	next, err := ParseAndValidateYAML(body)
 	if err != nil {
