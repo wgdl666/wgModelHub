@@ -38,14 +38,48 @@ var (
 			},
 		},
 	}
+	// ModelhubAPIKeyColumns holds the columns for the "modelhub_api_key" table.
+	ModelhubAPIKeyColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "principal_id", Type: field.TypeString},
+		{Name: "key_id", Type: field.TypeString, Unique: true},
+		{Name: "secret_sha256", Type: field.TypeString},
+		{Name: "name", Type: field.TypeString, Default: ""},
+		{Name: "created_by", Type: field.TypeString},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "expires_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "revoked_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// ModelhubAPIKeyTable holds the schema information for the "modelhub_api_key" table.
+	ModelhubAPIKeyTable = &schema.Table{
+		Name:       "modelhub_api_key",
+		Columns:    ModelhubAPIKeyColumns,
+		PrimaryKey: []*schema.Column{ModelhubAPIKeyColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "modelhubapikey_created_by",
+				Unique:  false,
+				Columns: []*schema.Column{ModelhubAPIKeyColumns[5]},
+			},
+			{
+				Name:    "modelhubapikey_principal_id",
+				Unique:  false,
+				Columns: []*schema.Column{ModelhubAPIKeyColumns[1]},
+			},
+		},
+	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		GenerationTaskTable,
+		ModelhubAPIKeyTable,
 	}
 )
 
 func init() {
 	GenerationTaskTable.Annotation = &entsql.Annotation{
 		Table: "generation_task",
+	}
+	ModelhubAPIKeyTable.Annotation = &entsql.Annotation{
+		Table: "modelhub_api_key",
 	}
 }

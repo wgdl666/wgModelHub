@@ -14,6 +14,8 @@ type Tx struct {
 	config
 	// GenerationTask is the client for interacting with the GenerationTask builders.
 	GenerationTask *GenerationTaskClient
+	// ModelhubAPIKey is the client for interacting with the ModelhubAPIKey builders.
+	ModelhubAPIKey *ModelhubAPIKeyClient
 
 	// lazily loaded.
 	client     *Client
@@ -146,6 +148,7 @@ func (tx *Tx) Client() *Client {
 
 func (tx *Tx) init() {
 	tx.GenerationTask = NewGenerationTaskClient(tx.config)
+	tx.ModelhubAPIKey = NewModelhubAPIKeyClient(tx.config)
 }
 
 // txDriver wraps the given dialect.Tx with a nop dialect.Driver implementation.

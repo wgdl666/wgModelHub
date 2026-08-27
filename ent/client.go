@@ -15,6 +15,7 @@ import (
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
 	"github.com/wgdl666/wgModelHub/ent/generationtask"
+	"github.com/wgdl666/wgModelHub/ent/modelhubapikey"
 )
 
 // Client is the client that holds all ent builders.
@@ -24,6 +25,8 @@ type Client struct {
 	Schema *migrate.Schema
 	// GenerationTask is the client for interacting with the GenerationTask builders.
 	GenerationTask *GenerationTaskClient
+	// ModelhubAPIKey is the client for interacting with the ModelhubAPIKey builders.
+	ModelhubAPIKey *ModelhubAPIKeyClient
 }
 
 // NewClient creates a new client configured with the given options.
@@ -36,6 +39,7 @@ func NewClient(opts ...Option) *Client {
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.GenerationTask = NewGenerationTaskClient(c.config)
+	c.ModelhubAPIKey = NewModelhubAPIKeyClient(c.config)
 }
 
 type (
@@ -129,6 +133,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		ctx:            ctx,
 		config:         cfg,
 		GenerationTask: NewGenerationTaskClient(cfg),
+		ModelhubAPIKey: NewModelhubAPIKeyClient(cfg),
 	}, nil
 }
 
@@ -149,6 +154,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		ctx:            ctx,
 		config:         cfg,
 		GenerationTask: NewGenerationTaskClient(cfg),
+		ModelhubAPIKey: NewModelhubAPIKeyClient(cfg),
 	}, nil
 }
 
@@ -178,12 +184,14 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	c.GenerationTask.Use(hooks...)
+	c.ModelhubAPIKey.Use(hooks...)
 }
 
 // Intercept adds the query interceptors to all the entity clients.
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	c.GenerationTask.Intercept(interceptors...)
+	c.ModelhubAPIKey.Intercept(interceptors...)
 }
 
 // Mutate implements the ent.Mutator interface.
@@ -191,6 +199,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
 	case *GenerationTaskMutation:
 		return c.GenerationTask.mutate(ctx, m)
+	case *ModelhubAPIKeyMutation:
+		return c.ModelhubAPIKey.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
 	}
@@ -329,12 +339,145 @@ func (c *GenerationTaskClient) mutate(ctx context.Context, m *GenerationTaskMuta
 	}
 }
 
+// ModelhubAPIKeyClient is a client for the ModelhubAPIKey schema.
+type ModelhubAPIKeyClient struct {
+	config
+}
+
+// NewModelhubAPIKeyClient returns a client for the ModelhubAPIKey from the given config.
+func NewModelhubAPIKeyClient(c config) *ModelhubAPIKeyClient {
+	return &ModelhubAPIKeyClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `modelhubapikey.Hooks(f(g(h())))`.
+func (c *ModelhubAPIKeyClient) Use(hooks ...Hook) {
+	c.hooks.ModelhubAPIKey = append(c.hooks.ModelhubAPIKey, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `modelhubapikey.Intercept(f(g(h())))`.
+func (c *ModelhubAPIKeyClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ModelhubAPIKey = append(c.inters.ModelhubAPIKey, interceptors...)
+}
+
+// Create returns a builder for creating a ModelhubAPIKey entity.
+func (c *ModelhubAPIKeyClient) Create() *ModelhubAPIKeyCreate {
+	mutation := newModelhubAPIKeyMutation(c.config, OpCreate)
+	return &ModelhubAPIKeyCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ModelhubAPIKey entities.
+func (c *ModelhubAPIKeyClient) CreateBulk(builders ...*ModelhubAPIKeyCreate) *ModelhubAPIKeyCreateBulk {
+	return &ModelhubAPIKeyCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ModelhubAPIKeyClient) MapCreateBulk(slice any, setFunc func(*ModelhubAPIKeyCreate, int)) *ModelhubAPIKeyCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ModelhubAPIKeyCreateBulk{err: fmt.Errorf("calling to ModelhubAPIKeyClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ModelhubAPIKeyCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ModelhubAPIKeyCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ModelhubAPIKey.
+func (c *ModelhubAPIKeyClient) Update() *ModelhubAPIKeyUpdate {
+	mutation := newModelhubAPIKeyMutation(c.config, OpUpdate)
+	return &ModelhubAPIKeyUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ModelhubAPIKeyClient) UpdateOne(_m *ModelhubAPIKey) *ModelhubAPIKeyUpdateOne {
+	mutation := newModelhubAPIKeyMutation(c.config, OpUpdateOne, withModelhubAPIKey(_m))
+	return &ModelhubAPIKeyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ModelhubAPIKeyClient) UpdateOneID(id string) *ModelhubAPIKeyUpdateOne {
+	mutation := newModelhubAPIKeyMutation(c.config, OpUpdateOne, withModelhubAPIKeyID(id))
+	return &ModelhubAPIKeyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ModelhubAPIKey.
+func (c *ModelhubAPIKeyClient) Delete() *ModelhubAPIKeyDelete {
+	mutation := newModelhubAPIKeyMutation(c.config, OpDelete)
+	return &ModelhubAPIKeyDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ModelhubAPIKeyClient) DeleteOne(_m *ModelhubAPIKey) *ModelhubAPIKeyDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ModelhubAPIKeyClient) DeleteOneID(id string) *ModelhubAPIKeyDeleteOne {
+	builder := c.Delete().Where(modelhubapikey.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ModelhubAPIKeyDeleteOne{builder}
+}
+
+// Query returns a query builder for ModelhubAPIKey.
+func (c *ModelhubAPIKeyClient) Query() *ModelhubAPIKeyQuery {
+	return &ModelhubAPIKeyQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeModelhubAPIKey},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ModelhubAPIKey entity by its id.
+func (c *ModelhubAPIKeyClient) Get(ctx context.Context, id string) (*ModelhubAPIKey, error) {
+	return c.Query().Where(modelhubapikey.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ModelhubAPIKeyClient) GetX(ctx context.Context, id string) *ModelhubAPIKey {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ModelhubAPIKeyClient) Hooks() []Hook {
+	return c.hooks.ModelhubAPIKey
+}
+
+// Interceptors returns the client interceptors.
+func (c *ModelhubAPIKeyClient) Interceptors() []Interceptor {
+	return c.inters.ModelhubAPIKey
+}
+
+func (c *ModelhubAPIKeyClient) mutate(ctx context.Context, m *ModelhubAPIKeyMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ModelhubAPIKeyCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ModelhubAPIKeyUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ModelhubAPIKeyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ModelhubAPIKeyDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ModelhubAPIKey mutation op: %q", m.Op())
+	}
+}
+
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		GenerationTask []ent.Hook
+		GenerationTask, ModelhubAPIKey []ent.Hook
 	}
 	inters struct {
-		GenerationTask []ent.Interceptor
+		GenerationTask, ModelhubAPIKey []ent.Interceptor
 	}
 )

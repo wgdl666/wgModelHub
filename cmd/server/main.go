@@ -6,12 +6,15 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/wgdl666/kangaroo/logs"
 	"github.com/wgdl666/wgModelHub/config"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/apikeystore"
+	"github.com/wgdl666/wgModelHub/internal/auth"
 	"github.com/wgdl666/wgModelHub/internal/infra/factory"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/service/modelhub"
@@ -41,8 +44,8 @@ func main() {
 	if err != nil {
 		fatal("runtime_config_load_failed", err)
 	}
-	if runtimeConfig.Server.ListenAddress == "" {
-		runtimeConfig.Server.ListenAddress = ":50053"
+	if err := config.ApplyListenPortOverridesFromEnv(&runtimeConfig); err != nil {
+		fatal("listen_port_env_failed", err)
 	}
 
 	live := config.NewLiveConfig(runtimeConfig)
@@ -73,26 +76,46 @@ func main() {
 	}
 	defer entClient.Close()
 
-	grpcServer := grpc.NewServer(
-		grpc.MaxRecvMsgSize(protocol.MaxRPCMessageBytes),
-		grpc.MaxSendMsgSize(protocol.MaxRPCMessageBytes),
-		grpc.StatsHandler(otelgrpc.NewServerHandler()),
-	)
-	modelhubv2.RegisterModelHubServiceServer(grpcServer, modelhub.New(live, providers, taskstore.NewPostgres(entClient)))
+	apiKeys := apikeystore.New(entClient)
+	hubService := modelhub.New(live, providers, taskstore.NewPostgres(entClient))
 
 	healthServer := health.NewServer()
-	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
 	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
 
-	listener, err := net.Listen("tcp", runtimeConfig.Server.ListenAddress)
-	if err != nil {
-		fatal("grpc_listen_failed", err, "listen_address", runtimeConfig.Server.ListenAddress)
+	var grpcServers []*grpc.Server
+	serveErr := make(chan error, 2)
+	startServer := func(name, addr string, opts ...grpc.ServerOption) {
+		if strings.TrimSpace(addr) == "" {
+			return
+		}
+		base := []grpc.ServerOption{
+			grpc.MaxRecvMsgSize(protocol.MaxRPCMessageBytes),
+			grpc.MaxSendMsgSize(protocol.MaxRPCMessageBytes),
+			grpc.StatsHandler(otelgrpc.NewServerHandler()),
+		}
+		grpcServer := grpc.NewServer(append(base, opts...)...)
+		grpcServers = append(grpcServers, grpcServer)
+		modelhubv2.RegisterModelHubServiceServer(grpcServer, hubService)
+		grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
+		listener, listenErr := net.Listen("tcp", addr)
+		if listenErr != nil {
+			fatal("grpc_listen_failed", listenErr, "server", name, "listen_address", addr)
+		}
+		logs.Default().Info("grpc_server_started", "server", name, "listen_address", addr)
+		go func() {
+			serveErr <- grpcServer.Serve(listener)
+		}()
 	}
-	logs.Default().Info("grpc_server_started", "listen_address", runtimeConfig.Server.ListenAddress)
-	serveErr := make(chan error, 1)
-	go func() {
-		serveErr <- grpcServer.Serve(listener)
-	}()
+
+	startServer("intranet", runtimeConfig.Server.ListenAddress)
+	publicAddr := strings.TrimSpace(runtimeConfig.Server.PublicListenAddress)
+	if publicAddr != "" {
+		// 公网 listener 与内网分离：按 metadata Bearer 鉴权，health 仍放行供 K8s/反代探测。
+		startServer("public", publicAddr,
+			grpc.UnaryInterceptor(auth.UnaryServerInterceptor(apiKeys)),
+			grpc.StreamInterceptor(auth.StreamServerInterceptor(apiKeys)),
+		)
+	}
 
 	select {
 	case err := <-serveErr:
@@ -101,9 +124,13 @@ func main() {
 		}
 	case <-ctx.Done():
 		healthServer.Shutdown()
-		grpcServer.GracefulStop()
-		if err := <-serveErr; err != nil && !errors.Is(err, grpc.ErrServerStopped) {
-			logs.Default().Error("grpc_server_shutdown_failed", "error", err)
+		for _, srv := range grpcServers {
+			srv.GracefulStop()
+		}
+		for range grpcServers {
+			if err := <-serveErr; err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+				logs.Default().Error("grpc_server_shutdown_failed", "error", err)
+			}
 		}
 	}
 }

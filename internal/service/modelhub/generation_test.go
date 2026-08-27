@@ -11,6 +11,7 @@ import (
 
 	"github.com/wgdl666/wgModelHub/config"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/auth"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/internal/taskstore"
 	"github.com/wgdl666/wgModelHub/protocol"
@@ -683,4 +684,39 @@ func errorInfoFromStatus(st *rpcstatus.Status) *errdetails.ErrorInfo {
 		}
 	}
 	return nil
+}
+
+func TestGetGenerationPublicCallerMismatchReturnsNotFound(t *testing.T) {
+	store := newMemoryStore()
+	service := videoService(&fakeVideo{}, store)
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(protocol.CallerMetadataKey, "wg-hub"))
+	taskID := "task-public-mismatch"
+	store.byID[taskID] = taskstore.Task{
+		TaskID: taskID,
+		Caller: "public:other-principal",
+		State:  taskstore.StatePending,
+	}
+	stream := &generationStreamRecorder{ctx: auth.ContextWithPublicPrincipal(ctx, "mine-principal", "kid")}
+	err := service.GetGeneration(&modelhubv2.GetGenerationRequest{TaskId: taskID}, stream)
+	if status.Code(err) != codes.NotFound {
+		t.Fatalf("code=%v err=%v", status.Code(err), err)
+	}
+}
+
+func TestSubmitGenerationUsesPublicCallerOverMetadata(t *testing.T) {
+	video := &fakeVideo{job: provider.VideoJob{State: provider.VideoJobRunning, PollAfterMs: 1000}}
+	store := newMemoryStore()
+	service := videoService(video, store)
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(protocol.CallerMetadataKey, "spoofed"))
+	ctx = auth.ContextWithPublicPrincipal(ctx, "principal-42", "kid")
+	req := videoSubmitRequest("ltx", "req-public-caller")
+	_, err := service.SubmitGeneration(ctx, req)
+	if err != nil {
+		t.Fatalf("SubmitGeneration: %v", err)
+	}
+	for _, task := range store.byID {
+		if task.RequestID == req.GetRequestId() && task.Caller != "public:principal-42" {
+			t.Fatalf("caller=%q want public:principal-42", task.Caller)
+		}
+	}
 }

@@ -36,9 +36,14 @@ spec:
         - name: wg-model-hub
           # workspace 发布前替换为 ACR 返回的不可变 digest。
           image: wgdl-registry-vpc.cn-shenzhen.cr.aliyuncs.com/wg/wg-model-hub@sha256:REPLACE_ME
+          env:
+            - name: WG_SERVER_GRPC_PORT
+              value: "50053"
           ports:
             - name: grpc
               containerPort: 50053
+            - name: public-grpc
+              containerPort: 50054
           startupProbe:
             grpc:
               port: 50053
@@ -99,8 +104,8 @@ metadata:
   name: wg-model-hub-external
   namespace: default
   annotations:
-    # 仅供同 VPC 的旧 Muse 宿主机稳定访问 ModelHub gRPC（50053）。
-    # TLS 终止与公网暴露均不在此入口；不得增加 DNS、Caddy、其它端口或额外机制。
+    # 仅供同 VPC 访问：50053 为内网未鉴权 gRPC；50054 为公网鉴权 gRPC（供 8.129.236.215 TLS 反代）。
+    # 保持 intranet，不得改为公网 LoadBalancer；TLS 终止与公网 DNS 由外部前置完成。
     service.beta.kubernetes.io/alibaba-cloud-loadbalancer-address-type: intranet
 spec:
   type: LoadBalancer
@@ -110,3 +115,6 @@ spec:
     - name: grpc
       port: 50053
       targetPort: grpc
+    - name: public-grpc
+      port: 50054
+      targetPort: public-grpc

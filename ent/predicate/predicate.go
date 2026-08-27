@@ -8,3 +8,6 @@ import (
 
 // GenerationTask is the predicate function for generationtask builders.
 type GenerationTask func(*sql.Selector)
+
+// ModelhubAPIKey is the predicate function for modelhubapikey builders.
+type ModelhubAPIKey func(*sql.Selector)

@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/wgdl666/wgModelHub/config"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/auth"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/internal/taskstore"
@@ -186,6 +187,12 @@ func (s *Service) GetGeneration(req *modelhubv2.GetGenerationRequest, stream mod
 		telemetry.RecordError(ctx, statusErr)
 		return statusErr
 	}
+	// 公网已鉴权主体只能读取自己 caller 下的任务，避免仅凭 task_id 泄露跨主体状态。
+	if publicCaller, ok := auth.PublicCaller(ctx); ok && task.Caller != publicCaller {
+		statusErr := status.Error(codes.NotFound, "generation task not found")
+		telemetry.RecordError(ctx, statusErr)
+		return statusErr
+	}
 
 	switch task.State {
 	case taskstore.StatePending:
@@ -318,6 +325,10 @@ func (s *Service) videoProvider(providerName, model string) (provider.VideoProvi
 }
 
 func callerFromContext(ctx context.Context) string {
+	// 公网 API Key 鉴权成功后必须覆盖客户端自报的 x-wg-caller-service，保证幂等命名空间可信。
+	if publicCaller, ok := auth.PublicCaller(ctx); ok {
+		return publicCaller
+	}
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
 		return ""

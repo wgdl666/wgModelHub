@@ -10,7 +10,8 @@ import (
 func validConfig() Config {
 	return Config{
 		Server: struct {
-			ListenAddress string `yaml:"listen_address"`
+			ListenAddress       string `yaml:"listen_address"`
+			PublicListenAddress string `yaml:"public_listen_address"`
 		}{ListenAddress: ":50053"},
 		Logfire: LogfireConfig{
 			Token:   "logfire-token",

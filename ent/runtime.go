@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/wgdl666/wgModelHub/ent/generationtask"
+	"github.com/wgdl666/wgModelHub/ent/modelhubapikey"
 	"github.com/wgdl666/wgModelHub/ent/schema"
 )
 
@@ -41,4 +42,14 @@ func init() {
 	generationtask.DefaultUpdatedAt = generationtaskDescUpdatedAt.Default.(func() time.Time)
 	// generationtask.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	generationtask.UpdateDefaultUpdatedAt = generationtaskDescUpdatedAt.UpdateDefault.(func() time.Time)
+	modelhubapikeyFields := schema.ModelhubAPIKey{}.Fields()
+	_ = modelhubapikeyFields
+	// modelhubapikeyDescName is the schema descriptor for name field.
+	modelhubapikeyDescName := modelhubapikeyFields[4].Descriptor()
+	// modelhubapikey.DefaultName holds the default value on creation for the name field.
+	modelhubapikey.DefaultName = modelhubapikeyDescName.Default.(string)
+	// modelhubapikeyDescCreatedAt is the schema descriptor for created_at field.
+	modelhubapikeyDescCreatedAt := modelhubapikeyFields[6].Descriptor()
+	// modelhubapikey.DefaultCreatedAt holds the default value on creation for the created_at field.
+	modelhubapikey.DefaultCreatedAt = modelhubapikeyDescCreatedAt.Default.(func() time.Time)
 }

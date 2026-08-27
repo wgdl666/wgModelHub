@@ -114,7 +114,11 @@ type ArkVideoProviderConfig struct {
 
 type Config struct {
 	Server struct {
+		// ListenAddress 仅迁移兼容：旧版 Nacos 仍可能带 server.listen_address，解析后永远忽略。
+		// 删除条件：线上 Nacos 字段清理并完成一轮发布后移除此字段与相关兼容逻辑。
 		ListenAddress string `yaml:"listen_address"`
+		// PublicListenAddress 仅迁移兼容：公网 listener 改由 WG_SERVER_PUBLIC_GRPC_PORT 在启动边界装配，默认关闭。
+		PublicListenAddress string `yaml:"public_listen_address"`
 	} `yaml:"server"`
 	Providers map[string]ProviderConfig `yaml:"providers"`
 	// ModelRouteOverrides：真实模型 ID -> 显式选中的 provider 实例名；provider 不变时可经 ListenConfig 热更新。
@@ -273,9 +277,6 @@ func (l *NacosConfigLoader) Close() {
 }
 
 func (c Config) Validate() error {
-	if strings.TrimSpace(c.Server.ListenAddress) == "" {
-		return fmt.Errorf("server.listen_address is required")
-	}
 	if strings.TrimSpace(c.Logfire.Token) == "" {
 		return fmt.Errorf("logfire.token is required")
 	}
@@ -350,6 +351,52 @@ func (c Config) Validate() error {
 		}
 	}
 	return nil
+}
+
+// ApplyListenPortOverridesFromEnv 在 server 启动边界装配内外网 gRPC 监听地址；Pod 拓扑端口不得由 Nacos 业务正文拥有。
+func ApplyListenPortOverridesFromEnv(cfg *Config) error {
+	if cfg == nil {
+		return fmt.Errorf("config is nil")
+	}
+	port, err := parseRequiredListenPort("WG_SERVER_GRPC_PORT")
+	if err != nil {
+		return err
+	}
+	cfg.Server.ListenAddress = fmt.Sprintf(":%d", port)
+	publicPort, err := parseOptionalListenPort("WG_SERVER_PUBLIC_GRPC_PORT")
+	if err != nil {
+		return err
+	}
+	if publicPort > 0 {
+		cfg.Server.PublicListenAddress = fmt.Sprintf(":%d", publicPort)
+	} else {
+		cfg.Server.PublicListenAddress = ""
+	}
+	return nil
+}
+
+func parseRequiredListenPort(envName string) (int, error) {
+	raw := strings.TrimSpace(os.Getenv(envName))
+	if raw == "" {
+		return 0, fmt.Errorf("missing %s: server startup requires Deployment-injected listen port", envName)
+	}
+	port, err := strconv.Atoi(raw)
+	if err != nil || port <= 0 || port > 65535 {
+		return 0, fmt.Errorf("%s must be a valid listen port", envName)
+	}
+	return port, nil
+}
+
+func parseOptionalListenPort(envName string) (int, error) {
+	raw := strings.TrimSpace(os.Getenv(envName))
+	if raw == "" {
+		return 0, nil
+	}
+	port, err := strconv.Atoi(raw)
+	if err != nil || port <= 0 || port > 65535 {
+		return 0, fmt.Errorf("%s must be a valid listen port when set", envName)
+	}
+	return port, nil
 }
 
 // ModelRoutes 返回真实模型 ID -> provider 实例名；单声明隐式选定，多声明取 model_routes。

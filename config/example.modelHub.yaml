@@ -1,5 +1,4 @@
-server:
-  listen_address: ":50053"
+# 监听端口由 Pod 环境变量 WG_SERVER_GRPC_PORT / WG_SERVER_PUBLIC_GRPC_PORT 注入，不进 Nacos。
 
 # 仅视频长任务 Submit/Get 使用；启动不会自动执行 migrations/。
 database:
