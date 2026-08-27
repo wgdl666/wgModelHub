@@ -3,7 +3,9 @@
 package models
 
 const (
-	Gemini25Flash      = "gemini-2.5-flash"
+	Gemini25Flash = "gemini-2.5-flash"
+	// Gemini35Flash 是 Gemini 3.5 Flash 文本模型真实 ID；深度搭配候选等结构化 JSON 场景可路由到此常量。
+	Gemini35Flash      = "gemini-3.5-flash"
 	Gemini20Flash001   = "gemini-2.0-flash-001"
 	DoubaoSeed16       = "doubao-seed-1.6"
 	QwenFlash          = "qwen-flash"
@@ -59,6 +61,7 @@ const (
 func All() []string {
 	return []string{
 		Gemini25Flash,
+		Gemini35Flash,
 		Gemini20Flash001,
 		DoubaoSeed16,
 		QwenFlash,
