@@ -12,7 +12,7 @@
 - OpenAI 实例同时承接 chat/completions 与 Images API；`gpt-image-2` 必须单独绑到 OpenAI 实例（无参考图走 `/v1/images/generations`，有参考图走 `/v1/images/edits`），不能并入 OminiLink Gemini generateContent 生图实例。
 - 启动时建立「真实模型 ID → provider 实例」路由：单 provider 声明可隐式选定；多 provider 声明同一模型时必须在顶层 `model_routes` 显式选定其一，不能依赖 map 顺序。无 profile、alias、自动 failover 或热更新；改配置后重启生效。
 - 全部真实模型 ID 是 `models` 包常量（`github.com/wgdl666/wgModelHub/models`）；Nacos / example YAML / 调用方 `request.model` 必须引用这些常量，不能另起业务名。
-- `database.dsn` 仅服务视频长任务跨 Pod 查询；运行时 CRUD 经 Ent（`ent/` schema + client），所有 ModelHub 关系表都显式限定在 `modelhub` schema；启动不自动 DDL，须显式执行 `migrations/`。
+- `database.dsn` 服务视频长任务的跨 Pod 持久化；当启用公网 listener 时，同一 Ent client 还服务 API Key 鉴权。所有 ModelHub 关系表都显式限定在 `modelhub` schema；启动不自动 DDL，须显式执行 `migrations/`。
 
 # 协议不变量
 
