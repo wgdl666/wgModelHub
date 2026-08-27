@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,6 +15,16 @@ import (
 
 	_ "modernc.org/sqlite"
 )
+
+func TestOpenDoesNotLeakDSN(t *testing.T) {
+	_, err := Open(context.Background(), "postgres://user:credential-marker@%")
+	if err == nil {
+		t.Fatal("expected invalid DSN to fail")
+	}
+	if strings.Contains(err.Error(), "credential-marker") {
+		t.Fatalf("DSN leaked in error: %v", err)
+	}
+}
 
 // 测试用 enttest 仅在临时 SQLite 上自动建表；生产路径不得 Schema.Create。
 // 用纯 Go SQLite（CGO_ENABLED=0 可用），经 OpenDB 注入 dialect.SQLite，保证 Ent 仍按 SQLite 方言生成语句。

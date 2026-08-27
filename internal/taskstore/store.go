@@ -68,11 +68,11 @@ func NewPostgres(client *ent.Client) *Postgres {
 func Open(ctx context.Context, dsn string) (*ent.Client, error) {
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
-		return nil, fmt.Errorf("connect database: %w", err)
+		return nil, fmt.Errorf("connect database")
 	}
 	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
-		return nil, fmt.Errorf("ping database: %w", err)
+		return nil, fmt.Errorf("ping database")
 	}
 	drv := entsql.OpenDB(dialect.Postgres, db)
 	return ent.NewClient(ent.Driver(drv)), nil

@@ -13,6 +13,10 @@ inspect() {
   docker image inspect --format "$1" "$PLATFORM_IMAGE"
 }
 
+migration_inspect() {
+  docker image inspect --format "$1" "$MIGRATION_IMAGE"
+}
+
 require_equal() {
   local description="$1"
   local actual="$2"
@@ -68,6 +72,7 @@ PY
 
 [[ "$EXPECTED_REVISION" =~ ^[0-9a-f]{40}$ ]] \
   || fail 'EXPECTED_REVISION must be a full lowercase Git SHA'
+[[ -n "${MIGRATION_IMAGE:-}" ]] || fail 'set MIGRATION_IMAGE to the migration image'
 
 require_equal 'image OS' "$(inspect '{{.Os}}')" 'linux'
 require_equal 'image architecture' "$(inspect '{{.Architecture}}')" 'amd64'
@@ -87,6 +92,21 @@ require_equal 'entrypoint' \
 require_equal 'exposed ports' \
   "$(inspect '{{json .Config.ExposedPorts}}')" \
   '{"50053/tcp":{}}'
+
+require_equal 'migration image OS' "$(migration_inspect '{{.Os}}')" 'linux'
+require_equal 'migration image architecture' "$(migration_inspect '{{.Architecture}}')" 'amd64'
+require_equal 'migration image revision' \
+  "$(migration_inspect '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" \
+  "$EXPECTED_REVISION"
+require_equal 'migration container user' "$(migration_inspect '{{.Config.User}}')" '10001:10001'
+require_equal 'migration entrypoint' \
+  "$(migration_inspect '{{json .Config.Entrypoint}}')" \
+  '["/usr/local/bin/wg-model-hub-migrate"]'
+
+docker run --rm --network none --read-only --cap-drop ALL \
+  --security-opt no-new-privileges --entrypoint /bin/sh "$MIGRATION_IMAGE" \
+  -c 'test -x /usr/local/bin/wg-model-hub-migrate' \
+  >/dev/null 2>&1 || fail 'migration binary is not executable by the configured user'
 
 container=''
 rootfs="$(mktemp -d)"

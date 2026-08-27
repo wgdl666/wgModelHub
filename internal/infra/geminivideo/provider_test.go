@@ -38,6 +38,11 @@ func testI2VRequest() *modelhubv2.GenerateRequest {
 
 func ptr(s string) *string { return &s }
 
+func disableFFmpeg(t *testing.T) {
+	t.Helper()
+	t.Setenv("PATH", t.TempDir())
+}
+
 func newTestProvider(baseURL string, client *http.Client) *Provider {
 	p, err := New("gemini", "sk-test", baseURL, "", 0.001)
 	if err != nil {
@@ -71,6 +76,7 @@ func TestNewUsesDefaultPollWhenZero(t *testing.T) {
 }
 
 func TestGenerateI2VInteractionPayload(t *testing.T) {
+	disableFFmpeg(t)
 	var body map[string]any
 	var apiBase string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -120,6 +126,7 @@ func TestGenerateI2VInteractionPayload(t *testing.T) {
 }
 
 func TestGenerateI2VURIOutputDownloadsWithAuth(t *testing.T) {
+	disableFFmpeg(t)
 	const fileID = "out-file"
 	const interactionID = "int-uri"
 	var apiBase string
@@ -173,6 +180,7 @@ func TestGenerateI2VURIOutputDownloadsWithAuth(t *testing.T) {
 }
 
 func TestGenerateEditUploadsFilesAndOrdersParts(t *testing.T) {
+	disableFFmpeg(t)
 	var interactionBody map[string]any
 	var uploadFinalize bool
 	var serverURL string

@@ -117,7 +117,7 @@ func (l *AppConfigLoader) Load(ctx context.Context) (Config, string, error) {
 	raw := string(content)
 	cfg, err := ParseAndValidateYAML(raw)
 	if err != nil {
-		return Config{}, "", fmt.Errorf("validate AppConfig configuration: %w", err)
+		return Config{}, "", fmt.Errorf("AppConfig configuration is invalid")
 	}
 	return cfg, raw, nil
 }

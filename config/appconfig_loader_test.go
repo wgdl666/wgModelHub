@@ -119,7 +119,7 @@ func TestAppConfigLoaderRejectsInvalidResponses(t *testing.T) {
 		{
 			name: "invalid yaml",
 			handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				_, _ = w.Write([]byte("providers: [\n"))
+				_, _ = w.Write([]byte("providers: credential-marker-that-must-not-leak\n"))
 			}),
 		},
 	}
@@ -135,8 +135,9 @@ func TestAppConfigLoaderRejectsInvalidResponses(t *testing.T) {
 			}
 			if _, _, err := loader.Load(context.Background()); err == nil {
 				t.Fatalf("expected %s response to fail", tt.name)
-			} else if strings.Contains(err.Error(), "sensitive response body") {
-				t.Fatalf("response body leaked in error: %v", err)
+			} else if strings.Contains(err.Error(), "sensitive response body") ||
+				strings.Contains(err.Error(), "credential-marker-that-must-not-leak") {
+				t.Fatalf("configuration content leaked in error: %v", err)
 			}
 		})
 	}
