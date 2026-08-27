@@ -57,3 +57,5 @@ FROM runtime AS migration
 COPY --from=builder /out/wg-model-hub-migrate /usr/local/bin/wg-model-hub-migrate
 
 ENTRYPOINT ["/usr/local/bin/wg-model-hub-migrate"]
+
+FROM runtime AS production

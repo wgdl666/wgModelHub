@@ -19,6 +19,17 @@ func TestDockerContextIncludesExampleYAMLForBuilderTests(t *testing.T) {
 	}
 }
 
+func TestDockerfileDefaultsToProductionStage(t *testing.T) {
+	raw, err := os.ReadFile("../Dockerfile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
+	if got := strings.TrimSpace(lines[len(lines)-1]); got != "FROM runtime AS production" {
+		t.Fatalf("Dockerfile final stage=%q, want production", got)
+	}
+}
+
 func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 	raw, err := os.ReadFile("example.modelHub.yaml")
 	if err != nil {
