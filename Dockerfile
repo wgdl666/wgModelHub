@@ -41,7 +41,7 @@ ARG ALPINE_MIRROR=""
 RUN if [ -n "$ALPINE_MIRROR" ]; then \
       sed -i "s|https://dl-cdn.alpinelinux.org/alpine|$ALPINE_MIRROR|g" /etc/apk/repositories; \
     fi \
-    && apk add --no-cache ca-certificates \
+    && apk add --no-cache --upgrade ca-certificates "openssl>=3.5.8-r0" \
     && addgroup -g 10001 app \
     && adduser -D -u 10001 -G app app
 

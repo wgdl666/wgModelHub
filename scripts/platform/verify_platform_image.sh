@@ -14,6 +14,15 @@ migration_inspect() {
   docker image inspect --format "$1" "$MIGRATION_IMAGE"
 }
 
+require_openssl_floor() {
+  local description="$1"
+  local image="$2"
+  docker run --rm --network none --read-only --cap-drop ALL \
+    --security-opt no-new-privileges --entrypoint /bin/sh "$image" \
+    -c "/sbin/apk info --exists 'openssl>=3.5.8-r0'" \
+    >/dev/null 2>&1 || fail "$description OpenSSL must be at least 3.5.8-r0"
+}
+
 require_equal() {
   local description="$1"
   local actual="$2"
@@ -116,6 +125,9 @@ require_equal 'migration container user' "$(migration_inspect '{{.Config.User}}'
 require_equal 'migration entrypoint' \
   "$(migration_inspect '{{json .Config.Entrypoint}}')" \
   '["/usr/local/bin/wg-model-hub-migrate"]'
+
+require_openssl_floor 'production image' "$PLATFORM_IMAGE"
+require_openssl_floor 'migration image' "$MIGRATION_IMAGE"
 
 docker run --rm --network none --read-only --cap-drop ALL \
   --security-opt no-new-privileges --entrypoint /bin/sh "$MIGRATION_IMAGE" \
