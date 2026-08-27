@@ -138,7 +138,8 @@ reject_path 'SQL migration file' -type f -name '*.sql'
 reject_path 'Go source file' -type f -name '*.go'
 reject_path 'private key path' \( -iname '*.key' -o -iname '*.pem' \) \
   ! -path "$rootfs/etc/ssl/certs/*" \
-  ! -path "$rootfs/etc/ssl/cert.pem"
+  ! -path "$rootfs/etc/ssl/cert.pem" \
+  ! -path "$rootfs/etc/ssl1.1/cert.pem"
 scan_credentials
 
 printf 'verify_platform_image: %s satisfies the ModelHub production contract\n' "$PLATFORM_IMAGE"

@@ -30,6 +30,16 @@ func TestDockerfileDefaultsToProductionStage(t *testing.T) {
 	}
 }
 
+func TestImageVerifierAllowsAlpineCompatibilityCABundle(t *testing.T) {
+	raw, err := os.ReadFile("../scripts/platform/verify_platform_image.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `! -path "$rootfs/etc/ssl1.1/cert.pem"`) {
+		t.Fatal("image verifier must allow Alpine's ssl1.1 compatibility CA bundle")
+	}
+}
+
 func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 	raw, err := os.ReadFile("example.modelHub.yaml")
 	if err != nil {
