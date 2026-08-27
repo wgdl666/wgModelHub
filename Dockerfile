@@ -14,29 +14,15 @@ WORKDIR /src
 RUN if [ -n "$ALPINE_MIRROR" ]; then \
       sed -i "s|https://dl-cdn.alpinelinux.org/alpine|$ALPINE_MIRROR|g" /etc/apk/repositories; \
     fi \
-    && apk add --no-cache git openssh-client \
-    && mkdir -p -m 0700 /root/.ssh \
-    && ssh-keyscan github.com >> /root/.ssh/known_hosts
-
-ENV GOPRIVATE=github.com/wgdl666/*
-ENV GONOSUMDB=github.com/wgdl666/*
+    && apk add --no-cache git
 
 COPY go.mod go.sum ./
-# 私有日志模块只在构建期通过 SSH agent 读取，密钥不会进入镜像层。
 RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=ssh,required=false \
-    GIT_CONFIG_COUNT=1 \
-    GIT_CONFIG_KEY_0=url.ssh://git@github.com/.insteadOf \
-    GIT_CONFIG_VALUE_0=https://github.com/ \
     GOPROXY="$GOPROXY" go mod download
 
 COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    --mount=type=ssh,required=false \
-    GIT_CONFIG_COUNT=1 \
-    GIT_CONFIG_KEY_0=url.ssh://git@github.com/.insteadOf \
-    GIT_CONFIG_VALUE_0=https://github.com/ \
     CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" \
     GOPROXY="$GOPROXY" go test ./... \
     && CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" \
