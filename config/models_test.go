@@ -2,11 +2,22 @@ package config
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/wgdl666/wgModelHub/models"
 	"gopkg.in/yaml.v3"
 )
+
+func TestDockerContextIncludesExampleYAMLForBuilderTests(t *testing.T) {
+	raw, err := os.ReadFile("../.dockerignore")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "\n!config/example.modelHub.yaml\n") {
+		t.Fatal(".dockerignore must re-include config/example.modelHub.yaml for Docker builder tests")
+	}
+}
 
 func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 	raw, err := os.ReadFile("example.modelHub.yaml")

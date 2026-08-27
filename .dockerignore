@@ -17,6 +17,7 @@ scripts/
 schema/
 config/*.yaml
 config/*.yml
+!config/example.modelHub.yaml
 bootstrap.json
 **/__pycache__/
 **/.pytest_cache/
