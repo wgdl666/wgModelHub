@@ -48,6 +48,9 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 FROM ${ALPINE_RUNTIME_IMAGE} AS runtime
 
+LABEL org.opencontainers.image.title="wg-model-hub" \
+      org.opencontainers.image.source="https://github.com/wgdl666/wgModelHub"
+
 ARG ALPINE_MIRROR=""
 RUN if [ -n "$ALPINE_MIRROR" ]; then \
       sed -i "s|https://dl-cdn.alpinelinux.org/alpine|$ALPINE_MIRROR|g" /etc/apk/repositories; \
@@ -59,7 +62,7 @@ RUN if [ -n "$ALPINE_MIRROR" ]; then \
 COPY --from=builder /out/wg-model-hub /usr/local/bin/wg-model-hub
 COPY --from=builder /out/wg-model-hub-healthcheck /usr/local/bin/wg-model-hub-healthcheck
 
-USER app
+USER 10001:10001
 EXPOSE 50053
 ENTRYPOINT ["/usr/local/bin/wg-model-hub"]
 

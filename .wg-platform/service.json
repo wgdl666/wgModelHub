@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "service": "modelhub",
+  "environment": "dev",
+  "platform": "linux/amd64",
+  "runtime": {
+    "user": "10001:10001",
+    "protocol": "grpc",
+    "port": 50053,
+    "entrypoint": "/usr/local/bin/wg-model-hub"
+  },
+  "configuration": {
+    "source": "appconfig",
+    "reloadMode": "ecs-restart",
+    "application": "modelhub",
+    "appConfigEnvironment": "dev",
+    "profile": "config-dev",
+    "region": "us-east-2"
+  },
+  "network": {
+    "exposure": "private",
+    "serviceDiscovery": "modelhub.internal.dev",
+    "callerSecurityGroupId": "sg-09930b896aeeb910f"
+  }
+}

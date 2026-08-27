@@ -15,9 +15,36 @@ Prompt 编排、业务重试、质量验收、任务状态、OSS、数据库和 
 rpc Generate(GenerateRequest) returns (stream GenerateEvent);
 ```
 
+## 配置源与 AWS dev 部署
+
+配置源由环境变量 `WG_CONFIG_SOURCE` 选择：未设置或设为 `nacos` 时，继续读取
+`/etc/wg-model-hub/bootstrap.json` 并监听既有 Nacos Data ID；设为 `appconfig` 时，
+只从本机 AWS AppConfig Agent 启动加载一次，加载失败直接退出，不回退到 Nacos 或本地文件。
+
+AWS dev 使用固定身份：
+
+```text
+WG_CONFIG_SOURCE=appconfig
+APP_NAME=modelhub
+ENV=dev
+SERVICE_NAME=config-dev
+REGION=us-east-2
+WG_SERVER_GRPC_PORT=50053
+```
+
+AppConfig 资源为 `modelhub / dev / config-dev`，运行时通过 Agent 的
+`127.0.0.1:2772` 端点获取。配置更新后由 ECS 重新部署任务，不在进程内热更新。
+Gemini 的 `proxy_url` 留空即直连，AWS dev 不需要额外代理开关。
+
+AWS 新加坡 dev 仅通过 VPC 内的 `modelhub.internal.dev:50053` 提供 gRPC；不映射
+`50054`，不创建公网负载均衡、证书或公网 DNS。数据库表也不会在服务启动时创建；
+首次发布必须显式运行独立的 `migration` 镜像，该镜像只执行
+`migrations/001_generation_task.sql`。本次内网部署不得执行 `002` 或 `003`。
+
 ## 公网 API Key（可选）
 
-内网 ACK 调用仍走 `wg-model-hub:50053`，无需 API Key。若需公网暴露，在 Nacos 配置
+以下能力仅保留给阿里云/Nacos 的独立部署方案，不属于 AWS dev。内网 ACK 调用仍走
+`wg-model-hub:50053`，无需 API Key。若未来需公网暴露，在 Nacos 配置
 `server.public_listen_address: ":50054"`，由独立 gRPC Server 监听并强制 Bearer 鉴权：
 
 ```text

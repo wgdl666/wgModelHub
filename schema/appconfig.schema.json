@@ -1,0 +1,177 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "id": "https://wgdl.tech/schemas/modelhub/appconfig.schema.json",
+  "title": "wgModelHub AppConfig",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["database", "providers", "logfire"],
+  "properties": {
+    "database": { "$ref": "#/definitions/database" },
+    "providers": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "patternProperties": {
+        "^\\S(?:.*\\S)?$": { "$ref": "#/definitions/provider" }
+      }
+    },
+    "model_routes": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        "^\\S(?:.*\\S)?$": { "type": "string", "minLength": 1 }
+      }
+    },
+    "logfire": { "$ref": "#/definitions/logfire" }
+  },
+  "definitions": {
+    "database": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dsn"],
+      "properties": {
+        "dsn": { "type": "string", "minLength": 1 }
+      }
+    },
+    "logfire": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["token"],
+      "properties": {
+        "token": { "type": "string", "minLength": 1 },
+        "env": { "type": "string" },
+        "service": { "type": "string" },
+        "version": { "type": "string" },
+        "otel_log_level": { "type": "string" }
+      }
+    },
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["models"],
+      "properties": {
+        "models": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "gemini": { "$ref": "#/definitions/gemini" },
+        "vertexai": { "$ref": "#/definitions/vertexai" },
+        "ark": { "$ref": "#/definitions/ark" },
+        "openai": { "$ref": "#/definitions/openai" },
+        "ltx": { "$ref": "#/definitions/ltx" },
+        "dashscope_video": { "$ref": "#/definitions/dashscopeVideo" },
+        "ominilink_video": { "$ref": "#/definitions/ominilinkVideo" },
+        "gemini_video": { "$ref": "#/definitions/geminiVideo" },
+        "ark_video": { "$ref": "#/definitions/arkVideo" }
+      },
+      "oneOf": [
+        { "required": ["gemini"] },
+        { "required": ["vertexai"] },
+        { "required": ["ark"] },
+        { "required": ["openai"] },
+        { "required": ["ltx"] },
+        { "required": ["dashscope_video"] },
+        { "required": ["ominilink_video"] },
+        { "required": ["gemini_video"] },
+        { "required": ["ark_video"] }
+      ]
+    },
+    "gemini": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_key"],
+      "properties": {
+        "api_key": { "type": "string", "minLength": 1 },
+        "base_url": { "type": "string" },
+        "proxy_url": { "type": "string" }
+      }
+    },
+    "vertexai": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project", "location"],
+      "properties": {
+        "project": { "type": "string", "minLength": 1 },
+        "location": { "type": "string", "minLength": 1 }
+      }
+    },
+    "ark": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_key"],
+      "properties": {
+        "api_key": { "type": "string", "minLength": 1 },
+        "base_url": { "type": "string" }
+      }
+    },
+    "openai": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_key"],
+      "properties": {
+        "api_key": { "type": "string", "minLength": 1 },
+        "base_url": { "type": "string" }
+      }
+    },
+    "ltx": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["base_url", "duration", "fps", "poll_interval", "max_poll_time"],
+      "properties": {
+        "base_url": { "type": "string", "minLength": 1 },
+        "token": { "type": "string" },
+        "duration": { "type": "number", "minimum": 0, "exclusiveMinimum": true },
+        "fps": { "type": "integer", "minimum": 0, "exclusiveMinimum": true },
+        "seed": { "type": "integer" },
+        "poll_interval": { "type": "number", "minimum": 0, "exclusiveMinimum": true },
+        "max_poll_time": { "type": "number", "minimum": 0, "exclusiveMinimum": true }
+      }
+    },
+    "dashscopeVideo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_key"],
+      "properties": {
+        "api_key": { "type": "string", "minLength": 1 },
+        "base_url": { "type": "string" },
+        "poll_interval": { "type": "number", "minimum": 0 },
+        "max_poll_time": { "type": "number", "minimum": 0 }
+      }
+    },
+    "ominilinkVideo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_key"],
+      "properties": {
+        "api_key": { "type": "string", "minLength": 1 },
+        "base_url": { "type": "string" },
+        "poll_interval": { "type": "number", "minimum": 0 },
+        "max_poll_time": { "type": "number", "minimum": 0 }
+      }
+    },
+    "geminiVideo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_key"],
+      "properties": {
+        "api_key": { "type": "string", "minLength": 1 },
+        "base_url": { "type": "string" },
+        "auth_header": { "type": "string" },
+        "poll_interval": { "type": "number", "minimum": 0 }
+      }
+    },
+    "arkVideo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_key"],
+      "properties": {
+        "api_key": { "type": "string", "minLength": 1 },
+        "base_url": { "type": "string" },
+        "poll_interval": { "type": "number", "minimum": 0 },
+        "max_poll_time": { "type": "number", "minimum": 0 }
+      }
+    }
+  }
+}
