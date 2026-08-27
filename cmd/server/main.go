@@ -30,13 +30,9 @@ func main() {
 	ctx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
 
-	bootstrap, err := config.LoadBootstrapFile(config.BootstrapFilePath)
+	configLoader, err := config.NewRuntimeLoaderFromEnv()
 	if err != nil {
-		fatal("nacos_bootstrap_load_failed", err)
-	}
-	configLoader, err := config.NewNacosConfigLoader(bootstrap)
-	if err != nil {
-		fatal("nacos_loader_init_failed", err)
+		fatal("runtime_config_loader_init_failed", err)
 	}
 	defer configLoader.Close()
 
@@ -52,7 +48,7 @@ func main() {
 	if err := configLoader.Listen(func(_, _, data string) {
 		live.ApplyYAML(data)
 	}); err != nil {
-		fatal("nacos_listen_failed", err)
+		fatal("runtime_config_listen_failed", err)
 	}
 
 	telemetryRuntime, err := telemetry.Setup(ctx, runtimeConfig.Logfire)

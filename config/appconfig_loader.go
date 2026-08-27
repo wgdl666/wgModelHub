@@ -121,3 +121,9 @@ func (l *AppConfigLoader) Load(ctx context.Context) (Config, string, error) {
 	}
 	return cfg, raw, nil
 }
+
+func (l *AppConfigLoader) Listen(func(dataID, group, content string)) error {
+	return nil
+}
+
+func (l *AppConfigLoader) Close() {}
