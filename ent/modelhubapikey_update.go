@@ -70,6 +70,12 @@ func (_u *ModelhubAPIKeyUpdate) SetNillableExpiresAt(v *time.Time) *ModelhubAPIK
 	return _u
 }
 
+// ClearExpiresAt clears the value of the "expires_at" field.
+func (_u *ModelhubAPIKeyUpdate) ClearExpiresAt() *ModelhubAPIKeyUpdate {
+	_u.mutation.ClearExpiresAt()
+	return _u
+}
+
 // SetRevokedAt sets the "revoked_at" field.
 func (_u *ModelhubAPIKeyUpdate) SetRevokedAt(v time.Time) *ModelhubAPIKeyUpdate {
 	_u.mutation.SetRevokedAt(v)
@@ -140,6 +146,9 @@ func (_u *ModelhubAPIKeyUpdate) sqlSave(ctx context.Context) (_node int, err err
 	if value, ok := _u.mutation.ExpiresAt(); ok {
 		_spec.SetField(modelhubapikey.FieldExpiresAt, field.TypeTime, value)
 	}
+	if _u.mutation.ExpiresAtCleared() {
+		_spec.ClearField(modelhubapikey.FieldExpiresAt, field.TypeTime)
+	}
 	if value, ok := _u.mutation.RevokedAt(); ok {
 		_spec.SetField(modelhubapikey.FieldRevokedAt, field.TypeTime, value)
 	}
@@ -205,6 +214,12 @@ func (_u *ModelhubAPIKeyUpdateOne) SetNillableExpiresAt(v *time.Time) *ModelhubA
 	if v != nil {
 		_u.SetExpiresAt(*v)
 	}
+	return _u
+}
+
+// ClearExpiresAt clears the value of the "expires_at" field.
+func (_u *ModelhubAPIKeyUpdateOne) ClearExpiresAt() *ModelhubAPIKeyUpdateOne {
+	_u.mutation.ClearExpiresAt()
 	return _u
 }
 
@@ -307,6 +322,9 @@ func (_u *ModelhubAPIKeyUpdateOne) sqlSave(ctx context.Context) (_node *Modelhub
 	}
 	if value, ok := _u.mutation.ExpiresAt(); ok {
 		_spec.SetField(modelhubapikey.FieldExpiresAt, field.TypeTime, value)
+	}
+	if _u.mutation.ExpiresAtCleared() {
+		_spec.ClearField(modelhubapikey.FieldExpiresAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.RevokedAt(); ok {
 		_spec.SetField(modelhubapikey.FieldRevokedAt, field.TypeTime, value)

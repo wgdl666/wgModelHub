@@ -40,7 +40,10 @@ func (ModelhubAPIKey) Fields() []ent.Field {
 			Default(time.Now).
 			Immutable().
 			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+		// NULL 表示永不过期；显式未来时间仍按到期拒绝。不做 9999 年哨兵。
 		field.Time("expires_at").
+			Optional().
+			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 		field.Time("revoked_at").
 			Optional().

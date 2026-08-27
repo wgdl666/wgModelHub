@@ -509,6 +509,16 @@ func ExpiresAtLTE(v time.Time) predicate.ModelhubAPIKey {
 	return predicate.ModelhubAPIKey(sql.FieldLTE(FieldExpiresAt, v))
 }
 
+// ExpiresAtIsNil applies the IsNil predicate on the "expires_at" field.
+func ExpiresAtIsNil() predicate.ModelhubAPIKey {
+	return predicate.ModelhubAPIKey(sql.FieldIsNull(FieldExpiresAt))
+}
+
+// ExpiresAtNotNil applies the NotNil predicate on the "expires_at" field.
+func ExpiresAtNotNil() predicate.ModelhubAPIKey {
+	return predicate.ModelhubAPIKey(sql.FieldNotNull(FieldExpiresAt))
+}
+
 // RevokedAtEQ applies the EQ predicate on the "revoked_at" field.
 func RevokedAtEQ(v time.Time) predicate.ModelhubAPIKey {
 	return predicate.ModelhubAPIKey(sql.FieldEQ(FieldRevokedAt, v))

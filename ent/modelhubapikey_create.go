@@ -78,6 +78,14 @@ func (_c *ModelhubAPIKeyCreate) SetExpiresAt(v time.Time) *ModelhubAPIKeyCreate 
 	return _c
 }
 
+// SetNillableExpiresAt sets the "expires_at" field if the given value is not nil.
+func (_c *ModelhubAPIKeyCreate) SetNillableExpiresAt(v *time.Time) *ModelhubAPIKeyCreate {
+	if v != nil {
+		_c.SetExpiresAt(*v)
+	}
+	return _c
+}
+
 // SetRevokedAt sets the "revoked_at" field.
 func (_c *ModelhubAPIKeyCreate) SetRevokedAt(v time.Time) *ModelhubAPIKeyCreate {
 	_c.mutation.SetRevokedAt(v)
@@ -163,9 +171,6 @@ func (_c *ModelhubAPIKeyCreate) check() error {
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "ModelhubAPIKey.created_at"`)}
 	}
-	if _, ok := _c.mutation.ExpiresAt(); !ok {
-		return &ValidationError{Name: "expires_at", err: errors.New(`ent: missing required field "ModelhubAPIKey.expires_at"`)}
-	}
 	return nil
 }
 
@@ -227,7 +232,7 @@ func (_c *ModelhubAPIKeyCreate) createSpec() (*ModelhubAPIKey, *sqlgraph.CreateS
 	}
 	if value, ok := _c.mutation.ExpiresAt(); ok {
 		_spec.SetField(modelhubapikey.FieldExpiresAt, field.TypeTime, value)
-		_node.ExpiresAt = value
+		_node.ExpiresAt = &value
 	}
 	if value, ok := _c.mutation.RevokedAt(); ok {
 		_spec.SetField(modelhubapikey.FieldRevokedAt, field.TypeTime, value)

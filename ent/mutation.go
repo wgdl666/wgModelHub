@@ -1348,7 +1348,7 @@ func (m *ModelhubAPIKeyMutation) ExpiresAt() (r time.Time, exists bool) {
 // OldExpiresAt returns the old "expires_at" field's value of the ModelhubAPIKey entity.
 // If the ModelhubAPIKey object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ModelhubAPIKeyMutation) OldExpiresAt(ctx context.Context) (v time.Time, err error) {
+func (m *ModelhubAPIKeyMutation) OldExpiresAt(ctx context.Context) (v *time.Time, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldExpiresAt is only allowed on UpdateOne operations")
 	}
@@ -1362,9 +1362,22 @@ func (m *ModelhubAPIKeyMutation) OldExpiresAt(ctx context.Context) (v time.Time,
 	return oldValue.ExpiresAt, nil
 }
 
+// ClearExpiresAt clears the value of the "expires_at" field.
+func (m *ModelhubAPIKeyMutation) ClearExpiresAt() {
+	m.expires_at = nil
+	m.clearedFields[modelhubapikey.FieldExpiresAt] = struct{}{}
+}
+
+// ExpiresAtCleared returns if the "expires_at" field was cleared in this mutation.
+func (m *ModelhubAPIKeyMutation) ExpiresAtCleared() bool {
+	_, ok := m.clearedFields[modelhubapikey.FieldExpiresAt]
+	return ok
+}
+
 // ResetExpiresAt resets all changes to the "expires_at" field.
 func (m *ModelhubAPIKeyMutation) ResetExpiresAt() {
 	m.expires_at = nil
+	delete(m.clearedFields, modelhubapikey.FieldExpiresAt)
 }
 
 // SetRevokedAt sets the "revoked_at" field.
@@ -1619,6 +1632,9 @@ func (m *ModelhubAPIKeyMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *ModelhubAPIKeyMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(modelhubapikey.FieldExpiresAt) {
+		fields = append(fields, modelhubapikey.FieldExpiresAt)
+	}
 	if m.FieldCleared(modelhubapikey.FieldRevokedAt) {
 		fields = append(fields, modelhubapikey.FieldRevokedAt)
 	}
@@ -1636,6 +1652,9 @@ func (m *ModelhubAPIKeyMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *ModelhubAPIKeyMutation) ClearField(name string) error {
 	switch name {
+	case modelhubapikey.FieldExpiresAt:
+		m.ClearExpiresAt()
+		return nil
 	case modelhubapikey.FieldRevokedAt:
 		m.ClearRevokedAt()
 		return nil
