@@ -53,6 +53,9 @@ func (lc *LiveConfig) ApplyYAML(content string) {
 		return
 	}
 
+	// 监听地址只在 Pod 启动时由环境变量注入；Nacos 无 listen_address 或带旧值都不能覆盖运行时绑定。
+	next.Server.ListenAddress = previous.Server.ListenAddress
+	next.Server.PublicListenAddress = previous.Server.PublicListenAddress
 	lc.Store(next)
 	logs.Default().Info("nacos_config_applied")
 }
@@ -77,9 +80,6 @@ func ParseAndValidateYAML(content string) (Config, error) {
 // RestartRequiredFields 列出绑定启动期连接/资源的字段；provider 集合或凭据变化必须滚动重启。
 func RestartRequiredFields(previous, next Config) []string {
 	var fields []string
-	if strings.TrimSpace(previous.Server.ListenAddress) != strings.TrimSpace(next.Server.ListenAddress) {
-		fields = append(fields, "server.listen_address")
-	}
 	if previous.Database.DSN != next.Database.DSN {
 		fields = append(fields, "database.dsn")
 	}

@@ -30,16 +30,65 @@ func TestLiveConfigRejectsInvalidYAML(t *testing.T) {
 	}
 }
 
+func TestParseAndValidateYAMLWithoutListenAddress(t *testing.T) {
+	content, err := yaml.Marshal(validConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := yaml.Unmarshal(content, &document); err != nil {
+		t.Fatal(err)
+	}
+	delete(document, "server")
+	content, err = yaml.Marshal(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ParseAndValidateYAML(string(content)); err != nil {
+		t.Fatalf("Nacos without server section must parse: %v", err)
+	}
+}
+
+func TestApplyListenPortOverridesFromEnv(t *testing.T) {
+	cfg := validConfig()
+	t.Setenv("WG_SERVER_GRPC_PORT", "50053")
+	if err := ApplyListenPortOverridesFromEnv(&cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Server.ListenAddress != ":50053" {
+		t.Fatalf("listen_address=%q", cfg.Server.ListenAddress)
+	}
+	if cfg.Server.PublicListenAddress != "" {
+		t.Fatalf("public listener should default off, got %q", cfg.Server.PublicListenAddress)
+	}
+	t.Setenv("WG_SERVER_PUBLIC_GRPC_PORT", "50054")
+	if err := ApplyListenPortOverridesFromEnv(&cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Server.PublicListenAddress != ":50054" {
+		t.Fatalf("public listen_address=%q", cfg.Server.PublicListenAddress)
+	}
+	t.Setenv("WG_SERVER_GRPC_PORT", "")
+	if err := ApplyListenPortOverridesFromEnv(&cfg); err == nil {
+		t.Fatal("missing env port must fail server assembly")
+	}
+}
+
 func TestLiveConfigRejectsRestartRequiredFields(t *testing.T) {
 	initial := validConfigWithDualGeminiFlash()
+	initial.Server.ListenAddress = ":50053"
 	lc := NewLiveConfig(initial)
 
 	next := initial
 	next.Server.ListenAddress = ":50099"
 	next.ModelRouteOverrides = map[string]string{models.Gemini25Flash: "gemini_backup"}
 	lc.ApplyYAML(mustYAML(t, next))
-	if lc.Load().Server.ListenAddress != initial.Server.ListenAddress {
-		t.Fatal("mixed restart document must not apply hot half")
+	got := lc.Load()
+	if got.ModelRoutes()[models.Gemini25Flash] != "gemini_backup" {
+		t.Fatal("listen_address in Nacos YAML must be ignored; hot fields should still apply")
+	}
+	if got.Server.ListenAddress != ":50053" {
+		t.Fatalf("runtime listen_address=%q, want env value :50053", got.Server.ListenAddress)
 	}
 
 	next = initial

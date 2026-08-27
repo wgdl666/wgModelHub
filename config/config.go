@@ -118,6 +118,7 @@ type Config struct {
 		// 删除条件：线上 Nacos 字段清理并完成一轮发布后移除此字段与相关兼容逻辑。
 		ListenAddress string `yaml:"listen_address"`
 		// PublicListenAddress 仅迁移兼容：公网 listener 改由 WG_SERVER_PUBLIC_GRPC_PORT 在启动边界装配，默认关闭。
+		// 删除条件：线上 Nacos 字段清理并完成一轮发布后移除此字段与相关兼容逻辑。
 		PublicListenAddress string `yaml:"public_listen_address"`
 	} `yaml:"server"`
 	Providers map[string]ProviderConfig `yaml:"providers"`
@@ -355,48 +356,28 @@ func (c Config) Validate() error {
 
 // ApplyListenPortOverridesFromEnv 在 server 启动边界装配内外网 gRPC 监听地址；Pod 拓扑端口不得由 Nacos 业务正文拥有。
 func ApplyListenPortOverridesFromEnv(cfg *Config) error {
-	if cfg == nil {
-		return fmt.Errorf("config is nil")
+	raw := strings.TrimSpace(os.Getenv("WG_SERVER_GRPC_PORT"))
+	if raw == "" {
+		return fmt.Errorf("missing WG_SERVER_GRPC_PORT: server startup requires Deployment-injected listen port")
 	}
-	port, err := parseRequiredListenPort("WG_SERVER_GRPC_PORT")
-	if err != nil {
-		return err
+	port, err := strconv.Atoi(raw)
+	if err != nil || port <= 0 || port > 65535 {
+		return fmt.Errorf("WG_SERVER_GRPC_PORT must be a valid listen port")
 	}
 	cfg.Server.ListenAddress = fmt.Sprintf(":%d", port)
-	publicPort, err := parseOptionalListenPort("WG_SERVER_PUBLIC_GRPC_PORT")
-	if err != nil {
-		return err
-	}
-	if publicPort > 0 {
-		cfg.Server.PublicListenAddress = fmt.Sprintf(":%d", publicPort)
-	} else {
+
+	publicRaw := strings.TrimSpace(os.Getenv("WG_SERVER_PUBLIC_GRPC_PORT"))
+	if publicRaw == "" {
+		// 未显式开启公网 listener 时保持关闭，避免误暴露内网-only 部署。
 		cfg.Server.PublicListenAddress = ""
+		return nil
 	}
+	publicPort, err := strconv.Atoi(publicRaw)
+	if err != nil || publicPort <= 0 || publicPort > 65535 {
+		return fmt.Errorf("WG_SERVER_PUBLIC_GRPC_PORT must be a valid listen port when set")
+	}
+	cfg.Server.PublicListenAddress = fmt.Sprintf(":%d", publicPort)
 	return nil
-}
-
-func parseRequiredListenPort(envName string) (int, error) {
-	raw := strings.TrimSpace(os.Getenv(envName))
-	if raw == "" {
-		return 0, fmt.Errorf("missing %s: server startup requires Deployment-injected listen port", envName)
-	}
-	port, err := strconv.Atoi(raw)
-	if err != nil || port <= 0 || port > 65535 {
-		return 0, fmt.Errorf("%s must be a valid listen port", envName)
-	}
-	return port, nil
-}
-
-func parseOptionalListenPort(envName string) (int, error) {
-	raw := strings.TrimSpace(os.Getenv(envName))
-	if raw == "" {
-		return 0, nil
-	}
-	port, err := strconv.Atoi(raw)
-	if err != nil || port <= 0 || port > 65535 {
-		return 0, fmt.Errorf("%s must be a valid listen port when set", envName)
-	}
-	return port, nil
 }
 
 // ModelRoutes 返回真实模型 ID -> provider 实例名；单声明隐式选定，多声明取 model_routes。
