@@ -1075,7 +1075,9 @@ type Input struct {
 	Tools              []*Tool                `protobuf:"bytes,2,rep,name=tools,proto3" json:"tools,omitempty"`
 	ToolChoice         *ToolChoice            `protobuf:"bytes,3,opt,name=tool_choice,json=toolChoice,proto3" json:"tool_choice,omitempty"`
 	PreviousResponseId string                 `protobuf:"bytes,4,opt,name=previous_response_id,json=previousResponseId,proto3" json:"previous_response_id,omitempty"`
-	Caching            *CachingConfig         `protobuf:"bytes,5,opt,name=caching,proto3" json:"caching,omitempty"`
+	// 文本 Generate 省略本字段时，ModelHub 默认写入 enabled=true；显式 enabled=false 可关闭。
+	// 是否实际命中仍以 usage.cached_tokens > 0 为准，请求开启不等于命中。
+	Caching *CachingConfig `protobuf:"bytes,5,opt,name=caching,proto3" json:"caching,omitempty"`
 	// Gemini 显式 CachedContent 资源名；与 Ark previous_response_id / caching.enabled 互不替代。
 	// 引用时 system/tools 已在 cache 内，调用方不应再按屏裁剪 tools，也不应重复下发 system。
 	CachedContent string `protobuf:"bytes,6,opt,name=cached_content,json=cachedContent,proto3" json:"cached_content,omitempty"`
@@ -1398,6 +1400,9 @@ func (x *ToolChoice) GetFunctionName() string {
 	return ""
 }
 
+// CachingConfig 控制供应商侧 KV/前缀缓存开关（如 Ark caching.enabled）。
+// 仅文本 Generate 缺省时由 ModelHub 默认 enabled；显式 false 保留关闭语义。
+// 命中证据只看响应 usage.cached_tokens > 0，勿与 enabled 混读。
 type CachingConfig struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Enabled       bool                   `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
@@ -2419,6 +2424,116 @@ func (*GenerationTaskEvent_Status) isGenerationTaskEvent_Event() {}
 
 func (*GenerationTaskEvent_Output) isGenerationTaskEvent_Event() {}
 
+// SynthesizeSpeechRequest 只保留当前线上 Minimax 同步合成真实需要的字段。
+// 输出格式第一版固定为 MP3/16kHz/mono，不经 OutputSpec，避免与 text/image/video 能力混用。
+type SynthesizeSpeechRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// model 是真实供应商 TTS 模型 ID，例如 speech-2.8-turbo。
+	Model string `protobuf:"bytes,1,opt,name=model,proto3" json:"model,omitempty"`
+	// text 为待合成全文；空文本拒绝。长度受供应商同步上限约束（当前 Minimax < 10000 字符）。
+	Text string `protobuf:"bytes,2,opt,name=text,proto3" json:"text,omitempty"`
+	// voice_id 为空时使用 provider 配置默认音色；不开放任意供应商私有扩展字段。
+	VoiceId       string `protobuf:"bytes,3,opt,name=voice_id,json=voiceId,proto3" json:"voice_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SynthesizeSpeechRequest) Reset() {
+	*x = SynthesizeSpeechRequest{}
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SynthesizeSpeechRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SynthesizeSpeechRequest) ProtoMessage() {}
+
+func (x *SynthesizeSpeechRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SynthesizeSpeechRequest.ProtoReflect.Descriptor instead.
+func (*SynthesizeSpeechRequest) Descriptor() ([]byte, []int) {
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *SynthesizeSpeechRequest) GetModel() string {
+	if x != nil {
+		return x.Model
+	}
+	return ""
+}
+
+func (x *SynthesizeSpeechRequest) GetText() string {
+	if x != nil {
+		return x.Text
+	}
+	return ""
+}
+
+func (x *SynthesizeSpeechRequest) GetVoiceId() string {
+	if x != nil {
+		return x.VoiceId
+	}
+	return ""
+}
+
+// SynthesizeSpeechResponse 必须携带完整可解码音频；半截收集只能映射为 gRPC error。
+type SynthesizeSpeechResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Audio         *Media                 `protobuf:"bytes,1,opt,name=audio,proto3" json:"audio,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SynthesizeSpeechResponse) Reset() {
+	*x = SynthesizeSpeechResponse{}
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SynthesizeSpeechResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SynthesizeSpeechResponse) ProtoMessage() {}
+
+func (x *SynthesizeSpeechResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SynthesizeSpeechResponse.ProtoReflect.Descriptor instead.
+func (*SynthesizeSpeechResponse) Descriptor() ([]byte, []int) {
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *SynthesizeSpeechResponse) GetAudio() *Media {
+	if x != nil {
+		return x.Audio
+	}
+	return nil
+}
+
 var File_proto_wg_model_hub_v2_model_hub_proto protoreflect.FileDescriptor
 
 const file_proto_wg_model_hub_v2_model_hub_proto_rawDesc = "" +
@@ -2577,7 +2692,13 @@ const file_proto_wg_model_hub_v2_model_hub_proto_rawDesc = "" +
 	"\x13GenerationTaskEvent\x12?\n" +
 	"\x06status\x18\x01 \x01(\v2%.wg_model_hub.v2.GenerationTaskStatusH\x00R\x06status\x128\n" +
 	"\x06output\x18\x02 \x01(\v2\x1e.wg_model_hub.v2.GenerateEventH\x00R\x06outputB\a\n" +
-	"\x05event*P\n" +
+	"\x05event\"^\n" +
+	"\x17SynthesizeSpeechRequest\x12\x14\n" +
+	"\x05model\x18\x01 \x01(\tR\x05model\x12\x12\n" +
+	"\x04text\x18\x02 \x01(\tR\x04text\x12\x19\n" +
+	"\bvoice_id\x18\x03 \x01(\tR\avoiceId\"H\n" +
+	"\x18SynthesizeSpeechResponse\x12,\n" +
+	"\x05audio\x18\x01 \x01(\v2\x16.wg_model_hub.v2.MediaR\x05audio*P\n" +
 	"\x04Role\x12\x14\n" +
 	"\x10ROLE_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vROLE_SYSTEM\x10\x01\x12\r\n" +
@@ -2613,12 +2734,13 @@ const file_proto_wg_model_hub_v2_model_hub_proto_rawDesc = "" +
 	"\x1dGENERATION_TASK_STATE_PENDING\x10\x01\x12!\n" +
 	"\x1dGENERATION_TASK_STATE_RUNNING\x10\x02\x12#\n" +
 	"\x1fGENERATION_TASK_STATE_SUCCEEDED\x10\x03\x12 \n" +
-	"\x1cGENERATION_TASK_STATE_FAILED\x10\x042\x92\x03\n" +
+	"\x1cGENERATION_TASK_STATE_FAILED\x10\x042\xfb\x03\n" +
 	"\x0fModelHubService\x12N\n" +
 	"\bGenerate\x12 .wg_model_hub.v2.GenerateRequest\x1a\x1e.wg_model_hub.v2.GenerateEvent0\x01\x12p\n" +
 	"\x13CreateCachedContent\x12+.wg_model_hub.v2.CreateCachedContentRequest\x1a,.wg_model_hub.v2.CreateCachedContentResponse\x12]\n" +
 	"\x10SubmitGeneration\x12(.wg_model_hub.v2.SubmitGenerationRequest\x1a\x1f.wg_model_hub.v2.GenerationTask\x12^\n" +
-	"\rGetGeneration\x12%.wg_model_hub.v2.GetGenerationRequest\x1a$.wg_model_hub.v2.GenerationTaskEvent0\x01BBZ@github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2;wg_model_hubv2b\x06proto3"
+	"\rGetGeneration\x12%.wg_model_hub.v2.GetGenerationRequest\x1a$.wg_model_hub.v2.GenerationTaskEvent0\x01\x12g\n" +
+	"\x10SynthesizeSpeech\x12(.wg_model_hub.v2.SynthesizeSpeechRequest\x1a).wg_model_hub.v2.SynthesizeSpeechResponseBBZ@github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2;wg_model_hubv2b\x06proto3"
 
 var (
 	file_proto_wg_model_hub_v2_model_hub_proto_rawDescOnce sync.Once
@@ -2633,7 +2755,7 @@ func file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP() []byte {
 }
 
 var file_proto_wg_model_hub_v2_model_hub_proto_enumTypes = make([]protoimpl.EnumInfo, 7)
-var file_proto_wg_model_hub_v2_model_hub_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
+var file_proto_wg_model_hub_v2_model_hub_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
 var file_proto_wg_model_hub_v2_model_hub_proto_goTypes = []any{
 	(Role)(0),                           // 0: wg_model_hub.v2.Role
 	(ThinkingMode)(0),                   // 1: wg_model_hub.v2.ThinkingMode
@@ -2670,7 +2792,9 @@ var file_proto_wg_model_hub_v2_model_hub_proto_goTypes = []any{
 	(*GenerationTask)(nil),              // 32: wg_model_hub.v2.GenerationTask
 	(*GenerationTaskStatus)(nil),        // 33: wg_model_hub.v2.GenerationTaskStatus
 	(*GenerationTaskEvent)(nil),         // 34: wg_model_hub.v2.GenerationTaskEvent
-	(*status.Status)(nil),               // 35: google.rpc.Status
+	(*SynthesizeSpeechRequest)(nil),     // 35: wg_model_hub.v2.SynthesizeSpeechRequest
+	(*SynthesizeSpeechResponse)(nil),    // 36: wg_model_hub.v2.SynthesizeSpeechResponse
+	(*status.Status)(nil),               // 37: google.rpc.Status
 }
 var file_proto_wg_model_hub_v2_model_hub_proto_depIdxs = []int32{
 	16, // 0: wg_model_hub.v2.GenerateRequest.input:type_name -> wg_model_hub.v2.Input
@@ -2709,22 +2833,25 @@ var file_proto_wg_model_hub_v2_model_hub_proto_depIdxs = []int32{
 	7,  // 33: wg_model_hub.v2.SubmitGenerationRequest.request:type_name -> wg_model_hub.v2.GenerateRequest
 	6,  // 34: wg_model_hub.v2.GenerationTask.state:type_name -> wg_model_hub.v2.GenerationTaskState
 	6,  // 35: wg_model_hub.v2.GenerationTaskStatus.state:type_name -> wg_model_hub.v2.GenerationTaskState
-	35, // 36: wg_model_hub.v2.GenerationTaskStatus.error:type_name -> google.rpc.Status
+	37, // 36: wg_model_hub.v2.GenerationTaskStatus.error:type_name -> google.rpc.Status
 	33, // 37: wg_model_hub.v2.GenerationTaskEvent.status:type_name -> wg_model_hub.v2.GenerationTaskStatus
 	29, // 38: wg_model_hub.v2.GenerationTaskEvent.output:type_name -> wg_model_hub.v2.GenerateEvent
-	7,  // 39: wg_model_hub.v2.ModelHubService.Generate:input_type -> wg_model_hub.v2.GenerateRequest
-	17, // 40: wg_model_hub.v2.ModelHubService.CreateCachedContent:input_type -> wg_model_hub.v2.CreateCachedContentRequest
-	30, // 41: wg_model_hub.v2.ModelHubService.SubmitGeneration:input_type -> wg_model_hub.v2.SubmitGenerationRequest
-	31, // 42: wg_model_hub.v2.ModelHubService.GetGeneration:input_type -> wg_model_hub.v2.GetGenerationRequest
-	29, // 43: wg_model_hub.v2.ModelHubService.Generate:output_type -> wg_model_hub.v2.GenerateEvent
-	18, // 44: wg_model_hub.v2.ModelHubService.CreateCachedContent:output_type -> wg_model_hub.v2.CreateCachedContentResponse
-	32, // 45: wg_model_hub.v2.ModelHubService.SubmitGeneration:output_type -> wg_model_hub.v2.GenerationTask
-	34, // 46: wg_model_hub.v2.ModelHubService.GetGeneration:output_type -> wg_model_hub.v2.GenerationTaskEvent
-	43, // [43:47] is the sub-list for method output_type
-	39, // [39:43] is the sub-list for method input_type
-	39, // [39:39] is the sub-list for extension type_name
-	39, // [39:39] is the sub-list for extension extendee
-	0,  // [0:39] is the sub-list for field type_name
+	8,  // 39: wg_model_hub.v2.SynthesizeSpeechResponse.audio:type_name -> wg_model_hub.v2.Media
+	7,  // 40: wg_model_hub.v2.ModelHubService.Generate:input_type -> wg_model_hub.v2.GenerateRequest
+	17, // 41: wg_model_hub.v2.ModelHubService.CreateCachedContent:input_type -> wg_model_hub.v2.CreateCachedContentRequest
+	30, // 42: wg_model_hub.v2.ModelHubService.SubmitGeneration:input_type -> wg_model_hub.v2.SubmitGenerationRequest
+	31, // 43: wg_model_hub.v2.ModelHubService.GetGeneration:input_type -> wg_model_hub.v2.GetGenerationRequest
+	35, // 44: wg_model_hub.v2.ModelHubService.SynthesizeSpeech:input_type -> wg_model_hub.v2.SynthesizeSpeechRequest
+	29, // 45: wg_model_hub.v2.ModelHubService.Generate:output_type -> wg_model_hub.v2.GenerateEvent
+	18, // 46: wg_model_hub.v2.ModelHubService.CreateCachedContent:output_type -> wg_model_hub.v2.CreateCachedContentResponse
+	32, // 47: wg_model_hub.v2.ModelHubService.SubmitGeneration:output_type -> wg_model_hub.v2.GenerationTask
+	34, // 48: wg_model_hub.v2.ModelHubService.GetGeneration:output_type -> wg_model_hub.v2.GenerationTaskEvent
+	36, // 49: wg_model_hub.v2.ModelHubService.SynthesizeSpeech:output_type -> wg_model_hub.v2.SynthesizeSpeechResponse
+	45, // [45:50] is the sub-list for method output_type
+	40, // [40:45] is the sub-list for method input_type
+	40, // [40:40] is the sub-list for extension type_name
+	40, // [40:40] is the sub-list for extension extendee
+	0,  // [0:40] is the sub-list for field type_name
 }
 
 func init() { file_proto_wg_model_hub_v2_model_hub_proto_init() }
@@ -2771,7 +2898,7 @@ func file_proto_wg_model_hub_v2_model_hub_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_wg_model_hub_v2_model_hub_proto_rawDesc), len(file_proto_wg_model_hub_v2_model_hub_proto_rawDesc)),
 			NumEnums:      7,
-			NumMessages:   28,
+			NumMessages:   30,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

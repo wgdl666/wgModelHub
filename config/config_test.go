@@ -167,6 +167,16 @@ func TestModelRoutes(t *testing.T) {
 	}
 }
 
+func TestProviderSupportsSpeech(t *testing.T) {
+	tts := ProviderConfig{MinimaxTTS: &MinimaxTTSProviderConfig{APIKey: "k"}}
+	if !ProviderSupports(tts, CapabilitySpeech) {
+		t.Fatal("minimax_tts should support speech")
+	}
+	if ProviderSupports(tts, CapabilityText) || ProviderSupports(tts, CapabilityImage) || ProviderSupports(tts, CapabilityVideo) {
+		t.Fatal("minimax_tts should not support text/image/video")
+	}
+}
+
 func TestProviderSupportsOpenAIImage(t *testing.T) {
 	openai := ProviderConfig{OpenAI: &OpenAIProviderConfig{APIKey: "k"}}
 	if !ProviderSupports(openai, CapabilityText) || !ProviderSupports(openai, CapabilityImage) {

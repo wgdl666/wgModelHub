@@ -5,6 +5,7 @@ go 1.26.0
 require (
 	entgo.io/ent v0.14.5
 	github.com/google/uuid v1.6.0
+	github.com/gorilla/websocket v1.5.3
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/nacos-group/nacos-sdk-go/v2 v2.3.5
 	github.com/volcengine/volcengine-go-sdk v1.2.6
@@ -65,7 +66,6 @@ require (
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/s2a-go v0.1.8 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.4 // indirect
-	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.3 // indirect
 	github.com/hashicorp/hcl/v2 v2.18.1 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect

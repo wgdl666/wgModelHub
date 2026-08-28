@@ -296,3 +296,108 @@ func TestValidateGenerateRequestRejectsEmptyVideo(t *testing.T) {
 		t.Fatal("expected empty video request to fail")
 	}
 }
+
+type recordingSpeech struct {
+	model   string
+	request *modelhubv2.SynthesizeSpeechRequest
+	resp    *modelhubv2.SynthesizeSpeechResponse
+	err     error
+}
+
+func (r *recordingSpeech) SynthesizeSpeech(_ context.Context, model string, request *modelhubv2.SynthesizeSpeechRequest) (*modelhubv2.SynthesizeSpeechResponse, error) {
+	r.model = model
+	r.request = request
+	if r.err != nil {
+		return nil, r.err
+	}
+	if r.resp != nil {
+		return r.resp, nil
+	}
+	return &modelhubv2.SynthesizeSpeechResponse{
+		Audio: &modelhubv2.Media{
+			MimeType: "audio/mpeg",
+			Source:   &modelhubv2.Media_Data{Data: []byte("ID3ok")},
+		},
+	}, nil
+}
+
+func TestServiceRoutesSpeechByRealModel(t *testing.T) {
+	speech := &recordingSpeech{}
+	service := newTestService(config.Config{
+		Providers: map[string]config.ProviderConfig{
+			"tts": {
+				Models:     []string{models.Speech28Turbo},
+				MinimaxTTS: &config.MinimaxTTSProviderConfig{APIKey: "k"},
+			},
+		},
+	}, map[string]provider.Set{"tts": {Speech: speech}}, nil)
+
+	resp, err := service.SynthesizeSpeech(context.Background(), &modelhubv2.SynthesizeSpeechRequest{
+		Model: models.Speech28Turbo,
+		Text:  "你好镜子",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if speech.model != models.Speech28Turbo || string(resp.GetAudio().GetData()) != "ID3ok" {
+		t.Fatalf("model=%q resp=%v", speech.model, resp)
+	}
+}
+
+func TestServiceRejectsSpeechCapabilityMismatch(t *testing.T) {
+	service := newTestService(config.Config{
+		Providers: map[string]config.ProviderConfig{
+			"ark": {Models: []string{"chat-model"}, Ark: &config.ArkProviderConfig{APIKey: "k"}},
+		},
+	}, map[string]provider.Set{"ark": {Text: &recordingText{}}}, nil)
+	_, err := service.SynthesizeSpeech(context.Background(), &modelhubv2.SynthesizeSpeechRequest{
+		Model: "chat-model",
+		Text:  "hi",
+	})
+	st, ok := status.FromError(err)
+	if !ok || st.Code() != codes.InvalidArgument {
+		t.Fatalf("expected InvalidArgument, got %v", err)
+	}
+}
+
+func TestServiceRejectsEmptySpeechText(t *testing.T) {
+	service := newTestService(config.Config{
+		Providers: map[string]config.ProviderConfig{
+			"tts": {
+				Models:     []string{models.Speech28Turbo},
+				MinimaxTTS: &config.MinimaxTTSProviderConfig{APIKey: "k"},
+			},
+		},
+	}, map[string]provider.Set{"tts": {Speech: &recordingSpeech{}}}, nil)
+	_, err := service.SynthesizeSpeech(context.Background(), &modelhubv2.SynthesizeSpeechRequest{
+		Model: models.Speech28Turbo,
+		Text:  "   ",
+	})
+	st, ok := status.FromError(err)
+	if !ok || st.Code() != codes.InvalidArgument {
+		t.Fatalf("expected InvalidArgument, got %v", err)
+	}
+}
+
+func TestServiceSpeechUpstreamErrorNotPartialSuccess(t *testing.T) {
+	speech := &recordingSpeech{err: provider.New(provider.ErrorUnavailable, "upstream boom")}
+	service := newTestService(config.Config{
+		Providers: map[string]config.ProviderConfig{
+			"tts": {
+				Models:     []string{models.Speech28Turbo},
+				MinimaxTTS: &config.MinimaxTTSProviderConfig{APIKey: "k"},
+			},
+		},
+	}, map[string]provider.Set{"tts": {Speech: speech}}, nil)
+	resp, err := service.SynthesizeSpeech(context.Background(), &modelhubv2.SynthesizeSpeechRequest{
+		Model: models.Speech28Turbo,
+		Text:  "hi",
+	})
+	if resp != nil || err == nil {
+		t.Fatalf("expected error without response, resp=%v err=%v", resp, err)
+	}
+	st, ok := status.FromError(err)
+	if !ok || st.Code() != codes.Unavailable {
+		t.Fatalf("expected Unavailable, got %v", err)
+	}
+}

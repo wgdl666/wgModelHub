@@ -53,6 +53,9 @@ const (
 
 	// Gemini Interactions 图生视频与编辑共用同一真实模型 ID。
 	GeminiOmniFlashPreview = "gemini-omni-flash-preview"
+
+	// Minimax 同步 TTS（与线上 wgHub DefaultMinimaxConfig 一致）。
+	Speech28Turbo = "speech-2.8-turbo"
 )
 
 // All 返回当前仓库承认的全部真实模型 ID，顺序稳定便于对照。
@@ -101,5 +104,6 @@ func All() []string {
 		Veo31FastGenerate001,
 		Veo31Generate001,
 		GeminiOmniFlashPreview,
+		Speech28Turbo,
 	}
 }

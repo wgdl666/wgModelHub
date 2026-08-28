@@ -39,6 +39,9 @@ spec:
           env:
             - name: WG_SERVER_GRPC_PORT
               value: "50053"
+            # 公网鉴权 listener；未设置则不启动 50054。现网 Caddy 只应反代本端口，不得暴露 50053。
+            - name: WG_SERVER_PUBLIC_GRPC_PORT
+              value: "50054"
           ports:
             - name: grpc
               containerPort: 50053
