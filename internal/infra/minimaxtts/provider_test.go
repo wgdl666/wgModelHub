@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -28,14 +29,18 @@ const (
 	modeFailFirstAudio
 	modeFailMidAudio
 	modeHangAfterStart
+	modeHangBeforeConnectedSuccess
+	modeHangBeforeTaskStarted
 )
 
 type fakeTTSServer struct {
-	mode        fakeMode
-	closed      atomic.Bool
-	gotContinue atomic.Bool
-	mu          sync.Mutex
-	conns       int
+	mode         fakeMode
+	closed       atomic.Bool
+	upgraded     atomic.Bool
+	gotTaskStart atomic.Bool
+	gotContinue  atomic.Bool
+	mu           sync.Mutex
+	conns        int
 }
 
 func (f *fakeTTSServer) serve(t *testing.T) *httptest.Server {
@@ -50,6 +55,16 @@ func (f *fakeTTSServer) serve(t *testing.T) *httptest.Server {
 		}
 		defer conn.Close()
 		defer f.closed.Store(true)
+		f.upgraded.Store(true)
+
+		// Upgrade 后故意不发 connected_success，验证客户端取消能打断握手读并关连接。
+		if f.mode == modeHangBeforeConnectedSuccess {
+			for {
+				if _, _, err := conn.ReadMessage(); err != nil {
+					return
+				}
+			}
+		}
 
 		_ = conn.WriteJSON(map[string]string{"event": eventConnectedSuccess})
 		_, msg, err := conn.ReadMessage()
@@ -61,6 +76,17 @@ func (f *fakeTTSServer) serve(t *testing.T) *httptest.Server {
 			_ = conn.WriteJSON(map[string]any{"event": eventTaskFailed, "base_resp": map[string]any{"status_msg": "bad start"}})
 			return
 		}
+		f.gotTaskStart.Store(true)
+
+		// 已读到 task_start 但不回 task_started，覆盖握手第二段 ReadMessage 的取消路径。
+		if f.mode == modeHangBeforeTaskStarted {
+			for {
+				if _, _, err := conn.ReadMessage(); err != nil {
+					return
+				}
+			}
+		}
+
 		_ = conn.WriteJSON(map[string]string{"event": eventTaskStarted})
 
 		for {
@@ -213,6 +239,9 @@ func TestSynthesizeSpeechCancelClosesUpstream(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected cancel error")
 		}
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("want context.Canceled, got %v", err)
+		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("synthesize did not return after cancel")
 	}
@@ -224,4 +253,94 @@ func TestSynthesizeSpeechCancelClosesUpstream(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatal("upstream websocket was not closed after cancel")
+}
+
+func TestSynthesizeSpeechCancelDuringConnectedSuccess(t *testing.T) {
+	fake := &fakeTTSServer{mode: modeHangBeforeConnectedSuccess}
+	srv := fake.serve(t)
+	p, err := New(Config{Name: "tts", APIKey: "k", Endpoint: wsURL(srv.URL)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := p.SynthesizeSpeech(ctx, models.Speech28Turbo, &modelhubv2.SynthesizeSpeechRequest{Text: "hi"})
+		errCh <- err
+	}()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if fake.upgraded.Load() {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !fake.upgraded.Load() {
+		cancel()
+		t.Fatal("server did not upgrade websocket")
+	}
+	// 进入 connected_success 的阻塞读后再取消。
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("want context.Canceled, got %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("synthesize did not return after cancel during connected_success")
+	}
+	deadline = time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if fake.closed.Load() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("upstream websocket was not closed after cancel during connected_success")
+}
+
+func TestSynthesizeSpeechCancelDuringTaskStarted(t *testing.T) {
+	fake := &fakeTTSServer{mode: modeHangBeforeTaskStarted}
+	srv := fake.serve(t)
+	p, err := New(Config{Name: "tts", APIKey: "k", Endpoint: wsURL(srv.URL)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := p.SynthesizeSpeech(ctx, models.Speech28Turbo, &modelhubv2.SynthesizeSpeechRequest{Text: "hi"})
+		errCh <- err
+	}()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if fake.gotTaskStart.Load() {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !fake.gotTaskStart.Load() {
+		cancel()
+		t.Fatal("server did not receive task_start")
+	}
+	// 进入 task_started 的阻塞读后再取消。
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("want context.Canceled, got %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("synthesize did not return after cancel during task_started")
+	}
+	deadline = time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if fake.closed.Load() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("upstream websocket was not closed after cancel during task_started")
 }

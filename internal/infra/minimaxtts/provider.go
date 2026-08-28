@@ -127,7 +127,7 @@ func (p *Provider) SynthesizeSpeech(ctx context.Context, model string, request *
 		audioMu.Unlock()
 	}
 
-	stream, err := p.newStream(ctx, model, voiceID, func(chunk []byte) {
+	stream, stopWatch, err := p.newStream(ctx, model, voiceID, func(chunk []byte) {
 		if len(chunk) == 0 {
 			return
 		}
@@ -146,9 +146,8 @@ func (p *Provider) SynthesizeSpeech(ctx context.Context, model string, request *
 		return nil, err
 	}
 	defer stream.Close()
-
-	// 调用方取消时立即关上游，避免公网超时后仍占用供应商连接。
-	stopWatch := context.AfterFunc(ctx, func() { stream.Close() })
+	// stopWatch 由 newStream 在 Dial 成功后注册；整段 unary（含握手与 Flush）结束后再停，
+	// 避免 AfterFunc 继续持有已结束的请求 ctx。
 	defer stopWatch()
 
 	if err := stream.SendText(text); err != nil {
@@ -192,7 +191,11 @@ type stream struct {
 	failed    bool
 }
 
-func (p *Provider) newStream(ctx context.Context, model, voiceID string, audioCb func([]byte), errCb func(error)) (*stream, error) {
+// newStream 在 WebSocket Upgrade 成功后立刻把 ctx 取消绑到关连接。
+// DialContext 只覆盖 HTTP 升级；connected_success / task_started 的 ReadMessage
+// 不受该截止时间控制，必须靠 Close 打断，否则 unary 会无限悬挂。
+// 返回的 stopWatch 须在整次合成结束后调用；Close 经 closeOnce，可与 AfterFunc/defer 并发安全关一次。
+func (p *Provider) newStream(ctx context.Context, model, voiceID string, audioCb func([]byte), errCb func(error)) (*stream, func() bool, error) {
 	header := http.Header{}
 	header.Set("Authorization", "Bearer "+p.cfg.APIKey)
 
@@ -200,12 +203,12 @@ func (p *Provider) newStream(ctx context.Context, model, voiceID string, audioCb
 	conn, resp, err := dialer.DialContext(ctx, p.cfg.Endpoint, header)
 	if err != nil {
 		if resp != nil {
-			return nil, provider.FromHTTP(p.cfg.Name, resp.StatusCode)
+			return nil, nil, provider.FromHTTP(p.cfg.Name, resp.StatusCode)
 		}
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, err
+			return nil, nil, err
 		}
-		return nil, provider.Wrap(provider.ErrorUnavailable, "minimax tts dial failed", err)
+		return nil, nil, provider.Wrap(provider.ErrorUnavailable, "minimax tts dial failed", err)
 	}
 
 	s := &stream{
@@ -215,13 +218,20 @@ func (p *Provider) newStream(ctx context.Context, model, voiceID string, audioCb
 		doneChan: make(chan struct{}),
 		stopPing: make(chan struct{}),
 	}
+	// Upgrade 一成功就注册：握手卡在上游事件前时，取消/超时会关连接并唤醒 ReadMessage。
+	stopWatch := context.AfterFunc(ctx, func() { s.Close() })
 	if err := s.handshake(model, voiceID, p.cfg); err != nil {
-		_ = conn.Close()
-		return nil, err
+		stopWatch()
+		s.Close()
+		// 关连接引发的读失败优先还原为调用方取消/截止语义，避免误报 Unavailable。
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, nil, ctxErr
+		}
+		return nil, nil, err
 	}
 	go s.readLoop()
 	go s.pingLoop()
-	return s, nil
+	return s, stopWatch, nil
 }
 
 func (s *stream) handshake(model, voiceID string, cfg Config) error {
@@ -254,7 +264,15 @@ func (s *stream) handshake(model, voiceID string, cfg Config) error {
 			"channel":     channel,
 		},
 	}
-	if err := s.conn.WriteJSON(start); err != nil {
+	// 与 Close/SendText 共用写锁：取消路径的 AfterFunc 可能并发关流，gorilla 只允许一个 writer。
+	s.mu.Lock()
+	if s.closing {
+		s.mu.Unlock()
+		return provider.New(provider.ErrorUnavailable, "minimax tts stream is closed")
+	}
+	err = s.conn.WriteJSON(start)
+	s.mu.Unlock()
+	if err != nil {
 		return provider.Wrap(provider.ErrorUnavailable, "minimax tts write task_start failed", err)
 	}
 
