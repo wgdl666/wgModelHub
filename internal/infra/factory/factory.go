@@ -11,6 +11,7 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/infra/geminivideo"
 	"github.com/wgdl666/wgModelHub/internal/infra/genai"
 	"github.com/wgdl666/wgModelHub/internal/infra/ltx"
+	"github.com/wgdl666/wgModelHub/internal/infra/minimaxtts"
 	"github.com/wgdl666/wgModelHub/internal/infra/ominilinkvideo"
 	"github.com/wgdl666/wgModelHub/internal/infra/openai"
 	"github.com/wgdl666/wgModelHub/internal/provider"
@@ -105,6 +106,22 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 			return provider.Set{}, err
 		}
 		return provider.Set{Video: client}, nil
+	case providerCfg.MinimaxTTS != nil:
+		cfg := providerCfg.MinimaxTTS
+		client, err := minimaxtts.New(minimaxtts.Config{
+			Name:          name,
+			APIKey:        cfg.APIKey,
+			Endpoint:      cfg.Endpoint,
+			LanguageBoost: cfg.LanguageBoost,
+			VoiceID:       cfg.VoiceID,
+			Speed:         cfg.Speed,
+			Volume:        cfg.Volume,
+			Pitch:         cfg.Pitch,
+		})
+		if err != nil {
+			return provider.Set{}, err
+		}
+		return provider.Set{Speech: client}, nil
 	default:
 		return provider.Set{}, provider.New(provider.ErrorConfiguration, fmt.Sprintf("provider %s has no concrete type", name))
 	}

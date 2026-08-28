@@ -22,9 +22,10 @@ const (
 	NacosDataID       = "wg.mirror.modelHub"
 	NacosGroup        = "DEFAULT_GROUP"
 
-	CapabilityText  = "text"
-	CapabilityImage = "image"
-	CapabilityVideo = "video"
+	CapabilityText   = "text"
+	CapabilityImage  = "image"
+	CapabilityVideo  = "video"
+	CapabilitySpeech = "speech"
 )
 
 // Bootstrap 只保存 Nacos 定位信息；供应商凭据只能存在于受保护的配置正文中。
@@ -46,6 +47,8 @@ type ProviderConfig struct {
 	OminilinkVideo *OminilinkVideoProviderConfig `yaml:"ominilink_video"`
 	GeminiVideo    *GeminiVideoProviderConfig    `yaml:"gemini_video"`
 	ArkVideo       *ArkVideoProviderConfig       `yaml:"ark_video"`
+	// MinimaxTTS 承接同步一次性 TTS；与 chat/completions OpenAI 实例分绑，避免误用文本能力。
+	MinimaxTTS *MinimaxTTSProviderConfig `yaml:"minimax_tts"`
 }
 
 type GeminiProviderConfig struct {
@@ -110,6 +113,18 @@ type ArkVideoProviderConfig struct {
 	BaseURL      string  `yaml:"base_url"`
 	PollInterval float64 `yaml:"poll_interval"`
 	MaxPollTime  float64 `yaml:"max_poll_time"`
+}
+
+// MinimaxTTSProviderConfig 对齐线上 wgHub Minimax WebSocket TTS。
+// 第一版输出格式在代码内固定为 MP3/16kHz/mono，不在此暴露可切换 format，避免调用方与解码链分叉。
+type MinimaxTTSProviderConfig struct {
+	APIKey        string  `yaml:"api_key"`
+	Endpoint      string  `yaml:"endpoint"`
+	LanguageBoost string  `yaml:"language_boost"`
+	VoiceID       string  `yaml:"voice_id"`
+	Speed         float64 `yaml:"speed"`
+	Volume        float64 `yaml:"volume"`
+	Pitch         int     `yaml:"pitch"`
 }
 
 type Config struct {
@@ -455,6 +470,10 @@ func validateProvider(name string, provider ProviderConfig) error {
 		if strings.TrimSpace(provider.ArkVideo.APIKey) == "" {
 			return fmt.Errorf("provider %s api_key is required", name)
 		}
+	case provider.MinimaxTTS != nil:
+		if strings.TrimSpace(provider.MinimaxTTS.APIKey) == "" {
+			return fmt.Errorf("provider %s api_key is required", name)
+		}
 	}
 	return nil
 }
@@ -488,6 +507,9 @@ func countConcreteProviders(provider ProviderConfig) int {
 	if provider.ArkVideo != nil {
 		n++
 	}
+	if provider.MinimaxTTS != nil {
+		n++
+	}
 	return n
 }
 
@@ -502,6 +524,8 @@ func ProviderSupports(provider ProviderConfig, capability string) bool {
 		return capability == CapabilityVideo
 	case provider.DashScopeVideo != nil, provider.OminilinkVideo != nil, provider.GeminiVideo != nil, provider.ArkVideo != nil:
 		return capability == CapabilityVideo
+	case provider.MinimaxTTS != nil:
+		return capability == CapabilitySpeech
 	default:
 		return false
 	}

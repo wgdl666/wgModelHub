@@ -11,6 +11,9 @@ const (
 	VideoChunkBytes = 1 << 20
 	// MaxVideoBytes 是所有 ModelHub 视频结果（同步 Generate 与异步 GetGeneration 输出）共用的单视频上限。
 	MaxVideoBytes = 200 << 20
+	// MaxSpeechTextChars 对齐当前线上 Minimax 同步 WebSocket「单次 task_continue < 10000 字符」上限，
+	// 在公网 untrusted 边界提前拒绝，避免把超限请求打到供应商后再失败。
+	MaxSpeechTextChars = 10000
 
 	// CallerMetadataKey 是 SubmitGeneration 幂等命名空间与来源归因用的 gRPC metadata 键；不做鉴权。
 	CallerMetadataKey = "x-wg-caller-service"

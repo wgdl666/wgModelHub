@@ -3,6 +3,7 @@ package modelhub
 import (
 	"context"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/wgdl666/wgModelHub/config"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
@@ -167,6 +168,41 @@ func (s *Service) CreateCachedContent(ctx context.Context, request *modelhubv2.C
 	return resp, nil
 }
 
+// SynthesizeSpeech 同步一次性 TTS：路由到 Speech capability，成功仅表示完整音频已收集。
+func (s *Service) SynthesizeSpeech(ctx context.Context, request *modelhubv2.SynthesizeSpeechRequest) (*modelhubv2.SynthesizeSpeechResponse, error) {
+	ctx, span := telemetry.StartSpan(ctx, "modelhub.SynthesizeSpeech")
+	defer span.End()
+	if err := validateSynthesizeSpeechRequest(request); err != nil {
+		statusErr := provider.ToStatus(err)
+		telemetry.RecordError(ctx, statusErr)
+		return nil, statusErr
+	}
+	binding, err := s.resolve(request.GetModel(), config.CapabilitySpeech)
+	if err != nil {
+		statusErr := provider.ToStatus(err)
+		telemetry.RecordError(ctx, statusErr)
+		return nil, statusErr
+	}
+	if binding.set.Speech == nil {
+		err := provider.Errorf(provider.ErrorConfiguration, "model %s does not support speech", request.GetModel())
+		statusErr := provider.ToStatus(err)
+		telemetry.RecordError(ctx, statusErr)
+		return nil, statusErr
+	}
+	resp, err := binding.set.Speech.SynthesizeSpeech(ctx, binding.model, request)
+	if err != nil {
+		statusErr := provider.ToStatus(err)
+		telemetry.RecordError(ctx, statusErr)
+		return nil, statusErr
+	}
+	if err := validateSpeechResponse(resp); err != nil {
+		statusErr := provider.ToStatus(err)
+		telemetry.RecordError(ctx, statusErr)
+		return nil, statusErr
+	}
+	return resp, nil
+}
+
 func (s *Service) generateImage(ctx context.Context, binding binding, request *modelhubv2.GenerateRequest, stream modelhubv2.ModelHubService_GenerateServer) error {
 	if binding.set.Image == nil {
 		err := provider.Errorf(provider.ErrorConfiguration, "model %s does not support image", request.GetModel())
@@ -291,6 +327,30 @@ func validateGenerateRequest(request *modelhubv2.GenerateRequest, capability str
 		}
 	}
 	return nil
+}
+
+func validateSynthesizeSpeechRequest(request *modelhubv2.SynthesizeSpeechRequest) error {
+	if request == nil {
+		return provider.New(provider.ErrorInvalidArgument, "synthesize speech request is required")
+	}
+	if strings.TrimSpace(request.GetModel()) == "" {
+		return provider.New(provider.ErrorInvalidArgument, "model is required")
+	}
+	text := strings.TrimSpace(request.GetText())
+	if text == "" {
+		return provider.New(provider.ErrorInvalidArgument, "text is required")
+	}
+	if utf8.RuneCountInString(text) >= protocol.MaxSpeechTextChars {
+		return provider.Errorf(provider.ErrorInvalidArgument, "text exceeds %d characters", protocol.MaxSpeechTextChars)
+	}
+	return nil
+}
+
+func validateSpeechResponse(resp *modelhubv2.SynthesizeSpeechResponse) error {
+	if resp == nil || resp.GetAudio() == nil {
+		return provider.New(provider.ErrorInvalidResponse, "speech provider returned an empty response")
+	}
+	return validateMedia(resp.GetAudio(), provider.ErrorInvalidResponse)
 }
 
 func validateInput(input *modelhubv2.Input) error {

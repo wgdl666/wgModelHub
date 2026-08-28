@@ -23,6 +23,7 @@ const (
 	ModelHubService_CreateCachedContent_FullMethodName = "/wg_model_hub.v2.ModelHubService/CreateCachedContent"
 	ModelHubService_SubmitGeneration_FullMethodName    = "/wg_model_hub.v2.ModelHubService/SubmitGeneration"
 	ModelHubService_GetGeneration_FullMethodName       = "/wg_model_hub.v2.ModelHubService/GetGeneration"
+	ModelHubService_SynthesizeSpeech_FullMethodName    = "/wg_model_hub.v2.ModelHubService/SynthesizeSpeech"
 )
 
 // ModelHubServiceClient is the client API for ModelHubService service.
@@ -31,7 +32,8 @@ const (
 //
 // ModelHubService：Generate 承接文本/图片与迁移期同步视频；视频长任务走 Submit/Get。
 // CreateCachedContent 仅服务 Gemini 等显式前缀缓存。
-// capability 由 OutputSpec oneof 决定，真实供应商模型 ID 经 request.model 路由到唯一 provider 实例。
+// SynthesizeSpeech 是独立 unary TTS：一次请求返回完整音频或 gRPC error，不进入 OutputSpec。
+// capability 由 OutputSpec oneof 或 Speech RPC 决定，真实供应商模型 ID 经 request.model 路由到唯一 provider 实例。
 type ModelHubServiceClient interface {
 	Generate(ctx context.Context, in *GenerateRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GenerateEvent], error)
 	// 将会话级 system + 工具定义落到供应商 CachedContent，供后续 Generate.input.cached_content 引用。
@@ -40,6 +42,8 @@ type ModelHubServiceClient interface {
 	SubmitGeneration(ctx context.Context, in *SubmitGenerationRequest, opts ...grpc.CallOption) (*GenerationTask, error)
 	// GetGeneration 按调用查询任务；PENDING/RUNNING/FAILED 只回一个 status 事件，SUCCEEDED 先 status 再流式 output。
 	GetGeneration(ctx context.Context, in *GetGenerationRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GenerationTaskEvent], error)
+	// SynthesizeSpeech：同步一次性 TTS。成功只表示供应商合成且完整音频已收集，不表示 Mirror 播放。
+	SynthesizeSpeech(ctx context.Context, in *SynthesizeSpeechRequest, opts ...grpc.CallOption) (*SynthesizeSpeechResponse, error)
 }
 
 type modelHubServiceClient struct {
@@ -108,13 +112,24 @@ func (c *modelHubServiceClient) GetGeneration(ctx context.Context, in *GetGenera
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ModelHubService_GetGenerationClient = grpc.ServerStreamingClient[GenerationTaskEvent]
 
+func (c *modelHubServiceClient) SynthesizeSpeech(ctx context.Context, in *SynthesizeSpeechRequest, opts ...grpc.CallOption) (*SynthesizeSpeechResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SynthesizeSpeechResponse)
+	err := c.cc.Invoke(ctx, ModelHubService_SynthesizeSpeech_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ModelHubServiceServer is the server API for ModelHubService service.
 // All implementations must embed UnimplementedModelHubServiceServer
 // for forward compatibility.
 //
 // ModelHubService：Generate 承接文本/图片与迁移期同步视频；视频长任务走 Submit/Get。
 // CreateCachedContent 仅服务 Gemini 等显式前缀缓存。
-// capability 由 OutputSpec oneof 决定，真实供应商模型 ID 经 request.model 路由到唯一 provider 实例。
+// SynthesizeSpeech 是独立 unary TTS：一次请求返回完整音频或 gRPC error，不进入 OutputSpec。
+// capability 由 OutputSpec oneof 或 Speech RPC 决定，真实供应商模型 ID 经 request.model 路由到唯一 provider 实例。
 type ModelHubServiceServer interface {
 	Generate(*GenerateRequest, grpc.ServerStreamingServer[GenerateEvent]) error
 	// 将会话级 system + 工具定义落到供应商 CachedContent，供后续 Generate.input.cached_content 引用。
@@ -123,6 +138,8 @@ type ModelHubServiceServer interface {
 	SubmitGeneration(context.Context, *SubmitGenerationRequest) (*GenerationTask, error)
 	// GetGeneration 按调用查询任务；PENDING/RUNNING/FAILED 只回一个 status 事件，SUCCEEDED 先 status 再流式 output。
 	GetGeneration(*GetGenerationRequest, grpc.ServerStreamingServer[GenerationTaskEvent]) error
+	// SynthesizeSpeech：同步一次性 TTS。成功只表示供应商合成且完整音频已收集，不表示 Mirror 播放。
+	SynthesizeSpeech(context.Context, *SynthesizeSpeechRequest) (*SynthesizeSpeechResponse, error)
 	mustEmbedUnimplementedModelHubServiceServer()
 }
 
@@ -144,6 +161,9 @@ func (UnimplementedModelHubServiceServer) SubmitGeneration(context.Context, *Sub
 }
 func (UnimplementedModelHubServiceServer) GetGeneration(*GetGenerationRequest, grpc.ServerStreamingServer[GenerationTaskEvent]) error {
 	return status.Errorf(codes.Unimplemented, "method GetGeneration not implemented")
+}
+func (UnimplementedModelHubServiceServer) SynthesizeSpeech(context.Context, *SynthesizeSpeechRequest) (*SynthesizeSpeechResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SynthesizeSpeech not implemented")
 }
 func (UnimplementedModelHubServiceServer) mustEmbedUnimplementedModelHubServiceServer() {}
 func (UnimplementedModelHubServiceServer) testEmbeddedByValue()                         {}
@@ -224,6 +244,24 @@ func _ModelHubService_GetGeneration_Handler(srv interface{}, stream grpc.ServerS
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ModelHubService_GetGenerationServer = grpc.ServerStreamingServer[GenerationTaskEvent]
 
+func _ModelHubService_SynthesizeSpeech_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SynthesizeSpeechRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModelHubServiceServer).SynthesizeSpeech(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModelHubService_SynthesizeSpeech_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModelHubServiceServer).SynthesizeSpeech(ctx, req.(*SynthesizeSpeechRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ModelHubService_ServiceDesc is the grpc.ServiceDesc for ModelHubService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -238,6 +276,10 @@ var ModelHubService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SubmitGeneration",
 			Handler:    _ModelHubService_SubmitGeneration_Handler,
+		},
+		{
+			MethodName: "SynthesizeSpeech",
+			Handler:    _ModelHubService_SynthesizeSpeech_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

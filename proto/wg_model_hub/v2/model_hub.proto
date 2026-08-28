@@ -8,7 +8,8 @@ option go_package = "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2;wg_model_
 
 // ModelHubService：Generate 承接文本/图片与迁移期同步视频；视频长任务走 Submit/Get。
 // CreateCachedContent 仅服务 Gemini 等显式前缀缓存。
-// capability 由 OutputSpec oneof 决定，真实供应商模型 ID 经 request.model 路由到唯一 provider 实例。
+// SynthesizeSpeech 是独立 unary TTS：一次请求返回完整音频或 gRPC error，不进入 OutputSpec。
+// capability 由 OutputSpec oneof 或 Speech RPC 决定，真实供应商模型 ID 经 request.model 路由到唯一 provider 实例。
 service ModelHubService {
   rpc Generate(GenerateRequest) returns (stream GenerateEvent);
   // 将会话级 system + 工具定义落到供应商 CachedContent，供后续 Generate.input.cached_content 引用。
@@ -17,6 +18,8 @@ service ModelHubService {
   rpc SubmitGeneration(SubmitGenerationRequest) returns (GenerationTask);
   // GetGeneration 按调用查询任务；PENDING/RUNNING/FAILED 只回一个 status 事件，SUCCEEDED 先 status 再流式 output。
   rpc GetGeneration(GetGenerationRequest) returns (stream GenerationTaskEvent);
+  // SynthesizeSpeech：同步一次性 TTS。成功只表示供应商合成且完整音频已收集，不表示 Mirror 播放。
+  rpc SynthesizeSpeech(SynthesizeSpeechRequest) returns (SynthesizeSpeechResponse);
 }
 
 // GenerateRequest 顶层恰好三字段：业务调用方不得再塞供应商私有配置，
@@ -291,4 +294,20 @@ message GenerationTaskEvent {
     GenerationTaskStatus status = 1;
     GenerateEvent output = 2;
   }
+}
+
+// SynthesizeSpeechRequest 只保留当前线上 Minimax 同步合成真实需要的字段。
+// 输出格式第一版固定为 MP3/16kHz/mono，不经 OutputSpec，避免与 text/image/video 能力混用。
+message SynthesizeSpeechRequest {
+  // model 是真实供应商 TTS 模型 ID，例如 speech-2.8-turbo。
+  string model = 1;
+  // text 为待合成全文；空文本拒绝。长度受供应商同步上限约束（当前 Minimax < 10000 字符）。
+  string text = 2;
+  // voice_id 为空时使用 provider 配置默认音色；不开放任意供应商私有扩展字段。
+  string voice_id = 3;
+}
+
+// SynthesizeSpeechResponse 必须携带完整可解码音频；半截收集只能映射为 gRPC error。
+message SynthesizeSpeechResponse {
+  Media audio = 1;
 }

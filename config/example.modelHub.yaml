@@ -54,6 +54,14 @@ providers:
     openai:
       api_key: "${DASHSCOPE_API_KEY}"
       base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  # 同步一次性 TTS：与线上 wgHub Minimax WebSocket 对齐；输出固定 MP3/16kHz/mono。
+  minimax_tts:
+    models: [speech-2.8-turbo]
+    minimax_tts:
+      api_key: "${MINIMAX_API_KEY}"
+      endpoint: wss://api.minimaxi.com/ws/v1/t2a_v2
+      language_boost: Chinese
+      voice_id: "Chinese (Mandarin)_Warm_Girl"
   # 当前生图主渠道：api.aig-ai.com 上的 Gemini generateContent（非 OpenAI Images）。
   # gemini-3-pro-image 仅绑此实例；两个 flash-image 与 aws_gemini 双声明，由 model_routes 手动切换。
   aig_gemini_image:
