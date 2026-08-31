@@ -12,6 +12,7 @@ import (
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
+	"github.com/wgdl666/wgModelHub/models"
 	genaisdk "google.golang.org/genai"
 )
 
@@ -112,7 +113,7 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 	if err := validateGeminiGenerateInput(request); err != nil {
 		return nil, err
 	}
-	response, err := p.client.Models.GenerateContent(ctx, model, p.buildContents(request), p.buildConfig(request))
+	response, err := p.client.Models.GenerateContent(ctx, model, p.buildContents(request), p.buildConfig(model, request))
 	if err != nil {
 		return nil, p.mapError(ctx, "generate content", err)
 	}
@@ -127,7 +128,7 @@ func (p *Provider) GenerateStream(ctx context.Context, model string, request *mo
 	var responseID string
 	var usage *modelhubv2.Usage
 
-	for response, err := range p.client.Models.GenerateContentStream(ctx, model, p.buildContents(request), p.buildConfig(request)) {
+	for response, err := range p.client.Models.GenerateContentStream(ctx, model, p.buildContents(request), p.buildConfig(model, request)) {
 		if err != nil {
 			return nil, p.mapError(ctx, "stream content", err)
 		}
@@ -291,7 +292,7 @@ func convertMedia(media *modelhubv2.Media) *genaisdk.Part {
 	}
 }
 
-func (p *Provider) buildConfig(request *modelhubv2.GenerateRequest) *genaisdk.GenerateContentConfig {
+func (p *Provider) buildConfig(model string, request *modelhubv2.GenerateRequest) *genaisdk.GenerateContentConfig {
 	input := request.GetInput()
 	if input == nil {
 		input = &modelhubv2.Input{}
@@ -332,7 +333,12 @@ func (p *Provider) buildConfig(request *modelhubv2.GenerateRequest) *genaisdk.Ge
 	if textSpec != nil {
 		switch textSpec.Thinking {
 		case modelhubv2.ThinkingMode_THINKING_MODE_DISABLED:
-			cfg.ThinkingConfig = &genaisdk.ThinkingConfig{ThinkingBudget: genaisdk.Ptr(int32(0))}
+			// gemini-3.7-flash 不支持 ThinkingBudget=0 关思考；Hub 仍发 DISABLED，此处落为供应商 LOW。
+			if model == models.Gemini37Flash {
+				cfg.ThinkingConfig = &genaisdk.ThinkingConfig{ThinkingLevel: genaisdk.ThinkingLevelLow}
+			} else {
+				cfg.ThinkingConfig = &genaisdk.ThinkingConfig{ThinkingBudget: genaisdk.Ptr(int32(0))}
+			}
 		case modelhubv2.ThinkingMode_THINKING_MODE_ENABLED:
 			cfg.ThinkingConfig = &genaisdk.ThinkingConfig{ThinkingBudget: genaisdk.Ptr(int32(1024))}
 		}
@@ -392,7 +398,7 @@ func buildTools(tools []*modelhubv2.Tool) []*genaisdk.Tool {
 		if len(tool.Function.ParametersJsonSchema) > 0 {
 			var schema any
 			_ = json.Unmarshal(tool.Function.ParametersJsonSchema, &schema)
-			declaration.ParametersJsonSchema = schema
+			declaration.ParametersJsonSchema = sanitizeGeminiToolSchema(schema)
 		}
 		declarations = append(declarations, declaration)
 	}

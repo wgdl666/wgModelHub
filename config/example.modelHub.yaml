@@ -8,7 +8,7 @@ database:
 # 字面量清单见 models 包，调用方引用 github.com/wgdl666/wgModelHub/models，禁止在这里发明 alias。
 providers:
   gemini_main:
-    models: [gemini-2.5-flash]
+    models: [gemini-2.5-flash, gemini-3.7-flash]
     gemini:
       api_key: "${GEMINI_API_KEY}"
       proxy_url: ""

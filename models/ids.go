@@ -3,7 +3,9 @@
 package models
 
 const (
-	Gemini25Flash      = "gemini-2.5-flash"
+	Gemini25Flash = "gemini-2.5-flash"
+	// Gemini37Flash 是 Google GA 的 gemini-3.7-flash；不支持关闭 thinking，Hub DISABLED 须在 Gemini provider 映射为 LOW。
+	Gemini37Flash      = "gemini-3.7-flash"
 	Gemini20Flash001   = "gemini-2.0-flash-001"
 	DoubaoSeed16       = "doubao-seed-1.6"
 	QwenFlash          = "qwen-flash"
@@ -62,6 +64,7 @@ const (
 func All() []string {
 	return []string{
 		Gemini25Flash,
+		Gemini37Flash,
 		Gemini20Flash001,
 		DoubaoSeed16,
 		QwenFlash,
