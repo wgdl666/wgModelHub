@@ -79,9 +79,8 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 		telemetry.RecordError(ctx, statusErr)
 		return statusErr
 	}
-	// 先记下调用方原始配置模式，再填缺省；否则 default_enabled 会被改写后的 enabled=true 掩盖。
-	cachingMode := textCachingMode(request.GetInput())
-	applyTextCachingDefault(request, s.providerCfg[binding.provider])
+	// 应用文本缓存策略（普通缺省开启 / endpoint-bound Ark 隐式自动）；返回实际生效遥测模式。
+	cachingMode := applyTextCachingPolicy(request, s.providerCfg[binding.provider])
 	if request.GetOutput().GetStream() {
 		var sendErr error
 		var sequence uint32

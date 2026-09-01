@@ -29,38 +29,61 @@ func TestTextCachingMode(t *testing.T) {
 	}
 }
 
-func TestApplyTextCachingDefault(t *testing.T) {
+func TestApplyTextCachingPolicy(t *testing.T) {
 	plainArk := config.ProviderConfig{Ark: &config.ArkProviderConfig{APIKey: "k"}}
 	endpointArk := config.ProviderConfig{Ark: &config.ArkProviderConfig{APIKey: "k", EndpointID: "ep-test"}}
 
 	req := &modelhubv2.GenerateRequest{}
-	applyTextCachingDefault(req, plainArk)
+	if mode := applyTextCachingPolicy(req, plainArk); mode != cachingModeDefaultEnabled {
+		t.Fatalf("nil input mode = %q", mode)
+	}
 	if !req.GetInput().GetCaching().GetEnabled() {
 		t.Fatalf("nil input should default enable: %#v", req.Input)
 	}
 
 	req = &modelhubv2.GenerateRequest{Input: &modelhubv2.Input{}}
-	applyTextCachingDefault(req, plainArk)
+	if mode := applyTextCachingPolicy(req, plainArk); mode != cachingModeDefaultEnabled {
+		t.Fatalf("omit mode = %q", mode)
+	}
 	if !req.Input.Caching.Enabled || req.Input.Caching.ExpireAtUnix != 0 {
 		t.Fatalf("omit caching should enable without inventing expire: %#v", req.Input.Caching)
 	}
 
-	req = &modelhubv2.GenerateRequest{Input: &modelhubv2.Input{}}
-	applyTextCachingDefault(req, endpointArk)
-	if req.Input.Caching.Enabled {
-		t.Fatalf("endpoint-bound ark should default disable caching: %#v", req.Input.Caching)
-	}
-
 	req = &modelhubv2.GenerateRequest{Input: &modelhubv2.Input{Caching: &modelhubv2.CachingConfig{Enabled: true, ExpireAtUnix: 99}}}
-	applyTextCachingDefault(req, plainArk)
+	if mode := applyTextCachingPolicy(req, plainArk); mode != cachingModeExplicitEnabled {
+		t.Fatalf("plain explicit on mode = %q", mode)
+	}
 	if !req.Input.Caching.Enabled || req.Input.Caching.ExpireAtUnix != 99 {
 		t.Fatalf("explicit enabled must keep expire_at: %#v", req.Input.Caching)
 	}
 
 	req = &modelhubv2.GenerateRequest{Input: &modelhubv2.Input{Caching: &modelhubv2.CachingConfig{Enabled: false, ExpireAtUnix: 99}}}
-	applyTextCachingDefault(req, plainArk)
+	if mode := applyTextCachingPolicy(req, plainArk); mode != cachingModeExplicitDisabled {
+		t.Fatalf("plain explicit off mode = %q", mode)
+	}
 	if req.Input.Caching.Enabled {
 		t.Fatalf("explicit disabled must stay off: %#v", req.Input.Caching)
+	}
+
+	// endpoint-bound：省略 / 显式 true / 显式 false 均清空 Caching，遥测为 implicit_automatic。
+	// 不下发显式开关 ≠ 关闭缓存；官方隐式缓存自动生效，命中只看 cached_tokens。
+	for _, tc := range []struct {
+		name string
+		cfg  *modelhubv2.CachingConfig
+	}{
+		{name: "omit", cfg: nil},
+		{name: "explicit_on", cfg: &modelhubv2.CachingConfig{Enabled: true, ExpireAtUnix: 99}},
+		{name: "explicit_off", cfg: &modelhubv2.CachingConfig{Enabled: false, ExpireAtUnix: 99}},
+	} {
+		t.Run("endpoint_"+tc.name, func(t *testing.T) {
+			req := &modelhubv2.GenerateRequest{Input: &modelhubv2.Input{Caching: tc.cfg}}
+			if mode := applyTextCachingPolicy(req, endpointArk); mode != cachingModeImplicitAutomatic {
+				t.Fatalf("mode = %q want %q", mode, cachingModeImplicitAutomatic)
+			}
+			if req.Input.Caching != nil {
+				t.Fatalf("endpoint-bound must omit explicit caching field: %#v", req.Input.Caching)
+			}
+		})
 	}
 }
 
@@ -196,6 +219,44 @@ func TestGenerateTextHonorsExplicitCachingSwitch(t *testing.T) {
 	}
 }
 
+func TestGenerateTextEndpointBoundUsesImplicitAutomatic(t *testing.T) {
+	cases := []struct {
+		name string
+		cfg  *modelhubv2.CachingConfig
+	}{
+		{name: "omit", cfg: nil},
+		{name: "explicit_on", cfg: &modelhubv2.CachingConfig{Enabled: true, ExpireAtUnix: 123}},
+		{name: "explicit_off", cfg: &modelhubv2.CachingConfig{Enabled: false, ExpireAtUnix: 123}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			recorder := installSpanRecorder(t)
+			text := &usageText{usage: &modelhubv2.Usage{InputTokens: 10}}
+			service := newTestService(config.Config{
+				Providers: map[string]config.ProviderConfig{
+					"ark": {Models: []string{"chat-model"}, Ark: &config.ArkProviderConfig{APIKey: "k", EndpointID: "ep-test"}},
+				},
+			}, map[string]provider.Set{"ark": {Text: text}}, nil)
+			req := textRequest("chat-model", "do")
+			req.Input.Caching = tc.cfg
+			if err := service.Generate(req, &generateRecorder{ctx: context.Background()}); err != nil {
+				t.Fatal(err)
+			}
+			if text.request.GetInput().GetCaching() != nil {
+				t.Fatalf("provider must see nil caching (implicit automatic): %#v", text.request.GetInput().GetCaching())
+			}
+			attrs := attrMap(findGenerateSpan(t, recorder))
+			if attrs[attrCachingMode].AsString() != cachingModeImplicitAutomatic {
+				t.Fatalf("mode = %v want %s", attrs[attrCachingMode], cachingModeImplicitAutomatic)
+			}
+			// strategy != hit：本用例 usage.cached_tokens=0，不得记成命中。
+			if attrs[attrCacheHit].AsBool() {
+				t.Fatal("cached_tokens=0 must not count as hit")
+			}
+		})
+	}
+}
+
 func TestGenerateTextStreamAndNonStreamUsageAttrsMatch(t *testing.T) {
 	usage := &modelhubv2.Usage{InputTokens: 80, CachedTokens: 20}
 	readAttrs := func(stream bool) map[string]attribute.Value {
@@ -240,7 +301,7 @@ func TestGenerateTextRecordsUsageEvenIfFinalSendFails(t *testing.T) {
 	}
 }
 
-func TestGenerateImageDoesNotApplyTextCachingDefault(t *testing.T) {
+func TestGenerateImageDoesNotApplyTextCachingPolicy(t *testing.T) {
 	image := &recordingImage{}
 	service := newTestService(config.Config{
 		Providers: map[string]config.ProviderConfig{
