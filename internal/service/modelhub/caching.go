@@ -2,7 +2,9 @@ package modelhub
 
 import (
 	"context"
+	"strings"
 
+	"github.com/wgdl666/wgModelHub/config"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -42,13 +44,17 @@ func textCachingMode(input *modelhubv2.Input) string {
 
 // applyTextCachingDefault 仅服务文本 Generate：省略 Input.Caching 时写入 enabled=true，
 // 让 Ark 等需要显式开关的供应商真正启用，降低重复前缀成本；显式 enabled=false 必须保留。
-// 图片/视频不调用此函数，避免引入伪缓存语义。
-func applyTextCachingDefault(request *modelhubv2.GenerateRequest) {
+// endpoint_id 绑定的推理部署通常未开通 Ark 缓存服务，缺省开启会 403，故改为显式 disabled。
+func applyTextCachingDefault(request *modelhubv2.GenerateRequest, providerCfg config.ProviderConfig) {
 	// 调用点仅限已通过 validateGenerateRequest 的 generateText；request 非空契约已成立。
 	if request.Input == nil {
 		request.Input = &modelhubv2.Input{}
 	}
 	if request.Input.Caching == nil {
+		if providerCfg.Ark != nil && strings.TrimSpace(providerCfg.Ark.EndpointID) != "" {
+			request.Input.Caching = &modelhubv2.CachingConfig{Enabled: false}
+			return
+		}
 		request.Input.Caching = &modelhubv2.CachingConfig{Enabled: true}
 	}
 }

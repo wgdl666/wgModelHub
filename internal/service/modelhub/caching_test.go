@@ -30,26 +30,35 @@ func TestTextCachingMode(t *testing.T) {
 }
 
 func TestApplyTextCachingDefault(t *testing.T) {
+	plainArk := config.ProviderConfig{Ark: &config.ArkProviderConfig{APIKey: "k"}}
+	endpointArk := config.ProviderConfig{Ark: &config.ArkProviderConfig{APIKey: "k", EndpointID: "ep-test"}}
+
 	req := &modelhubv2.GenerateRequest{}
-	applyTextCachingDefault(req)
+	applyTextCachingDefault(req, plainArk)
 	if !req.GetInput().GetCaching().GetEnabled() {
 		t.Fatalf("nil input should default enable: %#v", req.Input)
 	}
 
 	req = &modelhubv2.GenerateRequest{Input: &modelhubv2.Input{}}
-	applyTextCachingDefault(req)
+	applyTextCachingDefault(req, plainArk)
 	if !req.Input.Caching.Enabled || req.Input.Caching.ExpireAtUnix != 0 {
 		t.Fatalf("omit caching should enable without inventing expire: %#v", req.Input.Caching)
 	}
 
+	req = &modelhubv2.GenerateRequest{Input: &modelhubv2.Input{}}
+	applyTextCachingDefault(req, endpointArk)
+	if req.Input.Caching.Enabled {
+		t.Fatalf("endpoint-bound ark should default disable caching: %#v", req.Input.Caching)
+	}
+
 	req = &modelhubv2.GenerateRequest{Input: &modelhubv2.Input{Caching: &modelhubv2.CachingConfig{Enabled: true, ExpireAtUnix: 99}}}
-	applyTextCachingDefault(req)
+	applyTextCachingDefault(req, plainArk)
 	if !req.Input.Caching.Enabled || req.Input.Caching.ExpireAtUnix != 99 {
 		t.Fatalf("explicit enabled must keep expire_at: %#v", req.Input.Caching)
 	}
 
 	req = &modelhubv2.GenerateRequest{Input: &modelhubv2.Input{Caching: &modelhubv2.CachingConfig{Enabled: false, ExpireAtUnix: 99}}}
-	applyTextCachingDefault(req)
+	applyTextCachingDefault(req, plainArk)
 	if req.Input.Caching.Enabled {
 		t.Fatalf("explicit disabled must stay off: %#v", req.Input.Caching)
 	}

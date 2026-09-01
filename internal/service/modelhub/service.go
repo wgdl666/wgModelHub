@@ -81,7 +81,7 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 	}
 	// 先记下调用方原始配置模式，再填缺省；否则 default_enabled 会被改写后的 enabled=true 掩盖。
 	cachingMode := textCachingMode(request.GetInput())
-	applyTextCachingDefault(request)
+	applyTextCachingDefault(request, s.providerCfg[binding.provider])
 	if request.GetOutput().GetStream() {
 		var sendErr error
 		var sequence uint32
