@@ -5,6 +5,7 @@ import (
 
 	"github.com/volcengine/volcengine-go-sdk/service/arkruntime/model/responses"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/models"
 )
 
 func TestConvertMessageToInputItemsEmitsAllToolCalls(t *testing.T) {
@@ -171,5 +172,71 @@ func TestBuildRequestCachingExplicitSemantics(t *testing.T) {
 	}
 	if arkReq.Caching != nil || arkReq.ExpireAt != nil {
 		t.Fatalf("explicit disabled must not enable caching: caching=%#v expire=%#v", arkReq.Caching, arkReq.ExpireAt)
+	}
+}
+
+func TestBuildRequestUsesEndpointIDWhenConfigured(t *testing.T) {
+	p := &Provider{name: "ark_doubao_mini", endpointID: "ep-20260901122606-bcxpg"}
+	request := &modelhubv2.GenerateRequest{
+		Input: &modelhubv2.Input{
+			Items: []*modelhubv2.InputItem{{
+				Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
+					Role:  modelhubv2.Role_ROLE_USER,
+					Parts: []*modelhubv2.ContentPart{{Content: &modelhubv2.ContentPart_Text{Text: "hi"}}},
+				}},
+			}},
+		},
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{}}},
+	}
+	arkReq, err := p.buildRequest(models.DoubaoSeed20Mini, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if arkReq.Model != "ep-20260901122606-bcxpg" {
+		t.Fatalf("model = %q, want endpoint id", arkReq.Model)
+	}
+}
+
+func TestBuildRequestUsesLiteEndpointIDWhenConfigured(t *testing.T) {
+	p := &Provider{name: "ark_doubao_lite", endpointID: "ep-20260901133933-xqknf"}
+	request := &modelhubv2.GenerateRequest{
+		Input: &modelhubv2.Input{
+			Items: []*modelhubv2.InputItem{{
+				Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
+					Role:  modelhubv2.Role_ROLE_USER,
+					Parts: []*modelhubv2.ContentPart{{Content: &modelhubv2.ContentPart_Text{Text: "hi"}}},
+				}},
+			}},
+		},
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{}}},
+	}
+	arkReq, err := p.buildRequest(models.DoubaoSeed20Lite, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if arkReq.Model != "ep-20260901133933-xqknf" {
+		t.Fatalf("model = %q, want lite endpoint id", arkReq.Model)
+	}
+}
+
+func TestBuildRequestKeepsModelIDWithoutEndpoint(t *testing.T) {
+	p := &Provider{name: "ark_chat"}
+	request := &modelhubv2.GenerateRequest{
+		Input: &modelhubv2.Input{
+			Items: []*modelhubv2.InputItem{{
+				Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
+					Role:  modelhubv2.Role_ROLE_USER,
+					Parts: []*modelhubv2.ContentPart{{Content: &modelhubv2.ContentPart_Text{Text: "hi"}}},
+				}},
+			}},
+		},
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{}}},
+	}
+	arkReq, err := p.buildRequest("doubao-seed-1.6", request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if arkReq.Model != "doubao-seed-1.6" {
+		t.Fatalf("model = %q, want direct model id", arkReq.Model)
 	}
 }

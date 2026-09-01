@@ -65,6 +65,8 @@ type VertexAIProviderConfig struct {
 type ArkProviderConfig struct {
 	APIKey  string `yaml:"api_key"`
 	BaseURL string `yaml:"base_url"`
+	// EndpointID 可选：火山方舟推理部署 ID（如 ep-xxx）。对外 request.model 仍是 models 包常量，仅上游 Responses 请求体改用此 endpoint。
+	EndpointID string `yaml:"endpoint_id"`
 }
 
 // OpenAIProviderConfig 覆盖 OpenAI-compatible HTTP 端；OminiLink 文本与 gpt-image-2 都走这里。
@@ -440,6 +442,10 @@ func validateProvider(name string, provider ProviderConfig) error {
 	case provider.Ark != nil:
 		if strings.TrimSpace(provider.Ark.APIKey) == "" {
 			return fmt.Errorf("provider %s api_key is required", name)
+		}
+		// endpoint_id 绑定单一推理部署；多模型共用同一 endpoint 会在路由层产生歧义，启动时拒绝。
+		if strings.TrimSpace(provider.Ark.EndpointID) != "" && len(provider.Models) != 1 {
+			return fmt.Errorf("provider %s endpoint_id requires exactly one model", name)
 		}
 	case provider.OpenAI != nil:
 		if strings.TrimSpace(provider.OpenAI.APIKey) == "" {

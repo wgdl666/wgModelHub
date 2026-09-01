@@ -204,3 +204,38 @@ func TestProviderSupportsVideoProviders(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateRejectsArkEndpointIDWithMultipleModels(t *testing.T) {
+	cfg := validConfig()
+	cfg.Providers["ark_doubao_mini"] = ProviderConfig{
+		Models: []string{models.DoubaoSeed20Mini, models.DoubaoSeed16},
+		Ark: &ArkProviderConfig{
+			APIKey:     "key",
+			EndpointID: "ep-20260901122606-bcxpg",
+		},
+	}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "endpoint_id requires exactly one model") {
+		t.Fatalf("expected endpoint_id single-model error, got %v", err)
+	}
+}
+
+func TestValidateAcceptsArkEndpointIDWithSingleModel(t *testing.T) {
+	cfg := validConfig()
+	cfg.Providers["ark_doubao_mini"] = ProviderConfig{
+		Models: []string{models.DoubaoSeed20Mini},
+		Ark: &ArkProviderConfig{
+			APIKey:     "key",
+			EndpointID: "ep-20260901122606-bcxpg",
+		},
+	}
+	cfg.Providers["ark_doubao_lite"] = ProviderConfig{
+		Models: []string{models.DoubaoSeed20Lite},
+		Ark: &ArkProviderConfig{
+			APIKey:     "key",
+			EndpointID: "ep-20260901133933-xqknf",
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}

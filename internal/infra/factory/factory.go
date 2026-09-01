@@ -48,7 +48,7 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 		return provider.Set{Text: client}, nil
 	case providerCfg.Ark != nil:
 		cfg := providerCfg.Ark
-		client, err := ark.New(name, cfg.APIKey, cfg.BaseURL)
+		client, err := ark.New(name, cfg.APIKey, cfg.BaseURL, cfg.EndpointID)
 		if err != nil {
 			return provider.Set{}, err
 		}

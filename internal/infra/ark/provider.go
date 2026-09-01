@@ -24,11 +24,12 @@ const (
 )
 
 type Provider struct {
-	name   string
-	client *arkruntime.Client
+	name       string
+	endpointID string
+	client     *arkruntime.Client
 }
 
-func New(name, apiKey, baseURL string) (*Provider, error) {
+func New(name, apiKey, baseURL, endpointID string) (*Provider, error) {
 	if strings.TrimSpace(apiKey) == "" {
 		return nil, provider.New(provider.ErrorConfiguration, name+" API key is required")
 	}
@@ -39,7 +40,11 @@ func New(name, apiKey, baseURL string) (*Provider, error) {
 		apiKey,
 		arkruntime.WithBaseUrl(strings.TrimRight(baseURL, "/")),
 	)
-	return &Provider{name: name, client: client}, nil
+	return &Provider{
+		name:       name,
+		endpointID: strings.TrimSpace(endpointID),
+		client:     client,
+	}, nil
 }
 
 func (p *Provider) Generate(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
@@ -127,7 +132,7 @@ func (p *Provider) buildRequest(model string, request *modelhubv2.GenerateReques
 	}
 	text := request.GetOutput().GetText()
 	arkReq := &responses.ResponsesRequest{
-		Model: model,
+		Model: p.upstreamModel(model),
 		// Input.items 含 SYSTEM/USER/ASSISTANT/ToolOutput；不再使用顶层 prompt 填 Instructions。
 		Input: p.buildInput(request),
 	}
@@ -495,6 +500,14 @@ func (p *Provider) mapError(ctx context.Context, operation string, err error) er
 		return provider.FromHTTP(p.name, requestError.HTTPStatusCode)
 	}
 	return provider.Wrap(provider.ErrorUnavailable, p.name+" "+operation+" failed", err)
+}
+
+// upstreamModel 把 ModelHub 真实模型 ID 转为上游 Responses model 字段；未配置 endpoint_id 时保持原样（如 doubao-seed-1.6 直连）。
+func (p *Provider) upstreamModel(model string) string {
+	if p.endpointID != "" {
+		return p.endpointID
+	}
+	return model
 }
 
 func ptr[T any](value T) *T {

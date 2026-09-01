@@ -15,18 +15,23 @@ func TestAllAreUnique(t *testing.T) {
 	}
 }
 
-func TestGemini37FlashConstant(t *testing.T) {
-	if Gemini37Flash != "gemini-3.7-flash" {
-		t.Fatalf("Gemini37Flash = %q", Gemini37Flash)
+func TestDoubaoSeed20Constants(t *testing.T) {
+	if DoubaoSeed20Mini != "doubao-seed-2.0-mini" {
+		t.Fatalf("DoubaoSeed20Mini = %q", DoubaoSeed20Mini)
 	}
-	found := false
-	for _, model := range All() {
-		if model == Gemini37Flash {
-			found = true
-			break
+	if DoubaoSeed20Lite != "doubao-seed-2.0-lite" {
+		t.Fatalf("DoubaoSeed20Lite = %q", DoubaoSeed20Lite)
+	}
+	for _, want := range []string{DoubaoSeed20Mini, DoubaoSeed20Lite} {
+		found := false
+		for _, model := range All() {
+			if model == want {
+				found = true
+				break
+			}
 		}
-	}
-	if !found {
-		t.Fatal("Gemini37Flash missing from All()")
+		if !found {
+			t.Fatalf("%s missing from All()", want)
+		}
 	}
 }
