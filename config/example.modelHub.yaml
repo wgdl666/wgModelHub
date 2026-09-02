@@ -36,6 +36,13 @@ providers:
       api_key: "${ARK_API_KEY}"
       base_url: https://ark.cn-beijing.volces.com/api/v3
       endpoint_id: ep-20260901133933-xqknf
+  # Doubao Seed 2.1 Pro：衣橱候选搭配等文本链路；与 mini/lite/1.6 分实例，避免共用 endpoint 路由歧义。
+  ark_doubao_21_pro:
+    models: [doubao-seed-2.1-pro]
+    ark:
+      api_key: "${ARK_API_KEY}"
+      base_url: https://ark.cn-beijing.volces.com/api/v3
+      endpoint_id: ep-20260902131944-rj4cb
   # 方舟 Seedance 2.5 文生视频 / 首帧图生视频；与 ark_chat 分实例，避免文本 Responses 与视频任务混用能力集。
   ark_video:
     models: [doubao-seedance-2-5-260628]

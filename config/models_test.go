@@ -16,6 +16,9 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 	var parsed struct {
 		Providers map[string]struct {
 			Models []string `yaml:"models"`
+			Ark    *struct {
+				EndpointID string `yaml:"endpoint_id"`
+			} `yaml:"ark"`
 		} `yaml:"providers"`
 		ModelRoutes map[string]string `yaml:"model_routes"`
 	}
@@ -57,5 +60,20 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 		if _, ok := known[model]; !ok {
 			t.Fatalf("example.modelHub.yaml has undocumented model %s", model)
 		}
+	}
+
+	// 2.1 Pro 在示例配置中绑定独立 Ark endpoint，供衣橱候选搭配链路路由。
+	provider, ok := parsed.Providers["ark_doubao_21_pro"]
+	if !ok {
+		t.Fatal("missing provider ark_doubao_21_pro")
+	}
+	if len(provider.Models) != 1 || provider.Models[0] != models.DoubaoSeed21Pro {
+		t.Fatalf("ark_doubao_21_pro models=%v, want [%q]", provider.Models, models.DoubaoSeed21Pro)
+	}
+	if provider.Ark == nil {
+		t.Fatal("ark_doubao_21_pro ark.endpoint_id is missing")
+	}
+	if provider.Ark.EndpointID != "ep-20260902131944-rj4cb" {
+		t.Fatalf("ark_doubao_21_pro endpoint_id=%q, want ep-20260902131944-rj4cb", provider.Ark.EndpointID)
 	}
 }

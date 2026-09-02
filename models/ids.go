@@ -5,14 +5,16 @@ package models
 const (
 	Gemini25Flash = "gemini-2.5-flash"
 	// Gemini37Flash 是 Google GA 的 gemini-3.7-flash；不支持关闭 thinking，Hub DISABLED 须在 Gemini provider 映射为 LOW。
-	Gemini37Flash      = "gemini-3.7-flash"
-	Gemini20Flash001   = "gemini-2.0-flash-001"
-	DoubaoSeed16 = "doubao-seed-1.6"
+	Gemini37Flash    = "gemini-3.7-flash"
+	Gemini20Flash001 = "gemini-2.0-flash-001"
+	DoubaoSeed16     = "doubao-seed-1.6"
 	// DoubaoSeed20Mini 对外真实模型名；上游 Responses API 需经各自 Ark endpoint_id 映射，不能暴露基础模型 ID，也不能与 Lite 互相 alias。
 	DoubaoSeed20Mini = "doubao-seed-2.0-mini"
 	// DoubaoSeed20Lite 对外真实模型名；与 Mini 分 endpoint 分 provider，禁止共用推理部署或互相替代。
 	DoubaoSeed20Lite = "doubao-seed-2.0-lite"
-	QwenFlash        = "qwen-flash"
+	// DoubaoSeed21Pro 对外真实模型名；衣橱候选搭配等文本链路经独立 Ark endpoint 推理，与 2.0 mini/lite 分实例，禁止混用。
+	DoubaoSeed21Pro    = "doubao-seed-2.1-pro"
+	QwenFlash          = "qwen-flash"
 	Qwen3VLPlus        = "qwen3-vl-plus"
 	Qwen35Flash        = "qwen3.5-flash"
 	Qwen37Flash        = "qwen3.7-flash"
@@ -73,6 +75,7 @@ func All() []string {
 		DoubaoSeed16,
 		DoubaoSeed20Mini,
 		DoubaoSeed20Lite,
+		DoubaoSeed21Pro,
 		QwenFlash,
 		Qwen3VLPlus,
 		Qwen35Flash,

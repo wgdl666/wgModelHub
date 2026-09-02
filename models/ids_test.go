@@ -1,6 +1,19 @@
 package models
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
+
+// TestDoubaoSeed21ProModelID 锁定 2.1 Pro 对外真实模型名，避免与 2.0 mini/lite 或基础模型 ID 混用。
+func TestDoubaoSeed21ProModelID(t *testing.T) {
+	if DoubaoSeed21Pro != "doubao-seed-2.1-pro" {
+		t.Fatalf("DoubaoSeed21Pro=%q, want doubao-seed-2.1-pro", DoubaoSeed21Pro)
+	}
+	if !slices.Contains(All(), DoubaoSeed21Pro) {
+		t.Fatalf("All() missing %q", DoubaoSeed21Pro)
+	}
+}
 
 func TestAllAreUnique(t *testing.T) {
 	seen := map[string]struct{}{}
