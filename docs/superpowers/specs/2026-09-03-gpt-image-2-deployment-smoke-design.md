@@ -74,7 +74,7 @@ An engineer connected to the development VPC/VPN invokes it from the repository 
   --output ./gpt-image-2.png
 ```
 
-The wrapper resolves the repository root, builds the Go example into a permission-restricted temporary directory, forwards the arguments unchanged, and removes only its temporary binary on exit. Build and client execution are tracked as child processes so a signal delivered only to the wrapper is propagated before cleanup. It does not delete the engineer's output image.
+The wrapper resolves the repository root, installs its traps before creating a permission-restricted temporary directory, builds the Go example there, forwards the arguments unchanged, and removes only that directory on exit. Build and client execution each run in a dedicated child process group. On `INT`, `TERM`, `HUP`, or `EXIT`, the wrapper sends `TERM`, allows a short bounded grace period, escalates the child group to `KILL`, reaps the direct child, and then performs idempotent cleanup. Cleanup failure never replaces the conventional signal status. It does not delete the engineer's output image or signal the caller's process group.
 
 Required flags are `--address`, `--prompt`, and `--output`. The client also accepts `--timeout`, defaulting to five minutes. The output parent directory must already exist, and the client refuses to overwrite an existing output file unless the caller supplies `--force`.
 
@@ -90,7 +90,7 @@ The client always sends:
 
 The client does not accept a provider URL, provider name, credential, model override, or arbitrary metadata. It uses plaintext gRPC transport because this is the existing private listener contract. It sends no `authorization` metadata.
 
-The gRPC connection and call use bounded contexts. The receive limit is `protocol.MaxRPCMessageBytes` so valid image responses are not rejected by the gRPC client's smaller default limit.
+The gRPC connection and call use bounded contexts. The receive limit is `protocol.MaxRPCMessageBytes` so valid image responses are not rejected by the gRPC client's smaller default limit. `grpc.WithDisableRetry()` explicitly prevents a service config from enabling an application retry.
 
 ### 4.3 Response validation and file handling
 
@@ -98,7 +98,7 @@ The client consumes the stream through EOF and succeeds only when all of the fol
 
 1. exactly one event has `final=true`;
 2. exactly one image output item is present across the stream;
-3. the image has a non-empty `image/*` MIME type;
+3. the image MIME is safe ASCII `image/<token>` with a non-empty token subtype (for example, `image/avif`), with no parameters, whitespace, or control characters;
 4. the image uses inline bytes rather than a URI;
 5. the byte content is non-empty and does not exceed `protocol.MaxMediaBytes`;
 6. no event arrives after the unique final event;
@@ -148,15 +148,15 @@ The project may use its existing private-subnet egress path to obtain Go module 
 
 The build uses the exact fixed prompt `A centered red paper boat floating on calm blue water, simple studio illustration, no text`. This makes a valid image response easy to recognize while avoiding customer or business data. It creates a private temporary directory and asks for one `1024x1024` image.
 
-The repository-owned build command starts an internal 510-second (8m30s) watchdog before `mktemp`, Base64 decoding, `chmod`, or smoke dispatch. That single envelope covers bootstrap, wrapper build/module download, the five-minute dial/RPC context, response validation, cleanup, and the alert attempt while leaving margin before the CodeBuild project's ten-minute hard timeout. Cleanup is bounded to ten seconds and SNS publication to fifteen seconds.
+The repository-owned build command starts an internal 510-second (8m30s) watchdog before `mktemp`, Base64 decoding, identity validation, `chmod`, or smoke dispatch. The construct supplies both the Base64 script and its SHA-256. The command creates a new mode-`0700` bootstrap directory, decodes to a file inside it, rejects missing/empty/whitespace/wrong content by checking non-empty bytes and the exact SHA-256, and keeps both coordination markers inside that directory. That single envelope covers bootstrap, wrapper build/module download, the five-minute dial/RPC context, response validation, cleanup, and the alert attempt while leaving margin before the CodeBuild project's ten-minute hard timeout. Cleanup is bounded to ten seconds and SNS publication to fifteen seconds.
 
-Buildspec, smoke script, and repository wrapper install idempotent `INT`, `TERM`, `HUP`, and `EXIT` cleanup handlers. Each handler terminates and reaps its tracked child before removing only its own generated files, and it runs the relevant cleanup at most once. Whether the call succeeds or fails, the generated image, temporary binary, decoded script, summaries, and private temporary directories are deleted. The CodeBuild project defines no output artifact for the image. The source artifact remains the normal CodePipeline input and is unaffected.
+Buildspec, smoke script, and repository wrapper install idempotent `INT`, `TERM`, `HUP`, and `EXIT` cleanup handlers. Each handler terminates and reaps its tracked child before removing only its own generated files, and it runs the relevant cleanup at most once. The wrapper additionally terminates the build/client process group after a short grace period so descendants that ignore `TERM` cannot outlive it. Whether the call succeeds or fails, the generated image, temporary binary, decoded script, summaries, coordination markers, and private temporary directories are deleted. The CodeBuild project defines no output artifact for the image. The source artifact remains the normal CodePipeline input and is unaffected.
 
-There is no retry at the client, wrapper, or buildspec layer. Each smoke execution therefore makes zero provider requests if setup fails, or exactly one provider generation attempt if the RPC reaches ModelHub.
+There is no retry at the client, wrapper, or buildspec layer; the gRPC client explicitly disables retries even if a resolver supplies a retry service config. Each smoke execution therefore makes zero provider requests if setup fails, or exactly one provider generation attempt if the RPC reaches ModelHub.
 
 ## 6. Failure and alert semantics
 
-A controlled smoke execution failure includes build-command bootstrap (`mktemp`, Base64 decoding, `chmod`, or dispatch), source validation, client build, DNS, connection, RPC, watchdog/RPC timeout, stream/protocol validation, output-file handling, or cleanup failure after the repository-owned build command has started. The buildspec catches these failures, attempts exactly one warning, and exits successfully so the pipeline stays green and the ECS release remains active.
+A controlled smoke execution failure includes build-command bootstrap (`mktemp`, missing/empty/invalid Base64, decoded-script identity validation, `chmod`, or dispatch), source validation, client build, DNS, connection, RPC, watchdog/RPC timeout, stream/protocol validation, output-file handling, or cleanup failure after the repository-owned build command has started. The buildspec catches these failures, attempts exactly one warning, and exits successfully so the pipeline stays green and the ECS release remains active.
 
 The warning is sent to the existing `wg-dev-cicd-failures` topic. Its JSON body contains only:
 
@@ -170,7 +170,7 @@ The warning is sent to the existing `wg-dev-cicd-failures` topic. Its JSON body 
 
 The allowed failure categories are `source-validation`, `client-build`, `connect`, `rpc`, `timeout`, `protocol`, `output`, and `cleanup`. No dynamic error text is copied into the warning.
 
-It contains no prompt, media, AppConfig content, DSN, credential, provider response, gRPC message, or stack trace. The SNS CLI is bounded to fifteen seconds. A private attempt marker coordinates the decoded smoke script with the outer watchdog, so a watchdog interruption during SNS never causes a second publish attempt. If JSON construction or SNS publication fails, hangs, or is interrupted by the watchdog, the build logs only the fixed `alert_publish_failed` marker and still exits successfully.
+It contains no prompt, media, AppConfig content, DSN, credential, provider response, gRPC message, or stack trace. `sourceCommit` is included only when `SOURCE_COMMIT` and `CODEBUILD_RESOLVED_SOURCE_VERSION` are both lowercase 40-character hashes and equal; otherwise it is the fixed value `invalid`. The SNS CLI is bounded to fifteen seconds. Private no-clobber attempt and alert-failure markers coordinate the decoded smoke script with the outer watchdog. If the attempt marker cannot be created, the child fails closed without SNS and the outer layer may attempt the warning once. If JSON construction or SNS publication fails, hangs, or is interrupted by the watchdog, the outer layer re-emits only the fixed `alert_publish_failed` marker and never exposes captured child stderr or performs a second publish attempt.
 
 The `Smoke` stage has no rollback rule. CodeBuild-managed image and `runtime-versions` initialization happens before the repository-owned build command can install its handlers. A platform failure that prevents the container, managed Go runtime initialization, or the build command from starting cannot be caught by repository code and may mark the action failed; this narrow platform-startup boundary is not classified as a functional/setup failure. It still must not roll back the already healthy ECS release.
 

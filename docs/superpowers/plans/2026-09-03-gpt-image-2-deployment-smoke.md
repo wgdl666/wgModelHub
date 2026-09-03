@@ -15,11 +15,11 @@
 - Do not modify the user-owned checkout `/Users/bruce/workspaces/wgdl_aws/wgPlatformInfra`.
 - The only endpoint is internal plaintext gRPC `modelhub.internal.dev:50053`; do not add public access, TLS termination, port `50054`, or `authorization` metadata.
 - The request model is always `models.GPTImage2`; the live smoke is text-to-image only, `1:1`, `1024x1024`, with a five-minute call timeout and no retry.
-- Receive at most `protocol.MaxRPCMessageBytes` and accept exactly one inline `image/*` whose bytes are non-empty and at most `protocol.MaxMediaBytes`.
+- Receive at most `protocol.MaxRPCMessageBytes` and accept exactly one inline safe-ASCII `image/<token>` (including `image/avif`, but no empty subtype, parameter, whitespace, control, or non-ASCII byte) whose bytes are non-empty and at most `protocol.MaxMediaBytes`.
 - Never log prompts, image bytes, full gRPC/provider responses, provider details, AppConfig content, DSNs, or credentials.
 - The pipeline fixed prompt is `A centered red paper boat floating on calm blue water, simple studio illustration, no text`, but it must not be printed in CodeBuild logs or SNS.
 - Pipeline-generated files live only in a mode-`0700` temporary directory and are deleted on success and failure. No image artifact is emitted.
-- Controlled smoke/bootstrap failures after the repository-owned build command starts publish one fixed warning attempt to `wg-dev-cicd-failures` and exit zero. An internal 510-second watchdog, bounded cleanup, and bounded SNS call leave margin before the ten-minute CodeBuild timeout. CodeBuild-managed container/runtime initialization before the build command begins is an uncapturable platform-startup exception, not a functional/setup failure. The Smoke stage has no rollback rule.
+- Controlled smoke/bootstrap failures after the repository-owned build command starts make at most one fixed warning attempt to `wg-dev-cicd-failures` and exit zero. The bootstrap executes only the non-empty decoded script whose construct-supplied SHA-256 matches, and keeps coordination markers in its own mode-`0700` directory. An internal 510-second watchdog, bounded cleanup, and bounded SNS call leave margin before the ten-minute CodeBuild timeout. CodeBuild-managed container/runtime initialization before the build command begins is an uncapturable platform-startup exception, not a functional/setup failure. The Smoke stage has no rollback rule.
 - Add no AppConfig, database, migration, ECS mutation, ECR push, Secrets Manager, SSM parameter, or provider-secret permission to the smoke role.
 - Keep the running service at two private replicas; do not change AppConfig or any database schema.
 - Use TDD for every behavior change, review each staged diff before commit, ask before pushing either repository, and show the infrastructure diff before AWS deployment.
@@ -124,7 +124,7 @@ request := &modelhubv2.GenerateRequest{
 }
 ```
 
-Read through `io.EOF`. Track `finalSeen` and image count. Reject missing/multiple final events, any event after final, zero or multiple images, URI sources, non-`image/` MIME, empty data, and data larger than `protocol.MaxMediaBytes`. Map `codes.DeadlineExceeded` to `timeout`; map other gRPC failures to `rpc` without preserving the message.
+Read through `io.EOF`. Track `finalSeen` and image count. Reject missing/multiple final events, any event after final, zero or multiple images, URI sources, MIME outside the safe ASCII `image/<token>` grammar, empty data, and data larger than `protocol.MaxMediaBytes`. Map `codes.DeadlineExceeded` to `timeout`; map other gRPC failures to `rpc` without preserving the message.
 
 - [ ] **Step 5: Add the complete invalid-stream table**
 
@@ -211,6 +211,7 @@ conn, err := dial(
 	config.address,
 	grpc.WithTransportCredentials(insecure.NewCredentials()),
 	grpc.WithBlock(),
+	grpc.WithDisableRetry(),
 	grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(protocol.MaxRPCMessageBytes)),
 )
 ```
@@ -232,7 +233,7 @@ The error line produced by `main` contains only `smokeFailure.Error()`. Map proc
 | `protocol` | 23 |
 | `output` | 24 |
 
-If the blocking dial fails because its context expires, return `failureTimeout`; otherwise return `failureConnect`. Do not enable gRPC retries.
+If the blocking dial fails because its context expires, return `failureTimeout`; otherwise return `failureConnect`. Keep `grpc.WithDisableRetry()` explicit so even a resolver-supplied service config cannot enable application retries.
 
 - [ ] **Step 4: Test successful execution and sanitized failures**
 
@@ -247,7 +248,7 @@ Create a fake Go executable and set `WG_MODELHUB_GO_BIN` to it. The fake executa
 - the test output file remains after wrapper exit;
 - the temporary binary and directory are removed;
 - a fake build failure first emits a sensitive stderr sentinel, but the wrapper exits `70` and prints only `gpt-image-2 client build failed`;
-- sending `INT`, `TERM`, or `HUP` only to the wrapper PID terminates and reaps the active build/client child, exits explicitly as 130, 143, or 129, and cleans the private build directory exactly once.
+- sending `INT`, `TERM`, or `HUP` only to the wrapper PID terminates and reaps the active build/client child process group (including a descendant that ignores `TERM`), exits boundedly and explicitly as 130, 143, or 129 even if cleanup fails, and cleans the private build directory exactly once.
 
 - [ ] **Step 6: Run the wrapper test and verify failure**
 
@@ -268,50 +269,77 @@ script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 repo_root=$(cd -- "$script_dir/../.." && pwd -P)
 go_bin=${WG_MODELHUB_GO_BIN:-go}
 umask 077
-tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/wg-modelhub-gpt-image-2.XXXXXXXX")
+tmp_dir=''
 cleanup_done=0
-active_pid=
+active_pid=''
+active_pgid=''
 cleanup() {
-  ((cleanup_done)) && return
+  if ((cleanup_done)); then return; fi
   cleanup_done=1
-  rm -rf -- "$tmp_dir"
+  [[ -z "$tmp_dir" ]] || rm -rf -- "$tmp_dir"
 }
 stop_active_child() {
-  [[ -n "$active_pid" ]] || return
+  [[ -n "$active_pid" ]] || return 0
   local pid=$active_pid
-  active_pid=
-  kill -TERM "$pid" 2>/dev/null || true
+  local pgid=$active_pgid
+  local attempt
+  active_pid=''
+  active_pgid=''
+  kill -TERM -- "-$pgid" 2>/dev/null || true
+  for attempt in {1..10}; do
+    kill -0 -- "-$pgid" 2>/dev/null || break
+    sleep 0.05
+  done
+  kill -KILL -- "-$pgid" 2>/dev/null || true
   wait "$pid" 2>/dev/null || true
 }
 handle_signal() {
   local status=$1
+  trap - EXIT INT TERM HUP
   stop_active_child
-  cleanup
-  trap - EXIT
+  cleanup || true
   exit "$status"
 }
-trap cleanup EXIT
+handle_exit() {
+  local status=$1
+  trap - EXIT INT TERM HUP
+  stop_active_child
+  cleanup || true
+  exit "$status"
+}
+trap 'handle_exit $?' EXIT
 trap 'handle_signal 130' INT
 trap 'handle_signal 143' TERM
 trap 'handle_signal 129' HUP
+
+tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/wg-modelhub-gpt-image-2.XXXXXXXX")
+set -m
 (cd -- "$repo_root" && exec "$go_bin" build -o "$tmp_dir/gpt-image-2" ./examples/gpt-image-2) >/dev/null 2>&1 &
 active_pid=$!
+active_pgid=$active_pid
+set +m
 build_status=0
 wait "$active_pid" || build_status=$?
-active_pid=
+active_pid=''
+active_pgid=''
 if ((build_status != 0)); then
   printf '%s\n' 'gpt-image-2 client build failed' >&2
   exit 70
 fi
+
+set -m
 "$tmp_dir/gpt-image-2" "$@" &
 active_pid=$!
+active_pgid=$active_pid
+set +m
 client_status=0
 wait "$active_pid" || client_status=$?
-active_pid=
+active_pid=''
+active_pgid=''
 exit "$client_status"
 ```
 
-Make `cleanup` idempotent and have `handle_signal` stop/reap the active child, run cleanup once, clear the `EXIT` trap, and preserve the conventional signal exit status. The production path never sets `WG_MODELHUB_GO_BIN`; it exists only to make the wrapper contract test deterministic.
+Install traps while the temporary path is still empty. Make `cleanup` idempotent; use a dedicated job-control process group for each active build/client; on signal or `EXIT`, send `TERM`, wait a short bounded grace period, escalate the group to `KILL`, reap the direct child, run cleanup once, and preserve the original/signal status even if cleanup fails. Never target the wrapper or caller process group. The production path never sets `WG_MODELHUB_GO_BIN`; it exists only to make the wrapper contract test deterministic.
 
 - [ ] **Step 8: Document manual use**
 
@@ -448,7 +476,7 @@ Expected: compile failure because `PostDeploySmoke` does not exist.
 
 - [ ] **Step 3: Write the failing shell contract tests**
 
-Static tests must require the internal endpoint, repository wrapper, `--timeout 5m`, all eight stable failure categories, `gpt-image-2-smoke`, the 510-second watchdog, bounded cleanup/SNS calls, and the warning topic. Execute the smoke and complete buildspec command with fake tools. Cover success; exits `2`, `20`, `21`, `22`, `23`, `24`, and `70`; `mktemp`/decode/`chmod`/dispatch failure; a hanging wrapper; hanging/failing SNS; watchdog interruption during SNS; and `INT`/`TERM`/`HUP`. Assert every controlled client/setup failure attempts exactly one sanitized publish and exits zero, every created temporary path is cleaned once, and signals perform idempotent cleanup with explicit status. Assert output omits the fixed prompt, fake provider response, output path, dynamic stderr, and sensitive sentinels. Add `image/avif` success plus empty-subtype, whitespace, and control-character rejection cases.
+Static tests must require the internal endpoint, repository wrapper, `--timeout 5m`, all eight stable failure categories, `gpt-image-2-smoke`, the 510-second watchdog, bounded cleanup/SNS calls, and the warning topic. Execute the smoke and complete buildspec command with fake tools. Cover success; exits `2`, `20`, `21`, `22`, `23`, `24`, and `70`; unset/empty Base64; empty/whitespace/wrong-identity decoded content; `mktemp`/decode/hash/`chmod`/dispatch failure; a hanging wrapper; `jq` failure; hanging/failing SNS; watchdog interruption during SNS; private-marker creation failure; and `INT`/`TERM`/`HUP`. Assert every controlled client/setup failure attempts at most one sanitized publish and exits zero, child marker failure itself performs zero SNS calls, every created temporary path is cleaned once, and signals perform idempotent cleanup with explicit status. Assert output omits the fixed prompt, fake provider response, output path, dynamic stderr, and sensitive sentinels. Add `image/avif` success plus empty-subtype, MIME-parameter, whitespace, control-character, and non-ASCII rejection cases.
 
 - [ ] **Step 4: Implement the fixed smoke script**
 
@@ -466,13 +494,13 @@ Run the wrapper as a tracked child so signal handlers can terminate/wait it. Map
 
 - [ ] **Step 5: Implement the embedded buildspec**
 
-Use Go 1.26 and one opaque command block. Before `mktemp`, start a 510-second internal watchdog that covers Base64 decode, `chmod`, script dispatch, wrapper build/module download, the five-minute RPC, summary validation, cleanup, and alerting. Catch every repository-controlled bootstrap error, suppress its dynamic stderr, clean the decoded script at most once, publish one sanitized warning attempt, and exit zero. Coordinate the smoke and outer watchdog with a private temporary warning-attempt marker so interrupting a hanging SNS child cannot trigger a second publish; log only `alert_publish_failed` in that case. Bound cleanup to ten seconds and SNS to fifteen seconds. Install idempotent `INT`, `TERM`, `HUP`, `USR1` watchdog, and `EXIT` handlers, and terminate/wait child processes before cleanup. Do not define an artifacts section.
+Use Go 1.26 and one opaque command block. Before `mktemp`, start a 510-second internal watchdog that covers Base64 decode, identity validation, `chmod`, script dispatch, wrapper build/module download, the five-minute RPC, summary validation, cleanup, and alerting. Create one mode-`0700` bootstrap directory, decode the smoke to a file inside it, require non-empty bytes, and compare `sha256sum` against the construct-supplied lowercase SHA-256 before execution. Catch every repository-controlled bootstrap error, suppress its dynamic stderr, clean the entire bootstrap directory at most once, publish one sanitized warning attempt, and exit zero. Keep no-clobber warning-attempt and alert-failed markers inside that private directory. A child that cannot create the attempt marker fails closed without SNS; the outer layer may then attempt once. A child `jq`/SNS failure records only the private alert marker, and the outer layer re-emits exactly `alert_publish_failed`; interrupting a hanging SNS child never triggers a second publish. Set warning `sourceCommit` only when the pipeline source and CodeBuild-resolved values are both lowercase 40-character hashes and equal, otherwise use `invalid`. Bound cleanup to ten seconds and SNS to fifteen seconds. Install idempotent `INT`, `TERM`, `HUP`, `USR1` watchdog, and `EXIT` handlers, and terminate/wait child processes before cleanup. Do not define an artifacts section.
 
 The `install.runtime-versions` phase is CodeBuild-managed and runs before this command block. If container startup or managed Go runtime initialization fails before the command begins, repository handlers cannot run; keep that narrow condition documented as a platform-startup exception rather than expanding the setup/functional failure definition.
 
 - [ ] **Step 6: Implement the construct**
 
-Create a dedicated role and `PipelineProject` using `LinuxBuildImage.AMAZON_LINUX_2023_5`, `ComputeType.SMALL`, `privileged: false`, the private VPC/subnets, and the dedicated security group. Defensively reject any service port other than `50053` or address other than `modelhub.internal.dev:50053` before creating resources. Embed only `scripts/smoke-modelhub-gpt-image-2.sh`; set the fixed address from the validated runtime contract. Set `grantReportGroupPermissions: false`; grant only `sns:Publish` to the warning topic beyond required CodeBuild VPC/log/source-artifact permissions.
+Create a dedicated role and `PipelineProject` using `LinuxBuildImage.AMAZON_LINUX_2023_5`, `ComputeType.SMALL`, `privileged: false`, the private VPC/subnets, and the dedicated security group. Defensively reject any service port other than `50053` or address other than `modelhub.internal.dev:50053` before creating resources. Embed only `scripts/smoke-modelhub-gpt-image-2.sh` plus its build-time SHA-256; set the fixed address from the validated runtime contract. Set `grantReportGroupPermissions: false`; grant only `sns:Publish` to the warning topic beyond required CodeBuild VPC/log/source-artifact permissions.
 
 - [ ] **Step 7: Run focused infrastructure tests**
 
