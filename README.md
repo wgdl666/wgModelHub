@@ -42,6 +42,19 @@ AWS 新加坡 dev 仅通过 VPC 内的 `modelhub.internal.dev:50053` 提供 gRPC
 `migrations/001_generation_task.sql` 以创建 `modelhub.generation_task`。所有 ModelHub
 关系表均显式限定在 `modelhub` schema；本次内网部署不得执行 `002` 或 `003`。
 
+## GPT Image 2 internal example
+
+调用方必须已连接 dev VPC/VPN，并且输出文件的父目录必须已存在。内部端口 `50053`
+不需要 authorization header。下面的命令默认超时为五分钟；如要替换已有输出文件，
+追加 `--force`。每次成功到达服务的调用都会产生一次供应商图片生成费用。
+
+```bash
+./scripts/examples/gpt-image-2.sh \
+  --address modelhub.internal.dev:50053 \
+  --prompt "A small red paper boat floating on calm water" \
+  --output ./gpt-image-2.png
+```
+
 ## 公网 API Key（可选）
 
 以下能力仅保留给阿里云/Nacos 的独立部署方案，不属于 AWS dev。内网 ACK 调用仍走
