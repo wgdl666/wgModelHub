@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -473,12 +474,53 @@ func waitForProcessExit(t *testing.T, pid int) {
 	t.Helper()
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
-		if err := syscall.Kill(pid, 0); err == syscall.ESRCH {
+		if processHasExited(pid) {
 			return
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("process %d remains alive", pid)
+}
+
+func processHasExited(pid int) bool {
+	if err := syscall.Kill(pid, 0); err == syscall.ESRCH {
+		return true
+	}
+	if runtime.GOOS != "linux" {
+		return false
+	}
+	stat, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "stat"))
+	if os.IsNotExist(err) {
+		return true
+	}
+	return err == nil && linuxProcessStatIsZombie(stat)
+}
+
+func linuxProcessStatIsZombie(stat []byte) bool {
+	closingParenthesis := bytes.LastIndexByte(stat, ')')
+	return closingParenthesis >= 0 && closingParenthesis+3 < len(stat) &&
+		stat[closingParenthesis+1] == ' ' && stat[closingParenthesis+2] == 'Z' &&
+		stat[closingParenthesis+3] == ' '
+}
+
+func TestLinuxProcessStatRecognizesZombieState(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name string
+		stat string
+		want bool
+	}{
+		{name: "zombie", stat: "8407 (bash) Z 1 8407 8407 0 -1", want: true},
+		{name: "running", stat: "8407 (bash) R 1 8407 8407 0 -1", want: false},
+		{name: "command with closing parenthesis", stat: "8407 (fake ) command) Z 1 8407 8407 0 -1", want: true},
+		{name: "malformed", stat: "8407 bash Z", want: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := linuxProcessStatIsZombie([]byte(test.stat)); got != test.want {
+				t.Fatalf("linuxProcessStatIsZombie(%q)=%v, want %v", test.stat, got, test.want)
+			}
+		})
+	}
 }
 
 func mustReadDir(t *testing.T, path string) []os.DirEntry {
