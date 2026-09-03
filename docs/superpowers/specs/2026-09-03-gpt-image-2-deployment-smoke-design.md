@@ -74,7 +74,7 @@ An engineer connected to the development VPC/VPN invokes it from the repository 
   --output ./gpt-image-2.png
 ```
 
-The wrapper resolves the repository root, builds the Go example into a permission-restricted temporary directory, forwards the arguments unchanged, and removes only its temporary binary on exit. It does not delete the engineer's output image.
+The wrapper resolves the repository root, builds the Go example into a permission-restricted temporary directory, forwards the arguments unchanged, and removes only its temporary binary on exit. Build and client execution are tracked as child processes so a signal delivered only to the wrapper is propagated before cleanup. It does not delete the engineer's output image.
 
 Required flags are `--address`, `--prompt`, and `--output`. The client also accepts `--timeout`, defaulting to five minutes. The output parent directory must already exist, and the client refuses to overwrite an existing output file unless the caller supplies `--force`.
 
@@ -104,9 +104,9 @@ The client consumes the stream through EOF and succeeds only when all of the fol
 6. no event arrives after the unique final event;
 7. the stream terminates normally.
 
-Diagnostic text may accompany the image and is ignored. A blocked or diagnostic-only response without image bytes fails the smoke.
+Diagnostic text may accompany the image and is ignored. Video, tool-call, nil, absent/unknown oneof, and nil-image items fail the smoke whether they occur before or after the image. A blocked or diagnostic-only response without image bytes also fails.
 
-The output is first written to a mode-`0600` temporary file in the requested destination directory and then atomically renamed to the requested path. Failure removes the partial temporary file. Standard output contains only the MIME type, byte count, and output path. The prompt, image bytes, full response, provider details, and gRPC error message are never printed.
+The output is first written to a mode-`0600` temporary file in the requested destination directory. With `--force`, an atomic rename replaces the destination. Without `--force`, a same-directory hard link publishes the temporary inode atomically without clobbering a destination created concurrently, then unlinks the temporary name. Failure removes only the partial temporary file. Standard output contains only the MIME type, byte count, and output path. The prompt, image bytes, full response, provider details, and gRPC error message are never printed.
 
 Errors are reduced to a stable local stage and, for RPC failures, the gRPC status code. This prevents upstream response bodies or sensitive details from reaching terminal or CodeBuild logs.
 
@@ -130,6 +130,8 @@ postDeploySmoke:
 
 Only that enumerated type is supported. It does not permit a manifest to inject arbitrary shell commands. The type fixes the repository wrapper path, model, size, five-minute RPC timeout, lack of retry, and sanitized result contract. `failureMode: warn` is the only mode in this delivery.
 
+The capability is valid only when the managed manifest is exactly the `modelhub` gRPC service with `runtime.cloudMapName: modelhub` and `runtime.port: 50053`. Runtime Zod validation rejects each mismatch at `postDeploySmoke`, and the construct defensively rejects any address or port other than `modelhub.internal.dev:50053` and `50053` before creating resources.
+
 ### 5.1 Network boundary
 
 Create a dedicated smoke-test security group and attach the CodeBuild project to the existing private subnets. Add one ingress rule to the ModelHub service security group from that smoke security group on TCP `50053`.
@@ -144,15 +146,17 @@ The project may use its existing private-subnet egress path to obtain Go module 
 
 ### 5.2 Execution and cleanup
 
-The build uses the exact fixed prompt `A centered red paper boat floating on calm blue water, simple studio illustration, no text`. This makes a valid image response easy to recognize while avoiding customer or business data. It creates a private temporary directory, asks for one `1024x1024` image, and installs an exit trap before invoking the client.
+The build uses the exact fixed prompt `A centered red paper boat floating on calm blue water, simple studio illustration, no text`. This makes a valid image response easy to recognize while avoiding customer or business data. It creates a private temporary directory and asks for one `1024x1024` image.
 
-Whether the call succeeds or fails, the trap deletes the generated image, temporary binary, and temporary directory. The CodeBuild project defines no output artifact for the image. The source artifact remains the normal CodePipeline input and is unaffected.
+The repository-owned build command starts an internal 510-second (8m30s) watchdog before `mktemp`, Base64 decoding, `chmod`, or smoke dispatch. That single envelope covers bootstrap, wrapper build/module download, the five-minute dial/RPC context, response validation, cleanup, and the alert attempt while leaving margin before the CodeBuild project's ten-minute hard timeout. Cleanup is bounded to ten seconds and SNS publication to fifteen seconds.
+
+Buildspec, smoke script, and repository wrapper install idempotent `INT`, `TERM`, `HUP`, and `EXIT` cleanup handlers. Each handler terminates and reaps its tracked child before removing only its own generated files, and it runs the relevant cleanup at most once. Whether the call succeeds or fails, the generated image, temporary binary, decoded script, summaries, and private temporary directories are deleted. The CodeBuild project defines no output artifact for the image. The source artifact remains the normal CodePipeline input and is unaffected.
 
 There is no retry at the client, wrapper, or buildspec layer. Each smoke execution therefore makes zero provider requests if setup fails, or exactly one provider generation attempt if the RPC reaches ModelHub.
 
 ## 6. Failure and alert semantics
 
-A smoke execution failure includes source validation, client build, DNS, connection, RPC, timeout, stream/protocol validation, output-file handling, or cleanup failure after the CodeBuild container has started. The buildspec catches these failures, publishes one warning, and exits successfully so the pipeline stays green and the ECS release remains active.
+A controlled smoke execution failure includes build-command bootstrap (`mktemp`, Base64 decoding, `chmod`, or dispatch), source validation, client build, DNS, connection, RPC, watchdog/RPC timeout, stream/protocol validation, output-file handling, or cleanup failure after the repository-owned build command has started. The buildspec catches these failures, attempts exactly one warning, and exits successfully so the pipeline stays green and the ECS release remains active.
 
 The warning is sent to the existing `wg-dev-cicd-failures` topic. Its JSON body contains only:
 
@@ -166,13 +170,13 @@ The warning is sent to the existing `wg-dev-cicd-failures` topic. Its JSON body 
 
 The allowed failure categories are `source-validation`, `client-build`, `connect`, `rpc`, `timeout`, `protocol`, `output`, and `cleanup`. No dynamic error text is copied into the warning.
 
-It contains no prompt, media, AppConfig content, DSN, credential, provider response, gRPC message, or stack trace. If SNS publication itself fails, the build logs a fixed `alert_publish_failed` marker and still exits successfully.
+It contains no prompt, media, AppConfig content, DSN, credential, provider response, gRPC message, or stack trace. The SNS CLI is bounded to fifteen seconds. A private attempt marker coordinates the decoded smoke script with the outer watchdog, so a watchdog interruption during SNS never causes a second publish attempt. If JSON construction or SNS publication fails, hangs, or is interrupted by the watchdog, the build logs only the fixed `alert_publish_failed` marker and still exits successfully.
 
-The `Smoke` stage has no rollback rule. A CodeBuild platform failure that prevents the build container from starting cannot be caught by the buildspec and may mark the pipeline action failed, but it still must not roll back the already healthy ECS release.
+The `Smoke` stage has no rollback rule. CodeBuild-managed image and `runtime-versions` initialization happens before the repository-owned build command can install its handlers. A platform failure that prevents the container, managed Go runtime initialization, or the build command from starting cannot be caught by repository code and may mark the action failed; this narrow platform-startup boundary is not classified as a functional/setup failure. It still must not roll back the already healthy ECS release.
 
 ## 7. IAM and observability
 
-The smoke CodeBuild role receives only the normal logging and CodePipeline artifact permissions created for a pipeline project plus `sns:Publish` to the single existing warning topic. It receives no ECS mutation, `iam:PassRole`, AppConfig, Secrets Manager, SSM parameter, RDS, ECR push, or provider-secret permission.
+The smoke CodeBuild role receives only the normal logging, VPC network-interface, and CodePipeline source-artifact permissions required for a pipeline project plus `sns:Publish` to the single existing warning topic. Report-group grants are explicitly disabled because this build emits no CodeBuild reports. It receives no ECS mutation, `iam:PassRole`, AppConfig, Secrets Manager, SSM parameter, RDS, ECR push, or provider-secret permission.
 
 CloudWatch output is limited to:
 
@@ -204,14 +208,17 @@ No automated repository test makes a real provider call. The existing provider-u
 
 ### 8.2 `wgPlatformInfra`
 
-CDK and static buildspec tests require:
+CDK, static, and executable shell tests require:
 
 - `Smoke` follows `Release` and contains one `GPTImage2` action;
 - the action consumes the `Source` artifact from the same execution;
 - the CodeBuild project is VPC-attached in private subnets;
 - the dedicated smoke project reaches service port `50053` only through its own source-security-group rule, without broadening or removing existing approved caller and release-readiness rules;
 - the role can publish only to `wg-dev-cicd-failures` and has no provider/config/database permissions;
-- the fixed wrapper, endpoint, model behavior, timeout, no-retry behavior, cleanup trap, and sanitized warning payload are present;
+- the manifest and construct reject wrong service name, protocol, Cloud Map name, address, and port with precise errors;
+- the fixed wrapper, endpoint, model behavior, timeout, no-retry behavior, idempotent signal cleanup, and sanitized warning payload are present;
+- bootstrap failure, wrapper hang, SNS hang/failure (including watchdog interruption during SNS), and `INT`/`TERM`/`HUP` paths execute with bounded completion, exact-once cleanup, no dynamic stderr, and at most one warning attempt;
+- safe `image/<token>` MIME values such as `image/avif` succeed while empty subtypes, whitespace, and control characters fail;
 - a functional client failure is converted to a successful CodeBuild exit after the warning attempt;
 - the Smoke stage has no rollback configuration and emits no image artifact;
 - services without `postDeploySmoke` are unchanged.
