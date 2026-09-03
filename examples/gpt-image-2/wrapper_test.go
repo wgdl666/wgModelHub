@@ -7,7 +7,9 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 )
 
 func TestWrapper(t *testing.T) {
@@ -98,6 +100,100 @@ func TestWrapperBuildFailureIsSanitized(t *testing.T) {
 	}
 }
 
+func TestWrapperStopsActiveChildAndCleansExactlyOnceOnSignals(t *testing.T) {
+	repoRoot := repositoryRoot(t)
+	wrapper := filepath.Join(repoRoot, "scripts", "examples", "gpt-image-2.sh")
+
+	for _, test := range []struct {
+		name       string
+		signal     syscall.Signal
+		exitStatus int
+	}{
+		{name: "INT", signal: syscall.SIGINT, exitStatus: 130},
+		{name: "TERM", signal: syscall.SIGTERM, exitStatus: 143},
+		{name: "HUP", signal: syscall.SIGHUP, exitStatus: 129},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			tmpRoot := t.TempDir()
+			binDirectory := t.TempDir()
+			readyPath := filepath.Join(tmpRoot, "build-ready")
+			cleanupCallsPath := filepath.Join(tmpRoot, "cleanup-calls")
+			fakeGo := filepath.Join(binDirectory, "fake-go")
+			if err := os.WriteFile(fakeGo, []byte(`#!/usr/bin/env bash
+set -u
+: > "$WG_MODELHUB_TEST_BUILD_READY"
+exec /bin/sleep 2
+`), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			fakeRM := filepath.Join(binDirectory, "rm")
+			if err := os.WriteFile(fakeRM, []byte(`#!/usr/bin/env bash
+set -u
+printf '%s\n' cleanup >> "$WG_MODELHUB_TEST_CLEANUP_CALLS"
+exec /bin/rm "$@"
+`), 0o700); err != nil {
+				t.Fatal(err)
+			}
+
+			command := exec.Command("bash", wrapper)
+			command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+			command.Env = append(os.Environ(),
+				"PATH="+binDirectory+":"+os.Getenv("PATH"),
+				"TMPDIR="+tmpRoot,
+				"WG_MODELHUB_GO_BIN="+fakeGo,
+				"WG_MODELHUB_TEST_BUILD_READY="+readyPath,
+				"WG_MODELHUB_TEST_CLEANUP_CALLS="+cleanupCallsPath,
+			)
+			if err := command.Start(); err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL) }()
+			waitForPath(t, readyPath)
+			signalStarted := time.Now()
+			if err := command.Process.Signal(test.signal); err != nil {
+				t.Fatal(err)
+			}
+			err := command.Wait()
+			if elapsed := time.Since(signalStarted); elapsed >= time.Second {
+				t.Fatalf("wrapper took %s to stop its active child, want <1s", elapsed)
+			}
+			exitError, ok := err.(*exec.ExitError)
+			if !ok || exitError.ExitCode() != test.exitStatus {
+				t.Fatalf("wrapper error=%v, want exit %d", err, test.exitStatus)
+			}
+
+			cleanupCalls, readErr := os.ReadFile(cleanupCallsPath)
+			if readErr != nil {
+				t.Fatalf("read cleanup calls: %v", readErr)
+			}
+			if got := strings.Count(string(cleanupCalls), "cleanup\n"); got != 1 {
+				t.Fatalf("cleanup calls=%d, want 1", got)
+			}
+			entries, readErr := os.ReadDir(tmpRoot)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			for _, entry := range entries {
+				if strings.HasPrefix(entry.Name(), "wg-modelhub-gpt-image-2.") {
+					t.Fatalf("temporary directory remains: %s", entry.Name())
+				}
+			}
+		})
+	}
+}
+
+func waitForPath(t *testing.T, path string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(path); err == nil {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %s", path)
+}
+
 func repositoryRoot(t *testing.T) string {
 	t.Helper()
 	directory, err := os.Getwd()
@@ -115,6 +211,7 @@ set -Eeuo pipefail
 printf '%s\n' "$PWD" > "$WG_MODELHUB_TEST_BUILD_WORKING_DIRECTORY"
 printf '%s\0' "$@" > "$WG_MODELHUB_TEST_BUILD_ARGS"
 if [[ "${WG_MODELHUB_TEST_BUILD_FAIL:-}" == "1" ]]; then
+  printf '%s\n' 'SENSITIVE_BUILD_STDERR_SENTINEL' >&2
   exit 1
 fi
 if [[ "$#" != "4" || "$1" != "build" || "$2" != "-o" || "$4" != "./examples/gpt-image-2" ]]; then

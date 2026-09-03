@@ -79,6 +79,17 @@ func textOutput(text string) *modelhubv2.OutputItem {
 	return &modelhubv2.OutputItem{Item: &modelhubv2.OutputItem_Text{Text: text}}
 }
 
+func videoOutput() *modelhubv2.OutputItem {
+	return &modelhubv2.OutputItem{Item: &modelhubv2.OutputItem_Video{Video: &modelhubv2.Media{
+		MimeType: "video/mp4",
+		Source:   &modelhubv2.Media_Data{Data: []byte("video-data")},
+	}}}
+}
+
+func toolCallOutput() *modelhubv2.OutputItem {
+	return &modelhubv2.OutputItem{Item: &modelhubv2.OutputItem_ToolCall{ToolCall: &modelhubv2.ToolCall{}}}
+}
+
 func TestGenerateImage(t *testing.T) {
 	prompt := "a small red paper boat"
 	imageData := []byte("png-data")
@@ -187,6 +198,40 @@ func TestGenerateImageRejectsInvalidStreams(t *testing.T) {
 				t.Fatalf("failure=%v", failure)
 			}
 		})
+	}
+}
+
+func TestGenerateImageRejectsUnexpectedOutputItemsBeforeAndAfterImage(t *testing.T) {
+	validImage := inlineImage("image/png", []byte("png-data"))
+	unexpectedItems := []struct {
+		name string
+		item *modelhubv2.OutputItem
+	}{
+		{name: "video", item: videoOutput()},
+		{name: "tool-call", item: toolCallOutput()},
+		{name: "nil-item", item: nil},
+		{name: "unknown-item", item: &modelhubv2.OutputItem{}},
+		{name: "nil-image", item: &modelhubv2.OutputItem{Item: &modelhubv2.OutputItem_Image{}}},
+	}
+
+	for _, unexpected := range unexpectedItems {
+		for _, position := range []string{"before-image", "after-image"} {
+			t.Run(unexpected.name+"/"+position, func(t *testing.T) {
+				items := []*modelhubv2.OutputItem{unexpected.item, validImage}
+				if position == "after-image" {
+					items[0], items[1] = items[1], items[0]
+				}
+				service := &recordingService{events: []*modelhubv2.GenerateEvent{{
+					Final: true,
+					Items: items,
+				}}}
+
+				_, failure := generateImage(context.Background(), newTestClient(t, service), "prompt")
+				if failure == nil || failure.category != failureProtocol {
+					t.Fatalf("failure=%v, want category=%q", failure, failureProtocol)
+				}
+			})
+		}
 	}
 }
 

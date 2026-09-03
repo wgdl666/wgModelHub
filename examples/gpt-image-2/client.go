@@ -90,9 +90,20 @@ func generateImage(ctx context.Context, client modelhubv2.ModelHubServiceClient,
 			finalSeen = true
 		}
 		for _, item := range event.GetItems() {
-			image := item.GetImage()
-			if image == nil {
+			if item == nil {
+				return imageResult{}, &smokeFailure{category: failureProtocol}
+			}
+			var image *modelhubv2.Media
+			switch output := item.GetItem().(type) {
+			case *modelhubv2.OutputItem_Text:
 				continue
+			case *modelhubv2.OutputItem_Image:
+				image = output.Image
+			default:
+				return imageResult{}, &smokeFailure{category: failureProtocol}
+			}
+			if image == nil {
+				return imageResult{}, &smokeFailure{category: failureProtocol}
 			}
 			imageCount++
 			if imageCount > 1 {
