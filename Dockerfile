@@ -14,7 +14,7 @@ WORKDIR /src
 RUN if [ -n "$ALPINE_MIRROR" ]; then \
       sed -i "s|https://dl-cdn.alpinelinux.org/alpine|$ALPINE_MIRROR|g" /etc/apk/repositories; \
     fi \
-    && apk add --no-cache git
+    && apk add --no-cache git bash
 
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod \
