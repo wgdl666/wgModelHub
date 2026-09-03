@@ -284,6 +284,39 @@ func TestWriteImage(t *testing.T) {
 		}
 	})
 
+	t.Run("does not overwrite destination created before non-force publication", func(t *testing.T) {
+		directory := t.TempDir()
+		path := filepath.Join(directory, "image.png")
+		concurrentData := []byte("concurrent destination")
+		originalLinkFile := linkFile
+		linkFile = func(oldname, newname string) error {
+			if err := os.WriteFile(newname, concurrentData, 0o600); err != nil {
+				return err
+			}
+			return originalLinkFile(oldname, newname)
+		}
+		t.Cleanup(func() { linkFile = originalLinkFile })
+
+		failure := writeImage(path, data, false)
+		if failure == nil || failure.category != failureOutput {
+			t.Fatalf("failure=%v", failure)
+		}
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read: %v", err)
+		}
+		if string(got) != string(concurrentData) {
+			t.Fatalf("data=%q, want %q", got, concurrentData)
+		}
+		matches, err := filepath.Glob(filepath.Join(directory, ".image.png.tmp-*"))
+		if err != nil {
+			t.Fatalf("glob: %v", err)
+		}
+		if len(matches) != 0 {
+			t.Fatalf("temporary files left behind: %v", matches)
+		}
+	})
+
 	t.Run("write failure cleans temporary file", func(t *testing.T) {
 		directory := t.TempDir()
 		path := filepath.Join(directory, "image.png")

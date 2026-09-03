@@ -46,6 +46,7 @@ type imageResult struct {
 }
 
 var createTempFile = os.CreateTemp
+var linkFile = os.Link
 
 func generateImage(ctx context.Context, client modelhubv2.ModelHubServiceClient, prompt string) (imageResult, *smokeFailure) {
 	request := &modelhubv2.GenerateRequest{
@@ -155,7 +156,17 @@ func writeImage(path string, data []byte, force bool) *smokeFailure {
 	if err := temporary.Close(); err != nil {
 		return &smokeFailure{category: failureOutput}
 	}
-	if err := os.Rename(temporary.Name(), path); err != nil {
+	if force {
+		if err := os.Rename(temporary.Name(), path); err != nil {
+			return &smokeFailure{category: failureOutput}
+		}
+		renamed = true
+		return nil
+	}
+	if err := linkFile(temporary.Name(), path); err != nil {
+		return &smokeFailure{category: failureOutput}
+	}
+	if err := os.Remove(temporary.Name()); err != nil {
 		return &smokeFailure{category: failureOutput}
 	}
 	renamed = true
