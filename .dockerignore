@@ -13,7 +13,10 @@
 coverage*
 docs/
 deploy/
-scripts/
+scripts/*
+!scripts/examples/
+scripts/examples/*
+!scripts/examples/gpt-image-2.sh
 schema/
 config/*.yaml
 config/*.yml

@@ -19,6 +19,17 @@ func TestDockerContextIncludesExampleYAMLForBuilderTests(t *testing.T) {
 	}
 }
 
+func TestDockerContextIncludesGPTImage2WrapperForBuilderTests(t *testing.T) {
+	raw, err := os.ReadFile("../.dockerignore")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const rules = "\nscripts/*\n!scripts/examples/\nscripts/examples/*\n!scripts/examples/gpt-image-2.sh\n"
+	if !strings.Contains(string(raw), rules) {
+		t.Fatal(".dockerignore must include only the gpt-image-2 wrapper from scripts for Docker builder tests")
+	}
+}
+
 func TestDockerfileDefaultsToProductionStage(t *testing.T) {
 	raw, err := os.ReadFile("../Dockerfile")
 	if err != nil {
