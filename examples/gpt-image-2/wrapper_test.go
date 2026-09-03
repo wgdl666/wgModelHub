@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -130,7 +131,8 @@ exec /bin/sleep 2
 			if err := os.WriteFile(fakeRM, []byte(`#!/usr/bin/env bash
 set -u
 printf '%s\n' cleanup >> "$WG_MODELHUB_TEST_CLEANUP_CALLS"
-exec /bin/rm "$@"
+/bin/rm "$@"
+exit 91
 `), 0o700); err != nil {
 				t.Fatal(err)
 			}
@@ -182,6 +184,152 @@ exec /bin/rm "$@"
 	}
 }
 
+func TestWrapperEscalatesForNonCooperativeBuildAndClientGroups(t *testing.T) {
+	repoRoot := repositoryRoot(t)
+	wrapper := filepath.Join(repoRoot, "scripts", "examples", "gpt-image-2.sh")
+
+	for _, stage := range []string{"build", "client"} {
+		t.Run(stage, func(t *testing.T) {
+			tmpRoot := t.TempDir()
+			binDirectory := t.TempDir()
+			readyPath := filepath.Join(tmpRoot, "ready")
+			fakeGoStartedPath := filepath.Join(tmpRoot, "fake-go-started")
+			childPIDPath := filepath.Join(tmpRoot, "child-pid")
+			descendantPIDPath := filepath.Join(tmpRoot, "descendant-pid")
+			cleanupCallsPath := filepath.Join(tmpRoot, "cleanup-calls")
+			stubbornProgram := filepath.Join(binDirectory, "stubborn-program")
+			if err := os.WriteFile(stubbornProgram, []byte(`#!/usr/bin/env bash
+set -u
+trap '' TERM
+printf '%s' "$$" > "$WG_MODELHUB_TEST_CHILD_PID"
+: > "$WG_MODELHUB_TEST_CHILD_READY"
+bash -c 'trap "" TERM; printf "%s" "$$" > "$WG_MODELHUB_TEST_DESCENDANT_PID"; while :; do /bin/sleep 1; done' &
+wait
+`), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			fakeGo := filepath.Join(binDirectory, "fake-go")
+			if err := os.WriteFile(fakeGo, []byte(`#!/usr/bin/env bash
+set -u
+: > "$WG_MODELHUB_TEST_FAKE_GO_STARTED"
+if [[ "$WG_MODELHUB_TEST_STUBBORN_STAGE" == "build" ]]; then
+  exec bash "$WG_MODELHUB_TEST_STUBBORN_PROGRAM"
+fi
+output=$3
+/bin/cp "$WG_MODELHUB_TEST_STUBBORN_PROGRAM" "$output"
+/bin/chmod 700 "$output"
+`), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			fakeRM := filepath.Join(binDirectory, "rm")
+			if err := os.WriteFile(fakeRM, []byte(`#!/usr/bin/env bash
+printf '%s\n' cleanup >> "$WG_MODELHUB_TEST_CLEANUP_CALLS"
+exec /bin/rm "$@"
+`), 0o700); err != nil {
+				t.Fatal(err)
+			}
+
+			command := exec.Command("bash", wrapper)
+			command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+			command.Env = append(os.Environ(),
+				"PATH="+binDirectory+":"+os.Getenv("PATH"),
+				"TMPDIR="+tmpRoot,
+				"WG_MODELHUB_GO_BIN="+fakeGo,
+				"WG_MODELHUB_TEST_STUBBORN_STAGE="+stage,
+				"WG_MODELHUB_TEST_STUBBORN_PROGRAM="+stubbornProgram,
+				"WG_MODELHUB_TEST_CHILD_READY="+readyPath,
+				"WG_MODELHUB_TEST_FAKE_GO_STARTED="+fakeGoStartedPath,
+				"WG_MODELHUB_TEST_CHILD_PID="+childPIDPath,
+				"WG_MODELHUB_TEST_DESCENDANT_PID="+descendantPIDPath,
+				"WG_MODELHUB_TEST_CLEANUP_CALLS="+cleanupCallsPath,
+			)
+			if err := command.Start(); err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL) }()
+			waitForPath(t, fakeGoStartedPath)
+			waitForPath(t, readyPath)
+			childPID := readPID(t, childPIDPath)
+			waitForNonEmptyPath(t, descendantPIDPath)
+			descendantPID := readPID(t, descendantPIDPath)
+			defer func() {
+				_ = syscall.Kill(childPID, syscall.SIGKILL)
+				_ = syscall.Kill(descendantPID, syscall.SIGKILL)
+			}()
+
+			started := time.Now()
+			if err := command.Process.Signal(syscall.SIGTERM); err != nil {
+				t.Fatal(err)
+			}
+			waited := make(chan error, 1)
+			go func() { waited <- command.Wait() }()
+			var err error
+			select {
+			case err = <-waited:
+			case <-time.After(3 * time.Second):
+				_ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
+				<-waited
+				t.Fatal("wrapper did not bound a non-cooperative child")
+			}
+			if elapsed := time.Since(started); elapsed >= 2*time.Second {
+				t.Fatalf("wrapper signal exit took %s, want <2s", elapsed)
+			}
+			exitError, ok := err.(*exec.ExitError)
+			if !ok || exitError.ExitCode() != 143 {
+				t.Fatalf("wrapper error=%v, want exit 143", err)
+			}
+			waitForProcessExit(t, childPID)
+			waitForProcessExit(t, descendantPID)
+			cleanupCalls, readErr := os.ReadFile(cleanupCallsPath)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			if got := strings.Count(string(cleanupCalls), "cleanup\n"); got != 1 {
+				t.Fatalf("cleanup calls=%d, want 1", got)
+			}
+			for _, entry := range mustReadDir(t, tmpRoot) {
+				if strings.HasPrefix(entry.Name(), "wg-modelhub-gpt-image-2.") {
+					t.Fatalf("temporary directory remains: %s", entry.Name())
+				}
+			}
+		})
+	}
+}
+
+func readPID(t *testing.T, path string) int {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, err := strconv.Atoi(string(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pid
+}
+
+func waitForProcessExit(t *testing.T, pid int) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if err := syscall.Kill(pid, 0); err == syscall.ESRCH {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("process %d remains alive", pid)
+}
+
+func mustReadDir(t *testing.T, path string) []os.DirEntry {
+	t.Helper()
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return entries
+}
+
 func waitForPath(t *testing.T, path string) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
@@ -192,6 +340,18 @@ func waitForPath(t *testing.T, path string) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("timed out waiting for %s", path)
+}
+
+func waitForNonEmptyPath(t *testing.T, path string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if info, err := os.Stat(path); err == nil && info.Size() > 0 {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for non-empty %s", path)
 }
 
 func repositoryRoot(t *testing.T) string {

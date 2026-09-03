@@ -21,13 +21,19 @@ const bufSize = 1024 * 1024
 
 type recordingService struct {
 	modelhubv2.UnimplementedModelHubServiceServer
-	events []*modelhubv2.GenerateEvent
-	err    error
-	got    *modelhubv2.GenerateRequest
+	events            []*modelhubv2.GenerateEvent
+	err               error
+	retryableFailures int
+	calls             int
+	got               *modelhubv2.GenerateRequest
 }
 
 func (service *recordingService) Generate(request *modelhubv2.GenerateRequest, stream modelhubv2.ModelHubService_GenerateServer) error {
+	service.calls++
 	service.got = request
+	if service.calls <= service.retryableFailures {
+		return status.Error(codes.Unavailable, "retryable response must not trigger a retry")
+	}
 	for _, event := range service.events {
 		if err := stream.Send(event); err != nil {
 			return err
@@ -153,6 +159,20 @@ func TestGenerateImage(t *testing.T) {
 			t.Fatalf("result=%+v", result)
 		}
 	})
+
+	t.Run("accepts a safe AVIF MIME token", func(t *testing.T) {
+		service := &recordingService{events: []*modelhubv2.GenerateEvent{{
+			Final: true,
+			Items: []*modelhubv2.OutputItem{inlineImage("image/avif", imageData)},
+		}}}
+		result, failure := generateImage(context.Background(), newTestClient(t, service), prompt)
+		if failure != nil {
+			t.Fatalf("generateImage failure=%v", failure)
+		}
+		if result.mimeType != "image/avif" {
+			t.Fatalf("mimeType=%q", result.mimeType)
+		}
+	})
 }
 
 func TestGenerateImageRejectsInvalidStreams(t *testing.T) {
@@ -172,6 +192,13 @@ func TestGenerateImageRejectsInvalidStreams(t *testing.T) {
 		{name: "uri-image", events: []*modelhubv2.GenerateEvent{{Final: true, Items: []*modelhubv2.OutputItem{uriImage("image/png", "https://example.invalid/image.png")}}}, category: failureProtocol},
 		{name: "missing-mime", events: []*modelhubv2.GenerateEvent{{Final: true, Items: []*modelhubv2.OutputItem{inlineImage("", []byte("png-data"))}}}, category: failureProtocol},
 		{name: "non-image-mime", events: []*modelhubv2.GenerateEvent{{Final: true, Items: []*modelhubv2.OutputItem{inlineImage("text/plain", []byte("not an image"))}}}, category: failureProtocol},
+		{name: "empty-mime-subtype", events: []*modelhubv2.GenerateEvent{{Final: true, Items: []*modelhubv2.OutputItem{inlineImage("image/", []byte("png-data"))}}}, category: failureProtocol},
+		{name: "mime-parameter", events: []*modelhubv2.GenerateEvent{{Final: true, Items: []*modelhubv2.OutputItem{inlineImage("image/png;charset=utf-8", []byte("png-data"))}}}, category: failureProtocol},
+		{name: "mime-space", events: []*modelhubv2.GenerateEvent{{Final: true, Items: []*modelhubv2.OutputItem{inlineImage("image/png bad", []byte("png-data"))}}}, category: failureProtocol},
+		{name: "mime-tab", events: []*modelhubv2.GenerateEvent{{Final: true, Items: []*modelhubv2.OutputItem{inlineImage("image/png\tbad", []byte("png-data"))}}}, category: failureProtocol},
+		{name: "mime-newline", events: []*modelhubv2.GenerateEvent{{Final: true, Items: []*modelhubv2.OutputItem{inlineImage("image/png\nbad", []byte("png-data"))}}}, category: failureProtocol},
+		{name: "mime-carriage-return", events: []*modelhubv2.GenerateEvent{{Final: true, Items: []*modelhubv2.OutputItem{inlineImage("image/png\rbad", []byte("png-data"))}}}, category: failureProtocol},
+		{name: "mime-non-ascii", events: []*modelhubv2.GenerateEvent{{Final: true, Items: []*modelhubv2.OutputItem{inlineImage("image/π", []byte("png-data"))}}}, category: failureProtocol},
 		{name: "empty-data", events: []*modelhubv2.GenerateEvent{{Final: true, Items: []*modelhubv2.OutputItem{inlineImage("image/png", nil)}}}, category: failureProtocol},
 		{name: "oversize-data", events: []*modelhubv2.GenerateEvent{{Final: true, Items: []*modelhubv2.OutputItem{inlineImage("image/png", oversize)}}}, category: failureProtocol},
 		{name: "recv-error", err: status.Error(codes.Internal, "upstream body must not be exposed"), category: failureRPC},

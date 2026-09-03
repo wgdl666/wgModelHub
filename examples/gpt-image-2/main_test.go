@@ -132,6 +132,59 @@ func TestRun(t *testing.T) {
 		}
 	})
 
+	t.Run("does not retry a retry-configured RPC", func(t *testing.T) {
+		service := &recordingService{
+			retryableFailures: 1,
+			events: []*modelhubv2.GenerateEvent{{
+				Final: true,
+				Items: []*modelhubv2.OutputItem{inlineImage("image/png", []byte(imageBody))},
+			}},
+		}
+		baseDial := newRunTestDialer(t, service)
+		dial := func(ctx context.Context, target string, options ...grpc.DialOption) (*grpc.ClientConn, error) {
+			options = append(options, grpc.WithDefaultServiceConfig(`{
+				"methodConfig": [{
+					"name": [{"service": "wg_model_hub.v2.ModelHubService", "method": "Generate"}],
+					"retryPolicy": {
+						"MaxAttempts": 2,
+						"InitialBackoff": "0.001s",
+						"MaxBackoff": "0.001s",
+						"BackoffMultiplier": 1.0,
+						"RetryableStatusCodes": ["UNAVAILABLE"]
+					}
+				}]
+			}`))
+			return baseDial(ctx, target, options...)
+		}
+		var output bytes.Buffer
+		failure := run(context.Background(), args, &output, dial)
+		if failure == nil || failure.category != failureRPC || failure.grpcCode != codes.Unavailable {
+			t.Fatalf("failure=%v, want unavailable rpc failure", failure)
+		}
+		if service.calls != 1 {
+			t.Fatalf("Generate calls=%d, want 1", service.calls)
+		}
+		if output.Len() != 0 {
+			t.Fatalf("output=%q, want empty", output.String())
+		}
+	})
+
+	t.Run("rejects a provider-controlled unsafe MIME without output", func(t *testing.T) {
+		unsafeMIME := "image/png\nSENSITIVE_PROVIDER_MIME"
+		service := &recordingService{events: []*modelhubv2.GenerateEvent{{
+			Final: true,
+			Items: []*modelhubv2.OutputItem{inlineImage(unsafeMIME, []byte(imageBody))},
+		}}}
+		var output bytes.Buffer
+		failure := run(context.Background(), args, &output, newRunTestDialer(t, service))
+		if failure == nil || failure.category != failureProtocol {
+			t.Fatalf("failure=%v, want protocol", failure)
+		}
+		if output.Len() != 0 || strings.Contains(failure.Error(), unsafeMIME) {
+			t.Fatalf("unsafe MIME escaped: output=%q failure=%q", output.String(), failure.Error())
+		}
+	})
+
 	failureCases := []struct {
 		name     string
 		args     []string

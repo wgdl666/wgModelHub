@@ -110,7 +110,7 @@ func generateImage(ctx context.Context, client modelhubv2.ModelHubServiceClient,
 				return imageResult{}, &smokeFailure{category: failureProtocol}
 			}
 			dataSource, ok := image.GetSource().(*modelhubv2.Media_Data)
-			if !ok || !strings.HasPrefix(image.GetMimeType(), "image/") || len(dataSource.Data) == 0 || len(dataSource.Data) > protocol.MaxMediaBytes {
+			if !ok || !isSafeImageMIME(image.GetMimeType()) || len(dataSource.Data) == 0 || len(dataSource.Data) > protocol.MaxMediaBytes {
 				return imageResult{}, &smokeFailure{category: failureProtocol}
 			}
 			result = imageResult{mimeType: image.GetMimeType(), data: dataSource.Data}
@@ -120,6 +120,20 @@ func generateImage(ctx context.Context, client modelhubv2.ModelHubServiceClient,
 		return imageResult{}, &smokeFailure{category: failureProtocol}
 	}
 	return result, nil
+}
+
+func isSafeImageMIME(mimeType string) bool {
+	const prefix = "image/"
+	const tokenCharacters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%&'*+.^_`|~-"
+	if !strings.HasPrefix(mimeType, prefix) || len(mimeType) == len(prefix) {
+		return false
+	}
+	for index := len(prefix); index < len(mimeType); index++ {
+		if !strings.ContainsRune(tokenCharacters, rune(mimeType[index])) {
+			return false
+		}
+	}
+	return true
 }
 
 func rpcFailure(err error) *smokeFailure {

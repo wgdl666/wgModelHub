@@ -68,6 +68,7 @@ func run(ctx context.Context, args []string, output io.Writer, dial dialContextF
 		config.address,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithBlock(),
+		grpc.WithDisableRetry(),
 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(protocol.MaxRPCMessageBytes)),
 	)
 	if err != nil {
