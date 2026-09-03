@@ -296,6 +296,166 @@ exec /bin/rm "$@"
 	}
 }
 
+func TestWrapperQueuesSignalsDuringChildLaunchRegistration(t *testing.T) {
+	repoRoot := repositoryRoot(t)
+	wrapper := filepath.Join(repoRoot, "scripts", "examples", "gpt-image-2.sh")
+
+	for _, stage := range []string{"build", "client"} {
+		for index, test := range []struct {
+			name       string
+			signalName string
+			exitStatus int
+		}{
+			{name: "INT", signalName: "INT", exitStatus: 130},
+			{name: "TERM", signalName: "TERM", exitStatus: 143},
+			{name: "HUP", signalName: "HUP", exitStatus: 129},
+		} {
+			t.Run(stage+"-"+test.name, func(t *testing.T) {
+				tmpRoot := t.TempDir()
+				binDirectory := t.TempDir()
+				childPIDPath := filepath.Join(tmpRoot, "child-pid")
+				descendantPIDPath := filepath.Join(tmpRoot, "descendant-pid")
+				signalSentPath := filepath.Join(tmpRoot, "signal-sent")
+				readyPath := filepath.Join(tmpRoot, "ready-after-signal")
+				cleanupCallsPath := filepath.Join(tmpRoot, "cleanup-calls")
+				bashEnvironment := filepath.Join(binDirectory, "wrapper-bash-env")
+				stubbornProgram := filepath.Join(binDirectory, "early-signal-program")
+				boundary := "before-pid"
+				if index%2 == 1 {
+					boundary = "before-pgid"
+				}
+				targetLaunch := "1"
+				if stage == "client" {
+					targetLaunch = "2"
+				}
+
+				if err := os.WriteFile(bashEnvironment, []byte(`if [[ -z "${WG_MODELHUB_TEST_WRAPPER_PID:-}" ]]; then
+  export WG_MODELHUB_TEST_WRAPPER_PID=$$
+  wg_modelhub_launch_count=0
+  wg_modelhub_debug_launch() {
+    local target='active_pid=$!'
+    if [[ "$WG_MODELHUB_TEST_LAUNCH_BOUNDARY" == "before-pgid" ]]; then
+      target='active_pgid=$active_pid'
+    fi
+    if [[ "$BASH_COMMAND" == "$target" ]]; then
+      wg_modelhub_launch_count=$((wg_modelhub_launch_count + 1))
+      if [[ "$wg_modelhub_launch_count" == "$WG_MODELHUB_TEST_TARGET_LAUNCH" ]]; then
+        while [[ ! -e "$WG_MODELHUB_TEST_SIGNAL_SENT" ]]; do /bin/sleep 0.005; done
+      fi
+    fi
+  }
+  trap wg_modelhub_debug_launch DEBUG
+fi
+`), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(stubbornProgram, []byte(`#!/usr/bin/env bash
+set -u
+trap '' INT TERM HUP
+printf '%s' "$$" > "$WG_MODELHUB_TEST_CHILD_PID"
+bash -c 'trap "" INT TERM HUP; printf "%s" "$$" > "$WG_MODELHUB_TEST_DESCENDANT_PID"; while :; do /bin/sleep 1; done' &
+while [[ ! -s "$WG_MODELHUB_TEST_DESCENDANT_PID" ]]; do /bin/sleep 0.005; done
+kill -s "$WG_MODELHUB_TEST_EARLY_SIGNAL" "$PPID"
+: > "$WG_MODELHUB_TEST_SIGNAL_SENT"
+/bin/sleep 1
+: > "$WG_MODELHUB_TEST_READY_AFTER_SIGNAL"
+while :; do /bin/sleep 1; done
+`), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				fakeGo := filepath.Join(binDirectory, "fake-go")
+				if err := os.WriteFile(fakeGo, []byte(`#!/usr/bin/env bash
+set -u
+if [[ "$WG_MODELHUB_TEST_STUBBORN_STAGE" == "build" ]]; then
+  exec bash "$WG_MODELHUB_TEST_STUBBORN_PROGRAM"
+fi
+output=$3
+/bin/cp "$WG_MODELHUB_TEST_STUBBORN_PROGRAM" "$output"
+/bin/chmod 700 "$output"
+`), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				fakeRM := filepath.Join(binDirectory, "rm")
+				if err := os.WriteFile(fakeRM, []byte(`#!/usr/bin/env bash
+printf '%s\n' cleanup >> "$WG_MODELHUB_TEST_CLEANUP_CALLS"
+exec /bin/rm "$@"
+`), 0o700); err != nil {
+					t.Fatal(err)
+				}
+
+				command := exec.Command("bash", wrapper)
+				command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+				command.Env = append(os.Environ(),
+					"BASH_ENV="+bashEnvironment,
+					"PATH="+binDirectory+":"+os.Getenv("PATH"),
+					"TMPDIR="+tmpRoot,
+					"WG_MODELHUB_GO_BIN="+fakeGo,
+					"WG_MODELHUB_TEST_STUBBORN_STAGE="+stage,
+					"WG_MODELHUB_TEST_STUBBORN_PROGRAM="+stubbornProgram,
+					"WG_MODELHUB_TEST_CHILD_PID="+childPIDPath,
+					"WG_MODELHUB_TEST_DESCENDANT_PID="+descendantPIDPath,
+					"WG_MODELHUB_TEST_SIGNAL_SENT="+signalSentPath,
+					"WG_MODELHUB_TEST_READY_AFTER_SIGNAL="+readyPath,
+					"WG_MODELHUB_TEST_CLEANUP_CALLS="+cleanupCallsPath,
+					"WG_MODELHUB_TEST_LAUNCH_BOUNDARY="+boundary,
+					"WG_MODELHUB_TEST_TARGET_LAUNCH="+targetLaunch,
+					"WG_MODELHUB_TEST_EARLY_SIGNAL="+test.signalName,
+				)
+				if err := command.Start(); err != nil {
+					t.Fatal(err)
+				}
+				defer func() { _ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL) }()
+				waitForNonEmptyPath(t, childPIDPath)
+				waitForNonEmptyPath(t, descendantPIDPath)
+				childPID := readPID(t, childPIDPath)
+				descendantPID := readPID(t, descendantPIDPath)
+				defer func() {
+					_ = syscall.Kill(-childPID, syscall.SIGKILL)
+					_ = syscall.Kill(childPID, syscall.SIGKILL)
+					_ = syscall.Kill(descendantPID, syscall.SIGKILL)
+				}()
+				waitForPath(t, signalSentPath)
+
+				started := time.Now()
+				waited := make(chan error, 1)
+				go func() { waited <- command.Wait() }()
+				var err error
+				select {
+				case err = <-waited:
+				case <-time.After(3 * time.Second):
+					_ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
+					<-waited
+					t.Fatal("wrapper did not bound a signal delivered during child registration")
+				}
+				if elapsed := time.Since(started); elapsed >= 2*time.Second {
+					t.Fatalf("wrapper launch-signal exit took %s, want <2s", elapsed)
+				}
+				exitError, ok := err.(*exec.ExitError)
+				if !ok || exitError.ExitCode() != test.exitStatus {
+					t.Fatalf("wrapper error=%v, want exit %d", err, test.exitStatus)
+				}
+				waitForProcessExit(t, childPID)
+				waitForProcessExit(t, descendantPID)
+				if _, err := os.Stat(readyPath); !os.IsNotExist(err) {
+					t.Fatalf("child reached readiness after signaling wrapper: %v", err)
+				}
+				cleanupCalls, err := os.ReadFile(cleanupCallsPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got := strings.Count(string(cleanupCalls), "cleanup\n"); got != 1 {
+					t.Fatalf("cleanup calls=%d, want 1", got)
+				}
+				for _, entry := range mustReadDir(t, tmpRoot) {
+					if strings.HasPrefix(entry.Name(), "wg-modelhub-gpt-image-2.") {
+						t.Fatalf("temporary directory remains: %s", entry.Name())
+					}
+				}
+			})
+		}
+	}
+}
+
 func readPID(t *testing.T, path string) int {
 	t.Helper()
 	data, err := os.ReadFile(path)
