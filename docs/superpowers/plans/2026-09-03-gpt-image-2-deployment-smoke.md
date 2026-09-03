@@ -248,7 +248,7 @@ Create a fake Go executable and set `WG_MODELHUB_GO_BIN` to it. The fake executa
 - the test output file remains after wrapper exit;
 - the temporary binary and directory are removed;
 - a fake build failure first emits a sensitive stderr sentinel, but the wrapper exits `70` and prints only `gpt-image-2 client build failed`;
-- sending `INT`, `TERM`, or `HUP` only to the wrapper PID terminates and reaps the active build/client child process group (including a descendant that ignores `TERM`), exits boundedly and explicitly as 130, 143, or 129 even if cleanup fails, and cleans the private build directory exactly once.
+- sending `INT`, `TERM`, or `HUP` only to the wrapper PID both after readiness and deterministically during the PID/PGID registration boundary terminates and reaps the active build/client child process group (including a descendant that ignores `TERM`), exits boundedly and explicitly as 130, 143, or 129 even if cleanup fails, and cleans the private build directory exactly once.
 
 - [ ] **Step 6: Run the wrapper test and verify failure**
 
@@ -273,6 +273,8 @@ tmp_dir=''
 cleanup_done=0
 active_pid=''
 active_pgid=''
+launch_in_progress=0
+pending_signal_status=''
 cleanup() {
   if ((cleanup_done)); then return; fi
   cleanup_done=1
@@ -307,16 +309,39 @@ handle_exit() {
   cleanup || true
   exit "$status"
 }
+queue_or_handle_signal() {
+  local status=$1
+  if ((launch_in_progress)); then
+    [[ -n "$pending_signal_status" ]] || pending_signal_status=$status
+    return
+  fi
+  handle_signal "$status"
+}
+begin_child_launch() {
+  pending_signal_status=''
+  launch_in_progress=1
+}
+finish_child_launch() {
+  local status
+  launch_in_progress=0
+  if [[ -n "$pending_signal_status" ]]; then
+    status=$pending_signal_status
+    pending_signal_status=''
+    handle_signal "$status"
+  fi
+}
 trap 'handle_exit $?' EXIT
-trap 'handle_signal 130' INT
-trap 'handle_signal 143' TERM
-trap 'handle_signal 129' HUP
+trap 'queue_or_handle_signal 130' INT
+trap 'queue_or_handle_signal 143' TERM
+trap 'queue_or_handle_signal 129' HUP
 
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/wg-modelhub-gpt-image-2.XXXXXXXX")
 set -m
+begin_child_launch
 (cd -- "$repo_root" && exec "$go_bin" build -o "$tmp_dir/gpt-image-2" ./examples/gpt-image-2) >/dev/null 2>&1 &
 active_pid=$!
 active_pgid=$active_pid
+finish_child_launch
 set +m
 build_status=0
 wait "$active_pid" || build_status=$?
@@ -328,9 +353,11 @@ if ((build_status != 0)); then
 fi
 
 set -m
+begin_child_launch
 "$tmp_dir/gpt-image-2" "$@" &
 active_pid=$!
 active_pgid=$active_pid
+finish_child_launch
 set +m
 client_status=0
 wait "$active_pid" || client_status=$?
@@ -339,7 +366,7 @@ active_pgid=''
 exit "$client_status"
 ```
 
-Install traps while the temporary path is still empty. Make `cleanup` idempotent; use a dedicated job-control process group for each active build/client; on signal or `EXIT`, send `TERM`, wait a short bounded grace period, escalate the group to `KILL`, reap the direct child, run cleanup once, and preserve the original/signal status even if cleanup fails. Never target the wrapper or caller process group. The production path never sets `WG_MODELHUB_GO_BIN`; it exists only to make the wrapper contract test deterministic.
+Install traps while the temporary path is still empty. Treat `child &` through complete PID/PGID registration as a launch-critical section: traps queue the first pending signal instead of exiting, then dispatch it through `handle_signal` immediately after registration. Make `cleanup` idempotent; use a dedicated job-control process group for each active build/client; on signal or `EXIT`, send `TERM`, wait a short bounded grace period, escalate the group to `KILL`, reap the direct child, run cleanup once, and preserve the original/signal status even if cleanup fails. Never target the wrapper or caller process group. The production path never sets `WG_MODELHUB_GO_BIN`; it exists only to make the wrapper contract test deterministic.
 
 - [ ] **Step 8: Document manual use**
 
