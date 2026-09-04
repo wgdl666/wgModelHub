@@ -25,6 +25,16 @@ func TestDeepSeekV4FlashModelID(t *testing.T) {
 	}
 }
 
+// TestGLM53FlashModelID 锁定智谱对外真实模型名，避免写成 glm-5-flash 或 Coding Plan 别名。
+func TestGLM53FlashModelID(t *testing.T) {
+	if GLM53Flash != "glm-5.3-flash" {
+		t.Fatalf("GLM53Flash=%q, want glm-5.3-flash", GLM53Flash)
+	}
+	if !slices.Contains(All(), GLM53Flash) {
+		t.Fatalf("All() missing %q", GLM53Flash)
+	}
+}
+
 func TestAllAreUnique(t *testing.T) {
 	seen := map[string]struct{}{}
 	for _, model := range All() {

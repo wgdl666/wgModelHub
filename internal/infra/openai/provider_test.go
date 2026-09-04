@@ -229,6 +229,75 @@ func TestBuildRequestBodySendsEnabledThinking(t *testing.T) {
 	}
 }
 
+func TestBuildRequestBodyGLMThinkingNeverDisabled(t *testing.T) {
+	p := &Provider{baseURL: "https://open.bigmodel.cn/api/paas/v4"}
+
+	enabled := p.buildRequestBody(models.GLM53Flash, &modelhubv2.GenerateRequest{
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{
+			Thinking: modelhubv2.ThinkingMode_THINKING_MODE_ENABLED,
+		}}},
+	}, false)
+	assertGLMThinkingEnabled(t, enabled)
+	if _, ok := enabled["reasoning_effort"]; ok {
+		t.Fatalf("enabled thinking must not force reasoning_effort: %#v", enabled["reasoning_effort"])
+	}
+
+	disabled := p.buildRequestBody(models.GLM53Flash, &modelhubv2.GenerateRequest{
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{
+			Thinking: modelhubv2.ThinkingMode_THINKING_MODE_DISABLED,
+		}}},
+	}, false)
+	assertGLMThinkingEnabled(t, disabled)
+	if got, ok := disabled["reasoning_effort"].(string); !ok || got != "low" {
+		t.Fatalf("disabled thinking must degrade to reasoning_effort=low: %#v", disabled["reasoning_effort"])
+	}
+
+	unspecified := p.buildRequestBody(models.GLM53Flash, &modelhubv2.GenerateRequest{
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{}}},
+	}, false)
+	if _, ok := unspecified["thinking"]; ok {
+		t.Fatalf("unspecified thinking must preserve GLM default: %#v", unspecified["thinking"])
+	}
+	if _, ok := unspecified["enable_thinking"]; ok {
+		t.Fatalf("GLM must not receive DashScope enable_thinking: %#v", unspecified["enable_thinking"])
+	}
+}
+
+func assertGLMThinkingEnabled(t *testing.T, body map[string]any) {
+	t.Helper()
+	if _, ok := body["enable_thinking"]; ok {
+		t.Fatalf("GLM must not receive DashScope enable_thinking: %#v", body["enable_thinking"])
+	}
+	thinking, ok := body["thinking"].(map[string]any)
+	if !ok || thinking["type"] != "enabled" {
+		t.Fatalf("thinking = %#v", body["thinking"])
+	}
+}
+
+func TestConvertMessageImageURLMatchesChatCompletions(t *testing.T) {
+	msg := convertMessage(&modelhubv2.Message{
+		Role: modelhubv2.Role_ROLE_USER,
+		Parts: []*modelhubv2.ContentPart{
+			{Content: &modelhubv2.ContentPart_Image{Image: &modelhubv2.Media{
+				MimeType: "image/png",
+				Source:   &modelhubv2.Media_Uri{Uri: "https://example.com/grounding.png"},
+			}}},
+			{Content: &modelhubv2.ContentPart_Text{Text: "Where is the bottle?"}},
+		},
+	})
+	parts, ok := msg["content"].([]map[string]any)
+	if !ok || len(parts) != 2 {
+		t.Fatalf("content = %#v", msg["content"])
+	}
+	image, ok := parts[0]["image_url"].(map[string]any)
+	if !ok || parts[0]["type"] != "image_url" || image["url"] != "https://example.com/grounding.png" {
+		t.Fatalf("image part = %#v", parts[0])
+	}
+	if parts[1]["type"] != "text" || parts[1]["text"] != "Where is the bottle?" {
+		t.Fatalf("text part = %#v", parts[1])
+	}
+}
+
 func TestConvertResponsePreservesIDAndUsageDetails(t *testing.T) {
 	response := convertResponse(&chatCompletionResponse{
 		ID: "chatcmpl-1",

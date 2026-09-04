@@ -19,6 +19,9 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 			Ark    *struct {
 				EndpointID string `yaml:"endpoint_id"`
 			} `yaml:"ark"`
+			OpenAI *struct {
+				BaseURL string `yaml:"base_url"`
+			} `yaml:"openai"`
 		} `yaml:"providers"`
 		ModelRoutes map[string]string `yaml:"model_routes"`
 	}
@@ -90,5 +93,17 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 	}
 	if deepseek.Ark.EndpointID != "ep-20260904161804-km74x" {
 		t.Fatalf("ark_deepseek_v4_flash endpoint_id=%q, want ep-20260904161804-km74x", deepseek.Ark.EndpointID)
+	}
+
+	// 智谱 GLM 必须绑独立 OpenAI-compatible 实例，base_url 拼上 /chat/completions 后等于官方 PaaS 路径。
+	glm, ok := parsed.Providers["zhipu_glm"]
+	if !ok {
+		t.Fatal("missing provider zhipu_glm")
+	}
+	if len(glm.Models) != 1 || glm.Models[0] != models.GLM53Flash {
+		t.Fatalf("zhipu_glm models=%v, want [%q]", glm.Models, models.GLM53Flash)
+	}
+	if glm.OpenAI == nil || glm.OpenAI.BaseURL != "https://open.bigmodel.cn/api/paas/v4" {
+		t.Fatalf("zhipu_glm openai.base_url=%v, want https://open.bigmodel.cn/api/paas/v4", glm.OpenAI)
 	}
 }

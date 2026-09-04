@@ -82,6 +82,13 @@ providers:
     openai:
       api_key: "${DASHSCOPE_API_KEY}"
       base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  # 智谱 GLM-5.3-flash：原生多模态文本，OpenAI-compatible Chat Completions。
+  # thinking.type 仅支持 enabled；统一协议 DISABLED 只能降到 reasoning_effort=low，不能关思考。
+  zhipu_glm:
+    models: [glm-5.3-flash]
+    openai:
+      api_key: "${ZHIPU_API_KEY}"
+      base_url: https://open.bigmodel.cn/api/paas/v4
   # 同步一次性 TTS：与线上 wgHub Minimax WebSocket 对齐；输出固定 MP3/16kHz/mono。
   minimax_tts:
     models: [speech-2.8-turbo]

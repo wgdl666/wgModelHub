@@ -15,11 +15,13 @@ const (
 	// DoubaoSeed21Pro 对外真实模型名；衣橱候选搭配等文本链路经独立 Ark endpoint 推理，与 2.0 mini/lite 分实例，禁止混用。
 	DoubaoSeed21Pro = "doubao-seed-2.1-pro"
 	// DeepSeekV4Flash 对外真实模型名（方舟正式版）；上游 Responses 走独立推理 endpoint，禁止与预览版或其他 DeepSeek ID 互相 alias。
-	DeepSeekV4Flash    = "deepseek-v4-flash"
-	QwenFlash          = "qwen-flash"
-	Qwen3VLPlus        = "qwen3-vl-plus"
-	Qwen35Flash        = "qwen3.5-flash"
-	Qwen37Flash        = "qwen3.7-flash"
+	DeepSeekV4Flash = "deepseek-v4-flash"
+	QwenFlash       = "qwen-flash"
+	Qwen3VLPlus     = "qwen3-vl-plus"
+	Qwen35Flash     = "qwen3.5-flash"
+	Qwen37Flash     = "qwen3.7-flash"
+	// GLM53Flash 智谱开放平台真实模型名；上游走 OpenAI-compatible Chat Completions，思考只能 enabled。
+	GLM53Flash         = "glm-5.3-flash"
 	Gemini3ProImage    = "gemini-3-pro-image"
 	Gemini25FlashImage = "gemini-2.5-flash-image"
 	Gemini31FlashImage = "gemini-3.1-flash-image"
@@ -83,6 +85,7 @@ func All() []string {
 		Qwen3VLPlus,
 		Qwen35Flash,
 		Qwen37Flash,
+		GLM53Flash,
 		Gemini3ProImage,
 		Gemini25FlashImage,
 		Gemini31FlashImage,

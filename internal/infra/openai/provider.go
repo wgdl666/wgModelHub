@@ -262,10 +262,26 @@ func (p *Provider) buildRequestBody(model string, request *modelhubv2.GenerateRe
 		}
 	}
 	if text != nil && text.Thinking != modelhubv2.ThinkingMode_THINKING_MODE_UNSPECIFIED {
-		// thinking 是统一协议语义：显式启停必须下发，UNSPECIFIED 才保留供应商默认行为。
-		body["enable_thinking"] = text.Thinking == modelhubv2.ThinkingMode_THINKING_MODE_ENABLED
+		applyThinking(body, model, text.Thinking)
 	}
 	return body
+}
+
+// applyThinking 把统一协议 ThinkingMode 映射到供应商字段。
+// DashScope 走 enable_thinking；GLM-5.3-flash 只接受 thinking.type=enabled，
+// 关思考会被供应商拒绝，因此 DISABLED 只能降到 reasoning_effort=low。
+func applyThinking(body map[string]any, model string, thinking modelhubv2.ThinkingMode) {
+	if thinking == modelhubv2.ThinkingMode_THINKING_MODE_UNSPECIFIED {
+		return
+	}
+	if model == models.GLM53Flash {
+		body["thinking"] = map[string]any{"type": "enabled"}
+		if thinking == modelhubv2.ThinkingMode_THINKING_MODE_DISABLED {
+			body["reasoning_effort"] = "low"
+		}
+		return
+	}
+	body["enable_thinking"] = thinking == modelhubv2.ThinkingMode_THINKING_MODE_ENABLED
 }
 
 // dashScopeExplicitCacheEligible 判定是否应向 DashScope 下发显式 cache_control。
