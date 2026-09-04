@@ -15,6 +15,16 @@ func TestDoubaoSeed21ProModelID(t *testing.T) {
 	}
 }
 
+// TestDeepSeekV4FlashModelID 锁定正式版对外真实模型名，避免与预览版或其他 DeepSeek ID 混用。
+func TestDeepSeekV4FlashModelID(t *testing.T) {
+	if DeepSeekV4Flash != "deepseek-v4-flash" {
+		t.Fatalf("DeepSeekV4Flash=%q, want deepseek-v4-flash", DeepSeekV4Flash)
+	}
+	if !slices.Contains(All(), DeepSeekV4Flash) {
+		t.Fatalf("All() missing %q", DeepSeekV4Flash)
+	}
+}
+
 func TestAllAreUnique(t *testing.T) {
 	seen := map[string]struct{}{}
 	for _, model := range All() {

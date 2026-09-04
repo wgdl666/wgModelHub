@@ -43,6 +43,13 @@ providers:
       api_key: "${ARK_API_KEY}"
       base_url: https://ark.cn-beijing.volces.com/api/v3
       endpoint_id: ep-20260902131944-rj4cb
+  # DeepSeek-V4-Flash 正式版：对外 deepseek-v4-flash，上游走独立推理 endpoint，与 Doubao/ark_chat 分实例。
+  ark_deepseek_v4_flash:
+    models: [deepseek-v4-flash]
+    ark:
+      api_key: "${ARK_API_KEY}"
+      base_url: https://ark.cn-beijing.volces.com/api/v3
+      endpoint_id: ep-20260904161804-km74x
   # 方舟 Seedance 2.5 文生视频 / 首帧图生视频；与 ark_chat 分实例，避免文本 Responses 与视频任务混用能力集。
   ark_video:
     models: [doubao-seedance-2-5-260628]

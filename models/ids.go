@@ -13,7 +13,9 @@ const (
 	// DoubaoSeed20Lite 对外真实模型名；与 Mini 分 endpoint 分 provider，禁止共用推理部署或互相替代。
 	DoubaoSeed20Lite = "doubao-seed-2.0-lite"
 	// DoubaoSeed21Pro 对外真实模型名；衣橱候选搭配等文本链路经独立 Ark endpoint 推理，与 2.0 mini/lite 分实例，禁止混用。
-	DoubaoSeed21Pro    = "doubao-seed-2.1-pro"
+	DoubaoSeed21Pro = "doubao-seed-2.1-pro"
+	// DeepSeekV4Flash 对外真实模型名（方舟正式版）；上游 Responses 走独立推理 endpoint，禁止与预览版或其他 DeepSeek ID 互相 alias。
+	DeepSeekV4Flash    = "deepseek-v4-flash"
 	QwenFlash          = "qwen-flash"
 	Qwen3VLPlus        = "qwen3-vl-plus"
 	Qwen35Flash        = "qwen3.5-flash"
@@ -76,6 +78,7 @@ func All() []string {
 		DoubaoSeed20Mini,
 		DoubaoSeed20Lite,
 		DoubaoSeed21Pro,
+		DeepSeekV4Flash,
 		QwenFlash,
 		Qwen3VLPlus,
 		Qwen35Flash,

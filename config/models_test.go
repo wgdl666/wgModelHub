@@ -76,4 +76,19 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 	if provider.Ark.EndpointID != "ep-20260902131944-rj4cb" {
 		t.Fatalf("ark_doubao_21_pro endpoint_id=%q, want ep-20260902131944-rj4cb", provider.Ark.EndpointID)
 	}
+
+	// DeepSeek-V4-Flash 正式版绑定独立 Ark endpoint，禁止与 Doubao 或其他 DeepSeek ID 共用部署。
+	deepseek, ok := parsed.Providers["ark_deepseek_v4_flash"]
+	if !ok {
+		t.Fatal("missing provider ark_deepseek_v4_flash")
+	}
+	if len(deepseek.Models) != 1 || deepseek.Models[0] != models.DeepSeekV4Flash {
+		t.Fatalf("ark_deepseek_v4_flash models=%v, want [%q]", deepseek.Models, models.DeepSeekV4Flash)
+	}
+	if deepseek.Ark == nil {
+		t.Fatal("ark_deepseek_v4_flash ark.endpoint_id is missing")
+	}
+	if deepseek.Ark.EndpointID != "ep-20260904161804-km74x" {
+		t.Fatalf("ark_deepseek_v4_flash endpoint_id=%q, want ep-20260904161804-km74x", deepseek.Ark.EndpointID)
+	}
 }
