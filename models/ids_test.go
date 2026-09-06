@@ -64,6 +64,26 @@ func TestGemini37FlashConstant(t *testing.T) {
 	}
 }
 
+// TestIntentCandidateModelIDs 锁定四候选真实 ID：3.8/3.5-lite/Qwen3.8 与 Haiku 官方快照，禁止市场简称。
+func TestIntentCandidateModelIDs(t *testing.T) {
+	cases := []struct {
+		got, want string
+	}{
+		{Gemini38Flash, "gemini-3.8-flash"},
+		{Gemini35FlashLite, "gemini-3.5-flash-lite"},
+		{Qwen38Flash, "qwen3.8-flash"},
+		{ClaudeHaiku45, "claude-haiku-4-5-20251001"},
+	}
+	for _, tc := range cases {
+		if tc.got != tc.want {
+			t.Fatalf("model id = %q, want %q", tc.got, tc.want)
+		}
+		if !slices.Contains(All(), tc.got) {
+			t.Fatalf("All() missing %q", tc.got)
+		}
+	}
+}
+
 func TestDoubaoSeed20Constants(t *testing.T) {
 	if DoubaoSeed20Mini != "doubao-seed-2.0-mini" {
 		t.Fatalf("DoubaoSeed20Mini = %q", DoubaoSeed20Mini)

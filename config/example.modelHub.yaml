@@ -8,7 +8,8 @@ database:
 # 字面量清单见 models 包，调用方引用 github.com/wgdl666/wgModelHub/models，禁止在这里发明 alias。
 providers:
   gemini_main:
-    models: [gemini-2.5-flash, gemini-3.7-flash]
+    # 3.8 与 3.5-flash-lite 与既有 Gemini 文本共用同一官方 Gemini provider 实例。
+    models: [gemini-2.5-flash, gemini-3.7-flash, gemini-3.8-flash, gemini-3.5-flash-lite]
     gemini:
       api_key: "${GEMINI_API_KEY}"
       proxy_url: ""
@@ -77,13 +78,21 @@ providers:
       api_key: "${ASYNC_CANDIDATE_API_KEY}"
       base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
   # Hub 主对话：ThinkingDisabled 会由统一协议直接映射为 enable_thinking=false。
+  # qwen3.8-flash 与 3.7 同属 DashScope 文本能力集（function calling / thinking / ephemeral cache）。
   hub_chat:
-    models: [qwen3.7-flash]
+    models: [qwen3.7-flash, qwen3.8-flash]
     openai:
       api_key: "${DASHSCOPE_API_KEY}"
       base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  # Claude Haiku 4.5：固定官方快照 ID；用既有 OpenAI-compatible provider 类型指向 Anthropic 官方兼容端点，
+  # 不新增只转发的 Anthropic provider 类型；不得下发 DashScope enable_thinking / cache_control。
+  anthropic_claude:
+    models: [claude-haiku-4-5-20251001]
+    openai:
+      api_key: "${ANTHROPIC_API_KEY}"
+      base_url: https://api.anthropic.com/v1
   # 智谱 GLM-5.3-flash：原生多模态文本，OpenAI-compatible Chat Completions。
-  # thinking.type 仅支持 enabled；统一协议 DISABLED 只能降到 reasoning_effort=low，不能关思考。
+  # 统一协议 DISABLED 映射为 thinking.type=disabled（当前 endpoint 接受）；供应商仍可能返回 reasoning_content。
   zhipu_glm:
     models: [glm-5.3-flash]
     openai:

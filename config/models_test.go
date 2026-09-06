@@ -106,4 +106,46 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 	if glm.OpenAI == nil || glm.OpenAI.BaseURL != "https://open.bigmodel.cn/api/paas/v4" {
 		t.Fatalf("zhipu_glm openai.base_url=%v, want https://open.bigmodel.cn/api/paas/v4", glm.OpenAI)
 	}
+
+	// 四候选：Gemini 两个进 gemini_main；Qwen3.8 进 hub_chat；Claude 用独立 OpenAI-compat 指官方 Anthropic endpoint。
+	gemini, ok := parsed.Providers["gemini_main"]
+	if !ok {
+		t.Fatal("missing provider gemini_main")
+	}
+	for _, want := range []string{models.Gemini38Flash, models.Gemini35FlashLite} {
+		found := false
+		for _, m := range gemini.Models {
+			if m == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("gemini_main missing %q in %v", want, gemini.Models)
+		}
+	}
+	hubChat, ok := parsed.Providers["hub_chat"]
+	if !ok {
+		t.Fatal("missing provider hub_chat")
+	}
+	foundQwen38 := false
+	for _, m := range hubChat.Models {
+		if m == models.Qwen38Flash {
+			foundQwen38 = true
+			break
+		}
+	}
+	if !foundQwen38 {
+		t.Fatalf("hub_chat missing %q in %v", models.Qwen38Flash, hubChat.Models)
+	}
+	claude, ok := parsed.Providers["anthropic_claude"]
+	if !ok {
+		t.Fatal("missing provider anthropic_claude")
+	}
+	if len(claude.Models) != 1 || claude.Models[0] != models.ClaudeHaiku45 {
+		t.Fatalf("anthropic_claude models=%v, want [%q]", claude.Models, models.ClaudeHaiku45)
+	}
+	if claude.OpenAI == nil || claude.OpenAI.BaseURL != "https://api.anthropic.com/v1" {
+		t.Fatalf("anthropic_claude openai.base_url=%v, want https://api.anthropic.com/v1", claude.OpenAI)
+	}
 }

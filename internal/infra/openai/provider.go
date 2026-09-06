@@ -268,17 +268,24 @@ func (p *Provider) buildRequestBody(model string, request *modelhubv2.GenerateRe
 }
 
 // applyThinking 把统一协议 ThinkingMode 映射到供应商字段。
-// DashScope 走 enable_thinking；GLM-5.3-flash 只接受 thinking.type=enabled，
-// 关思考会被供应商拒绝，因此 DISABLED 只能降到 reasoning_effort=low。
+// DashScope Qwen 走 enable_thinking。
+// GLM-5.3-flash：当前智谱 endpoint 接受 thinking.type=disabled（ToolChoice=required 探针通过）；
+// 但仍可能返回 reasoning_content，因此 DISABLED→disabled 不是保证 true-off，只是显式关闭请求。
+// Claude Haiku 走 Anthropic OpenAI-compat，不得下发 DashScope/GLM 私有思考字段；
+// DISABLED 对 Haiku 表示不启用任何额外思考字段。
 func applyThinking(body map[string]any, model string, thinking modelhubv2.ThinkingMode) {
 	if thinking == modelhubv2.ThinkingMode_THINKING_MODE_UNSPECIFIED {
 		return
 	}
+	if model == models.ClaudeHaiku45 {
+		return
+	}
 	if model == models.GLM53Flash {
-		body["thinking"] = map[string]any{"type": "enabled"}
 		if thinking == modelhubv2.ThinkingMode_THINKING_MODE_DISABLED {
-			body["reasoning_effort"] = "low"
+			body["thinking"] = map[string]any{"type": "disabled"}
+			return
 		}
+		body["thinking"] = map[string]any{"type": "enabled"}
 		return
 	}
 	body["enable_thinking"] = thinking == modelhubv2.ThinkingMode_THINKING_MODE_ENABLED
@@ -286,10 +293,10 @@ func applyThinking(body map[string]any, model string, thinking modelhubv2.Thinki
 
 // dashScopeExplicitCacheEligible 判定是否应向 DashScope 下发显式 cache_control。
 // 仅 DashScope 官方 host 上已开通显式 ephemeral 缓存的 Qwen 文本模型可携带该字段；
-// OminiLink/OpenAI 默认实例与其它模型不得误标。
+// Claude/OminiLink/OpenAI 默认实例与其它模型不得误标。
 func (p *Provider) dashScopeExplicitCacheEligible(model string, input *modelhubv2.Input) bool {
 	switch model {
-	case models.QwenFlash, models.Qwen37Flash, models.Qwen35Flash, models.Qwen3VLPlus:
+	case models.QwenFlash, models.Qwen37Flash, models.Qwen38Flash, models.Qwen35Flash, models.Qwen3VLPlus:
 	default:
 		return false
 	}

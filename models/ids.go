@@ -5,9 +5,13 @@ package models
 const (
 	Gemini25Flash = "gemini-2.5-flash"
 	// Gemini37Flash 是 Google GA 的 gemini-3.7-flash；不支持关闭 thinking，Hub DISABLED 须在 Gemini provider 映射为 LOW。
-	Gemini37Flash    = "gemini-3.7-flash"
-	Gemini20Flash001 = "gemini-2.0-flash-001"
-	DoubaoSeed16     = "doubao-seed-1.6"
+	Gemini37Flash = "gemini-3.7-flash"
+	// Gemini38Flash 只支持 LOW/MEDIUM/HIGH thinking；Hub DISABLED 统一映射为 LOW，不能发 ThinkingBudget=0。
+	Gemini38Flash = "gemini-3.8-flash"
+	// Gemini35FlashLite 支持 MINIMAL；路由/分类场景的 Hub DISABLED 应映射 MINIMAL，而非 LOW 或 budget=0。
+	Gemini35FlashLite = "gemini-3.5-flash-lite"
+	Gemini20Flash001  = "gemini-2.0-flash-001"
+	DoubaoSeed16      = "doubao-seed-1.6"
 	// DoubaoSeed20Mini 对外真实模型名；上游 Responses API 需经各自 Ark endpoint_id 映射，不能暴露基础模型 ID，也不能与 Lite 互相 alias。
 	DoubaoSeed20Mini = "doubao-seed-2.0-mini"
 	// DoubaoSeed20Lite 对外真实模型名；与 Mini 分 endpoint 分 provider，禁止共用推理部署或互相替代。
@@ -20,7 +24,11 @@ const (
 	Qwen3VLPlus     = "qwen3-vl-plus"
 	Qwen35Flash     = "qwen3.5-flash"
 	Qwen37Flash     = "qwen3.7-flash"
-	// GLM53Flash 智谱开放平台真实模型名；上游走 OpenAI-compatible Chat Completions，思考只能 enabled。
+	// Qwen38Flash 走 DashScope OpenAI-compatible；支持 function calling、enable_thinking=false 与显式 ephemeral 缓存。
+	Qwen38Flash = "qwen3.8-flash"
+	// ClaudeHaiku45 固定官方稳定快照 ID；request.model 禁止写成市场简称或自造 alias。
+	ClaudeHaiku45 = "claude-haiku-4-5-20251001"
+	// GLM53Flash 智谱开放平台真实模型名；上游走 OpenAI-compatible Chat Completions；Hub DISABLED→thinking.type=disabled。
 	GLM53Flash         = "glm-5.3-flash"
 	Gemini3ProImage    = "gemini-3-pro-image"
 	Gemini25FlashImage = "gemini-2.5-flash-image"
@@ -75,6 +83,8 @@ func All() []string {
 	return []string{
 		Gemini25Flash,
 		Gemini37Flash,
+		Gemini38Flash,
+		Gemini35FlashLite,
 		Gemini20Flash001,
 		DoubaoSeed16,
 		DoubaoSeed20Mini,
@@ -85,6 +95,8 @@ func All() []string {
 		Qwen3VLPlus,
 		Qwen35Flash,
 		Qwen37Flash,
+		Qwen38Flash,
+		ClaudeHaiku45,
 		GLM53Flash,
 		Gemini3ProImage,
 		Gemini25FlashImage,

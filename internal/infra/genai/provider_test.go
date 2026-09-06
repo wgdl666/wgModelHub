@@ -202,6 +202,36 @@ func TestBuildConfigMapsGemini37DisabledToThinkingLevelLow(t *testing.T) {
 	}
 }
 
+// TestBuildConfigMapsGemini38DisabledToThinkingLevelLow 证明 3.8 与 3.7 同属 LOW/MEDIUM/HIGH 集合，DISABLED→LOW。
+func TestBuildConfigMapsGemini38DisabledToThinkingLevelLow(t *testing.T) {
+	cfg := (&Provider{}).buildConfig(models.Gemini38Flash, &modelhubv2.GenerateRequest{
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{
+			Thinking: modelhubv2.ThinkingMode_THINKING_MODE_DISABLED,
+		}}},
+	})
+	if cfg.ThinkingConfig == nil || cfg.ThinkingConfig.ThinkingLevel != genaisdk.ThinkingLevelLow {
+		t.Fatalf("thinking = %#v, want LOW", cfg.ThinkingConfig)
+	}
+	if cfg.ThinkingConfig.ThinkingBudget != nil {
+		t.Fatalf("thinking budget = %#v, want unset for gemini-3.8-flash", cfg.ThinkingConfig.ThinkingBudget)
+	}
+}
+
+// TestBuildConfigMapsGemini35FlashLiteDisabledToMinimal 证明 Flash-Lite 路由场景 DISABLED→MINIMAL。
+func TestBuildConfigMapsGemini35FlashLiteDisabledToMinimal(t *testing.T) {
+	cfg := (&Provider{}).buildConfig(models.Gemini35FlashLite, &modelhubv2.GenerateRequest{
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{
+			Thinking: modelhubv2.ThinkingMode_THINKING_MODE_DISABLED,
+		}}},
+	})
+	if cfg.ThinkingConfig == nil || cfg.ThinkingConfig.ThinkingLevel != genaisdk.ThinkingLevelMinimal {
+		t.Fatalf("thinking = %#v, want MINIMAL", cfg.ThinkingConfig)
+	}
+	if cfg.ThinkingConfig.ThinkingBudget != nil {
+		t.Fatalf("thinking budget = %#v, want unset for gemini-3.5-flash-lite", cfg.ThinkingConfig.ThinkingBudget)
+	}
+}
+
 func TestBuildConfigKeepsGemini25DisabledAsBudgetZero(t *testing.T) {
 	cfg := (&Provider{}).buildConfig(models.Gemini25Flash, &modelhubv2.GenerateRequest{
 		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{
