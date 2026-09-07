@@ -189,6 +189,33 @@ func (p *Provider) buildRequest(model string, request *modelhubv2.GenerateReques
 		}
 		arkReq.Tools = tools
 	}
+	// ToolChoice 是当前轮约束，与是否首次下发 Tools 无关：续轮即便不再重复 Tools，
+	// 仍须把 required/none/auto/指定函数原样透传，否则上游按默认 auto 可能不调用工具。
+	if choice := input.GetToolChoice(); choice != nil {
+		switch choice.Mode {
+		case modelhubv2.ToolChoiceMode_TOOL_CHOICE_MODE_NONE:
+			arkReq.ToolChoice = &responses.ResponsesToolChoice{
+				Union: &responses.ResponsesToolChoice_Mode{Mode: responses.ToolChoiceMode_none},
+			}
+		case modelhubv2.ToolChoiceMode_TOOL_CHOICE_MODE_AUTO:
+			arkReq.ToolChoice = &responses.ResponsesToolChoice{
+				Union: &responses.ResponsesToolChoice_Mode{Mode: responses.ToolChoiceMode_auto},
+			}
+		case modelhubv2.ToolChoiceMode_TOOL_CHOICE_MODE_REQUIRED:
+			arkReq.ToolChoice = &responses.ResponsesToolChoice{
+				Union: &responses.ResponsesToolChoice_Mode{Mode: responses.ToolChoiceMode_required},
+			}
+		case modelhubv2.ToolChoiceMode_TOOL_CHOICE_MODE_FUNCTION:
+			arkReq.ToolChoice = &responses.ResponsesToolChoice{
+				Union: &responses.ResponsesToolChoice_FunctionToolChoice{
+					FunctionToolChoice: &responses.FunctionToolChoice{
+						Type: responses.ToolType_function,
+						Name: choice.FunctionName,
+					},
+				},
+			}
+		}
+	}
 	return arkReq, nil
 }
 
