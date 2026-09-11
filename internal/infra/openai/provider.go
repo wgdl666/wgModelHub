@@ -10,7 +10,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"sort"
 	"strings"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
@@ -68,7 +67,6 @@ func (p *Provider) GenerateStream(ctx context.Context, model string, request *mo
 	}
 	defer respBody.Close()
 
-	toolCallAccum := map[int]*modelhubv2.ToolCall{}
 	var finishReason string
 	var responseID string
 	var usage *modelhubv2.Usage
@@ -106,19 +104,18 @@ func (p *Provider) GenerateStream(ctx context.Context, model string, request *mo
 				return nil, err
 			}
 		}
+		// 千问给啥就吐啥：这一包的 id/name/arguments 原样下发，不在 ModelHub 拼完整 call。
 		for _, tc := range delta.ToolCalls {
-			acc, ok := toolCallAccum[tc.Index]
-			if !ok {
-				acc = &modelhubv2.ToolCall{}
-				toolCallAccum[tc.Index] = acc
+			if emit == nil {
+				continue
 			}
-			if tc.ID != "" {
-				acc.Id = tc.ID
+			if err := emit(provider.ToolCallEvent(&modelhubv2.ToolCall{
+				Id:            tc.ID,
+				Name:          tc.Function.Name,
+				ArgumentsJson: []byte(tc.Function.Arguments),
+			})); err != nil {
+				return nil, err
 			}
-			if tc.Function.Name != "" {
-				acc.Name = tc.Function.Name
-			}
-			acc.ArgumentsJson = append(acc.ArgumentsJson, []byte(tc.Function.Arguments)...)
 		}
 		if chunk.Choices[0].FinishReason != "" {
 			finishReason = chunk.Choices[0].FinishReason
@@ -129,20 +126,6 @@ func (p *Provider) GenerateStream(ctx context.Context, model string, request *mo
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" stream read failed", err)
-	}
-
-	// 流式增量结束后再按 index 顺序发出完整 tool call，避免半成品重复事件。
-	indexes := make([]int, 0, len(toolCallAccum))
-	for index := range toolCallAccum {
-		indexes = append(indexes, index)
-	}
-	sort.Ints(indexes)
-	for _, i := range indexes {
-		if emit != nil {
-			if err := emit(provider.ToolCallEvent(toolCallAccum[i])); err != nil {
-				return nil, err
-			}
-		}
 	}
 	return provider.MetadataFinalEvent(responseID, finishReason, usage), nil
 }
