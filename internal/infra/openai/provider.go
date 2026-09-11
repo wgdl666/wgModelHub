@@ -441,19 +441,80 @@ func (p *Provider) doRequest(ctx context.Context, body map[string]any) (io.ReadC
 	}
 	if resp.StatusCode != http.StatusOK {
 		// 只读供应商拒因，不回读请求体；否则 Hub 只能看到光秃秃的 HTTP 400。
+		// 额外附带请求形态诊断（不含 prompt / 原始 arguments），区分历史 arguments 非法 JSON 与供应商侧生成失败。
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<10))
 		resp.Body.Close()
 		detail := strings.TrimSpace(string(raw))
+		fields := append([]any{
+			"provider", p.name,
+			"status", resp.StatusCode,
+		}, chatRequestDiagFields(body)...)
 		if snippet := provider.CompactHTTPErrorDetail(detail); snippet != "" {
-			logs.Default().Error("openai_http_error",
-				"provider", p.name,
-				"status", resp.StatusCode,
-				"body", snippet,
-			)
+			fields = append(fields, "body", snippet)
 		}
+		logs.Default().Error("openai_http_error", fields...)
 		return nil, provider.FromHTTPDetail(p.name, resp.StatusCode, detail)
 	}
 	return resp.Body, nil
+}
+
+// invalidFunctionArgumentsEntry 仅记录定位非法 arguments 所需的紧凑元数据，绝不包含 arguments 原文。
+type invalidFunctionArgumentsEntry struct {
+	MessageIndex int    `json:"message_index"`
+	ToolIndex    int    `json:"tool_index"`
+	ToolName     string `json:"tool_name,omitempty"`
+	ArgumentsLen int    `json:"arguments_len"`
+}
+
+// chatRequestDiagFields 从即将下发的 chat/completions body 提取安全诊断字段。
+// 只统计形态与 JSON 合法性，不读取消息文本、有效 arguments 或密钥。
+func chatRequestDiagFields(body map[string]any) []any {
+	model, _ := body["model"].(string)
+	stream, _ := body["stream"].(bool)
+	messages, _ := body["messages"].([]map[string]any)
+	tools, _ := body["tools"].([]map[string]any)
+
+	assistantToolCalls := 0
+	var invalid []invalidFunctionArgumentsEntry
+	for msgIdx, msg := range messages {
+		if msg["role"] != "assistant" {
+			continue
+		}
+		tcs, ok := msg["tool_calls"].([]map[string]any)
+		if !ok {
+			continue
+		}
+		for toolIdx, tc := range tcs {
+			assistantToolCalls++
+			fn, _ := tc["function"].(map[string]any)
+			args, argsOK := fn["arguments"].(string)
+			name, _ := fn["name"].(string)
+			if !argsOK || !json.Valid([]byte(args)) {
+				entry := invalidFunctionArgumentsEntry{
+					MessageIndex: msgIdx,
+					ToolIndex:    toolIdx,
+					ToolName:     name,
+				}
+				if argsOK {
+					entry.ArgumentsLen = len(args)
+				}
+				invalid = append(invalid, entry)
+			}
+		}
+	}
+
+	fields := []any{
+		"model", model,
+		"stream", stream,
+		"message_count", len(messages),
+		"tool_count", len(tools),
+		"assistant_tool_call_count", assistantToolCalls,
+		"invalid_function_arguments_count", len(invalid),
+	}
+	if len(invalid) > 0 {
+		fields = append(fields, "invalid_function_arguments", invalid)
+	}
+	return fields
 }
 
 type chatCompletionResponse struct {
