@@ -49,3 +49,21 @@ func TestGenerateStreamForwardsQwenToolCallDeltasAsIs(t *testing.T) {
 		t.Fatalf("second delta must stay args-only, got %#v", calls[1])
 	}
 }
+
+func TestGenerateStreamHTTPErrorIncludesVendorBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = io.WriteString(w, `{"error":{"message":"tool_choice is invalid","code":"invalid_parameter_error"}}`)
+	}))
+	defer srv.Close()
+
+	p := &Provider{name: "hub_dashscope", apiKey: "test", baseURL: srv.URL, client: srv.Client()}
+	_, err := p.GenerateStream(context.Background(), "qwen3.8-flash", &modelhubv2.GenerateRequest{}, nil)
+	if err == nil {
+		t.Fatal("expected HTTP 400")
+	}
+	got := err.Error()
+	if !strings.Contains(got, "hub_dashscope returned HTTP 400") || !strings.Contains(got, "tool_choice is invalid") {
+		t.Fatalf("error = %q", got)
+	}
+}

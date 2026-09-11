@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/wgdl666/kangaroo/logs"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
@@ -439,8 +440,18 @@ func (p *Provider) doRequest(ctx context.Context, body map[string]any) (io.ReadC
 		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" request failed", err)
 	}
 	if resp.StatusCode != http.StatusOK {
+		// 只读供应商拒因，不回读请求体；否则 Hub 只能看到光秃秃的 HTTP 400。
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<10))
 		resp.Body.Close()
-		return nil, provider.FromHTTP(p.name, resp.StatusCode)
+		detail := strings.TrimSpace(string(raw))
+		if snippet := provider.CompactHTTPErrorDetail(detail); snippet != "" {
+			logs.Default().Error("openai_http_error",
+				"provider", p.name,
+				"status", resp.StatusCode,
+				"body", snippet,
+			)
+		}
+		return nil, provider.FromHTTPDetail(p.name, resp.StatusCode, detail)
 	}
 	return resp.Body, nil
 }
