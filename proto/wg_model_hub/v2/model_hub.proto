@@ -82,6 +82,9 @@ message ToolCall {
   string name = 2;
   bytes arguments_json = 3;
   bytes thought_signature = 4;
+  // 供应商流式 tool-call 片段身份（如 OpenAI/Qwen 的 index）；optional 保留显式 0。
+  // 仅用于同一逻辑调用的多包合并，不是业务分类或 TaskRef。
+  optional int32 index = 5;
 }
 
 // ToolOutput 是工具回执的唯一协议形态；图片紧跟该回执，不另拆成相邻 Message。

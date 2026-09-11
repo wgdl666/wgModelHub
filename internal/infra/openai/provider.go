@@ -105,16 +105,22 @@ func (p *Provider) GenerateStream(ctx context.Context, model string, request *mo
 				return nil, err
 			}
 		}
-		// 千问给啥就吐啥：这一包的 id/name/arguments 原样下发，不在 ModelHub 拼完整 call。
+		// 千问给啥就吐啥：这一包的 id/name/arguments/index 原样下发，不在 ModelHub 拼完整 call。
+		// index 按 JSON presence 透传（显式 0 保留，字段缺失则为 nil）；空 arguments 也必须带上同一 index。
 		for _, tc := range delta.ToolCalls {
 			if emit == nil {
 				continue
 			}
-			if err := emit(provider.ToolCallEvent(&modelhubv2.ToolCall{
+			out := &modelhubv2.ToolCall{
 				Id:            tc.ID,
 				Name:          tc.Function.Name,
 				ArgumentsJson: []byte(tc.Function.Arguments),
-			})); err != nil {
+			}
+			if tc.Index != nil {
+				index := int32(*tc.Index)
+				out.Index = &index
+			}
+			if err := emit(provider.ToolCallEvent(out)); err != nil {
 				return nil, err
 			}
 		}
@@ -555,7 +561,8 @@ type apiToolCall struct {
 }
 
 type apiToolCallDelta struct {
-	Index    int         `json:"index"`
+	// *int 保留供应商 JSON 的 index presence：缺字段为 nil，显式 0 为非 nil。
+	Index    *int        `json:"index"`
 	ID       string      `json:"id,omitempty"`
 	Function apiFunction `json:"function"`
 }

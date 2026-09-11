@@ -847,8 +847,11 @@ type ToolCall struct {
 	Name             string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	ArgumentsJson    []byte                 `protobuf:"bytes,3,opt,name=arguments_json,json=argumentsJson,proto3" json:"arguments_json,omitempty"`
 	ThoughtSignature []byte                 `protobuf:"bytes,4,opt,name=thought_signature,json=thoughtSignature,proto3" json:"thought_signature,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// 供应商流式 tool-call 片段身份（如 OpenAI/Qwen 的 index）；optional 保留显式 0。
+	// 仅用于同一逻辑调用的多包合并，不是业务分类或 TaskRef。
+	Index         *int32 `protobuf:"varint,5,opt,name=index,proto3,oneof" json:"index,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ToolCall) Reset() {
@@ -907,6 +910,13 @@ func (x *ToolCall) GetThoughtSignature() []byte {
 		return x.ThoughtSignature
 	}
 	return nil
+}
+
+func (x *ToolCall) GetIndex() int32 {
+	if x != nil && x.Index != nil {
+		return *x.Index
+	}
+	return 0
 }
 
 // ToolOutput 是工具回执的唯一协议形态；图片紧跟该回执，不另拆成相邻 Message。
@@ -2565,12 +2575,14 @@ const file_proto_wg_model_hub_v2_model_hub_proto_rawDesc = "" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x124\n" +
 	"\x16parameters_json_schema\x18\x03 \x01(\fR\x14parametersJsonSchema\"G\n" +
 	"\x04Tool\x12?\n" +
-	"\bfunction\x18\x01 \x01(\v2#.wg_model_hub.v2.FunctionDefinitionR\bfunction\"\x82\x01\n" +
+	"\bfunction\x18\x01 \x01(\v2#.wg_model_hub.v2.FunctionDefinitionR\bfunction\"\xa7\x01\n" +
 	"\bToolCall\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12%\n" +
 	"\x0earguments_json\x18\x03 \x01(\fR\rargumentsJson\x12+\n" +
-	"\x11thought_signature\x18\x04 \x01(\fR\x10thoughtSignature\"\xae\x01\n" +
+	"\x11thought_signature\x18\x04 \x01(\fR\x10thoughtSignature\x12\x19\n" +
+	"\x05index\x18\x05 \x01(\x05H\x00R\x05index\x88\x01\x01B\b\n" +
+	"\x06_index\"\xae\x01\n" +
 	"\n" +
 	"ToolOutput\x12 \n" +
 	"\ftool_call_id\x18\x01 \x01(\tR\n" +
@@ -2870,6 +2882,7 @@ func file_proto_wg_model_hub_v2_model_hub_proto_init() {
 		(*ContentPart_Audio)(nil),
 		(*ContentPart_File)(nil),
 	}
+	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[6].OneofWrappers = []any{}
 	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[8].OneofWrappers = []any{
 		(*InputItem_Message)(nil),
 		(*InputItem_ToolOutput)(nil),
