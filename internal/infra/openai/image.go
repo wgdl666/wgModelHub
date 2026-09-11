@@ -15,6 +15,7 @@ import (
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/provider"
+	"github.com/wgdl666/wgModelHub/models"
 	"github.com/wgdl666/wgModelHub/protocol"
 )
 
@@ -34,12 +35,16 @@ var horizontalRatios = map[string]struct{}{
 // GenerateImage 按 Input 是否含参考图分流 OpenAI Images API：
 // 无参考图走 /v1/images/generations（JSON），有参考图走 /v1/images/edits（multipart）。
 // gpt-image-2 经 OminiLink 中转时不能复用 chat/completions，也不能挂到 Gemini generateContent 实例。
+// FLUX.2-klein-9B 当前供应商仅开放 i2i edits，无参考图必须在发 HTTP 前拒绝，且 edits 须显式 response_format=b64_json。
 func (p *Provider) GenerateImage(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
 	prompt := strings.TrimSpace(provider.JoinedText(request.GetInput()))
 	if prompt == "" {
 		return nil, provider.New(provider.ErrorInvalidArgument, "image prompt is required")
 	}
 	refs := imageReferenceMedias(request.GetInput())
+	if model == models.Flux2Klein9B && len(refs) == 0 {
+		return nil, provider.New(provider.ErrorInvalidArgument, models.Flux2Klein9B+" only supports image edit (i2i); at least one reference image is required")
+	}
 	var raw []byte
 	var err error
 	if len(refs) == 0 {
@@ -203,6 +208,12 @@ func (p *Provider) doImageEdits(ctx context.Context, model, prompt string, reque
 	}
 	if err := writer.WriteField("n", "1"); err != nil {
 		return nil, provider.Wrap(provider.ErrorInvalidArgument, p.name+" build edits request failed", err)
+	}
+	// FLUX.2 worker 默认回 127.0.0.1 下载 URL，ModelHub 无法拉取；必须要求 b64_json。gpt-image-2 传此字段会被判 unknown_parameter。
+	if model == models.Flux2Klein9B {
+		if err := writer.WriteField("response_format", "b64_json"); err != nil {
+			return nil, provider.Wrap(provider.ErrorInvalidArgument, p.name+" build edits request failed", err)
+		}
 	}
 	if size := imageSize(request.GetOutput().GetImage()); size != "" {
 		if err := writer.WriteField("size", size); err != nil {

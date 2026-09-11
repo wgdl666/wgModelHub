@@ -130,6 +130,12 @@ providers:
     openai:
       api_key: "${OMINILINK_IMAGE_API_KEY}"
       base_url: https://api.ominilink.ai/v1
+  # FLUX.2 Klein 9B：当前 SeeTacloud 实例仅支持 image edit / 多图 i2i，调用方必须提供参考图；无参考图会在 ModelHub 侧拒绝。
+  flux2_klein_image:
+    models: [FLUX.2-klein-9B]
+    openai:
+      api_key: "${FLUX2_KLEIN_API_KEY}"
+      base_url: https://uu847021-9507-702f766a.bjb2.seetacloud.com:8443/flux2/v1
   # LTX 供应商请求体里的 model 字段值就是 ltx，不是业务别名。
   ltx_video:
     models: [ltx]

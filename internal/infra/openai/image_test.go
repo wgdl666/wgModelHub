@@ -620,3 +620,169 @@ func TestGenerateImageHTTPErrorMapped(t *testing.T) {
 		t.Fatalf("err=%v kind=%s", err, provider.Kind(err))
 	}
 }
+
+func TestGenerateImageFlux2KleinRejectsNoReferenceBeforeHTTP(t *testing.T) {
+	var called bool
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		called = true
+		writer.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	p, err := New("flux2_klein_image", "placeholder", server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.client = server.Client()
+
+	_, err = p.GenerateImage(context.Background(), models.Flux2Klein9B, imageRequest("edit without reference", "1:1", ""))
+	if err == nil || provider.Kind(err) != provider.ErrorInvalidArgument {
+		t.Fatalf("err=%v kind=%s", err, provider.Kind(err))
+	}
+	if called {
+		t.Fatal("HTTP should not be called when FLUX.2 has no reference image")
+	}
+}
+
+func TestGenerateImageFlux2KleinEditsSingleReference(t *testing.T) {
+	var gotPath string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		gotPath = request.URL.Path
+		if err := request.ParseMultipartForm(8 << 20); err != nil {
+			t.Fatal(err)
+		}
+		if got := request.FormValue("model"); got != models.Flux2Klein9B {
+			t.Fatalf("model=%q", got)
+		}
+		if got := request.FormValue("prompt"); got != "stylize this photo" {
+			t.Fatalf("prompt=%q", got)
+		}
+		if got := request.FormValue("n"); got != "1" {
+			t.Fatalf("n=%q", got)
+		}
+		if got := request.FormValue("size"); got != "1024x1024" {
+			t.Fatalf("size=%q", got)
+		}
+		if got := request.FormValue("response_format"); got != "b64_json" {
+			t.Fatalf("response_format=%q", got)
+		}
+		files := request.MultipartForm.File["image"]
+		if len(files) != 1 {
+			t.Fatalf("image files=%d", len(files))
+		}
+		file, err := files[0].Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := io.ReadAll(file)
+		file.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(data) != "flux-ref" {
+			t.Fatalf("data=%q", data)
+		}
+		_ = json.NewEncoder(writer).Encode(map[string]any{
+			"data": []map[string]string{{"b64_json": base64.StdEncoding.EncodeToString([]byte(tinyPNG))}},
+		})
+	}))
+	defer server.Close()
+
+	p, err := New("flux2_klein_image", "placeholder", server.URL+"/flux2/v1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.client = server.Client()
+
+	event, err := p.GenerateImage(context.Background(), models.Flux2Klein9B, imageRequest("stylize this photo", "1:1", "",
+		&modelhubv2.Media{MimeType: "image/png", Source: &modelhubv2.Media_Data{Data: []byte("flux-ref")}},
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotPath != "/flux2/v1/images/edits" {
+		t.Fatalf("path=%q", gotPath)
+	}
+	image := event.GetItems()[0].GetImage()
+	if image == nil || string(image.GetData()) != tinyPNG {
+		t.Fatalf("image=%#v", image)
+	}
+}
+
+func TestGenerateImageFlux2KleinEditsMultipleReferencesPreservesOrder(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/v1/images/edits" {
+			t.Fatalf("path=%s", request.URL.Path)
+		}
+		if err := request.ParseMultipartForm(8 << 20); err != nil {
+			t.Fatal(err)
+		}
+		if got := request.FormValue("response_format"); got != "b64_json" {
+			t.Fatalf("response_format=%q", got)
+		}
+		files := request.MultipartForm.File["image"]
+		if len(files) != 2 {
+			t.Fatalf("image files=%d", len(files))
+		}
+		for i, want := range []string{"first-flux", "second-flux"} {
+			file, err := files[i].Open()
+			if err != nil {
+				t.Fatal(err)
+			}
+			data, err := io.ReadAll(file)
+			file.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(data) != want {
+				t.Fatalf("file[%d] data=%q", i, data)
+			}
+		}
+		_ = json.NewEncoder(writer).Encode(map[string]any{
+			"data": []map[string]string{{"b64_json": base64.StdEncoding.EncodeToString([]byte(tinyPNG))}},
+		})
+	}))
+	defer server.Close()
+
+	p, err := New("flux2_klein_image", "placeholder", server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.client = server.Client()
+
+	_, err = p.GenerateImage(context.Background(), models.Flux2Klein9B, imageRequest("combine styles", "", "",
+		&modelhubv2.Media{MimeType: "image/png", Source: &modelhubv2.Media_Data{Data: []byte("first-flux")}},
+		&modelhubv2.Media{MimeType: "image/jpeg", Source: &modelhubv2.Media_Data{Data: []byte("second-flux")}},
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGenerateImageEditsGPTImage2OmitsResponseFormat(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if err := request.ParseMultipartForm(8 << 20); err != nil {
+			t.Fatal(err)
+		}
+		if got := request.FormValue("response_format"); got != "" {
+			t.Fatalf("response_format=%q", got)
+		}
+		_ = json.NewEncoder(writer).Encode(map[string]any{
+			"data": []map[string]string{{"b64_json": base64.StdEncoding.EncodeToString([]byte(tinyPNG))}},
+		})
+	}))
+	defer server.Close()
+
+	p, err := New("ominilink_gpt_image", "secret", server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.client = server.Client()
+
+	_, err = p.GenerateImage(context.Background(), models.GPTImage2, imageRequest("edit", "", "",
+		&modelhubv2.Media{MimeType: "image/png", Source: &modelhubv2.Media_Data{Data: []byte("ref")}},
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+}

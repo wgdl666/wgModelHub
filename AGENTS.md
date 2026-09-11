@@ -10,6 +10,7 @@
 - 每个 provider 实例用互斥嵌套字段表达 Gemini/VertexAI/Ark/OpenAI/LTX 以及各类视频供应商，并声明 `models: [真实模型 ID...]`。
 - `ark_video` 承接方舟 Seedance 2.5（`doubao-seedance-2-5-260628`）文生视频与首帧图生视频；与 `ark_chat` 文本实例分绑，不能共用一套能力。任务形态由 Input 推断，不另开模型 ID 或模式枚举。
 - OpenAI 实例同时承接 chat/completions 与 Images API；`gpt-image-2` 必须单独绑到 OpenAI 实例（无参考图走 `/v1/images/generations`，有参考图走 `/v1/images/edits`），不能并入 OminiLink Gemini generateContent 生图实例。
+- `FLUX.2-klein-9B` 必须单独绑到 OpenAI Images 实例，不能与 `gpt-image-2` 共用。当前 SeeTacloud 部署只开放 i2i edits：无参考图在发 HTTP 前拒绝；edits 必须带 `response_format=b64_json`，因为 worker 默认回 `127.0.0.1` 下载地址。该字段不能带给 `gpt-image-2`，会被判 `unknown_parameter`。
 - `zhipu_glm` 承接智谱 `glm-5.3-flash`（`https://open.bigmodel.cn/api/paas/v4`）。思考字段走 `thinking.type=enabled`，禁止下发 `disabled` 或 DashScope 的 `enable_thinking`；统一协议 `DISABLED` 只映射为 `reasoning_effort=low`。
 - 启动时建立「真实模型 ID → provider 实例」路由：单 provider 声明可隐式选定；多 provider 声明同一模型时必须在顶层 `model_routes` 显式选定其一，不能依赖 map 顺序。无 profile、alias、自动 failover 或热更新；改配置后重启生效。
 - 全部真实模型 ID 是 `models` 包常量（`github.com/wgdl666/wgModelHub/models`）；Nacos / example YAML / 调用方 `request.model` 必须引用这些常量，不能另起业务名。

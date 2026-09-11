@@ -70,3 +70,4 @@ capability 由 `OutputSpec` oneof（text / image / video）决定；TTS 走独�
 provider」路由。同一模型仅被一个实例声明时可隐式选定；被多个实例声明时必须在
 `model_routes` 显式选定，改配置后重启生效。调用方应引用
 `github.com/wgdl666/wgModelHub/models` 常量，例如 `models.Speech28Turbo`。
+`models.Flux2Klein9B` 当前仅支持带参考图的 image edit（i2i），须绑定独立 OpenAI Images 实例。

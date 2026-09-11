@@ -34,7 +34,9 @@ const (
 	Gemini25FlashImage = "gemini-2.5-flash-image"
 	Gemini31FlashImage = "gemini-3.1-flash-image"
 	GPTImage2          = "gpt-image-2"
-	LTX                = "ltx"
+	// Flux2Klein9B 当前 SeeTacloud 部署只开放 image edit / 多图 i2i，不能当文生图用。
+	Flux2Klein9B = "FLUX.2-klein-9B"
+	LTX          = "ltx"
 
 	// DashScope Wan / HappyHorse / Kling 图生视频。
 	Wan22I2VFlash              = "wan2.2-i2v-flash"
@@ -102,6 +104,7 @@ func All() []string {
 		Gemini25FlashImage,
 		Gemini31FlashImage,
 		GPTImage2,
+		Flux2Klein9B,
 		LTX,
 		Wan22I2VFlash,
 		Wan22I2VPlus,

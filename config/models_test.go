@@ -107,6 +107,18 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 		t.Fatalf("zhipu_glm openai.base_url=%v, want https://open.bigmodel.cn/api/paas/v4", glm.OpenAI)
 	}
 
+	// FLUX.2 必须绑独立 OpenAI Images 实例，不能并入 ominilink_gpt_image；当前部署只接受 i2i。
+	flux2, ok := parsed.Providers["flux2_klein_image"]
+	if !ok {
+		t.Fatal("missing provider flux2_klein_image")
+	}
+	if len(flux2.Models) != 1 || flux2.Models[0] != models.Flux2Klein9B {
+		t.Fatalf("flux2_klein_image models=%v, want [%q]", flux2.Models, models.Flux2Klein9B)
+	}
+	if flux2.OpenAI == nil || flux2.OpenAI.BaseURL != "https://uu847021-9507-702f766a.bjb2.seetacloud.com:8443/flux2/v1" {
+		t.Fatalf("flux2_klein_image openai.base_url=%v, want SeeTacloud flux2/v1", flux2.OpenAI)
+	}
+
 	// 四候选：Gemini 两个进 gemini_main；Qwen3.8 进 hub_chat；Claude 用独立 OpenAI-compat 指官方 Anthropic endpoint。
 	gemini, ok := parsed.Providers["gemini_main"]
 	if !ok {

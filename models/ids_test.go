@@ -35,6 +35,16 @@ func TestGLM53FlashModelID(t *testing.T) {
 	}
 }
 
+// TestFlux2Klein9BModelID 锁定 FLUX.2 对外真实模型名，避免写成 Klein/FLUX2 等业务别名。
+func TestFlux2Klein9BModelID(t *testing.T) {
+	if Flux2Klein9B != "FLUX.2-klein-9B" {
+		t.Fatalf("Flux2Klein9B=%q, want FLUX.2-klein-9B", Flux2Klein9B)
+	}
+	if !slices.Contains(All(), Flux2Klein9B) {
+		t.Fatalf("All() missing %q", Flux2Klein9B)
+	}
+}
+
 func TestAllAreUnique(t *testing.T) {
 	seen := map[string]struct{}{}
 	for _, model := range All() {
