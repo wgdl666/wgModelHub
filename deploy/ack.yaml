@@ -42,11 +42,16 @@ spec:
             # 公网鉴权 listener；未设置则不启动 50054。现网 Caddy 只应反代本端口，不得暴露 50053。
             - name: WG_SERVER_PUBLIC_GRPC_PORT
               value: "50054"
+            # 内网 /healthz+/metrics；与 gRPC 同属 Deployment 拓扑，绝不进外部 LoadBalancer。
+            - name: WG_SERVER_HTTP_PORT
+              value: "51053"
           ports:
             - name: grpc
               containerPort: 50053
             - name: public-grpc
               containerPort: 50054
+            - name: http
+              containerPort: 51053
           startupProbe:
             grpc:
               port: 50053
@@ -92,6 +97,9 @@ kind: Service
 metadata:
   name: wg-model-hub
   namespace: default
+  labels:
+    # 仅内部 ClusterIP 带此 label，供 ServiceMonitor 精确选中；external LB 不得复制。
+    app.kubernetes.io/name: wg-model-hub
 spec:
   type: ClusterIP
   selector:
@@ -100,6 +108,9 @@ spec:
     - name: grpc
       port: 50053
       targetPort: grpc
+    - name: http
+      port: 51053
+      targetPort: http
 ---
 apiVersion: v1
 kind: Service
@@ -109,6 +120,7 @@ metadata:
   annotations:
     # 仅供同 VPC 访问：50053 为内网未鉴权 gRPC；50054 为公网鉴权 gRPC（供 8.129.236.215 TLS 反代）。
     # 保持 intranet，不得改为公网 LoadBalancer；TLS 终止与公网 DNS 由外部前置完成。
+    # 绝不暴露 51053 /metrics。
     service.beta.kubernetes.io/alibaba-cloud-loadbalancer-address-type: intranet
 spec:
   type: LoadBalancer

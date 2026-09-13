@@ -12,7 +12,8 @@ func validConfig() Config {
 		Server: struct {
 			ListenAddress       string
 			PublicListenAddress string
-		}{ListenAddress: ":50053"},
+			HTTPListenAddress   string
+		}{ListenAddress: ":50053", HTTPListenAddress: ":51053"},
 		Logfire: LogfireConfig{
 			Token:   "logfire-token",
 			Env:     "production",

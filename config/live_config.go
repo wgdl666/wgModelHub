@@ -56,6 +56,7 @@ func (lc *LiveConfig) ApplyYAML(content string) {
 	// 监听地址由 env 注入，不在 YAML 中；热更新须保留当前运行时值。
 	next.Server.ListenAddress = previous.Server.ListenAddress
 	next.Server.PublicListenAddress = previous.Server.PublicListenAddress
+	next.Server.HTTPListenAddress = previous.Server.HTTPListenAddress
 	lc.Store(next)
 	logs.Default().Info("nacos_config_applied")
 }

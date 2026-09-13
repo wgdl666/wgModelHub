@@ -2,6 +2,8 @@ package telemetry
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -9,20 +11,26 @@ import (
 
 	"github.com/wgdl666/kangaroo/logs"
 	"github.com/wgdl666/wgModelHub/config"
+	"github.com/wgdl666/wgModelHub/internal/infra/llmmetric"
+	"github.com/wgdl666/wgModelHub/internal/infra/metricserver"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/propagation"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/trace"
 )
 
 const logfireEndpoint = "logfire-us.pydantic.dev"
 
+// Runtime 持有 Logfire 日志/Trace，以及仅供 Prometheus 抓取的 LLM MeterProvider。
 type Runtime struct {
-	shared *logs.Runtime
+	shared         *logs.Runtime
+	metricProvider *sdkmetric.MeterProvider
+	metricsHandler http.Handler
 }
 
-// Setup 在 Nacos 配置加载后装配；token/env 来自本服务 Data ID，不再读 LOGFIRE_* 环境变量。
+// Setup 在 Nacos 配置加载后装配；日志/Trace 仍走 Logfire，业务 LLM 指标只进 Prometheus。
 func Setup(ctx context.Context, cfg config.LogfireConfig) (*Runtime, error) {
 	token := strings.TrimSpace(cfg.Token)
 	endpoint := ""
@@ -47,14 +55,39 @@ func Setup(ctx context.Context, cfg config.LogfireConfig) (*Runtime, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Runtime{shared: shared}, nil
+
+	// Prometheus exporter 已 WithoutTargetInfo：metrics resource 不会进入业务指标，
+	// 也无其它消费者；只保留独立 MeterProvider + Reader，避免无效 resource 构造。
+	promReader, err := metricserver.NewReader()
+	if err != nil {
+		_ = shared.Shutdown(ctx)
+		return nil, err
+	}
+	metricProvider := sdkmetric.NewMeterProvider(
+		sdkmetric.WithReader(promReader.ManualReader()),
+	)
+	if err := llmmetric.Configure(metricProvider.Meter(serviceName)); err != nil {
+		_ = metricProvider.Shutdown(ctx)
+		_ = shared.Shutdown(ctx)
+		return nil, fmt.Errorf("configure llm metrics: %w", err)
+	}
+
+	return &Runtime{
+		shared:         shared,
+		metricProvider: metricProvider,
+		metricsHandler: promReader.Handler(),
+	}, nil
+}
+
+// MetricsHandler 返回挂到内部 HTTP 端口 /metrics 的 Prometheus 抓取入口。
+// Setup 成功返回时 metricsHandler 已成立，不做重复判空。
+func (r *Runtime) MetricsHandler() http.Handler {
+	return r.metricsHandler
 }
 
 func (r *Runtime) Shutdown(ctx context.Context) error {
-	if r == nil || r.shared == nil {
-		return nil
-	}
-	return r.shared.Shutdown(ctx)
+	// 同时关闭 Logfire（trace/log）与 Prometheus MeterProvider，保留两侧错误。
+	return errors.Join(r.shared.Shutdown(ctx), r.metricProvider.Shutdown(ctx))
 }
 
 func StartSpan(ctx context.Context, name string) (context.Context, trace.Span) {

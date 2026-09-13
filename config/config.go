@@ -133,6 +133,8 @@ type Config struct {
 	Server struct {
 		ListenAddress       string
 		PublicListenAddress string
+		// HTTPListenAddress 仅承载 /healthz 与 /metrics；拓扑端口由 WG_SERVER_HTTP_PORT 注入。
+		HTTPListenAddress string
 	} `yaml:"-"`
 	Providers map[string]ProviderConfig `yaml:"providers"`
 	// ModelRouteOverrides：真实模型 ID -> 显式选中的 provider 实例名；provider 不变时可经 ListenConfig 热更新。
@@ -367,7 +369,7 @@ func (c Config) Validate() error {
 	return nil
 }
 
-// ApplyListenPortOverridesFromEnv 在 server 启动边界装配内外网 gRPC 监听地址；Pod 拓扑端口不得由 Nacos 业务正文拥有。
+// ApplyListenPortOverridesFromEnv 在 server 启动边界装配内外网 gRPC 与内部 HTTP 监听地址；Pod 拓扑端口不得由 Nacos 业务正文拥有。
 func ApplyListenPortOverridesFromEnv(cfg *Config) error {
 	raw := strings.TrimSpace(os.Getenv("WG_SERVER_GRPC_PORT"))
 	if raw == "" {
@@ -378,6 +380,16 @@ func ApplyListenPortOverridesFromEnv(cfg *Config) error {
 		return fmt.Errorf("WG_SERVER_GRPC_PORT must be a valid listen port")
 	}
 	cfg.Server.ListenAddress = fmt.Sprintf(":%d", port)
+
+	httpRaw := strings.TrimSpace(os.Getenv("WG_SERVER_HTTP_PORT"))
+	if httpRaw == "" {
+		return fmt.Errorf("missing WG_SERVER_HTTP_PORT: server startup requires Deployment-injected metrics listen port")
+	}
+	httpPort, err := strconv.Atoi(httpRaw)
+	if err != nil || httpPort <= 0 || httpPort > 65535 {
+		return fmt.Errorf("WG_SERVER_HTTP_PORT must be a valid listen port")
+	}
+	cfg.Server.HTTPListenAddress = fmt.Sprintf(":%d", httpPort)
 
 	publicRaw := strings.TrimSpace(os.Getenv("WG_SERVER_PUBLIC_GRPC_PORT"))
 	if publicRaw == "" {
