@@ -107,7 +107,7 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 		t.Fatalf("zhipu_glm openai.base_url=%v, want https://open.bigmodel.cn/api/paas/v4", glm.OpenAI)
 	}
 
-	// FLUX.2 必须绑独立 OpenAI Images 实例，不能并入 ominilink_gpt_image；当前部署只接受 i2i。
+	// FLUX.2 必须绑独立 OpenAI Images 实例，不能并入 async_gpt_image；当前部署只接受 i2i。
 	flux2, ok := parsed.Providers["flux2_klein_image"]
 	if !ok {
 		t.Fatal("missing provider flux2_klein_image")
@@ -117,6 +117,19 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 	}
 	if flux2.OpenAI == nil || flux2.OpenAI.BaseURL != "https://uu847021-9507-702f766a.bjb2.seetacloud.com:8443/flux2/v1" {
 		t.Fatalf("flux2_klein_image openai.base_url=%v, want SeeTacloud flux2/v1", flux2.OpenAI)
+	}
+
+	// GPT Image 2 / 2.5 复用现网已实测的 AIG OpenAI-compatible Images 实例；不能并入 Gemini 生图。
+	asyncGPT, ok := parsed.Providers["async_gpt_image"]
+	if !ok {
+		t.Fatal("missing provider async_gpt_image")
+	}
+	wantGPTModels := []string{models.GPTImage2, models.GPTImage25Flare, models.GPTImage25Sunburst}
+	if len(asyncGPT.Models) != 3 || asyncGPT.Models[0] != wantGPTModels[0] || asyncGPT.Models[1] != wantGPTModels[1] || asyncGPT.Models[2] != wantGPTModels[2] {
+		t.Fatalf("async_gpt_image models=%v, want %v", asyncGPT.Models, wantGPTModels)
+	}
+	if asyncGPT.OpenAI == nil || asyncGPT.OpenAI.BaseURL != "https://api.aig-ai.com/v1" {
+		t.Fatalf("async_gpt_image openai.base_url=%v, want https://api.aig-ai.com/v1", asyncGPT.OpenAI)
 	}
 
 	// 四候选：Gemini 两个进 gemini_main；Qwen3.8 进 hub_chat；Claude 用独立 OpenAI-compat 指官方 Anthropic endpoint。

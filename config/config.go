@@ -69,7 +69,7 @@ type ArkProviderConfig struct {
 	EndpointID string `yaml:"endpoint_id"`
 }
 
-// OpenAIProviderConfig 覆盖 OpenAI-compatible HTTP 端；OminiLink 文本与 gpt-image-2 都走这里。
+// OpenAIProviderConfig 覆盖 OpenAI-compatible HTTP 端；文本实例与 GPT Image（async_gpt_image 上的 2 / 2.5）都走这里（按实例绑定 models）。
 type OpenAIProviderConfig struct {
 	APIKey  string `yaml:"api_key"`
 	BaseURL string `yaml:"base_url"`

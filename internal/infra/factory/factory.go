@@ -60,7 +60,7 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 			return provider.Set{}, err
 		}
 		// OpenAI-compatible 同时承接 chat/completions 与 Images API；
-		// gpt-image-2 走后者，文本模型误请求 image 会在供应商侧失败。
+		// GPT Image 2 / 2.5（现网 async_gpt_image）走后者，文本模型误请求 image 会在供应商侧失败。
 		return provider.Set{Text: client, Image: client}, nil
 	case providerCfg.LTX != nil:
 		cfg := providerCfg.LTX

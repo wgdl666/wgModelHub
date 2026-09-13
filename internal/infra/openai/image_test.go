@@ -786,3 +786,97 @@ func TestGenerateImageEditsGPTImage2OmitsResponseFormat(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestGenerateImageGPTImage25RoutesModelExact 锁定 2.5 flare/sunburst：文生图走 generations、参考图走 edits，精确透传 model，且不带 FLUX.2 的 response_format。
+func TestGenerateImageGPTImage25RoutesModelExact(t *testing.T) {
+	for _, model := range []string{models.GPTImage25Flare, models.GPTImage25Sunburst} {
+		t.Run(model+"/generations", func(t *testing.T) {
+			var captured map[string]any
+			var gotPath string
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				gotPath = request.URL.Path
+				if request.Header.Get("Content-Type") != "application/json" {
+					t.Fatalf("content-type=%q", request.Header.Get("Content-Type"))
+				}
+				raw, _ := io.ReadAll(request.Body)
+				if err := json.Unmarshal(raw, &captured); err != nil {
+					t.Fatal(err)
+				}
+				_ = json.NewEncoder(writer).Encode(map[string]any{
+					"data": []map[string]string{{"b64_json": base64.StdEncoding.EncodeToString([]byte(tinyPNG))}},
+				})
+			}))
+			defer server.Close()
+
+			p, err := New("async_gpt_image", "secret", server.URL+"/v1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			p.client = server.Client()
+
+			event, err := p.GenerateImage(context.Background(), model, imageRequest("a blue square", "1:1", ""))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if gotPath != "/v1/images/generations" {
+				t.Fatalf("path=%q", gotPath)
+			}
+			if captured["model"] != model {
+				t.Fatalf("model=%#v, want %q", captured["model"], model)
+			}
+			if _, ok := captured["response_format"]; ok {
+				t.Fatalf("gpt-image-2.5 must omit response_format: %#v", captured)
+			}
+			if image := event.GetItems()[0].GetImage(); image == nil || string(image.GetData()) != tinyPNG {
+				t.Fatalf("image=%#v", event.GetItems()[0])
+			}
+		})
+
+		t.Run(model+"/edits", func(t *testing.T) {
+			var gotPath string
+			var gotModel string
+			var gotResponseFormat string
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				gotPath = request.URL.Path
+				if err := request.ParseMultipartForm(8 << 20); err != nil {
+					t.Fatal(err)
+				}
+				gotModel = request.FormValue("model")
+				gotResponseFormat = request.FormValue("response_format")
+				files := request.MultipartForm.File["image"]
+				if len(files) != 1 {
+					t.Fatalf("image files=%d", len(files))
+				}
+				_ = json.NewEncoder(writer).Encode(map[string]any{
+					"data": []map[string]string{{"b64_json": base64.StdEncoding.EncodeToString([]byte(tinyPNG))}},
+				})
+			}))
+			defer server.Close()
+
+			p, err := New("async_gpt_image", "secret", server.URL+"/v1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			p.client = server.Client()
+
+			event, err := p.GenerateImage(context.Background(), model, imageRequest("make warmer", "", "",
+				&modelhubv2.Media{MimeType: "image/png", Source: &modelhubv2.Media_Data{Data: []byte("ref")}},
+			))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if gotPath != "/v1/images/edits" {
+				t.Fatalf("path=%q", gotPath)
+			}
+			if gotModel != model {
+				t.Fatalf("model=%q, want %q", gotModel, model)
+			}
+			if gotResponseFormat != "" {
+				t.Fatalf("response_format=%q, want empty", gotResponseFormat)
+			}
+			if image := event.GetItems()[0].GetImage(); image == nil || string(image.GetData()) != tinyPNG {
+				t.Fatalf("image=%#v", event.GetItems()[0])
+			}
+		})
+	}
+}

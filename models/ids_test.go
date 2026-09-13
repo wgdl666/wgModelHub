@@ -45,6 +45,24 @@ func TestFlux2Klein9BModelID(t *testing.T) {
 	}
 }
 
+// TestGPTImage25ModelIDs 锁定 GPT Image 2.5 真实模型 ID，禁止写成 flare/sunburst 业务简称或塞进 gpt-image-2。
+func TestGPTImage25ModelIDs(t *testing.T) {
+	cases := []struct {
+		got, want string
+	}{
+		{GPTImage25Flare, "gpt-image-2.5-flare"},
+		{GPTImage25Sunburst, "gpt-image-2.5-sunburst"},
+	}
+	for _, tc := range cases {
+		if tc.got != tc.want {
+			t.Fatalf("model id = %q, want %q", tc.got, tc.want)
+		}
+		if !slices.Contains(All(), tc.got) {
+			t.Fatalf("All() missing %q", tc.got)
+		}
+	}
+}
+
 func TestAllAreUnique(t *testing.T) {
 	seen := map[string]struct{}{}
 	for _, model := range All() {

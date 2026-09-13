@@ -34,6 +34,10 @@ const (
 	Gemini25FlashImage = "gemini-2.5-flash-image"
 	Gemini31FlashImage = "gemini-3.1-flash-image"
 	GPTImage2          = "gpt-image-2"
+	// GPTImage25Flare / GPTImage25Sunburst 是 GPT Image 2.5 真实模型 ID。
+	// 与 GPTImage2 一并绑现网已实测的 AIG OpenAI-compatible Images 实例（async_gpt_image），不能并入 Gemini 生图。
+	GPTImage25Flare    = "gpt-image-2.5-flare"
+	GPTImage25Sunburst = "gpt-image-2.5-sunburst"
 	// Flux2Klein9B 当前 SeeTacloud 部署只开放 image edit / 多图 i2i，不能当文生图用。
 	Flux2Klein9B = "FLUX.2-klein-9B"
 	LTX          = "ltx"
@@ -104,6 +108,8 @@ func All() []string {
 		Gemini25FlashImage,
 		Gemini31FlashImage,
 		GPTImage2,
+		GPTImage25Flare,
+		GPTImage25Sunburst,
 		Flux2Klein9B,
 		LTX,
 		Wan22I2VFlash,

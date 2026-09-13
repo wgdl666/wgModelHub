@@ -124,12 +124,16 @@ providers:
     gemini:
       api_key: "${AWS_GEMINI_API_KEY}"
       # base_url 留空：google.golang.org/genai BackendGeminiAPI 默认官方 endpoint。
-  # gpt-image-2 必须走 OpenAI Images API（无参考图 generations、有参考图 edits），不能并入 Gemini generateContent 实例。
-  ominilink_gpt_image:
-    models: [gpt-image-2]
+  # GPT Image 2 / 2.5：现网 async_gpt_image（api.aig-ai.com OpenAI-compatible Images）；已实测 flare/sunburst generations。
+  # 无参考图 generations、有参考图 edits；不能并入上方 Gemini generateContent 生图实例，也不能与 FLUX.2 共用。
+  async_gpt_image:
+    models:
+      - gpt-image-2
+      - gpt-image-2.5-flare
+      - gpt-image-2.5-sunburst
     openai:
-      api_key: "${OMINILINK_IMAGE_API_KEY}"
-      base_url: https://api.ominilink.ai/v1
+      api_key: "${ASYNC_GPT_IMAGE_API_KEY}"
+      base_url: https://api.aig-ai.com/v1
   # FLUX.2 Klein 9B：当前 SeeTacloud 实例仅支持 image edit / 多图 i2i，调用方必须提供参考图；无参考图会在 ModelHub 侧拒绝。
   flux2_klein_image:
     models: [FLUX.2-klein-9B]

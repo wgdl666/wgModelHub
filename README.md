@@ -71,3 +71,4 @@ provider」路由。同一模型仅被一个实例声明时可隐式选定；被
 `model_routes` 显式选定，改配置后重启生效。调用方应引用
 `github.com/wgdl666/wgModelHub/models` 常量，例如 `models.Speech28Turbo`。
 `models.Flux2Klein9B` 当前仅支持带参考图的 image edit（i2i），须绑定独立 OpenAI Images 实例。
+`models.GPTImage2` / `models.GPTImage25Flare` / `models.GPTImage25Sunburst` 走 OpenAI Images API（generations/edits），复用现网已实测的 AIG 实例 `async_gpt_image`（`https://api.aig-ai.com/v1`），不能并入 Gemini generateContent 生图实例。
