@@ -10,6 +10,7 @@ import (
 	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/models"
 	"github.com/wgdl666/wgModelHub/protocol"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -17,6 +18,7 @@ import (
 
 type clientConfig struct {
 	address string
+	model   string
 	prompt  string
 	output  string
 	timeout time.Duration
@@ -36,6 +38,7 @@ func parseArgs(args []string) (clientConfig, *smokeFailure) {
 	flags := flag.NewFlagSet("gpt-image-2", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	address := flags.String("address", "", "")
+	model := flags.String("model", models.GPTImage2, "")
 	prompt := flags.String("prompt", "", "")
 	output := flags.String("output", "", "")
 	timeout := flags.Duration("timeout", 5*time.Minute, "")
@@ -45,15 +48,25 @@ func parseArgs(args []string) (clientConfig, *smokeFailure) {
 	}
 	config := clientConfig{
 		address: *address,
+		model:   *model,
 		prompt:  *prompt,
 		output:  *output,
 		timeout: *timeout,
 		force:   *force,
 	}
-	if strings.TrimSpace(config.address) == "" || strings.TrimSpace(config.prompt) == "" || strings.TrimSpace(config.output) == "" || config.timeout <= 0 {
+	if strings.TrimSpace(config.address) == "" || !isSupportedImageModel(config.model) || strings.TrimSpace(config.prompt) == "" || strings.TrimSpace(config.output) == "" || config.timeout <= 0 {
 		return clientConfig{}, &smokeFailure{category: failureSourceValidation}
 	}
 	return config, nil
+}
+
+func isSupportedImageModel(model string) bool {
+	switch model {
+	case models.GPTImage2, models.GPTImage25Flare, models.GPTImage25Sunburst:
+		return true
+	default:
+		return false
+	}
 }
 
 func run(ctx context.Context, args []string, output io.Writer, dial dialContextFunc) *smokeFailure {
@@ -78,7 +91,7 @@ func run(ctx context.Context, args []string, output io.Writer, dial dialContextF
 		return &smokeFailure{category: failureConnect}
 	}
 	defer conn.Close()
-	result, failure := generateImage(callContext, modelhubv2.NewModelHubServiceClient(conn), config.prompt)
+	result, failure := generateImageWithModel(callContext, modelhubv2.NewModelHubServiceClient(conn), config.model, config.prompt)
 	if failure != nil {
 		return failure
 	}

@@ -49,8 +49,12 @@ var createTempFile = os.CreateTemp
 var linkFile = os.Link
 
 func generateImage(ctx context.Context, client modelhubv2.ModelHubServiceClient, prompt string) (imageResult, *smokeFailure) {
+	return generateImageWithModel(ctx, client, models.GPTImage2, prompt)
+}
+
+func generateImageWithModel(ctx context.Context, client modelhubv2.ModelHubServiceClient, model, prompt string) (imageResult, *smokeFailure) {
 	request := &modelhubv2.GenerateRequest{
-		Model: models.GPTImage2,
+		Model: model,
 		Input: &modelhubv2.Input{Items: []*modelhubv2.InputItem{{
 			Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
 				Role: modelhubv2.Role_ROLE_USER,

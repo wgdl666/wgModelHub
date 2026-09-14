@@ -12,6 +12,7 @@ import (
 	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/models"
 	"github.com/wgdl666/wgModelHub/protocol"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -33,6 +34,7 @@ func TestParseArgs(t *testing.T) {
 		}
 		want := clientConfig{
 			address: "modelhub.internal.dev:50053",
+			model:   models.GPTImage2,
 			prompt:  "red paper boat",
 			output:  "image.png",
 			timeout: 5 * time.Minute,
@@ -44,11 +46,11 @@ func TestParseArgs(t *testing.T) {
 	})
 
 	t.Run("accepts positive custom timeout and force", func(t *testing.T) {
-		got, failure := parseArgs(append(validArgs, "--timeout", "45s", "--force"))
+		got, failure := parseArgs(append(validArgs, "--model", models.GPTImage25Flare, "--timeout", "45s", "--force"))
 		if failure != nil {
 			t.Fatalf("parseArgs failure=%v", failure)
 		}
-		if got.timeout != 45*time.Second || !got.force {
+		if got.model != models.GPTImage25Flare || got.timeout != 45*time.Second || !got.force {
 			t.Fatalf("config=%+v", got)
 		}
 	})
@@ -82,6 +84,7 @@ func TestParseArgs(t *testing.T) {
 		{name: "blank output", args: []string{"--address", "modelhub.internal.dev:50053", "--prompt", "red paper boat", "--output", "   "}},
 		{name: "zero timeout", args: append(validArgs, "--timeout", "0s")},
 		{name: "negative timeout", args: append(validArgs, "--timeout", "-1s")},
+		{name: "unsupported model", args: append(validArgs, "--model", "gpt-image-unknown")},
 		{name: "positional argument", args: append(validArgs, "extra")},
 	}
 	for _, test := range invalidCases {
@@ -105,6 +108,7 @@ func TestRun(t *testing.T) {
 		"--address", "bufnet",
 		"--prompt", prompt,
 		"--output", filepath.Join(t.TempDir(), "image.png"),
+		"--model", models.GPTImage25Flare,
 	}
 
 	t.Run("writes a large valid image and emits only a safe summary", func(t *testing.T) {
@@ -118,6 +122,9 @@ func TestRun(t *testing.T) {
 		failure := run(context.Background(), args, &output, dial)
 		if failure != nil {
 			t.Fatalf("run failure=%v", failure)
+		}
+		if got := service.got.GetModel(); got != models.GPTImage25Flare {
+			t.Fatalf("model=%q, want %q", got, models.GPTImage25Flare)
 		}
 		wantOutput := "mime_type=image/png bytes=4194305 output=" + args[5] + "\n"
 		if output.String() != wantOutput {
