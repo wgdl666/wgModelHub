@@ -18,8 +18,8 @@ func TestAppConfigSchemaContract(t *testing.T) {
 	if schema["$schema"] != "http://json-schema.org/draft-04/schema#" {
 		t.Fatalf("$schema=%v", schema["$schema"])
 	}
-	if schema["id"] != "https://wgdl.tech/schemas/modelhub/appconfig.schema.json" {
-		t.Fatalf("id=%v", schema["id"])
+	if _, exists := schema["id"]; exists {
+		t.Fatal("AppConfig inline schema must not set an external id")
 	}
 	if _, exists := schema["$id"]; exists {
 		t.Fatal("draft-04 schema must use id, not $id")

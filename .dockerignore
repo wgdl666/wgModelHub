@@ -12,7 +12,8 @@
 *.log
 coverage*
 docs/
-deploy/
+deploy/*
+!deploy/ack.yaml
 scripts/*
 !scripts/examples/
 scripts/examples/*

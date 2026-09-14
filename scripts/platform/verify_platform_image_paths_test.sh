@@ -19,6 +19,11 @@ if ! grep -Fq 'apk add --no-cache --upgrade ca-certificates "openssl>=3.5.8-r0"'
   exit 1
 fi
 
+if ! grep -Fxq 'deploy/*' .dockerignore || ! grep -Fxq '!deploy/ack.yaml' .dockerignore; then
+  echo 'Docker build context does not include deploy/ack.yaml required by Go contract tests' >&2
+  exit 1
+fi
+
 verifier='scripts/platform/verify_platform_image.sh'
 helper_body="$(awk '
   /^require_openssl_floor\(\) \{$/ { helper = 1 }
