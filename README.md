@@ -78,7 +78,7 @@ authorization: Bearer <从工程平台复制的 API Key>
 
 - 目标公网域名为 `modelhub.dev.wgdl.tech`；公网鉴权端口 **50054**。
 - Nacos 不拥有监听端口；公网前置**只能**转发到 **50054**，**绝不能**转发到未鉴权的 **50053**。
-- 建议反代：gRPC over HTTP/2、透传 `Authorization`、单消息 ≥ 64MiB、超时 ≥ 15 分钟（长视频任务）。
+- 建议反代：透传 `Authorization`、单消息 ≥ 64MiB、超时 ≥ 15 分钟（长视频任务）。公网口同时接原生 gRPC（HTTP/2）与运营台浏览器 grpc-web（HTTP/1.1，`application/grpc-web+proto`）；CORS 只放行 `https://ops.wgdl.tech` 与本地 Vite。
 - Key 数据存 `modelhub.modelhub_api_key` 表（见 `migrations/002` / `003`）；DDL 仅由部署 migration 身份执行，Ops 受限账号仅 `SELECT` / `INSERT` / `UPDATE(revoked_at)`。
 - 明文 secret 仅创建/轮换时通过工程平台返回一次（JSON 字段 `api_key`）。
 - 鉴权成功后 caller 固定为 `public:<principal_id>`。

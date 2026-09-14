@@ -20,6 +20,33 @@ service ModelHubService {
   rpc GetGeneration(GetGenerationRequest) returns (stream GenerationTaskEvent);
   // SynthesizeSpeech：同步一次性 TTS。成功只表示供应商合成且完整音频已收集，不表示 Mirror 播放。
   rpc SynthesizeSpeech(SynthesizeSpeechRequest) returns (SynthesizeSpeechResponse);
+  // ListModels 返回当前进程已路由的真实模型 ID，可按产品主用途过滤；不暴露 provider / 密钥。
+  rpc ListModels(ListModelsRequest) returns (ListModelsResponse);
+}
+
+// ModelCategory 是产品目录分类，不是 Generate 的 OutputSpec capability。
+enum ModelCategory {
+  MODEL_CATEGORY_UNSPECIFIED = 0;
+  MODEL_CATEGORY_LLM = 1;
+  MODEL_CATEGORY_MULTIMODAL = 2;
+  MODEL_CATEGORY_IMAGE_GENERATION = 3;
+  MODEL_CATEGORY_VIDEO_GENERATION = 4;
+  MODEL_CATEGORY_SPEECH = 5;
+}
+
+message ListModelsRequest {
+  // UNSPECIFIED 返回全部对外分类（含 speech）；指定则只返回该类。
+  ModelCategory category = 1;
+}
+
+message ModelInfo {
+  // model 是真实供应商模型 ID，与 request.model / models 包常量一致。
+  string model = 1;
+  ModelCategory category = 2;
+}
+
+message ListModelsResponse {
+  repeated ModelInfo models = 1;
 }
 
 // GenerateRequest 顶层恰好三字段：业务调用方不得再塞供应商私有配置，

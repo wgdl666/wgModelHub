@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -18,6 +19,7 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/infra/factory"
 	"github.com/wgdl666/wgModelHub/internal/infra/httpserver"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
+	"github.com/wgdl666/wgModelHub/internal/publicrpc"
 	"github.com/wgdl666/wgModelHub/internal/service/modelhub"
 	"github.com/wgdl666/wgModelHub/internal/taskstore"
 	"github.com/wgdl666/wgModelHub/protocol"
@@ -90,11 +92,9 @@ func main() {
 	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
 
 	var grpcServers []*grpc.Server
+	var publicHTTP []*http.Server
 	serveErr := make(chan error, 2)
-	startServer := func(name, addr string, opts ...grpc.ServerOption) {
-		if strings.TrimSpace(addr) == "" {
-			return
-		}
+	newGRPCServer := func(opts ...grpc.ServerOption) *grpc.Server {
 		base := []grpc.ServerOption{
 			grpc.MaxRecvMsgSize(protocol.MaxRPCMessageBytes),
 			grpc.MaxSendMsgSize(protocol.MaxRPCMessageBytes),
@@ -104,38 +104,58 @@ func main() {
 		grpcServers = append(grpcServers, grpcServer)
 		modelhubv2.RegisterModelHubServiceServer(grpcServer, hubService)
 		grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
+		return grpcServer
+	}
+	listen := func(name, addr string) net.Listener {
 		listener, listenErr := net.Listen("tcp", addr)
 		if listenErr != nil {
 			fatal("grpc_listen_failed", listenErr, "server", name, "listen_address", addr)
 		}
 		logs.Default().Info("grpc_server_started", "server", name, "listen_address", addr)
+		return listener
+	}
+
+	if addr := strings.TrimSpace(runtimeConfig.Server.ListenAddress); addr != "" {
+		grpcServer := newGRPCServer()
+		listener := listen("intranet", addr)
 		go func() {
 			serveErr <- grpcServer.Serve(listener)
 		}()
 	}
-
-	startServer("intranet", runtimeConfig.Server.ListenAddress)
-	publicAddr := strings.TrimSpace(runtimeConfig.Server.PublicListenAddress)
-	if publicAddr != "" {
-		// 公网 listener 与内网分离：按 metadata Bearer 鉴权，health 仍放行供 K8s/反代探测。
-		startServer("public", publicAddr,
+	if addr := strings.TrimSpace(runtimeConfig.Server.PublicListenAddress); addr != "" {
+		// 公网与内网分离：Bearer 鉴权；同一端口同时接原生 gRPC 与运营台浏览器 grpc-web。
+		grpcServer := newGRPCServer(
 			grpc.UnaryInterceptor(auth.UnaryServerInterceptor(apiKeys)),
 			grpc.StreamInterceptor(auth.StreamServerInterceptor(apiKeys)),
 		)
+		httpServer := &http.Server{
+			Handler:           publicrpc.Handler(grpcServer),
+			ReadHeaderTimeout: 10 * time.Second,
+		}
+		publicHTTP = append(publicHTTP, httpServer)
+		listener := listen("public", addr)
+		go func() {
+			serveErr <- httpServer.Serve(listener)
+		}()
 	}
 
 	select {
 	case err := <-serveErr:
-		if err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+		if err != nil && !errors.Is(err, grpc.ErrServerStopped) && !errors.Is(err, http.ErrServerClosed) {
 			fatal("grpc_server_failed", err)
 		}
 	case <-ctx.Done():
 		healthServer.Shutdown()
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer shutdownCancel()
+		for _, srv := range publicHTTP {
+			_ = srv.Shutdown(shutdownCtx)
+		}
 		for _, srv := range grpcServers {
 			srv.GracefulStop()
 		}
 		for range grpcServers {
-			if err := <-serveErr; err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+			if err := <-serveErr; err != nil && !errors.Is(err, grpc.ErrServerStopped) && !errors.Is(err, http.ErrServerClosed) {
 				logs.Default().Error("grpc_server_shutdown_failed", "error", err)
 			}
 		}

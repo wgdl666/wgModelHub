@@ -24,6 +24,7 @@ const (
 	ModelHubService_SubmitGeneration_FullMethodName    = "/wg_model_hub.v2.ModelHubService/SubmitGeneration"
 	ModelHubService_GetGeneration_FullMethodName       = "/wg_model_hub.v2.ModelHubService/GetGeneration"
 	ModelHubService_SynthesizeSpeech_FullMethodName    = "/wg_model_hub.v2.ModelHubService/SynthesizeSpeech"
+	ModelHubService_ListModels_FullMethodName          = "/wg_model_hub.v2.ModelHubService/ListModels"
 )
 
 // ModelHubServiceClient is the client API for ModelHubService service.
@@ -44,6 +45,8 @@ type ModelHubServiceClient interface {
 	GetGeneration(ctx context.Context, in *GetGenerationRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GenerationTaskEvent], error)
 	// SynthesizeSpeech：同步一次性 TTS。成功只表示供应商合成且完整音频已收集，不表示 Mirror 播放。
 	SynthesizeSpeech(ctx context.Context, in *SynthesizeSpeechRequest, opts ...grpc.CallOption) (*SynthesizeSpeechResponse, error)
+	// ListModels 返回当前进程已路由的真实模型 ID，可按产品主用途过滤；不暴露 provider / 密钥。
+	ListModels(ctx context.Context, in *ListModelsRequest, opts ...grpc.CallOption) (*ListModelsResponse, error)
 }
 
 type modelHubServiceClient struct {
@@ -122,6 +125,16 @@ func (c *modelHubServiceClient) SynthesizeSpeech(ctx context.Context, in *Synthe
 	return out, nil
 }
 
+func (c *modelHubServiceClient) ListModels(ctx context.Context, in *ListModelsRequest, opts ...grpc.CallOption) (*ListModelsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListModelsResponse)
+	err := c.cc.Invoke(ctx, ModelHubService_ListModels_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ModelHubServiceServer is the server API for ModelHubService service.
 // All implementations must embed UnimplementedModelHubServiceServer
 // for forward compatibility.
@@ -140,6 +153,8 @@ type ModelHubServiceServer interface {
 	GetGeneration(*GetGenerationRequest, grpc.ServerStreamingServer[GenerationTaskEvent]) error
 	// SynthesizeSpeech：同步一次性 TTS。成功只表示供应商合成且完整音频已收集，不表示 Mirror 播放。
 	SynthesizeSpeech(context.Context, *SynthesizeSpeechRequest) (*SynthesizeSpeechResponse, error)
+	// ListModels 返回当前进程已路由的真实模型 ID，可按产品主用途过滤；不暴露 provider / 密钥。
+	ListModels(context.Context, *ListModelsRequest) (*ListModelsResponse, error)
 	mustEmbedUnimplementedModelHubServiceServer()
 }
 
@@ -164,6 +179,9 @@ func (UnimplementedModelHubServiceServer) GetGeneration(*GetGenerationRequest, g
 }
 func (UnimplementedModelHubServiceServer) SynthesizeSpeech(context.Context, *SynthesizeSpeechRequest) (*SynthesizeSpeechResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SynthesizeSpeech not implemented")
+}
+func (UnimplementedModelHubServiceServer) ListModels(context.Context, *ListModelsRequest) (*ListModelsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListModels not implemented")
 }
 func (UnimplementedModelHubServiceServer) mustEmbedUnimplementedModelHubServiceServer() {}
 func (UnimplementedModelHubServiceServer) testEmbeddedByValue()                         {}
@@ -262,6 +280,24 @@ func _ModelHubService_SynthesizeSpeech_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModelHubService_ListModels_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListModelsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModelHubServiceServer).ListModels(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModelHubService_ListModels_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModelHubServiceServer).ListModels(ctx, req.(*ListModelsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ModelHubService_ServiceDesc is the grpc.ServiceDesc for ModelHubService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -280,6 +316,10 @@ var ModelHubService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SynthesizeSpeech",
 			Handler:    _ModelHubService_SynthesizeSpeech_Handler,
+		},
+		{
+			MethodName: "ListModels",
+			Handler:    _ModelHubService_ListModels_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

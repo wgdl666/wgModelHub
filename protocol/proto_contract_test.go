@@ -7,6 +7,42 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
+func TestListModelsProtoContract(t *testing.T) {
+	desc := modelhubv2.File_proto_wg_model_hub_v2_model_hub_proto.Services().ByName("ModelHubService")
+	if desc == nil {
+		t.Fatal("ModelHubService missing")
+	}
+	method := desc.Methods().ByName("ListModels")
+	if method == nil {
+		t.Fatal("ListModels RPC missing")
+	}
+	if method.IsStreamingClient() || method.IsStreamingServer() {
+		t.Fatal("ListModels must be unary")
+	}
+	if method.Input().FullName() != "wg_model_hub.v2.ListModelsRequest" {
+		t.Fatalf("input=%s", method.Input().FullName())
+	}
+	if method.Output().FullName() != "wg_model_hub.v2.ListModelsResponse" {
+		t.Fatalf("output=%s", method.Output().FullName())
+	}
+
+	req := (&modelhubv2.ListModelsRequest{}).ProtoReflect().Descriptor()
+	category := req.Fields().ByNumber(1)
+	if category == nil || category.Name() != "category" || category.Enum() == nil {
+		t.Fatalf("category field=%v", category)
+	}
+	if req.Fields().Len() != 1 {
+		t.Fatalf("request fields=%d", req.Fields().Len())
+	}
+
+	info := (&modelhubv2.ModelInfo{}).ProtoReflect().Descriptor()
+	assertField(t, info, 1, "model", protoreflect.StringKind)
+	infoCategory := info.Fields().ByNumber(2)
+	if infoCategory == nil || infoCategory.Name() != "category" || infoCategory.Enum() == nil {
+		t.Fatalf("model category field=%v", infoCategory)
+	}
+}
+
 func TestSynthesizeSpeechProtoContract(t *testing.T) {
 	desc := modelhubv2.File_proto_wg_model_hub_v2_model_hub_proto.Services().ByName("ModelHubService")
 	if desc == nil {
