@@ -1,0 +1,189 @@
+name: Deploy ACK Dev
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+# 同仓同服务 dev 部署只保留最新 run，避免旧 run 晚到覆盖新镜像；不跨仓共享 group。
+concurrency:
+  group: ack-dev-deploy-wg-model-hub
+  cancel-in-progress: true
+
+env:
+  ACR_REGISTRY: wgdl-registry-vpc.cn-shenzhen.cr.aliyuncs.com
+  ACR_INSTANCE_ID: cri-kvnxde6ro98iwv71
+  ACR_NAMESPACE: wg
+  ACR_REPOSITORY: wg-model-hub
+  ACR_REPO_ID: crr-khts2vshpe14q1qr
+  K8S_CLUSTER_ID: c4c464237565b494fb8c73f7893a032c2
+  K8S_NAMESPACE: default
+  K8S_DEPLOYMENT: wg-model-hub
+  K8S_POD_SELECTOR: app=wg-model-hub
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    # 保留 workflow_dispatch，但只允许从实际 dev ref 执行，避免误部署 main/feature SHA。
+    if: github.ref == 'refs/heads/dev'
+    runs-on: [self-hosted, Linux, X64]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Aliyun CLI
+        env:
+          ALIYUN_ACCESS_KEY_ID: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          ALIYUN_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+        run: |
+          if [ -n "$ALIYUN_ACCESS_KEY_ID" ] && [ -n "$ALIYUN_ACCESS_KEY_SECRET" ]; then
+            aliyun configure set \
+              --profile default --mode AK --region cn-shenzhen \
+              --access-key-id "$ALIYUN_ACCESS_KEY_ID" \
+              --access-key-secret "$ALIYUN_ACCESS_KEY_SECRET"
+          else
+            echo "Repo secrets are empty; using the self-hosted runner Aliyun profile"
+          fi
+          aliyun configure get region
+
+      - name: Login to ACR (VPC)
+        run: |
+          ACR_TOKEN=$(aliyun cr GetAuthorizationToken --InstanceId ${{ env.ACR_INSTANCE_ID }} | jq -r '.AuthorizationToken')
+          echo "$ACR_TOKEN" | docker login --username cr_temp_user --password-stdin ${{ env.ACR_REGISTRY }}
+
+      - name: Build and push
+        id: build
+        run: |
+          set -euo pipefail
+          IMAGE=${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.ACR_REPOSITORY }}
+          # 用完整 GITHUB_SHA 作为不可变 tag，把触发提交精确映射到 ACR；禁止 latest / 仅 7 位 SHA。
+          TAG="$GITHUB_SHA"
+          # 先查 ACR：同一完整 SHA 已有合法 digest 则复用，避免 workflow_dispatch/重跑再次 push 不可变 tag。
+          set +e
+          TAG_JSON=$(aliyun cr GetRepoTag \
+            --InstanceId ${{ env.ACR_INSTANCE_ID }} \
+            --RepoId ${{ env.ACR_REPO_ID }} \
+            --Tag "$TAG")
+          lookup_rc=$?
+          set -e
+          CODE=$(printf '%s' "$TAG_JSON" | jq -r '.Code // empty' 2>/dev/null || true)
+          EXISTING_DIGEST=$(printf '%s' "$TAG_JSON" | jq -r '.Digest // empty' 2>/dev/null || true)
+          EXISTING_DIGEST=${EXISTING_DIGEST#sha256:}
+          STATUS=$(printf '%s' "$TAG_JSON" | jq -r '.Status // empty' 2>/dev/null || true)
+          NEED_BUILD=0
+          if [[ "$EXISTING_DIGEST" =~ ^[0-9a-f]{64}$ ]]; then
+            if [[ -n "$STATUS" && "$STATUS" != "null" && "$STATUS" != "NORMAL" ]]; then
+              echo "ACR tag $TAG has abnormal status" >&2
+              exit 1
+            fi
+            echo "ACR already has immutable digest for full SHA; skipping build/push"
+          elif [[ "$CODE" == "IMAGE_NOT_EXIST" ]] || { [[ "$lookup_rc" -ne 0 ]] && printf '%s' "$TAG_JSON" | grep -q 'IMAGE_NOT_EXIST'; }; then
+            NEED_BUILD=1
+          else
+            echo "ACR GetRepoTag for $TAG did not return a reusable digest or IMAGE_NOT_EXIST" >&2
+            exit 1
+          fi
+          if [ "$NEED_BUILD" = "1" ]; then
+            if [ -z "${SSH_AUTH_SOCK:-}" ]; then
+              eval "$(ssh-agent -s)"
+              for key in "$HOME/.ssh/id_ed25519" "$HOME/.ssh/id_rsa"; do
+                if [ -f "$key" ]; then
+                  ssh-add "$key" || true
+                  break
+                fi
+              done
+            fi
+            # ModelHub Dockerfile 现已支持 BuildKit SSH 拉取私有 kangaroo；与 build_push 一致转发 agent。
+            DOCKER_BUILDKIT=1 docker build \
+              --ssh default \
+              --build-arg GOPROXY=https://goproxy.cn,direct \
+              -t "$IMAGE:$TAG" .
+            docker push "$IMAGE:$TAG"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve immutable digest
+        id: digest
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.build.outputs.tag }}"
+          # ACR GetRepoTag 返回 64 位 digest，部署只用 @sha256，避免可变 tag 漂移；复用与新建后都要再校验。
+          DIGEST=$(aliyun cr GetRepoTag \
+            --InstanceId ${{ env.ACR_INSTANCE_ID }} \
+            --RepoId ${{ env.ACR_REPO_ID }} \
+            --Tag "$TAG" | jq -r '.Digest')
+          if ! [[ "$DIGEST" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "ACR did not return a valid digest for tag $TAG" >&2
+            exit 1
+          fi
+          DEPLOY_IMAGE="${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.ACR_REPOSITORY }}@sha256:$DIGEST"
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "deploy_image=$DEPLOY_IMAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy and verify ACK
+        run: |
+          set -euo pipefail
+          # 临时 kubeconfig 必须在成功/失败路径都清理，且不得打印凭据内容。
+          kubeconfig_dir=$(mktemp -d)
+          cleanup() { rm -rf "$kubeconfig_dir"; }
+          trap cleanup EXIT
+          umask 077
+          aliyun cs GET /k8s/${{ env.K8S_CLUSTER_ID }}/user_config --TemporaryDurationMinutes 15 \
+            | jq -r '.config' > "$kubeconfig_dir/config"
+          export KUBECONFIG="$kubeconfig_dir/config"
+
+          DEPLOY_IMAGE="${{ steps.digest.outputs.deploy_image }}"
+          DIGEST="${{ steps.digest.outputs.digest }}"
+          NS="${{ env.K8S_NAMESPACE }}"
+          DEP="${{ env.K8S_DEPLOYMENT }}"
+
+          kubectl set image "deployment/$DEP" "$DEP=$DEPLOY_IMAGE" -n "$NS"
+          kubectl rollout status "deployment/$DEP" -n "$NS" --timeout=300s
+
+          deployment_json=$(kubectl get "deployment/$DEP" -n "$NS" -o json)
+          printf '%s' "$deployment_json" | jq -e '
+            (.spec.replicas // 1) as $want
+            | (.status.observedGeneration >= .metadata.generation) and
+              ((.status.readyReplicas // 0) == $want) and
+              ((.status.updatedReplicas // 0) == $want) and
+              ((.status.availableReplicas // 0) == $want)' >/dev/null
+
+          pod_json=$(kubectl get pods -n "$NS" -l "${{ env.K8S_POD_SELECTOR }}" \
+            --field-selector=status.phase=Running -o json)
+          current_pod=$(printf '%s' "$pod_json" | jq -r \
+            '[.items[] | select(.metadata.deletionTimestamp == null)]
+             | sort_by(.metadata.creationTimestamp) | last | .metadata.name // empty')
+          if [ -z "$current_pod" ]; then
+            echo "$DEP has no current running Pod" >&2
+            exit 1
+          fi
+          image_id=$(printf '%s' "$pod_json" | jq -r --arg pod "$current_pod" --arg c "$DEP" \
+            '[.items[] | select(.metadata.name == $pod) | .status.containerStatuses[]?
+              | select(.name == $c) | .imageID] | first // empty')
+          case "$image_id" in
+            *"sha256:$DIGEST"*) ;;
+            *)
+              echo "Pod imageID does not match expected digest" >&2
+              echo "expected_digest=$DIGEST" >&2
+              exit 1
+              ;;
+          esac
+
+          endpoint_count=$(kubectl get endpointslice -n "$NS" \
+            -l "kubernetes.io/service-name=$DEP" -o json \
+            | jq '[.items[].endpoints[] | select(.conditions.ready == true) | .addresses[]] | length')
+          if [ "$endpoint_count" -lt 1 ]; then
+            echo "$DEP has no ready EndpointSlice address" >&2
+            exit 1
+          fi
+
+          # 标准 gRPC health 探针端口必须与服务监听一致；端口开放不能冒充就绪。
+          printf '%s' "$deployment_json" | jq -e --arg name "$DEP" --argjson port 50053 '
+            .spec.template.spec.containers[]
+            | select(.name == $name)
+            | (.startupProbe.grpc.port == $port)
+              and (.readinessProbe.grpc.port == $port)
+              and (.livenessProbe.grpc.port == $port)' >/dev/null
