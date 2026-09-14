@@ -3,9 +3,12 @@ package modelhub
 import (
 	"context"
 	"strings"
+	"time"
+	"unicode/utf8"
 
 	"github.com/wgdl666/wgModelHub/config"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/infra/llmmetric"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/internal/taskstore"
@@ -35,6 +38,8 @@ func New(live *config.LiveConfig, providers map[string]provider.Set, tasks tasks
 
 // Generate 按 OutputSpec oneof 选择 text/image/video 能力，并以 request.model（真实供应商模型 ID）路由。
 func (s *Service) Generate(request *modelhubv2.GenerateRequest, stream modelhubv2.ModelHubService_GenerateServer) error {
+	// TTFT/总耗时起点：ModelHub 收到 Generate；路由失败的请求不进入 LLM 业务指标。
+	startedAt := time.Now()
 	ctx := stream.Context()
 	ctx, span := telemetry.StartSpan(ctx, "modelhub.Generate")
 	defer span.End()
@@ -59,7 +64,7 @@ func (s *Service) Generate(request *modelhubv2.GenerateRequest, stream modelhubv
 
 	switch capability {
 	case config.CapabilityText:
-		return s.generateText(ctx, binding, request, stream)
+		return s.generateText(ctx, binding, request, stream, startedAt)
 	case config.CapabilityImage:
 		return s.generateImage(ctx, binding, request, stream)
 	case config.CapabilityVideo:
@@ -71,23 +76,37 @@ func (s *Service) Generate(request *modelhubv2.GenerateRequest, stream modelhubv
 	}
 }
 
-func (s *Service) generateText(ctx context.Context, binding binding, request *modelhubv2.GenerateRequest, stream modelhubv2.ModelHubService_GenerateServer) error {
+func (s *Service) generateText(ctx context.Context, binding binding, request *modelhubv2.GenerateRequest, stream modelhubv2.ModelHubService_GenerateServer, startedAt time.Time) (retErr error) {
 	if binding.set.Text == nil {
 		err := provider.Errorf(provider.ErrorConfiguration, "model %s does not support text", request.GetModel())
 		statusErr := provider.ToStatus(err)
 		telemetry.RecordError(ctx, statusErr)
 		return statusErr
 	}
-	// 先记下调用方原始配置模式，再填缺省；否则 default_enabled 会被改写后的 enabled=true 掩盖。
-	cachingMode := textCachingMode(request.GetInput())
-	applyTextCachingDefault(request)
-	if request.GetOutput().GetStream() {
+	// 应用文本缓存策略（普通缺省开启 / endpoint-bound Ark 隐式自动）；返回实际生效遥测模式。
+	cachingMode := applyTextCachingPolicy(request, s.providerCfg[binding.provider])
+	streamMode := request.GetOutput().GetStream()
+	labels := llmmetric.Labels{Model: binding.model, Provider: binding.provider, Stream: streamMode}
+	// 文本能力已路由成功：真实供应商调用前计一次 request。
+	llmmetric.RecordRequest(ctx, labels)
+	defer func() {
+		labels.Outcome = llmmetric.MapOutcome(retErr)
+		llmmetric.RecordTerminal(ctx, labels, time.Since(startedAt))
+	}()
+
+	if streamMode {
 		var sendErr error
 		var sequence uint32
+		var ttftRecorded bool
 		emit := func(event *modelhubv2.GenerateEvent) error {
 			// 文本 stream 的唯一 final 由 service 发送；供应商误标 final 的事件只当增量丢弃终态标记。
 			if event == nil || event.GetFinal() {
 				return nil
+			}
+			// TTFT：仅流式；空 chunk / 只有 arguments 的 tool delta 不算；一次请求最多一个样本。
+			if !ttftRecorded && llmmetric.IsFirstModelOutput(event) {
+				llmmetric.RecordTTFT(ctx, labels, time.Since(startedAt))
+				ttftRecorded = true
 			}
 			event.Sequence = sequence
 			sequence++
@@ -107,8 +126,8 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 		if final == nil {
 			final = &modelhubv2.GenerateEvent{}
 		}
-		// 供应商 usage 先落 span，再 Send；客户端最终 Send 失败也不能丢掉已完成打点。
-		recordTextGenerateTelemetry(ctx, binding.model, binding.provider, cachingMode, final.GetUsage())
+		// 供应商 usage 先落 Prometheus，再 Send；客户端最终 Send 失败也不能丢掉已产生的 usage。
+		llmmetric.RecordUsageAndCache(ctx, labels, cachingMode, final.GetUsage())
 		// 调用方自行累计增量；final 只携带 response_id/finish_reason/usage 等终态元数据。
 		return stream.Send(&modelhubv2.GenerateEvent{
 			Sequence:     sequence,
@@ -131,7 +150,7 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 	}
 	event.Sequence = 0
 	event.Final = true
-	recordTextGenerateTelemetry(ctx, binding.model, binding.provider, cachingMode, event.GetUsage())
+	llmmetric.RecordUsageAndCache(ctx, labels, cachingMode, event.GetUsage())
 	return stream.Send(event)
 }
 
@@ -160,6 +179,41 @@ func (s *Service) CreateCachedContent(ctx context.Context, request *modelhubv2.C
 	}
 	resp, err := creator.CreateCachedContent(ctx, binding.model, request)
 	if err != nil {
+		statusErr := provider.ToStatus(err)
+		telemetry.RecordError(ctx, statusErr)
+		return nil, statusErr
+	}
+	return resp, nil
+}
+
+// SynthesizeSpeech 同步一次性 TTS：路由到 Speech capability，成功仅表示完整音频已收集。
+func (s *Service) SynthesizeSpeech(ctx context.Context, request *modelhubv2.SynthesizeSpeechRequest) (*modelhubv2.SynthesizeSpeechResponse, error) {
+	ctx, span := telemetry.StartSpan(ctx, "modelhub.SynthesizeSpeech")
+	defer span.End()
+	if err := validateSynthesizeSpeechRequest(request); err != nil {
+		statusErr := provider.ToStatus(err)
+		telemetry.RecordError(ctx, statusErr)
+		return nil, statusErr
+	}
+	binding, err := s.resolve(request.GetModel(), config.CapabilitySpeech)
+	if err != nil {
+		statusErr := provider.ToStatus(err)
+		telemetry.RecordError(ctx, statusErr)
+		return nil, statusErr
+	}
+	if binding.set.Speech == nil {
+		err := provider.Errorf(provider.ErrorConfiguration, "model %s does not support speech", request.GetModel())
+		statusErr := provider.ToStatus(err)
+		telemetry.RecordError(ctx, statusErr)
+		return nil, statusErr
+	}
+	resp, err := binding.set.Speech.SynthesizeSpeech(ctx, binding.model, request)
+	if err != nil {
+		statusErr := provider.ToStatus(err)
+		telemetry.RecordError(ctx, statusErr)
+		return nil, statusErr
+	}
+	if err := validateSpeechResponse(resp); err != nil {
 		statusErr := provider.ToStatus(err)
 		telemetry.RecordError(ctx, statusErr)
 		return nil, statusErr
@@ -291,6 +345,30 @@ func validateGenerateRequest(request *modelhubv2.GenerateRequest, capability str
 		}
 	}
 	return nil
+}
+
+func validateSynthesizeSpeechRequest(request *modelhubv2.SynthesizeSpeechRequest) error {
+	if request == nil {
+		return provider.New(provider.ErrorInvalidArgument, "synthesize speech request is required")
+	}
+	if strings.TrimSpace(request.GetModel()) == "" {
+		return provider.New(provider.ErrorInvalidArgument, "model is required")
+	}
+	text := strings.TrimSpace(request.GetText())
+	if text == "" {
+		return provider.New(provider.ErrorInvalidArgument, "text is required")
+	}
+	if utf8.RuneCountInString(text) >= protocol.MaxSpeechTextChars {
+		return provider.Errorf(provider.ErrorInvalidArgument, "text exceeds %d characters", protocol.MaxSpeechTextChars)
+	}
+	return nil
+}
+
+func validateSpeechResponse(resp *modelhubv2.SynthesizeSpeechResponse) error {
+	if resp == nil || resp.GetAudio() == nil {
+		return provider.New(provider.ErrorInvalidResponse, "speech provider returned an empty response")
+	}
+	return validateMedia(resp.GetAudio(), provider.ErrorInvalidResponse)
 }
 
 func validateInput(input *modelhubv2.Input) error {

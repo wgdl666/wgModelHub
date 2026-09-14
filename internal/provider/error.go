@@ -4,6 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 type ErrorKind string
@@ -51,7 +54,18 @@ func Errorf(kind ErrorKind, format string, args ...any) error {
 }
 
 func FromHTTP(providerName string, statusCode int) error {
+	return FromHTTPDetail(providerName, statusCode, "")
+}
+
+// httpErrorDetailLimit 只保留供应商拒因摘要；完整 Prompt/密钥不得进入 Message。
+const httpErrorDetailLimit = 512
+
+// FromHTTPDetail 把供应商 HTTP 错误正文截断后附在分类消息上，供 gRPC status / Hub turn_error 对照。
+func FromHTTPDetail(providerName string, statusCode int, detail string) error {
 	message := fmt.Sprintf("%s returned HTTP %d", providerName, statusCode)
+	if snippet := CompactHTTPErrorDetail(detail); snippet != "" {
+		message += ": " + snippet
+	}
 	switch statusCode {
 	case http.StatusBadRequest, http.StatusUnprocessableEntity:
 		return New(ErrorInvalidArgument, message)
@@ -67,6 +81,25 @@ func FromHTTP(providerName string, statusCode int) error {
 		}
 		return New(ErrorUnavailable, message)
 	}
+}
+
+// CompactHTTPErrorDetail 压空白并截断供应商错误正文，避免把超长 HTML/堆栈送进 status。
+func CompactHTTPErrorDetail(detail string) string {
+	detail = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) && r != '\n' && r != '\t' {
+			return -1
+		}
+		return r
+	}, detail)
+	detail = strings.Join(strings.Fields(detail), " ")
+	if detail == "" {
+		return ""
+	}
+	if utf8.RuneCountInString(detail) <= httpErrorDetailLimit {
+		return detail
+	}
+	runes := []rune(detail)
+	return string(runes[:httpErrorDetailLimit]) + "…"
 }
 
 func Kind(err error) ErrorKind {

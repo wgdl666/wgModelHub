@@ -3,18 +3,44 @@
 package models
 
 const (
-	Gemini25Flash      = "gemini-2.5-flash"
-	Gemini20Flash001   = "gemini-2.0-flash-001"
-	DoubaoSeed16       = "doubao-seed-1.6"
-	QwenFlash          = "qwen-flash"
-	Qwen3VLPlus        = "qwen3-vl-plus"
-	Qwen35Flash        = "qwen3.5-flash"
-	Qwen37Flash        = "qwen3.7-flash"
+	Gemini25Flash = "gemini-2.5-flash"
+	// Gemini37Flash 是 Google GA 的 gemini-3.7-flash；不支持关闭 thinking，Hub DISABLED 须在 Gemini provider 映射为 LOW。
+	Gemini37Flash = "gemini-3.7-flash"
+	// Gemini38Flash 只支持 LOW/MEDIUM/HIGH thinking；Hub DISABLED 统一映射为 LOW，不能发 ThinkingBudget=0。
+	Gemini38Flash = "gemini-3.8-flash"
+	// Gemini35FlashLite 支持 MINIMAL；路由/分类场景的 Hub DISABLED 应映射 MINIMAL，而非 LOW 或 budget=0。
+	Gemini35FlashLite = "gemini-3.5-flash-lite"
+	Gemini20Flash001  = "gemini-2.0-flash-001"
+	DoubaoSeed16      = "doubao-seed-1.6"
+	// DoubaoSeed20Mini 对外真实模型名；上游 Responses API 需经各自 Ark endpoint_id 映射，不能暴露基础模型 ID，也不能与 Lite 互相 alias。
+	DoubaoSeed20Mini = "doubao-seed-2.0-mini"
+	// DoubaoSeed20Lite 对外真实模型名；与 Mini 分 endpoint 分 provider，禁止共用推理部署或互相替代。
+	DoubaoSeed20Lite = "doubao-seed-2.0-lite"
+	// DoubaoSeed21Pro 对外真实模型名；衣橱候选搭配等文本链路经独立 Ark endpoint 推理，与 2.0 mini/lite 分实例，禁止混用。
+	DoubaoSeed21Pro = "doubao-seed-2.1-pro"
+	// DeepSeekV4Flash 对外真实模型名（方舟正式版）；上游 Responses 走独立推理 endpoint，禁止与预览版或其他 DeepSeek ID 互相 alias。
+	DeepSeekV4Flash = "deepseek-v4-flash"
+	QwenFlash       = "qwen-flash"
+	Qwen3VLPlus     = "qwen3-vl-plus"
+	Qwen35Flash     = "qwen3.5-flash"
+	Qwen37Flash     = "qwen3.7-flash"
+	// Qwen38Flash 走 DashScope OpenAI-compatible；支持 function calling、enable_thinking=false 与显式 ephemeral 缓存。
+	Qwen38Flash = "qwen3.8-flash"
+	// ClaudeHaiku45 固定官方稳定快照 ID；request.model 禁止写成市场简称或自造 alias。
+	ClaudeHaiku45 = "claude-haiku-4-5-20251001"
+	// GLM53Flash 智谱开放平台真实模型名；上游走 OpenAI-compatible Chat Completions；Hub DISABLED→thinking.type=disabled。
+	GLM53Flash         = "glm-5.3-flash"
 	Gemini3ProImage    = "gemini-3-pro-image"
 	Gemini25FlashImage = "gemini-2.5-flash-image"
 	Gemini31FlashImage = "gemini-3.1-flash-image"
 	GPTImage2          = "gpt-image-2"
-	LTX                = "ltx"
+	// GPTImage25Flare / GPTImage25Sunburst 是 GPT Image 2.5 真实模型 ID。
+	// 与 GPTImage2 一并绑现网已实测的 AIG OpenAI-compatible Images 实例（async_gpt_image），不能并入 Gemini 生图。
+	GPTImage25Flare    = "gpt-image-2.5-flare"
+	GPTImage25Sunburst = "gpt-image-2.5-sunburst"
+	// Flux2Klein9B 当前 SeeTacloud 部署只开放 image edit / 多图 i2i，不能当文生图用。
+	Flux2Klein9B = "FLUX.2-klein-9B"
+	LTX          = "ltx"
 
 	// DashScope Wan / HappyHorse / Kling 图生视频。
 	Wan22I2VFlash              = "wan2.2-i2v-flash"
@@ -53,22 +79,38 @@ const (
 
 	// Gemini Interactions 图生视频与编辑共用同一真实模型 ID。
 	GeminiOmniFlashPreview = "gemini-omni-flash-preview"
+
+	// Minimax 同步 TTS（与线上 wgHub DefaultMinimaxConfig 一致）。
+	Speech28Turbo = "speech-2.8-turbo"
 )
 
 // All 返回当前仓库承认的全部真实模型 ID，顺序稳定便于对照。
 func All() []string {
 	return []string{
 		Gemini25Flash,
+		Gemini37Flash,
+		Gemini38Flash,
+		Gemini35FlashLite,
 		Gemini20Flash001,
 		DoubaoSeed16,
+		DoubaoSeed20Mini,
+		DoubaoSeed20Lite,
+		DoubaoSeed21Pro,
+		DeepSeekV4Flash,
 		QwenFlash,
 		Qwen3VLPlus,
 		Qwen35Flash,
 		Qwen37Flash,
+		Qwen38Flash,
+		ClaudeHaiku45,
+		GLM53Flash,
 		Gemini3ProImage,
 		Gemini25FlashImage,
 		Gemini31FlashImage,
 		GPTImage2,
+		GPTImage25Flare,
+		GPTImage25Sunburst,
+		Flux2Klein9B,
 		LTX,
 		Wan22I2VFlash,
 		Wan22I2VPlus,
@@ -101,5 +143,6 @@ func All() []string {
 		Veo31FastGenerate001,
 		Veo31Generate001,
 		GeminiOmniFlashPreview,
+		Speech28Turbo,
 	}
 }

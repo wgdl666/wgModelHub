@@ -5,6 +5,7 @@ import (
 
 	"github.com/volcengine/volcengine-go-sdk/service/arkruntime/model/responses"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/models"
 )
 
 func TestConvertMessageToInputItemsEmitsAllToolCalls(t *testing.T) {
@@ -171,5 +172,166 @@ func TestBuildRequestCachingExplicitSemantics(t *testing.T) {
 	}
 	if arkReq.Caching != nil || arkReq.ExpireAt != nil {
 		t.Fatalf("explicit disabled must not enable caching: caching=%#v expire=%#v", arkReq.Caching, arkReq.ExpireAt)
+	}
+}
+
+func TestBuildRequestUsesEndpointIDWhenConfigured(t *testing.T) {
+	p := &Provider{name: "ark_doubao_mini", endpointID: "ep-20260901122606-bcxpg"}
+	request := &modelhubv2.GenerateRequest{
+		Input: &modelhubv2.Input{
+			Items: []*modelhubv2.InputItem{{
+				Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
+					Role:  modelhubv2.Role_ROLE_USER,
+					Parts: []*modelhubv2.ContentPart{{Content: &modelhubv2.ContentPart_Text{Text: "hi"}}},
+				}},
+			}},
+		},
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{}}},
+	}
+	arkReq, err := p.buildRequest(models.DoubaoSeed20Mini, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if arkReq.Model != "ep-20260901122606-bcxpg" {
+		t.Fatalf("model = %q, want endpoint id", arkReq.Model)
+	}
+}
+
+func TestBuildRequestUsesLiteEndpointIDWhenConfigured(t *testing.T) {
+	p := &Provider{name: "ark_doubao_lite", endpointID: "ep-20260901133933-xqknf"}
+	request := &modelhubv2.GenerateRequest{
+		Input: &modelhubv2.Input{
+			Items: []*modelhubv2.InputItem{{
+				Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
+					Role:  modelhubv2.Role_ROLE_USER,
+					Parts: []*modelhubv2.ContentPart{{Content: &modelhubv2.ContentPart_Text{Text: "hi"}}},
+				}},
+			}},
+		},
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{}}},
+	}
+	arkReq, err := p.buildRequest(models.DoubaoSeed20Lite, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if arkReq.Model != "ep-20260901133933-xqknf" {
+		t.Fatalf("model = %q, want lite endpoint id", arkReq.Model)
+	}
+}
+
+func TestBuildRequestKeepsModelIDWithoutEndpoint(t *testing.T) {
+	p := &Provider{name: "ark_chat"}
+	request := &modelhubv2.GenerateRequest{
+		Input: &modelhubv2.Input{
+			Items: []*modelhubv2.InputItem{{
+				Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
+					Role:  modelhubv2.Role_ROLE_USER,
+					Parts: []*modelhubv2.ContentPart{{Content: &modelhubv2.ContentPart_Text{Text: "hi"}}},
+				}},
+			}},
+		},
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{}}},
+	}
+	arkReq, err := p.buildRequest("doubao-seed-1.6", request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if arkReq.Model != "doubao-seed-1.6" {
+		t.Fatalf("model = %q, want direct model id", arkReq.Model)
+	}
+}
+
+// TestBuildRequestMapsToolChoice 证明统一协议 ToolChoice 独立透传到 Ark Responses，
+// 且与“仅首次下发 Tools”解耦：续轮 PreviousResponseId 已有时仍下发当前轮约束。
+func TestBuildRequestMapsToolChoice(t *testing.T) {
+	p := &Provider{name: "ark"}
+	base := func(choice *modelhubv2.ToolChoice, previousID string) *modelhubv2.GenerateRequest {
+		return &modelhubv2.GenerateRequest{
+			Input: &modelhubv2.Input{
+				PreviousResponseId: previousID,
+				ToolChoice:         choice,
+				Tools: []*modelhubv2.Tool{{
+					Function: &modelhubv2.FunctionDefinition{
+						Name:                 "closet_search",
+						Description:          "search",
+						ParametersJsonSchema: []byte(`{"type":"object"}`),
+					},
+				}},
+				Items: []*modelhubv2.InputItem{{
+					Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
+						Role:  modelhubv2.Role_ROLE_USER,
+						Parts: []*modelhubv2.ContentPart{{Content: &modelhubv2.ContentPart_Text{Text: "hi"}}},
+					}},
+				}},
+			},
+			Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{}}},
+		}
+	}
+
+	arkReq, err := p.buildRequest("model-x", base(nil, ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if arkReq.ToolChoice != nil {
+		t.Fatalf("nil ToolChoice must not set field: %#v", arkReq.ToolChoice)
+	}
+
+	arkReq, err = p.buildRequest("model-x", base(&modelhubv2.ToolChoice{Mode: modelhubv2.ToolChoiceMode_TOOL_CHOICE_MODE_UNSPECIFIED}, ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if arkReq.ToolChoice != nil {
+		t.Fatalf("UNSPECIFIED must not set field: %#v", arkReq.ToolChoice)
+	}
+
+	arkReq, err = p.buildRequest("model-x", base(&modelhubv2.ToolChoice{Mode: modelhubv2.ToolChoiceMode_TOOL_CHOICE_MODE_NONE}, ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if arkReq.ToolChoice == nil || arkReq.ToolChoice.GetMode() != responses.ToolChoiceMode_none {
+		t.Fatalf("NONE = %#v", arkReq.ToolChoice)
+	}
+
+	arkReq, err = p.buildRequest("model-x", base(&modelhubv2.ToolChoice{Mode: modelhubv2.ToolChoiceMode_TOOL_CHOICE_MODE_AUTO}, ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if arkReq.ToolChoice == nil || arkReq.ToolChoice.GetMode() != responses.ToolChoiceMode_auto {
+		t.Fatalf("AUTO = %#v", arkReq.ToolChoice)
+	}
+
+	arkReq, err = p.buildRequest("model-x", base(&modelhubv2.ToolChoice{Mode: modelhubv2.ToolChoiceMode_TOOL_CHOICE_MODE_REQUIRED}, ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if arkReq.ToolChoice == nil || arkReq.ToolChoice.GetMode() != responses.ToolChoiceMode_required {
+		t.Fatalf("REQUIRED = %#v", arkReq.ToolChoice)
+	}
+	if len(arkReq.Tools) == 0 {
+		t.Fatalf("first turn should still send tools with REQUIRED")
+	}
+
+	// 续轮：不再下发 Tools，但 REQUIRED 仍须透传。
+	arkReq, err = p.buildRequest("model-x", base(&modelhubv2.ToolChoice{Mode: modelhubv2.ToolChoiceMode_TOOL_CHOICE_MODE_REQUIRED}, "resp-prev"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(arkReq.Tools) != 0 {
+		t.Fatalf("continuation must not resend tools: %#v", arkReq.Tools)
+	}
+	if arkReq.ToolChoice == nil || arkReq.ToolChoice.GetMode() != responses.ToolChoiceMode_required {
+		t.Fatalf("continuation REQUIRED = %#v", arkReq.ToolChoice)
+	}
+
+	arkReq, err = p.buildRequest("model-x", base(&modelhubv2.ToolChoice{
+		Mode:         modelhubv2.ToolChoiceMode_TOOL_CHOICE_MODE_FUNCTION,
+		FunctionName: "closet_search",
+	}, ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fc := arkReq.ToolChoice.GetFunctionToolChoice()
+	if fc == nil || fc.Name != "closet_search" || fc.Type != responses.ToolType_function {
+		t.Fatalf("FUNCTION = %#v", arkReq.ToolChoice)
 	}
 }

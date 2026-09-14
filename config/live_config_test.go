@@ -42,12 +42,13 @@ func TestLiveConfigPreservesEnvListenAddressesOnHotReload(t *testing.T) {
 	initial := validConfigWithDualGeminiFlash()
 	initial.Server.ListenAddress = ":50053"
 	initial.Server.PublicListenAddress = ":50054"
+	initial.Server.HTTPListenAddress = ":51053"
 	lc := NewLiveConfig(initial)
 
 	next := initial
 	next.ModelRouteOverrides = map[string]string{models.Gemini25Flash: "gemini_backup"}
 	hotYAML := mustYAML(t, next)
-	if strings.Contains(hotYAML, "listen_address") || strings.Contains(hotYAML, "public_listen_address") {
+	if strings.Contains(hotYAML, "listen_address") || strings.Contains(hotYAML, "public_listen_address") || strings.Contains(hotYAML, "http_listen_address") {
 		t.Fatalf("serialized YAML must not contain listen addresses: %q", hotYAML)
 	}
 
@@ -56,20 +57,24 @@ func TestLiveConfigPreservesEnvListenAddressesOnHotReload(t *testing.T) {
 	if got.ModelRoutes()[models.Gemini25Flash] != "gemini_backup" {
 		t.Fatalf("hot field not applied: routes=%v", got.ModelRoutes())
 	}
-	if got.Server.ListenAddress != ":50053" || got.Server.PublicListenAddress != ":50054" {
-		t.Fatalf("listen addresses=%q/%q, want env-injected :50053/:50054",
-			got.Server.ListenAddress, got.Server.PublicListenAddress)
+	if got.Server.ListenAddress != ":50053" || got.Server.PublicListenAddress != ":50054" || got.Server.HTTPListenAddress != ":51053" {
+		t.Fatalf("listen addresses=%q/%q/%q, want env-injected :50053/:50054/:51053",
+			got.Server.ListenAddress, got.Server.PublicListenAddress, got.Server.HTTPListenAddress)
 	}
 }
 
 func TestApplyListenPortOverridesFromEnv(t *testing.T) {
 	cfg := validConfig()
 	t.Setenv("WG_SERVER_GRPC_PORT", "50053")
+	t.Setenv("WG_SERVER_HTTP_PORT", "51053")
 	if err := ApplyListenPortOverridesFromEnv(&cfg); err != nil {
 		t.Fatal(err)
 	}
 	if cfg.Server.ListenAddress != ":50053" {
 		t.Fatalf("listen_address=%q", cfg.Server.ListenAddress)
+	}
+	if cfg.Server.HTTPListenAddress != ":51053" {
+		t.Fatalf("http listen_address=%q", cfg.Server.HTTPListenAddress)
 	}
 	if cfg.Server.PublicListenAddress != "" {
 		t.Fatalf("public listener should default off, got %q", cfg.Server.PublicListenAddress)
@@ -84,6 +89,11 @@ func TestApplyListenPortOverridesFromEnv(t *testing.T) {
 	t.Setenv("WG_SERVER_GRPC_PORT", "")
 	if err := ApplyListenPortOverridesFromEnv(&cfg); err == nil {
 		t.Fatal("missing env port must fail server assembly")
+	}
+	t.Setenv("WG_SERVER_GRPC_PORT", "50053")
+	t.Setenv("WG_SERVER_HTTP_PORT", "")
+	if err := ApplyListenPortOverridesFromEnv(&cfg); err == nil {
+		t.Fatal("missing HTTP port must fail server assembly")
 	}
 }
 

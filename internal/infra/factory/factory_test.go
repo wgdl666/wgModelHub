@@ -74,6 +74,30 @@ func TestBuildVideoProvidersExposeVideoOnly(t *testing.T) {
 	}
 }
 
+func TestBuildMinimaxTTSExposesSpeechOnly(t *testing.T) {
+	sets, err := Build(context.Background(), config.Config{
+		Providers: map[string]config.ProviderConfig{
+			"minimax_tts": {
+				Models: []string{models.Speech28Turbo},
+				MinimaxTTS: &config.MinimaxTTSProviderConfig{
+					APIKey:   "k",
+					Endpoint: "wss://example.invalid/ws",
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	set := sets["minimax_tts"]
+	if set.Speech == nil {
+		t.Fatal("missing speech capability")
+	}
+	if set.Text != nil || set.Image != nil || set.Video != nil {
+		t.Fatalf("tts should only expose speech: %#v", set)
+	}
+}
+
 func TestBuildVideoProvidersAcceptZeroPollConfig(t *testing.T) {
 	_, err := Build(context.Background(), config.Config{
 		Providers: map[string]config.ProviderConfig{

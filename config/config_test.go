@@ -12,7 +12,8 @@ func validConfig() Config {
 		Server: struct {
 			ListenAddress       string
 			PublicListenAddress string
-		}{ListenAddress: ":50053"},
+			HTTPListenAddress   string
+		}{ListenAddress: ":50053", HTTPListenAddress: ":51053"},
 		Logfire: LogfireConfig{
 			Token:   "logfire-token",
 			Env:     "production",
@@ -167,6 +168,16 @@ func TestModelRoutes(t *testing.T) {
 	}
 }
 
+func TestProviderSupportsSpeech(t *testing.T) {
+	tts := ProviderConfig{MinimaxTTS: &MinimaxTTSProviderConfig{APIKey: "k"}}
+	if !ProviderSupports(tts, CapabilitySpeech) {
+		t.Fatal("minimax_tts should support speech")
+	}
+	if ProviderSupports(tts, CapabilityText) || ProviderSupports(tts, CapabilityImage) || ProviderSupports(tts, CapabilityVideo) {
+		t.Fatal("minimax_tts should not support text/image/video")
+	}
+}
+
 func TestProviderSupportsOpenAIImage(t *testing.T) {
 	openai := ProviderConfig{OpenAI: &OpenAIProviderConfig{APIKey: "k"}}
 	if !ProviderSupports(openai, CapabilityText) || !ProviderSupports(openai, CapabilityImage) {
@@ -192,5 +203,40 @@ func TestProviderSupportsVideoProviders(t *testing.T) {
 		if ProviderSupports(provider, CapabilityText) || ProviderSupports(provider, CapabilityImage) {
 			t.Fatalf("provider %d should only support video", i)
 		}
+	}
+}
+
+func TestValidateRejectsArkEndpointIDWithMultipleModels(t *testing.T) {
+	cfg := validConfig()
+	cfg.Providers["ark_doubao_mini"] = ProviderConfig{
+		Models: []string{models.DoubaoSeed20Mini, models.DoubaoSeed16},
+		Ark: &ArkProviderConfig{
+			APIKey:     "key",
+			EndpointID: "ep-20260901122606-bcxpg",
+		},
+	}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "endpoint_id requires exactly one model") {
+		t.Fatalf("expected endpoint_id single-model error, got %v", err)
+	}
+}
+
+func TestValidateAcceptsArkEndpointIDWithSingleModel(t *testing.T) {
+	cfg := validConfig()
+	cfg.Providers["ark_doubao_mini"] = ProviderConfig{
+		Models: []string{models.DoubaoSeed20Mini},
+		Ark: &ArkProviderConfig{
+			APIKey:     "key",
+			EndpointID: "ep-20260901122606-bcxpg",
+		},
+	}
+	cfg.Providers["ark_doubao_lite"] = ProviderConfig{
+		Models: []string{models.DoubaoSeed20Lite},
+		Ark: &ArkProviderConfig{
+			APIKey:     "key",
+			EndpointID: "ep-20260901133933-xqknf",
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
 	}
 }

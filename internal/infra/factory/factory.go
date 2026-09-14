@@ -11,6 +11,7 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/infra/geminivideo"
 	"github.com/wgdl666/wgModelHub/internal/infra/genai"
 	"github.com/wgdl666/wgModelHub/internal/infra/ltx"
+	"github.com/wgdl666/wgModelHub/internal/infra/minimaxtts"
 	"github.com/wgdl666/wgModelHub/internal/infra/ominilinkvideo"
 	"github.com/wgdl666/wgModelHub/internal/infra/openai"
 	"github.com/wgdl666/wgModelHub/internal/provider"
@@ -47,7 +48,7 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 		return provider.Set{Text: client}, nil
 	case providerCfg.Ark != nil:
 		cfg := providerCfg.Ark
-		client, err := ark.New(name, cfg.APIKey, cfg.BaseURL)
+		client, err := ark.New(name, cfg.APIKey, cfg.BaseURL, cfg.EndpointID)
 		if err != nil {
 			return provider.Set{}, err
 		}
@@ -59,7 +60,7 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 			return provider.Set{}, err
 		}
 		// OpenAI-compatible 同时承接 chat/completions 与 Images API；
-		// gpt-image-2 走后者，文本模型误请求 image 会在供应商侧失败。
+		// GPT Image 2 / 2.5（现网 async_gpt_image）走后者，文本模型误请求 image 会在供应商侧失败。
 		return provider.Set{Text: client, Image: client}, nil
 	case providerCfg.LTX != nil:
 		cfg := providerCfg.LTX
@@ -105,6 +106,22 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 			return provider.Set{}, err
 		}
 		return provider.Set{Video: client}, nil
+	case providerCfg.MinimaxTTS != nil:
+		cfg := providerCfg.MinimaxTTS
+		client, err := minimaxtts.New(minimaxtts.Config{
+			Name:          name,
+			APIKey:        cfg.APIKey,
+			Endpoint:      cfg.Endpoint,
+			LanguageBoost: cfg.LanguageBoost,
+			VoiceID:       cfg.VoiceID,
+			Speed:         cfg.Speed,
+			Volume:        cfg.Volume,
+			Pitch:         cfg.Pitch,
+		})
+		if err != nil {
+			return provider.Set{}, err
+		}
+		return provider.Set{Speech: client}, nil
 	default:
 		return provider.Set{}, provider.New(provider.ErrorConfiguration, fmt.Sprintf("provider %s has no concrete type", name))
 	}

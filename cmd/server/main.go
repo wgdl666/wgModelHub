@@ -16,6 +16,7 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/apikeystore"
 	"github.com/wgdl666/wgModelHub/internal/auth"
 	"github.com/wgdl666/wgModelHub/internal/infra/factory"
+	"github.com/wgdl666/wgModelHub/internal/infra/httpserver"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/service/modelhub"
 	"github.com/wgdl666/wgModelHub/internal/taskstore"
@@ -59,6 +60,16 @@ func main() {
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer shutdownCancel()
 		_ = telemetryRuntime.Shutdown(shutdownCtx)
+	}()
+
+	httpSrv := httpserver.New(telemetryRuntime.MetricsHandler())
+	if err := httpSrv.Start(runtimeConfig.Server.HTTPListenAddress); err != nil {
+		fatal("http_server_start_failed", err)
+	}
+	defer func() {
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		_ = httpSrv.Stop(shutdownCtx)
 	}()
 
 	providers, err := factory.Build(ctx, runtimeConfig)

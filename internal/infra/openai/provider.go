@@ -10,9 +10,9 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"sort"
 	"strings"
 
+	"github.com/wgdl666/kangaroo/logs"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
@@ -68,7 +68,6 @@ func (p *Provider) GenerateStream(ctx context.Context, model string, request *mo
 	}
 	defer respBody.Close()
 
-	toolCallAccum := map[int]*modelhubv2.ToolCall{}
 	var finishReason string
 	var responseID string
 	var usage *modelhubv2.Usage
@@ -106,19 +105,24 @@ func (p *Provider) GenerateStream(ctx context.Context, model string, request *mo
 				return nil, err
 			}
 		}
+		// 千问给啥就吐啥：这一包的 id/name/arguments/index 原样下发，不在 ModelHub 拼完整 call。
+		// index 按 JSON presence 透传（显式 0 保留，字段缺失则为 nil）；空 arguments 也必须带上同一 index。
 		for _, tc := range delta.ToolCalls {
-			acc, ok := toolCallAccum[tc.Index]
-			if !ok {
-				acc = &modelhubv2.ToolCall{}
-				toolCallAccum[tc.Index] = acc
+			if emit == nil {
+				continue
 			}
-			if tc.ID != "" {
-				acc.Id = tc.ID
+			out := &modelhubv2.ToolCall{
+				Id:            tc.ID,
+				Name:          tc.Function.Name,
+				ArgumentsJson: []byte(tc.Function.Arguments),
 			}
-			if tc.Function.Name != "" {
-				acc.Name = tc.Function.Name
+			if tc.Index != nil {
+				index := int32(*tc.Index)
+				out.Index = &index
 			}
-			acc.ArgumentsJson = append(acc.ArgumentsJson, []byte(tc.Function.Arguments)...)
+			if err := emit(provider.ToolCallEvent(out)); err != nil {
+				return nil, err
+			}
 		}
 		if chunk.Choices[0].FinishReason != "" {
 			finishReason = chunk.Choices[0].FinishReason
@@ -129,20 +133,6 @@ func (p *Provider) GenerateStream(ctx context.Context, model string, request *mo
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" stream read failed", err)
-	}
-
-	// 流式增量结束后再按 index 顺序发出完整 tool call，避免半成品重复事件。
-	indexes := make([]int, 0, len(toolCallAccum))
-	for index := range toolCallAccum {
-		indexes = append(indexes, index)
-	}
-	sort.Ints(indexes)
-	for _, i := range indexes {
-		if emit != nil {
-			if err := emit(provider.ToolCallEvent(toolCallAccum[i])); err != nil {
-				return nil, err
-			}
-		}
 	}
 	return provider.MetadataFinalEvent(responseID, finishReason, usage), nil
 }
@@ -262,18 +252,41 @@ func (p *Provider) buildRequestBody(model string, request *modelhubv2.GenerateRe
 		}
 	}
 	if text != nil && text.Thinking != modelhubv2.ThinkingMode_THINKING_MODE_UNSPECIFIED {
-		// thinking 是统一协议语义：显式启停必须下发，UNSPECIFIED 才保留供应商默认行为。
-		body["enable_thinking"] = text.Thinking == modelhubv2.ThinkingMode_THINKING_MODE_ENABLED
+		applyThinking(body, model, text.Thinking)
 	}
 	return body
 }
 
+// applyThinking 把统一协议 ThinkingMode 映射到供应商字段。
+// DashScope Qwen 走 enable_thinking。
+// GLM-5.3-flash：当前智谱 endpoint 接受 thinking.type=disabled（ToolChoice=required 探针通过）；
+// 但仍可能返回 reasoning_content，因此 DISABLED→disabled 不是保证 true-off，只是显式关闭请求。
+// Claude Haiku 走 Anthropic OpenAI-compat，不得下发 DashScope/GLM 私有思考字段；
+// DISABLED 对 Haiku 表示不启用任何额外思考字段。
+func applyThinking(body map[string]any, model string, thinking modelhubv2.ThinkingMode) {
+	if thinking == modelhubv2.ThinkingMode_THINKING_MODE_UNSPECIFIED {
+		return
+	}
+	if model == models.ClaudeHaiku45 {
+		return
+	}
+	if model == models.GLM53Flash {
+		if thinking == modelhubv2.ThinkingMode_THINKING_MODE_DISABLED {
+			body["thinking"] = map[string]any{"type": "disabled"}
+			return
+		}
+		body["thinking"] = map[string]any{"type": "enabled"}
+		return
+	}
+	body["enable_thinking"] = thinking == modelhubv2.ThinkingMode_THINKING_MODE_ENABLED
+}
+
 // dashScopeExplicitCacheEligible 判定是否应向 DashScope 下发显式 cache_control。
 // 仅 DashScope 官方 host 上已开通显式 ephemeral 缓存的 Qwen 文本模型可携带该字段；
-// OminiLink/OpenAI 默认实例与其它模型不得误标。
+// Claude/OminiLink/OpenAI 默认实例与其它模型不得误标。
 func (p *Provider) dashScopeExplicitCacheEligible(model string, input *modelhubv2.Input) bool {
 	switch model {
-	case models.QwenFlash, models.Qwen37Flash, models.Qwen35Flash, models.Qwen3VLPlus:
+	case models.QwenFlash, models.Qwen37Flash, models.Qwen38Flash, models.Qwen35Flash, models.Qwen3VLPlus:
 	default:
 		return false
 	}
@@ -433,10 +446,81 @@ func (p *Provider) doRequest(ctx context.Context, body map[string]any) (io.ReadC
 		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" request failed", err)
 	}
 	if resp.StatusCode != http.StatusOK {
+		// 只读供应商拒因，不回读请求体；否则 Hub 只能看到光秃秃的 HTTP 400。
+		// 额外附带请求形态诊断（不含 prompt / 原始 arguments），区分历史 arguments 非法 JSON 与供应商侧生成失败。
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<10))
 		resp.Body.Close()
-		return nil, provider.FromHTTP(p.name, resp.StatusCode)
+		detail := strings.TrimSpace(string(raw))
+		fields := append([]any{
+			"provider", p.name,
+			"status", resp.StatusCode,
+		}, chatRequestDiagFields(body)...)
+		if snippet := provider.CompactHTTPErrorDetail(detail); snippet != "" {
+			fields = append(fields, "body", snippet)
+		}
+		logs.Default().Error("openai_http_error", fields...)
+		return nil, provider.FromHTTPDetail(p.name, resp.StatusCode, detail)
 	}
 	return resp.Body, nil
+}
+
+// invalidFunctionArgumentsEntry 仅记录定位非法 arguments 所需的紧凑元数据，绝不包含 arguments 原文。
+type invalidFunctionArgumentsEntry struct {
+	MessageIndex int    `json:"message_index"`
+	ToolIndex    int    `json:"tool_index"`
+	ToolName     string `json:"tool_name,omitempty"`
+	ArgumentsLen int    `json:"arguments_len"`
+}
+
+// chatRequestDiagFields 从即将下发的 chat/completions body 提取安全诊断字段。
+// 只统计形态与 JSON 合法性，不读取消息文本、有效 arguments 或密钥。
+func chatRequestDiagFields(body map[string]any) []any {
+	model, _ := body["model"].(string)
+	stream, _ := body["stream"].(bool)
+	messages, _ := body["messages"].([]map[string]any)
+	tools, _ := body["tools"].([]map[string]any)
+
+	assistantToolCalls := 0
+	var invalid []invalidFunctionArgumentsEntry
+	for msgIdx, msg := range messages {
+		if msg["role"] != "assistant" {
+			continue
+		}
+		tcs, ok := msg["tool_calls"].([]map[string]any)
+		if !ok {
+			continue
+		}
+		for toolIdx, tc := range tcs {
+			assistantToolCalls++
+			fn, _ := tc["function"].(map[string]any)
+			args, argsOK := fn["arguments"].(string)
+			name, _ := fn["name"].(string)
+			if !argsOK || !json.Valid([]byte(args)) {
+				entry := invalidFunctionArgumentsEntry{
+					MessageIndex: msgIdx,
+					ToolIndex:    toolIdx,
+					ToolName:     name,
+				}
+				if argsOK {
+					entry.ArgumentsLen = len(args)
+				}
+				invalid = append(invalid, entry)
+			}
+		}
+	}
+
+	fields := []any{
+		"model", model,
+		"stream", stream,
+		"message_count", len(messages),
+		"tool_count", len(tools),
+		"assistant_tool_call_count", assistantToolCalls,
+		"invalid_function_arguments_count", len(invalid),
+	}
+	if len(invalid) > 0 {
+		fields = append(fields, "invalid_function_arguments", invalid)
+	}
+	return fields
 }
 
 type chatCompletionResponse struct {
@@ -477,7 +561,8 @@ type apiToolCall struct {
 }
 
 type apiToolCallDelta struct {
-	Index    int         `json:"index"`
+	// *int 保留供应商 JSON 的 index presence：缺字段为 nil，显式 0 为非 nil。
+	Index    *int        `json:"index"`
 	ID       string      `json:"id,omitempty"`
 	Function apiFunction `json:"function"`
 }

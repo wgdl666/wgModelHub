@@ -58,7 +58,7 @@ func TestBuildRequestBodyDashScopeExplicitCacheControl(t *testing.T) {
 	p := dashScopeProvider()
 	caching := &modelhubv2.CachingConfig{Enabled: true}
 
-	for _, model := range []string{models.QwenFlash, models.Qwen37Flash, models.Qwen35Flash, models.Qwen3VLPlus} {
+	for _, model := range []string{models.QwenFlash, models.Qwen37Flash, models.Qwen38Flash, models.Qwen35Flash, models.Qwen3VLPlus} {
 		t.Run(model+"_attaches_ephemeral", func(t *testing.T) {
 			body := p.buildRequestBody(model, systemUserRequest(systemText, "hi", caching), false)
 			cc, ok := systemCacheControl(t, body)
@@ -226,6 +226,121 @@ func TestBuildRequestBodySendsEnabledThinking(t *testing.T) {
 	}, false)
 	if thinking, ok := body["enable_thinking"].(bool); !ok || !thinking {
 		t.Fatalf("enable_thinking = %#v", body["enable_thinking"])
+	}
+}
+
+// TestBuildRequestBodyQwen38ThinkingAndCache 证明 qwen3.8-flash 纳入 DashScope thinking/caching 适用集合。
+func TestBuildRequestBodyQwen38ThinkingAndCache(t *testing.T) {
+	p := dashScopeProvider()
+	body := p.buildRequestBody(models.Qwen38Flash, systemUserRequest(strings.Repeat("缓存前缀。", 400), "hi", &modelhubv2.CachingConfig{Enabled: true}), false)
+	if thinking, ok := body["enable_thinking"].(bool); !ok || thinking {
+		t.Fatalf("enable_thinking = %#v", body["enable_thinking"])
+	}
+	cc, ok := systemCacheControl(t, body)
+	if !ok || cc["type"] != "ephemeral" {
+		t.Fatalf("cache_control = %#v", cc)
+	}
+}
+
+// TestBuildRequestBodyClaudeOmitsVendorPrivateFields 证明 Haiku 不下发 enable_thinking / DashScope cache_control，
+// 且 tool_choice=required 仍按 OpenAI-compat 原样下发。
+func TestBuildRequestBodyClaudeOmitsVendorPrivateFields(t *testing.T) {
+	p := &Provider{baseURL: "https://api.anthropic.com/v1"}
+	req := systemUserRequest("sys", "hi", &modelhubv2.CachingConfig{Enabled: true})
+	req.Input.ToolChoice = &modelhubv2.ToolChoice{Mode: modelhubv2.ToolChoiceMode_TOOL_CHOICE_MODE_REQUIRED}
+	req.Input.Tools = []*modelhubv2.Tool{{
+		Function: &modelhubv2.FunctionDefinition{
+			Name:        "discuss_styling",
+			Description: "discuss",
+		},
+	}}
+	body := p.buildRequestBody(models.ClaudeHaiku45, req, false)
+	if _, ok := body["enable_thinking"]; ok {
+		t.Fatalf("Claude must not receive enable_thinking: %#v", body["enable_thinking"])
+	}
+	if _, ok := body["thinking"]; ok {
+		t.Fatalf("Claude must not receive thinking object: %#v", body["thinking"])
+	}
+	messages := body["messages"].([]map[string]any)
+	if messages[0]["content"] != "sys" {
+		t.Fatalf("Claude must not rewrite system with cache_control: %#v", messages[0]["content"])
+	}
+	if body["tool_choice"] != "required" {
+		t.Fatalf("tool_choice = %#v", body["tool_choice"])
+	}
+	if body["model"] != models.ClaudeHaiku45 {
+		t.Fatalf("model = %#v, want snapshot id", body["model"])
+	}
+}
+
+// TestBuildRequestBodyGLMThinkingDisabled 证明 DISABLED 下发 thinking.type=disabled；
+// ENABLED 下发 enabled；UNSPECIFIED 不改供应商默认。智谱可能仍返回 reasoning，属运行时事实。
+func TestBuildRequestBodyGLMThinkingDisabled(t *testing.T) {
+	p := &Provider{baseURL: "https://open.bigmodel.cn/api/paas/v4"}
+
+	enabled := p.buildRequestBody(models.GLM53Flash, &modelhubv2.GenerateRequest{
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{
+			Thinking: modelhubv2.ThinkingMode_THINKING_MODE_ENABLED,
+		}}},
+	}, false)
+	assertGLMThinkingType(t, enabled, "enabled")
+	if _, ok := enabled["reasoning_effort"]; ok {
+		t.Fatalf("enabled thinking must not force reasoning_effort: %#v", enabled["reasoning_effort"])
+	}
+
+	disabled := p.buildRequestBody(models.GLM53Flash, &modelhubv2.GenerateRequest{
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{
+			Thinking: modelhubv2.ThinkingMode_THINKING_MODE_DISABLED,
+		}}},
+	}, false)
+	assertGLMThinkingType(t, disabled, "disabled")
+	if _, ok := disabled["reasoning_effort"]; ok {
+		t.Fatalf("disabled thinking must not set reasoning_effort: %#v", disabled["reasoning_effort"])
+	}
+
+	unspecified := p.buildRequestBody(models.GLM53Flash, &modelhubv2.GenerateRequest{
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{}}},
+	}, false)
+	if _, ok := unspecified["thinking"]; ok {
+		t.Fatalf("unspecified thinking must preserve GLM default: %#v", unspecified["thinking"])
+	}
+	if _, ok := unspecified["enable_thinking"]; ok {
+		t.Fatalf("GLM must not receive DashScope enable_thinking: %#v", unspecified["enable_thinking"])
+	}
+}
+
+func assertGLMThinkingType(t *testing.T, body map[string]any, wantType string) {
+	t.Helper()
+	if _, ok := body["enable_thinking"]; ok {
+		t.Fatalf("GLM must not receive DashScope enable_thinking: %#v", body["enable_thinking"])
+	}
+	thinking, ok := body["thinking"].(map[string]any)
+	if !ok || thinking["type"] != wantType {
+		t.Fatalf("thinking = %#v, want type=%q", body["thinking"], wantType)
+	}
+}
+
+func TestConvertMessageImageURLMatchesChatCompletions(t *testing.T) {
+	msg := convertMessage(&modelhubv2.Message{
+		Role: modelhubv2.Role_ROLE_USER,
+		Parts: []*modelhubv2.ContentPart{
+			{Content: &modelhubv2.ContentPart_Image{Image: &modelhubv2.Media{
+				MimeType: "image/png",
+				Source:   &modelhubv2.Media_Uri{Uri: "https://example.com/grounding.png"},
+			}}},
+			{Content: &modelhubv2.ContentPart_Text{Text: "Where is the bottle?"}},
+		},
+	})
+	parts, ok := msg["content"].([]map[string]any)
+	if !ok || len(parts) != 2 {
+		t.Fatalf("content = %#v", msg["content"])
+	}
+	image, ok := parts[0]["image_url"].(map[string]any)
+	if !ok || parts[0]["type"] != "image_url" || image["url"] != "https://example.com/grounding.png" {
+		t.Fatalf("image part = %#v", parts[0])
+	}
+	if parts[1]["type"] != "text" || parts[1]["text"] != "Where is the bottle?" {
+		t.Fatalf("text part = %#v", parts[1])
 	}
 }
 

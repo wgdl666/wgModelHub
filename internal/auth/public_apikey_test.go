@@ -121,6 +121,33 @@ func TestUnaryInterceptorInvalidKeyUnauthenticated(t *testing.T) {
 	}
 }
 
+func TestUnaryInterceptorCoversSynthesizeSpeech(t *testing.T) {
+	// 公网 listener 共用同一 unary interceptor；新建 unary RPC 不得绕过鉴权。
+	store, mat := openAuthTestStore(t)
+	interceptor := UnaryServerInterceptor(store)
+	method := "/wg_model_hub.v2.ModelHubService/SynthesizeSpeech"
+
+	_, err := interceptor(context.Background(), nil, &grpc.UnaryServerInfo{FullMethod: method}, func(ctx context.Context, req any) (any, error) {
+		return "ok", nil
+	})
+	if status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("missing auth: %v", err)
+	}
+
+	md := metadata.Pairs("authorization", mat.Bearer)
+	inCtx := metadata.NewIncomingContext(context.Background(), md)
+	got, err := interceptor(inCtx, nil, &grpc.UnaryServerInfo{FullMethod: method}, func(ctx context.Context, req any) (any, error) {
+		caller, ok := PublicCaller(ctx)
+		if !ok || caller != "public:"+mat.PrincipalID {
+			t.Fatalf("caller=%q ok=%v", caller, ok)
+		}
+		return "ok", nil
+	})
+	if err != nil || got != "ok" {
+		t.Fatalf("authorized synthesize: got=%v err=%v", got, err)
+	}
+}
+
 func TestUnaryInterceptorStoreErrorUnavailable(t *testing.T) {
 	store, mat, db := openAuthTestStoreEx(t)
 	if err := db.Close(); err != nil {

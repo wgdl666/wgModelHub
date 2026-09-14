@@ -22,9 +22,10 @@ const (
 	NacosDataID       = "wg.mirror.modelHub"
 	NacosGroup        = "DEFAULT_GROUP"
 
-	CapabilityText  = "text"
-	CapabilityImage = "image"
-	CapabilityVideo = "video"
+	CapabilityText   = "text"
+	CapabilityImage  = "image"
+	CapabilityVideo  = "video"
+	CapabilitySpeech = "speech"
 )
 
 // Bootstrap 只保存 Nacos 定位信息；供应商凭据只能存在于受保护的配置正文中。
@@ -46,6 +47,8 @@ type ProviderConfig struct {
 	OminilinkVideo *OminilinkVideoProviderConfig `yaml:"ominilink_video"`
 	GeminiVideo    *GeminiVideoProviderConfig    `yaml:"gemini_video"`
 	ArkVideo       *ArkVideoProviderConfig       `yaml:"ark_video"`
+	// MinimaxTTS 承接同步一次性 TTS；与 chat/completions OpenAI 实例分绑，避免误用文本能力。
+	MinimaxTTS *MinimaxTTSProviderConfig `yaml:"minimax_tts"`
 }
 
 type GeminiProviderConfig struct {
@@ -62,9 +65,11 @@ type VertexAIProviderConfig struct {
 type ArkProviderConfig struct {
 	APIKey  string `yaml:"api_key"`
 	BaseURL string `yaml:"base_url"`
+	// EndpointID 可选：火山方舟推理部署 ID（如 ep-xxx）。对外 request.model 仍是 models 包常量，仅上游 Responses 请求体改用此 endpoint。
+	EndpointID string `yaml:"endpoint_id"`
 }
 
-// OpenAIProviderConfig 覆盖 OpenAI-compatible HTTP 端；OminiLink 文本与 gpt-image-2 都走这里。
+// OpenAIProviderConfig 覆盖 OpenAI-compatible HTTP 端；文本实例与 GPT Image（async_gpt_image 上的 2 / 2.5）都走这里（按实例绑定 models）。
 type OpenAIProviderConfig struct {
 	APIKey  string `yaml:"api_key"`
 	BaseURL string `yaml:"base_url"`
@@ -112,10 +117,24 @@ type ArkVideoProviderConfig struct {
 	MaxPollTime  float64 `yaml:"max_poll_time"`
 }
 
+// MinimaxTTSProviderConfig 对齐线上 wgHub Minimax WebSocket TTS。
+// 第一版输出格式在代码内固定为 MP3/16kHz/mono，不在此暴露可切换 format，避免调用方与解码链分叉。
+type MinimaxTTSProviderConfig struct {
+	APIKey        string  `yaml:"api_key"`
+	Endpoint      string  `yaml:"endpoint"`
+	LanguageBoost string  `yaml:"language_boost"`
+	VoiceID       string  `yaml:"voice_id"`
+	Speed         float64 `yaml:"speed"`
+	Volume        float64 `yaml:"volume"`
+	Pitch         int     `yaml:"pitch"`
+}
+
 type Config struct {
 	Server struct {
 		ListenAddress       string
 		PublicListenAddress string
+		// HTTPListenAddress 仅承载 /healthz 与 /metrics；拓扑端口由 WG_SERVER_HTTP_PORT 注入。
+		HTTPListenAddress string
 	} `yaml:"-"`
 	Providers map[string]ProviderConfig `yaml:"providers"`
 	// ModelRouteOverrides：真实模型 ID -> 显式选中的 provider 实例名；provider 不变时可经 ListenConfig 热更新。
@@ -350,7 +369,7 @@ func (c Config) Validate() error {
 	return nil
 }
 
-// ApplyListenPortOverridesFromEnv 在 server 启动边界装配内外网 gRPC 监听地址；Pod 拓扑端口不得由 Nacos 业务正文拥有。
+// ApplyListenPortOverridesFromEnv 在 server 启动边界装配内外网 gRPC 与内部 HTTP 监听地址；Pod 拓扑端口不得由 Nacos 业务正文拥有。
 func ApplyListenPortOverridesFromEnv(cfg *Config) error {
 	raw := strings.TrimSpace(os.Getenv("WG_SERVER_GRPC_PORT"))
 	if raw == "" {
@@ -361,6 +380,16 @@ func ApplyListenPortOverridesFromEnv(cfg *Config) error {
 		return fmt.Errorf("WG_SERVER_GRPC_PORT must be a valid listen port")
 	}
 	cfg.Server.ListenAddress = fmt.Sprintf(":%d", port)
+
+	httpRaw := strings.TrimSpace(os.Getenv("WG_SERVER_HTTP_PORT"))
+	if httpRaw == "" {
+		return fmt.Errorf("missing WG_SERVER_HTTP_PORT: server startup requires Deployment-injected metrics listen port")
+	}
+	httpPort, err := strconv.Atoi(httpRaw)
+	if err != nil || httpPort <= 0 || httpPort > 65535 {
+		return fmt.Errorf("WG_SERVER_HTTP_PORT must be a valid listen port")
+	}
+	cfg.Server.HTTPListenAddress = fmt.Sprintf(":%d", httpPort)
 
 	publicRaw := strings.TrimSpace(os.Getenv("WG_SERVER_PUBLIC_GRPC_PORT"))
 	if publicRaw == "" {
@@ -426,6 +455,10 @@ func validateProvider(name string, provider ProviderConfig) error {
 		if strings.TrimSpace(provider.Ark.APIKey) == "" {
 			return fmt.Errorf("provider %s api_key is required", name)
 		}
+		// endpoint_id 绑定单一推理部署；多模型共用同一 endpoint 会在路由层产生歧义，启动时拒绝。
+		if strings.TrimSpace(provider.Ark.EndpointID) != "" && len(provider.Models) != 1 {
+			return fmt.Errorf("provider %s endpoint_id requires exactly one model", name)
+		}
 	case provider.OpenAI != nil:
 		if strings.TrimSpace(provider.OpenAI.APIKey) == "" {
 			return fmt.Errorf("provider %s api_key is required", name)
@@ -453,6 +486,10 @@ func validateProvider(name string, provider ProviderConfig) error {
 		}
 	case provider.ArkVideo != nil:
 		if strings.TrimSpace(provider.ArkVideo.APIKey) == "" {
+			return fmt.Errorf("provider %s api_key is required", name)
+		}
+	case provider.MinimaxTTS != nil:
+		if strings.TrimSpace(provider.MinimaxTTS.APIKey) == "" {
 			return fmt.Errorf("provider %s api_key is required", name)
 		}
 	}
@@ -488,6 +525,9 @@ func countConcreteProviders(provider ProviderConfig) int {
 	if provider.ArkVideo != nil {
 		n++
 	}
+	if provider.MinimaxTTS != nil {
+		n++
+	}
 	return n
 }
 
@@ -502,6 +542,8 @@ func ProviderSupports(provider ProviderConfig, capability string) bool {
 		return capability == CapabilityVideo
 	case provider.DashScopeVideo != nil, provider.OminilinkVideo != nil, provider.GeminiVideo != nil, provider.ArkVideo != nil:
 		return capability == CapabilityVideo
+	case provider.MinimaxTTS != nil:
+		return capability == CapabilitySpeech
 	default:
 		return false
 	}

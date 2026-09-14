@@ -34,7 +34,13 @@ type VideoProvider interface {
 
 // Set 表示一个已配置供应商真正实现的能力，不用空实现伪装未支持的 RPC。
 type Set struct {
-	Text  TextProvider
-	Image ImageProvider
-	Video VideoProvider
+	Text   TextProvider
+	Image  ImageProvider
+	Video  VideoProvider
+	Speech SpeechProvider
+}
+
+// SpeechProvider 承接同步一次性 TTS；成功必须返回完整音频，半截收集只能以 error 结束。
+type SpeechProvider interface {
+	SynthesizeSpeech(context.Context, string, *modelhubv2.SynthesizeSpeechRequest) (*modelhubv2.SynthesizeSpeechResponse, error)
 }

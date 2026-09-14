@@ -1,6 +1,67 @@
 package models
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
+
+// TestDoubaoSeed21ProModelID 锁定 2.1 Pro 对外真实模型名，避免与 2.0 mini/lite 或基础模型 ID 混用。
+func TestDoubaoSeed21ProModelID(t *testing.T) {
+	if DoubaoSeed21Pro != "doubao-seed-2.1-pro" {
+		t.Fatalf("DoubaoSeed21Pro=%q, want doubao-seed-2.1-pro", DoubaoSeed21Pro)
+	}
+	if !slices.Contains(All(), DoubaoSeed21Pro) {
+		t.Fatalf("All() missing %q", DoubaoSeed21Pro)
+	}
+}
+
+// TestDeepSeekV4FlashModelID 锁定正式版对外真实模型名，避免与预览版或其他 DeepSeek ID 混用。
+func TestDeepSeekV4FlashModelID(t *testing.T) {
+	if DeepSeekV4Flash != "deepseek-v4-flash" {
+		t.Fatalf("DeepSeekV4Flash=%q, want deepseek-v4-flash", DeepSeekV4Flash)
+	}
+	if !slices.Contains(All(), DeepSeekV4Flash) {
+		t.Fatalf("All() missing %q", DeepSeekV4Flash)
+	}
+}
+
+// TestGLM53FlashModelID 锁定智谱对外真实模型名，避免写成 glm-5-flash 或 Coding Plan 别名。
+func TestGLM53FlashModelID(t *testing.T) {
+	if GLM53Flash != "glm-5.3-flash" {
+		t.Fatalf("GLM53Flash=%q, want glm-5.3-flash", GLM53Flash)
+	}
+	if !slices.Contains(All(), GLM53Flash) {
+		t.Fatalf("All() missing %q", GLM53Flash)
+	}
+}
+
+// TestFlux2Klein9BModelID 锁定 FLUX.2 对外真实模型名，避免写成 Klein/FLUX2 等业务别名。
+func TestFlux2Klein9BModelID(t *testing.T) {
+	if Flux2Klein9B != "FLUX.2-klein-9B" {
+		t.Fatalf("Flux2Klein9B=%q, want FLUX.2-klein-9B", Flux2Klein9B)
+	}
+	if !slices.Contains(All(), Flux2Klein9B) {
+		t.Fatalf("All() missing %q", Flux2Klein9B)
+	}
+}
+
+// TestGPTImage25ModelIDs 锁定 GPT Image 2.5 真实模型 ID，禁止写成 flare/sunburst 业务简称或塞进 gpt-image-2。
+func TestGPTImage25ModelIDs(t *testing.T) {
+	cases := []struct {
+		got, want string
+	}{
+		{GPTImage25Flare, "gpt-image-2.5-flare"},
+		{GPTImage25Sunburst, "gpt-image-2.5-sunburst"},
+	}
+	for _, tc := range cases {
+		if tc.got != tc.want {
+			t.Fatalf("model id = %q, want %q", tc.got, tc.want)
+		}
+		if !slices.Contains(All(), tc.got) {
+			t.Fatalf("All() missing %q", tc.got)
+		}
+	}
+}
 
 func TestAllAreUnique(t *testing.T) {
 	seen := map[string]struct{}{}
@@ -12,5 +73,62 @@ func TestAllAreUnique(t *testing.T) {
 			t.Fatalf("duplicate model id %s", model)
 		}
 		seen[model] = struct{}{}
+	}
+}
+
+func TestGemini37FlashConstant(t *testing.T) {
+	if Gemini37Flash != "gemini-3.7-flash" {
+		t.Fatalf("Gemini37Flash = %q", Gemini37Flash)
+	}
+	found := false
+	for _, model := range All() {
+		if model == Gemini37Flash {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("Gemini37Flash missing from All()")
+	}
+}
+
+// TestIntentCandidateModelIDs 锁定四候选真实 ID：3.8/3.5-lite/Qwen3.8 与 Haiku 官方快照，禁止市场简称。
+func TestIntentCandidateModelIDs(t *testing.T) {
+	cases := []struct {
+		got, want string
+	}{
+		{Gemini38Flash, "gemini-3.8-flash"},
+		{Gemini35FlashLite, "gemini-3.5-flash-lite"},
+		{Qwen38Flash, "qwen3.8-flash"},
+		{ClaudeHaiku45, "claude-haiku-4-5-20251001"},
+	}
+	for _, tc := range cases {
+		if tc.got != tc.want {
+			t.Fatalf("model id = %q, want %q", tc.got, tc.want)
+		}
+		if !slices.Contains(All(), tc.got) {
+			t.Fatalf("All() missing %q", tc.got)
+		}
+	}
+}
+
+func TestDoubaoSeed20Constants(t *testing.T) {
+	if DoubaoSeed20Mini != "doubao-seed-2.0-mini" {
+		t.Fatalf("DoubaoSeed20Mini = %q", DoubaoSeed20Mini)
+	}
+	if DoubaoSeed20Lite != "doubao-seed-2.0-lite" {
+		t.Fatalf("DoubaoSeed20Lite = %q", DoubaoSeed20Lite)
+	}
+	for _, want := range []string{DoubaoSeed20Mini, DoubaoSeed20Lite} {
+		found := false
+		for _, model := range All() {
+			if model == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("%s missing from All()", want)
+		}
 	}
 }
