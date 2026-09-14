@@ -133,6 +133,25 @@ func TestAuthenticateRevokedUnlimitedKey(t *testing.T) {
 	}
 }
 
+func TestAuthenticateIgnoresCanceledCallerContext(t *testing.T) {
+	client := openTestClient(t)
+	store := New(client)
+	secret := "alive-secret"
+	keyID := insertTestKey(t, client, secret, futureExpiry(), nil)
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	principal, err := store.Authenticate(canceled, bearerToken(keyID, secret))
+	if err != nil {
+		t.Fatalf("canceled caller ctx must not fail key lookup: %v", err)
+	}
+	if principal.KeyID != keyID {
+		t.Fatalf("principal=%+v", principal)
+	}
+	if _, err := store.Authenticate(canceled, bearerToken("missing", "x")); err != ErrInvalid {
+		t.Fatalf("unknown key must stay ErrInvalid, got %v", err)
+	}
+}
+
 func TestAuthenticateMissingBearerScheme(t *testing.T) {
 	client := openTestClient(t)
 	store := New(client)

@@ -40,9 +40,13 @@ func (s *Store) Authenticate(ctx context.Context, authorization string) (Princip
 	if !ok {
 		return Principal{}, ErrInvalid
 	}
+	// 公网口经 http.Server/h2c 进来时，RPC ctx 可能已取消；查库必须用独立超时，
+	// 否则 Ent 失败会被鉴权拦截器标成 Unavailable，把坏 Key 伪装成基础设施故障。
+	lookupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+	defer cancel()
 	row, err := s.client.ModelhubAPIKey.Query().
 		Where(modelhubapikey.KeyIDEQ(keyID)).
-		Only(ctx)
+		Only(lookupCtx)
 	if ent.IsNotFound(err) {
 		return Principal{}, ErrInvalid
 	}
