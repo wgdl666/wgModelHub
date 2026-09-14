@@ -110,13 +110,39 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${{ steps.build.outputs.tag }}"
-          # ACR GetRepoTag 返回 64 位 digest，部署只用 @sha256，避免可变 tag 漂移；复用与新建后都要再校验。
-          DIGEST=$(aliyun cr GetRepoTag \
-            --InstanceId ${{ env.ACR_INSTANCE_ID }} \
-            --RepoId ${{ env.ACR_REPO_ID }} \
-            --Tag "$TAG" | jq -r '.Digest')
+          # ACR push 后索引短暂最终一致，必须以可读到合法 digest 作为发布完成条件。
+          DIGEST=""
+          CODE=""
+          STATUS=""
+          TAG_JSON=""
+          lookup_rc=0
+          for attempt in $(seq 1 10); do
+            set +e
+            TAG_JSON=$(aliyun cr GetRepoTag \
+              --InstanceId ${{ env.ACR_INSTANCE_ID }} \
+              --RepoId ${{ env.ACR_REPO_ID }} \
+              --Tag "$TAG")
+            lookup_rc=$?
+            set -e
+            CODE=$(printf '%s' "$TAG_JSON" | jq -r '.Code // empty' 2>/dev/null || true)
+            DIGEST=$(printf '%s' "$TAG_JSON" | jq -r '.Digest // empty' 2>/dev/null || true)
+            DIGEST=${DIGEST#sha256:}
+            STATUS=$(printf '%s' "$TAG_JSON" | jq -r '.Status // empty' 2>/dev/null || true)
+            if [[ -n "$STATUS" && "$STATUS" != "null" && "$STATUS" != "NORMAL" ]]; then
+              echo "ACR tag $TAG has abnormal status: $STATUS" >&2
+              exit 1
+            fi
+            if [[ "$DIGEST" =~ ^[0-9a-f]{64}$ ]]; then
+              break
+            fi
+            if [ "$attempt" -lt 10 ]; then
+              sleep 3
+            fi
+          done
           if ! [[ "$DIGEST" =~ ^[0-9a-f]{64}$ ]]; then
-            echo "ACR did not return a valid digest for tag $TAG" >&2
+            MESSAGE=$(printf '%s' "$TAG_JSON" | jq -r '.Message // empty' 2>/dev/null || true)
+            echo "ACR did not return a valid digest for tag $TAG after retries" >&2
+            echo "tag=$TAG lookup_rc=$lookup_rc Code=$CODE Status=$STATUS Message=$MESSAGE" >&2
             exit 1
           fi
           DEPLOY_IMAGE="${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.ACR_REPOSITORY }}@sha256:$DIGEST"
