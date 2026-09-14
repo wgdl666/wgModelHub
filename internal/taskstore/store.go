@@ -75,7 +75,12 @@ func Open(ctx context.Context, dsn string) (*ent.Client, error) {
 		return nil, fmt.Errorf("ping database")
 	}
 	drv := entsql.OpenDB(dialect.Postgres, db)
-	return ent.NewClient(ent.Driver(drv)), nil
+	// cmd/migrate 只执行 001（generation_task）。api_key 与 Ops 管理面共用未限定表名，
+	// 现网在 public；若这里仍查 modelhub.modelhub_api_key，所有公网 Key 都会变成 Unavailable。
+	return ent.NewClient(ent.Driver(drv), ent.AlternateSchema(ent.SchemaConfig{
+		GenerationTask: "modelhub",
+		ModelhubAPIKey: "",
+	})), nil
 }
 
 func (p *Postgres) InsertPending(ctx context.Context, task Task) (Task, bool, error) {
