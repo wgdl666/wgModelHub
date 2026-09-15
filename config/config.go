@@ -137,7 +137,7 @@ type Config struct {
 		HTTPListenAddress string
 	} `yaml:"-"`
 	Providers map[string]ProviderConfig `yaml:"providers"`
-	// ModelRouteOverrides：真实模型 ID -> 显式选中的 provider 实例名；provider 不变时可经 ListenConfig 热更新。
+	// ModelRouteOverrides：真实模型 ID -> 显式选中的 provider 实例名；与各实例 Models 同属路由元数据，可经 ListenConfig 热更新。
 	ModelRouteOverrides map[string]string `yaml:"model_routes"`
 	// Database 仅服务视频长任务跨 Pod 查询；启动不做 DDL，migration 需显式执行。
 	Database DatabaseConfig `yaml:"database"`

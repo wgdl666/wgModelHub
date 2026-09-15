@@ -28,7 +28,7 @@ func (lc *LiveConfig) Store(cfg Config) {
 	lc.current.Store(&c)
 }
 
-// Load 返回当前配置副本；model_routes 等热字段在请求路径读取。
+// Load 返回当前配置副本；models / model_routes 等热字段在请求路径读取。
 func (lc *LiveConfig) Load() Config {
 	if lc == nil {
 		return Config{}
@@ -78,7 +78,8 @@ func ParseAndValidateYAML(content string) (Config, error) {
 	return cfg, nil
 }
 
-// RestartRequiredFields 列出绑定启动期连接/资源的字段；provider 集合或凭据变化必须滚动重启。
+// RestartRequiredFields 列出绑定启动期连接/资源的字段。
+// 同名同资源 provider 仅 Models 或顶层 model_routes 变化可热更新；实例增删、类型/凭据/端点等资源参数变化整单拒绝。
 func RestartRequiredFields(previous, next Config) []string {
 	var fields []string
 	if previous.Database.DSN != next.Database.DSN {
@@ -87,8 +88,33 @@ func RestartRequiredFields(previous, next Config) []string {
 	if previous.Logfire != next.Logfire {
 		fields = append(fields, "logfire")
 	}
-	if !reflect.DeepEqual(previous.Providers, next.Providers) {
+	if !providerResourcesEqual(previous.Providers, next.Providers) {
 		fields = append(fields, "providers")
 	}
 	return fields
+}
+
+// providerResourcesEqual 只比较启动期绑定的连接与资源参数；Models 是路由元数据，不参与重启判定。
+func providerResourcesEqual(previous, next map[string]ProviderConfig) bool {
+	if len(previous) != len(next) {
+		return false
+	}
+	for name, prev := range previous {
+		curr, ok := next[name]
+		if !ok {
+			return false
+		}
+		if !providerResourceEqual(prev, curr) {
+			return false
+		}
+	}
+	return true
+}
+
+func providerResourceEqual(previous, next ProviderConfig) bool {
+	left := previous
+	right := next
+	left.Models = nil
+	right.Models = nil
+	return reflect.DeepEqual(left, right)
 }

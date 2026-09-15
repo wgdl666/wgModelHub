@@ -12,7 +12,7 @@
 - OpenAI 实例同时承接 chat/completions 与 Images API；无参考图走 `/v1/images/generations`，有参考图走 `/v1/images/edits`。`gpt-image-2` / `gpt-image-2.5-flare` / `gpt-image-2.5-sunburst` 复用现网已实测的 AIG OpenAI-compatible Images 实例（`async_gpt_image`，`https://api.aig-ai.com/v1`），不能并入 Gemini generateContent 生图实例。
 - `FLUX.2-klein-9B` 必须单独绑到 OpenAI Images 实例，不能与 `gpt-image-2` / 2.5 共用。当前 SeeTacloud 部署只开放 i2i edits：无参考图在发 HTTP 前拒绝；edits 必须带 `response_format=b64_json`，因为 worker 默认回 `127.0.0.1` 下载地址。GPT Image（含 2 / 2.5）当前接入沿标准请求且默认返回可解析结果，ModelHub 不下发该字段；`response_format=b64_json` 仅是 FLUX.2 私有兼容特例。
 - `zhipu_glm` 承接智谱 `glm-5.3-flash`（`https://open.bigmodel.cn/api/paas/v4`）。思考字段走 `thinking.type=enabled`，禁止下发 `disabled` 或 DashScope 的 `enable_thinking`；统一协议 `DISABLED` 只映射为 `reasoning_effort=low`。
-- 启动时建立「真实模型 ID → provider 实例」路由：单 provider 声明可隐式选定；多 provider 声明同一模型时必须在顶层 `model_routes` 显式选定其一，不能依赖 map 顺序。无 profile、alias、自动 failover 或热更新；改配置后重启生效。
+- 启动时建立「真实模型 ID → provider 实例」路由：单 provider 声明可隐式选定；多 provider 声明同一模型时必须在顶层 `model_routes` 显式选定其一，不能依赖 map 顺序。无 profile、alias 或自动 failover。同名同资源 provider 仅 `models` 列表和/或顶层 `model_routes` 变化可通过 Nacos 热更新原子切换；provider 实例增删、类型、凭据、BaseURL/Endpoint 等连接资源参数变化仍须滚动重启，不得部分应用。
 - 全部真实模型 ID 是 `models` 包常量（`github.com/wgdl666/wgModelHub/models`）；Nacos / example YAML / 调用方 `request.model` 必须引用这些常量，不能另起业务名。
 - `database.dsn` 服务视频长任务的跨 Pod 持久化；当启用公网 listener 时，同一 Ent client 还服务 API Key 鉴权。所有 ModelHub 关系表都显式限定在 `modelhub` schema；启动不自动 DDL，须显式执行 `migrations/`。
 

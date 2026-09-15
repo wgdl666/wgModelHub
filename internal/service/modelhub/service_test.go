@@ -14,11 +14,104 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"gopkg.in/yaml.v3"
 )
 
 // newTestService 为单测构造带 LiveConfig 的 Service，与生产 Listen 路径一致。
 func newTestService(cfg config.Config, providers map[string]provider.Set, tasks taskstore.Store) *Service {
 	return New(config.NewLiveConfig(cfg), providers, tasks)
+}
+
+func TestServiceHotReloadModelsEnterResolveAndListModels(t *testing.T) {
+	image := &recordingImage{}
+	cfg := config.Config{
+		Logfire:  config.LogfireConfig{Token: "t", Env: "test", Service: "wg-model-hub"},
+		Database: config.DatabaseConfig{DSN: "postgres://modelhub:modelhub@127.0.0.1:5432/modelhub?sslmode=disable"},
+		Providers: map[string]config.ProviderConfig{
+			"async_gpt_image": {
+				Models: []string{models.GPTImage2, models.GPTImage25Flare},
+				OpenAI: &config.OpenAIProviderConfig{APIKey: "k", BaseURL: "https://api.example/v1"},
+			},
+		},
+	}
+	live := config.NewLiveConfig(cfg)
+	service := New(live, map[string]provider.Set{"async_gpt_image": {Image: image}}, nil)
+
+	stream := &generateRecorder{ctx: context.Background()}
+	err := service.Generate(&modelhubv2.GenerateRequest{
+		Model:  models.GPTImage25Sunburst,
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Image{Image: &modelhubv2.ImageOutput{}}},
+	}, stream)
+	if err == nil {
+		t.Fatal("sunburst must be unknown before hot reload")
+	}
+
+	listBefore, err := service.ListModels(context.Background(), &modelhubv2.ListModelsRequest{
+		Category: modelhubv2.ModelCategory_MODEL_CATEGORY_IMAGE_GENERATION,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contains(listModelIDs(listBefore), models.GPTImage25Sunburst) {
+		t.Fatal("ListModels must not include sunburst before hot reload")
+	}
+
+	next := cfg
+	next.Providers = map[string]config.ProviderConfig{
+		"async_gpt_image": {
+			Models: []string{models.GPTImage2, models.GPTImage25Flare, models.GPTImage25Sunburst},
+			OpenAI: &config.OpenAIProviderConfig{APIKey: "k", BaseURL: "https://api.example/v1"},
+		},
+	}
+	body, err := yaml.Marshal(next)
+	if err != nil {
+		t.Fatal(err)
+	}
+	live.ApplyYAML(string(body))
+
+	if live.Load().ModelRoutes()[models.GPTImage25Sunburst] != "async_gpt_image" {
+		t.Fatalf("routes=%v", live.Load().ModelRoutes())
+	}
+	listAfter, err := service.ListModels(context.Background(), &modelhubv2.ListModelsRequest{
+		Category: modelhubv2.ModelCategory_MODEL_CATEGORY_IMAGE_GENERATION,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contains(listModelIDs(listAfter), models.GPTImage25Sunburst) {
+		t.Fatalf("ListModels after hot reload=%v", listModelIDs(listAfter))
+	}
+
+	stream = &generateRecorder{ctx: context.Background()}
+	if err := service.Generate(&modelhubv2.GenerateRequest{
+		Model:  models.GPTImage25Sunburst,
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Image{Image: &modelhubv2.ImageOutput{}}},
+	}, stream); err != nil {
+		t.Fatal(err)
+	}
+	if image.model != models.GPTImage25Sunburst {
+		t.Fatalf("model=%q", image.model)
+	}
+
+	// 删除后 resolve / ListModels 必须同步失效，且仍复用同一 provider client。
+	removed := next
+	removed.Providers = map[string]config.ProviderConfig{
+		"async_gpt_image": {
+			Models: []string{models.GPTImage2, models.GPTImage25Flare},
+			OpenAI: &config.OpenAIProviderConfig{APIKey: "k", BaseURL: "https://api.example/v1"},
+		},
+	}
+	body, err = yaml.Marshal(removed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	live.ApplyYAML(string(body))
+	if err := service.Generate(&modelhubv2.GenerateRequest{
+		Model:  models.GPTImage25Sunburst,
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Image{Image: &modelhubv2.ImageOutput{}}},
+	}, &generateRecorder{ctx: context.Background()}); err == nil {
+		t.Fatal("sunburst must be unknown after delete hot reload")
+	}
 }
 
 type recordingText struct {
