@@ -25,6 +25,7 @@ func TestNewAppConfigLoaderRejectsIdentityMismatch(t *testing.T) {
 	}{
 		{name: "application", key: "APP_NAME", value: "other"},
 		{name: "environment", key: "ENV", value: "production"},
+		{name: "tomirro-prefix", key: "APP_NAME", value: "ohio-modelhub"},
 		{name: "profile", key: "SERVICE_NAME", value: "other"},
 		{name: "region", key: "REGION", value: "ap-southeast-1"},
 	}
@@ -36,6 +37,29 @@ func TestNewAppConfigLoaderRejectsIdentityMismatch(t *testing.T) {
 				t.Fatalf("expected %s mismatch error, got %v", tt.key, err)
 			}
 		})
+	}
+}
+
+func TestNewAppConfigLoaderAcceptsTomirroProdIdentity(t *testing.T) {
+	want := validConfig()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/applications/tomirro-modelhub/environments/prod/configurations/config-prod" {
+			t.Errorf("path=%q", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(mustYAML(t, want)))
+	}))
+	defer server.Close()
+	t.Setenv("APP_NAME", "tomirro-modelhub")
+	t.Setenv("ENV", "prod")
+	t.Setenv("SERVICE_NAME", "config-prod")
+	t.Setenv("REGION", "us-east-2")
+	t.Setenv("AWS_APPCONFIG_AGENT_ENDPOINT", server.URL)
+	loader, err := NewAppConfigLoaderFromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := loader.Load(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 }
 

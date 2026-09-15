@@ -15,11 +15,31 @@ import (
 const (
 	defaultAppConfigAgentEndpoint = "http://127.0.0.1:2772"
 	appConfigApplication          = "modelhub"
-	appConfigEnvironment          = "dev"
-	appConfigProfile              = "config-dev"
 	appConfigRegion               = "us-east-2"
 	maxAppConfigBytes             = 256 << 10
 )
+
+func allowedAppConfigApplication(got string) bool {
+	return got == appConfigApplication || got == "tomirro-"+appConfigApplication
+}
+
+func allowedAppConfigEnvironment(got string) bool {
+	switch got {
+	case "dev", "test", "prod", "prd":
+		return true
+	default:
+		return false
+	}
+}
+
+func allowedAppConfigProfile(got string) bool {
+	switch got {
+	case "config-dev", "config-test", "config-prod", "config-prd":
+		return true
+	default:
+		return false
+	}
+}
 
 type AppConfigLoader struct {
 	client *http.Client
@@ -27,19 +47,19 @@ type AppConfigLoader struct {
 }
 
 func NewAppConfigLoaderFromEnv() (*AppConfigLoader, error) {
-	identity := []struct {
-		key  string
-		want string
-	}{
-		{key: "APP_NAME", want: appConfigApplication},
-		{key: "ENV", want: appConfigEnvironment},
-		{key: "SERVICE_NAME", want: appConfigProfile},
-		{key: "REGION", want: appConfigRegion},
-	}
-	for _, item := range identity {
-		if got := strings.TrimSpace(os.Getenv(item.key)); got != item.want {
-			return nil, fmt.Errorf("%s must be %q", item.key, item.want)
-		}
+	application := strings.TrimSpace(os.Getenv("APP_NAME"))
+	environment := strings.TrimSpace(os.Getenv("ENV"))
+	profile := strings.TrimSpace(os.Getenv("SERVICE_NAME"))
+	region := strings.TrimSpace(os.Getenv("REGION"))
+	switch {
+	case !allowedAppConfigApplication(application):
+		return nil, fmt.Errorf("APP_NAME must be %q or %q", appConfigApplication, "tomirro-"+appConfigApplication)
+	case !allowedAppConfigEnvironment(environment):
+		return nil, fmt.Errorf("ENV must be a supported AppConfig environment")
+	case !allowedAppConfigProfile(profile):
+		return nil, fmt.Errorf("SERVICE_NAME must be a supported AppConfig profile")
+	case region != appConfigRegion:
+		return nil, fmt.Errorf("REGION must be %q", appConfigRegion)
 	}
 
 	endpoint := strings.TrimSpace(os.Getenv("AWS_APPCONFIG_AGENT_ENDPOINT"))
@@ -72,9 +92,9 @@ func NewAppConfigLoaderFromEnv() (*AppConfigLoader, error) {
 
 	parsed.Path = fmt.Sprintf(
 		"/applications/%s/environments/%s/configurations/%s",
-		appConfigApplication,
-		appConfigEnvironment,
-		appConfigProfile,
+		application,
+		environment,
+		profile,
 	)
 	return &AppConfigLoader{
 		client: &http.Client{
