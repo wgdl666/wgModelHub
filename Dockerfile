@@ -11,33 +11,18 @@ ARG GOPROXY=https://proxy.golang.org,direct
 
 WORKDIR /src
 
-# 私有 kangaroo 仅在构建阶段经 BuildKit SSH 读取；密钥不得进入镜像层。
 RUN if [ -n "$ALPINE_MIRROR" ]; then \
       sed -i "s|https://dl-cdn.alpinelinux.org/alpine|$ALPINE_MIRROR|g" /etc/apk/repositories; \
     fi \
-    && apk add --no-cache git bash openssh-client \
-    && mkdir -p -m 0700 /root/.ssh \
-    && ssh-keyscan github.com >> /root/.ssh/known_hosts
-
-ENV GOPRIVATE=github.com/wgdl666/*
-ENV GONOSUMDB=github.com/wgdl666/*
+    && apk add --no-cache git bash
 
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=ssh,required=false \
-    GIT_CONFIG_COUNT=1 \
-    GIT_CONFIG_KEY_0=url.ssh://git@github.com/.insteadOf \
-    GIT_CONFIG_VALUE_0=https://github.com/ \
     GOPROXY="$GOPROXY" go mod download
 
 COPY . .
-# 测试/编译若未命中 mod cache，仍须只读转发同一 SSH，避免冷缓存构建失败。
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    --mount=type=ssh,required=false \
-    GIT_CONFIG_COUNT=1 \
-    GIT_CONFIG_KEY_0=url.ssh://git@github.com/.insteadOf \
-    GIT_CONFIG_VALUE_0=https://github.com/ \
     CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" \
     GOPROXY="$GOPROXY" go test ./... \
     && CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" \
