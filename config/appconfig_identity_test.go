@@ -14,13 +14,13 @@ func TestResolveAppConfigCoord(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if us.Application != "tomirro-modelhub" || us.Environment != "prod" || us.Profile != "config-prod" {
+	if us.Application != "modelhub" || us.Environment != "ppe_exhibition" || us.Profile != "config-ppe_exhibition" {
 		t.Fatalf("us=%+v", us)
 	}
 	if _, err := resolveAppConfigCoord("wghub", "SG", "dev"); err == nil {
 		t.Fatal("foreign service must fail")
 	}
-	if _, err := resolveAppConfigCoord("modelhub", "US", "dev"); err == nil {
-		t.Fatal("unknown triple must fail")
+	if _, err := resolveAppConfigCoord("modelhub", "CN", "dev"); err == nil {
+		t.Fatal("CN must not select AppConfig")
 	}
 }

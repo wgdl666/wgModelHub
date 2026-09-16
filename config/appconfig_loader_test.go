@@ -23,7 +23,7 @@ func TestNewAppConfigLoaderRejectsIdentityMismatch(t *testing.T) {
 		value string
 	}{
 		{name: "service", key: "XX_WG_SERVICE_NAME", value: "wghub"},
-		{name: "environment", key: "XX_WG_ENV", value: "prod"},
+		{name: "environment", key: "XX_WG_ENV", value: "staging"},
 		{name: "region", key: "XX_WG_REGION", value: "CN"},
 	}
 	for _, tt := range tests {

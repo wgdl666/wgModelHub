@@ -14,7 +14,7 @@ type appConfigCoord struct {
 	Profile     string
 }
 
-// resolveAppConfigCoord 按三项 XX_WG_* 写死文档，路演一把切到 tomirro-modelhub。
+// resolveAppConfigCoord 只拼 service_name/env，路演不再用 tomirro-modelhub。
 func resolveAppConfigCoord(serviceName, region, envName string) (appConfigCoord, error) {
 	serviceName = strings.TrimSpace(serviceName)
 	region = strings.ToUpper(strings.TrimSpace(region))
@@ -22,14 +22,21 @@ func resolveAppConfigCoord(serviceName, region, envName string) (appConfigCoord,
 	if serviceName != requiredServiceName {
 		return appConfigCoord{}, fmt.Errorf("XX_WG_SERVICE_NAME must be %q", requiredServiceName)
 	}
-	switch {
-	case region == "SG" && envName == "dev":
-		return appConfigCoord{Application: "modelhub", Environment: "dev", Profile: "config-dev"}, nil
-	case region == "US" && envName == "ppe_exhibition":
-		return appConfigCoord{Application: "tomirro-modelhub", Environment: "prod", Profile: "config-prod"}, nil
-	default:
+	if region != "SG" && region != "US" {
+		return appConfigCoord{}, fmt.Errorf("AppConfig identity requires XX_WG_REGION SG or US")
+	}
+	if !validAppConfigEnv(envName) {
 		return appConfigCoord{}, fmt.Errorf("unsupported AppConfig identity %s/%s/%s", serviceName, region, envName)
 	}
+	return appConfigCoord{
+		Application: serviceName,
+		Environment: envName,
+		Profile:     "config-" + envName,
+	}, nil
+}
+
+func validAppConfigEnv(envName string) bool {
+	return envName == "prod" || envName == "dev" || strings.HasPrefix(envName, "ppe_")
 }
 
 func readPlatformIdentity() (serviceName, region, envName string) {
