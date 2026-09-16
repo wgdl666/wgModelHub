@@ -70,6 +70,12 @@ func TestAppConfigSchemaContract(t *testing.T) {
 			}
 		}
 	}
+
+	arkProperties := mustMap(t, mustMap(t, definitions["ark"])["properties"])
+	endpointID := mustMap(t, arkProperties["endpoint_id"])
+	if endpointID["type"] != "string" {
+		t.Fatalf("ark.endpoint_id type=%v, want string", endpointID["type"])
+	}
 }
 
 func mustMap(t *testing.T, value any) map[string]any {
