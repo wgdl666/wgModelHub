@@ -18,6 +18,11 @@ func listModelsTestService() *Service {
 				Models: []string{models.Qwen37Flash, models.Gemini37Flash},
 				OpenAI: &config.OpenAIProviderConfig{APIKey: "k"},
 			},
+			// V4.1 已编目且路由存在时必须进入 ListModels；与 V4 分 provider，禁止靠 alias 冒充。
+			"ark_deepseek_v41_flash": {
+				Models: []string{models.DeepSeekV41Flash},
+				Ark:    &config.ArkProviderConfig{APIKey: "k", EndpointID: "ep-20260916172350-hv45h"},
+			},
 			"vision": {
 				Models: []string{models.Qwen3VLPlus},
 				OpenAI: &config.OpenAIProviderConfig{APIKey: "k"},
@@ -48,11 +53,11 @@ func TestListModelsReturnsRoutedPublicCategories(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := listModelIDs(resp)
-	want := []string{models.Gemini37Flash, models.Qwen3VLPlus, models.Qwen37Flash, models.GPTImage2, models.LTX, models.Speech28Turbo}
+	want := []string{models.Gemini37Flash, models.DeepSeekV41Flash, models.Qwen3VLPlus, models.Qwen37Flash, models.GPTImage2, models.LTX, models.Speech28Turbo}
 	if !sameStrings(got, want) {
 		t.Fatalf("models=%v want=%v", got, want)
 	}
-	if contains(got, "not-in-catalog") || contains(got, models.Qwen38Flash) {
+	if contains(got, "not-in-catalog") || contains(got, models.Qwen38Flash) || contains(got, models.DeepSeekV4Flash) {
 		t.Fatalf("uncatalogued or unrouted id leaked: %v", got)
 	}
 }
@@ -65,7 +70,7 @@ func TestListModelsFiltersLLM(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := listModelIDs(resp)
-	want := []string{models.Gemini37Flash, models.Qwen37Flash}
+	want := []string{models.Gemini37Flash, models.DeepSeekV41Flash, models.Qwen37Flash}
 	if !sameStrings(got, want) {
 		t.Fatalf("llm=%v want=%v", got, want)
 	}

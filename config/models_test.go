@@ -128,6 +128,24 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 		t.Fatalf("ark_deepseek_v4_flash endpoint_id=%q, want ep-20260904161804-km74x", deepseek.Ark.EndpointID)
 	}
 
+	// V4.1 是新增独立 provider，不是切换 V4：各自只声明各自模型，并绑定不同 endpoint。
+	deepseek41, ok := parsed.Providers["ark_deepseek_v41_flash"]
+	if !ok {
+		t.Fatal("missing provider ark_deepseek_v41_flash")
+	}
+	if len(deepseek41.Models) != 1 || deepseek41.Models[0] != models.DeepSeekV41Flash {
+		t.Fatalf("ark_deepseek_v41_flash models=%v, want [%q]", deepseek41.Models, models.DeepSeekV41Flash)
+	}
+	if deepseek41.Ark == nil {
+		t.Fatal("ark_deepseek_v41_flash ark.endpoint_id is missing")
+	}
+	if deepseek41.Ark.EndpointID != "ep-20260916172350-hv45h" {
+		t.Fatalf("ark_deepseek_v41_flash endpoint_id=%q, want ep-20260916172350-hv45h", deepseek41.Ark.EndpointID)
+	}
+	if deepseek.Ark.EndpointID == deepseek41.Ark.EndpointID {
+		t.Fatal("V4 and V4.1 must bind distinct Ark endpoints")
+	}
+
 	// 智谱 GLM 必须绑独立 OpenAI-compatible 实例，base_url 拼上 /chat/completions 后等于官方 PaaS 路径。
 	glm, ok := parsed.Providers["zhipu_glm"]
 	if !ok {

@@ -23,6 +23,7 @@ var categories = map[string]Category{
 	DoubaoSeed20Lite:  CategoryLLM,
 	DoubaoSeed21Pro:   CategoryLLM,
 	DeepSeekV4Flash:   CategoryLLM,
+	DeepSeekV41Flash:  CategoryLLM,
 	QwenFlash:         CategoryLLM,
 	Qwen35Flash:       CategoryLLM,
 	Qwen37Flash:       CategoryLLM,

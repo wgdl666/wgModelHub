@@ -20,10 +20,12 @@ const (
 	DoubaoSeed21Pro = "doubao-seed-2.1-pro"
 	// DeepSeekV4Flash 对外真实模型名（方舟正式版）；上游 Responses 走独立推理 endpoint，禁止与预览版或其他 DeepSeek ID 互相 alias。
 	DeepSeekV4Flash = "deepseek-v4-flash"
-	QwenFlash       = "qwen-flash"
-	Qwen3VLPlus     = "qwen3-vl-plus"
-	Qwen35Flash     = "qwen3.5-flash"
-	Qwen37Flash     = "qwen3.7-flash"
+	// DeepSeekV41Flash 是独立真实模型 ID（方舟 V4.1）；必须走独立 Ark endpoint，不能覆盖或 alias 成 DeepSeekV4Flash。
+	DeepSeekV41Flash = "deepseek-v4.1-flash"
+	QwenFlash        = "qwen-flash"
+	Qwen3VLPlus      = "qwen3-vl-plus"
+	Qwen35Flash      = "qwen3.5-flash"
+	Qwen37Flash      = "qwen3.7-flash"
 	// Qwen38Flash 走 DashScope OpenAI-compatible；支持 function calling、enable_thinking=false 与显式 ephemeral 缓存。
 	Qwen38Flash = "qwen3.8-flash"
 	// ClaudeHaiku45 固定官方稳定快照 ID；request.model 禁止写成市场简称或自造 alias。
@@ -97,6 +99,7 @@ func All() []string {
 		DoubaoSeed20Lite,
 		DoubaoSeed21Pro,
 		DeepSeekV4Flash,
+		DeepSeekV41Flash,
 		QwenFlash,
 		Qwen3VLPlus,
 		Qwen35Flash,

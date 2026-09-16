@@ -25,6 +25,19 @@ func TestDeepSeekV4FlashModelID(t *testing.T) {
 	}
 }
 
+// TestDeepSeekV41FlashModelID 锁定 V4.1 独立真实模型名；不得与 V4 同 ID 或互相 alias。
+func TestDeepSeekV41FlashModelID(t *testing.T) {
+	if DeepSeekV41Flash != "deepseek-v4.1-flash" {
+		t.Fatalf("DeepSeekV41Flash=%q, want deepseek-v4.1-flash", DeepSeekV41Flash)
+	}
+	if DeepSeekV41Flash == DeepSeekV4Flash {
+		t.Fatal("DeepSeekV41Flash must differ from DeepSeekV4Flash")
+	}
+	if !slices.Contains(All(), DeepSeekV41Flash) {
+		t.Fatalf("All() missing %q", DeepSeekV41Flash)
+	}
+}
+
 // TestGLM53FlashModelID 锁定智谱对外真实模型名，避免写成 glm-5-flash 或 Coding Plan 别名。
 func TestGLM53FlashModelID(t *testing.T) {
 	if GLM53Flash != "glm-5.3-flash" {

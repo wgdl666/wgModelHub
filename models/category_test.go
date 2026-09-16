@@ -19,6 +19,8 @@ func TestCategoryOfKnownIDs(t *testing.T) {
 		want Category
 	}{
 		{Gemini37Flash, CategoryLLM},
+		{DeepSeekV4Flash, CategoryLLM},
+		{DeepSeekV41Flash, CategoryLLM},
 		{GLM53Flash, CategoryLLM},
 		{Qwen3VLPlus, CategoryMultimodal},
 		{GPTImage2, CategoryImageGeneration},
