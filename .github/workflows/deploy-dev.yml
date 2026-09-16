@@ -166,6 +166,14 @@ jobs:
           NS="${{ env.K8S_NAMESPACE }}"
           DEP="${{ env.K8S_DEPLOYMENT }}"
 
+          # 新镜像按三项 XX_WG_* 选配置；CI 只改 image 时必须同步注入，并去掉已忽略的旧开关。
+          kubectl set env "deployment/$DEP" \
+            XX_WG_SERVICE_NAME=modelhub \
+            XX_WG_ENV=dev \
+            XX_WG_REGION=CN \
+            XX_WG_PSM- \
+            WG_CONFIG_SOURCE- \
+            -n "$NS"
           kubectl set image "deployment/$DEP" "$DEP=$DEPLOY_IMAGE" -n "$NS"
           kubectl rollout status "deployment/$DEP" -n "$NS" --timeout=300s
 
