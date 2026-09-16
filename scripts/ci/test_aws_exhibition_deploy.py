@@ -63,5 +63,38 @@ class ExhibitionDeploymentTests(unittest.TestCase):
         self.assertEqual(call.call_args_list[1].args[1], "put-approval-result")
 
 
+    def test_wait_retries_when_execution_is_not_visible_yet(self):
+        calls = {"n": 0}
+
+        def fake_aws(*args, **kwargs):
+            if args[1] == "get-pipeline-execution":
+                calls["n"] += 1
+                if calls["n"] == 1:
+                    raise RuntimeError("An error occurred (PipelineExecutionNotFoundException)")
+                return {
+                    "pipelineExecution": {
+                        "status": "Succeeded",
+                        "artifactRevisions": [{"revisionId": SHA}],
+                    },
+                }
+            if args[1] == "list-action-executions":
+                return {
+                    "actionExecutionDetails": [
+                        {"actionName": name, "status": "Succeeded"}
+                        for name in deploy.REQUIRED_ACTIONS
+                    ],
+                }
+            raise AssertionError(args)
+
+        with patch.object(deploy, "aws_cli", side_effect=fake_aws), \
+                patch.object(deploy, "maybe_approve", return_value=False), \
+                patch.object(deploy.time, "sleep"):
+            result = deploy.wait(SHA, EXECUTION)
+        self.assertEqual(result["executionId"], EXECUTION)
+        self.assertEqual(calls["n"], 2)
+
+
+
+
 if __name__ == "__main__":
     unittest.main()

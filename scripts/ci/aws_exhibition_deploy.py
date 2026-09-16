@@ -29,11 +29,13 @@ def aws_cli(*args, output_json=True):
         cmd.extend(["--output", "json"])
     result = subprocess.run(
         cmd,
-        check=True,
+        check=False,
         capture_output=True,
         text=True,
         timeout=60,
     )
+    if result.returncode != 0:
+        raise RuntimeError((result.stderr or result.stdout or "aws failed").strip())
     if not output_json:
         return result.stdout.strip()
     if not result.stdout.strip():
@@ -133,12 +135,21 @@ def wait(sha, execution_id, timeout=10500):
     previous = None
     approved = False
     while time.monotonic() < deadline:
-        run = aws_cli(
-            "codepipeline",
-            "get-pipeline-execution",
-            "--pipeline-name", PIPELINE,
-            "--pipeline-execution-id", execution_id,
-        )["pipelineExecution"]
+        # start-pipeline-execution 刚返回时 GetPipelineExecution 常 254 NotFound，必须重试，不能当终态失败。
+        try:
+            run = aws_cli(
+                "codepipeline",
+                "get-pipeline-execution",
+                "--pipeline-name", PIPELINE,
+                "--pipeline-execution-id", execution_id,
+            )["pipelineExecution"]
+        except RuntimeError as exc:
+            text = str(exc)
+            if "PipelineExecutionNotFoundException" in text or "does not exist" in text.lower():
+                print(f"AWS execution {execution_id} not visible yet, retrying", flush=True)
+                time.sleep(5)
+                continue
+            raise
         if run["status"] != previous:
             print(f"AWS execution {execution_id}: {run['status']}", flush=True)
             previous = run["status"]
