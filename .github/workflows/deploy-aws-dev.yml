@@ -1,0 +1,46 @@
+name: Deploy AWS Dev
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: aws-dev-deploy-modelhub
+  cancel-in-progress: false
+
+# 不设置 jobs.*.environment：IAM 只信任 immutable sub
+# repo:wgdl666@245333630/wgModelHub@1333925233:ref:refs/heads/dev。
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout exact triggering commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - name: Validate deployment orchestration
+        run: python3 -m unittest discover -s scripts/ci -p 'test_*.py'
+      - name: Authenticate to AWS with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::054043816891:role/wg-dev-modelhub-github-dispatch
+          role-session-name: modelhub-dev-${{ github.run_id }}
+          aws-region: ap-southeast-1
+          retry-max-attempts: 3
+      - name: Deploy and verify managed AWS pipeline
+        run: python3 scripts/ci/aws_dev_deploy.py
+      - name: Upload deployment evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aws-dev-deployment-${{ github.sha }}
+          path: artifacts/aws-dev-deployment.json
+          if-no-files-found: ignore
