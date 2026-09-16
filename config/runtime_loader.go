@@ -20,18 +20,20 @@ var (
 	}
 )
 
+// NewRuntimeLoaderFromEnv 只按 XX_WG_REGION 选择配置源。
+// CN/空走 Nacos；SG/US 走 AppConfig。忽略 WG_CONFIG_SOURCE，避免旧开关把 ACK 误切海外。
 func NewRuntimeLoaderFromEnv() (RuntimeLoader, error) {
-	source := strings.ToLower(strings.TrimSpace(os.Getenv("WG_CONFIG_SOURCE")))
-	switch source {
-	case "", "nacos":
+	region := strings.ToUpper(strings.TrimSpace(os.Getenv("XX_WG_REGION")))
+	switch region {
+	case "", "CN":
 		bootstrap, err := LoadBootstrapFile(runtimeBootstrapFilePath)
 		if err != nil {
 			return nil, err
 		}
 		return newNacosRuntimeLoader(bootstrap)
-	case "appconfig":
+	case "SG", "US":
 		return NewAppConfigLoaderFromEnv()
 	default:
-		return nil, fmt.Errorf("unsupported WG_CONFIG_SOURCE %q", source)
+		return nil, fmt.Errorf("unsupported XX_WG_REGION %q", region)
 	}
 }

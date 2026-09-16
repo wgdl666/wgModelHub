@@ -37,6 +37,12 @@ spec:
           # workspace 发布前替换为 ACR 返回的不可变 digest。
           image: wgdl-registry-vpc.cn-shenzhen.cr.aliyuncs.com/wg/wg-model-hub@sha256:REPLACE_ME
           env:
+            - name: XX_WG_SERVICE_NAME
+              value: modelhub
+            - name: XX_WG_ENV
+              value: dev
+            - name: XX_WG_REGION
+              value: CN
             - name: WG_SERVER_GRPC_PORT
               value: "50053"
             # 公网鉴权 listener；未设置则不启动 50054。现网 Caddy 只应反代本端口，不得暴露 50053。

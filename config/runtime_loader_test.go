@@ -18,9 +18,10 @@ func (*stubRuntimeLoader) Listen(func(dataID, group, content string)) error { re
 func (*stubRuntimeLoader) Close()                                           {}
 
 func TestRuntimeLoaderDefaultsToNacos(t *testing.T) {
-	for _, source := range []string{"", "nacos", " NACOS "} {
-		t.Run(source, func(t *testing.T) {
-			t.Setenv("WG_CONFIG_SOURCE", source)
+	for _, region := range []string{"", "CN", " cn "} {
+		t.Run(region, func(t *testing.T) {
+			t.Setenv("XX_WG_REGION", region)
+			t.Setenv("WG_CONFIG_SOURCE", "appconfig")
 			bootstrapPath := filepath.Join(t.TempDir(), "bootstrap.json")
 			if err := os.WriteFile(bootstrapPath, []byte(`{"server_address":"127.0.0.1:8848","namespace_id":"dev"}`), 0o600); err != nil {
 				t.Fatal(err)
@@ -57,7 +58,7 @@ func TestRuntimeLoaderDefaultsToNacos(t *testing.T) {
 }
 
 func TestRuntimeLoaderSelectsAppConfig(t *testing.T) {
-	t.Setenv("WG_CONFIG_SOURCE", " APPCONFIG ")
+	t.Setenv("XX_WG_REGION", "SG")
 	setValidAppConfigEnv(t, "http://127.0.0.1:2772")
 	loader, err := NewRuntimeLoaderFromEnv()
 	if err != nil {
@@ -68,13 +69,13 @@ func TestRuntimeLoaderSelectsAppConfig(t *testing.T) {
 	}
 }
 
-func TestRuntimeLoaderRejectsUnsupportedSource(t *testing.T) {
-	for _, source := range []string{"file", "consul"} {
-		t.Run(source, func(t *testing.T) {
-			t.Setenv("WG_CONFIG_SOURCE", source)
+func TestRuntimeLoaderRejectsUnsupportedRegion(t *testing.T) {
+	for _, region := range []string{"EU", "overseas"} {
+		t.Run(region, func(t *testing.T) {
+			t.Setenv("XX_WG_REGION", region)
 			_, err := NewRuntimeLoaderFromEnv()
-			if err == nil || !strings.Contains(err.Error(), "unsupported WG_CONFIG_SOURCE") {
-				t.Fatalf("expected unsupported source error, got %v", err)
+			if err == nil || !strings.Contains(err.Error(), "XX_WG_REGION") {
+				t.Fatalf("expected unsupported region error, got %v", err)
 			}
 		})
 	}
