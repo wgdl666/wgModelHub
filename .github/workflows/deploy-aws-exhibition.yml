@@ -19,7 +19,8 @@ concurrency:
 jobs:
   deploy:
     if: github.ref == 'refs/heads/dev'
-    runs-on: ubuntu-latest
+    # GitHub 托管 runner 会被组织 Actions 预算拦住；新加坡/路演分发改走俄亥俄 CodeBuild runner。
+    runs-on: codebuild-wg-gha-runner-modelhub-${{ github.run_id }}-${{ github.run_attempt }}
     timeout-minutes: 180
     steps:
       - name: Checkout exact triggering commit
