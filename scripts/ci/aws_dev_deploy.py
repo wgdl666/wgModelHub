@@ -1,6 +1,6 @@
 """Dispatch and follow the exact wgModelHub SHA in the Singapore managed pipeline.
 
-Test/Build 成功后自动放行 ApproveApplicationRelease；DetectChanges 关闭，只接受 GitHub 精确 SHA。
+应用换镜像不再经过 ApproveApplicationRelease；DetectChanges 关闭，只接受 GitHub 精确 SHA。
 """
 
 import json
@@ -18,7 +18,6 @@ REQUIRED_ACTIONS = (
     "GitHub",
     "Test",
     "Build",
-    "ApproveApplicationRelease",
     "ManagedRelease",
 )
 
@@ -66,50 +65,6 @@ def verify_execution(run, sha):
     return True
 
 
-def stage_action_status(state, execution_id, stage_name, action_name):
-    for stage in state.get("stageStates", []):
-        if stage.get("stageName") != stage_name:
-            continue
-        latest = stage.get("latestExecution") or {}
-        if latest.get("pipelineExecutionId") != execution_id:
-            continue
-        for action in stage.get("actionStates", []):
-            if action.get("actionName") != action_name:
-                continue
-            action_latest = action.get("latestExecution") or {}
-            return action_latest.get("status"), action_latest.get("token")
-    return None, None
-
-
-def maybe_approve(execution_id, sha):
-    """仅在本 execution 的 Test/Build 已成功、审批动作仍 InProgress 时放行。"""
-    state = aws_cli("codepipeline", "get-pipeline-state", "--name", PIPELINE)
-    test_status, _ = stage_action_status(state, execution_id, "Test", "Test")
-    build_status, _ = stage_action_status(state, execution_id, "Build", "Build")
-    approval_status, token = stage_action_status(
-        state, execution_id, "Release", "ApproveApplicationRelease"
-    )
-    if approval_status != "InProgress" or not token:
-        return False
-    if test_status != "Succeeded" or build_status != "Succeeded":
-        return False
-    summary = "GitHub approved run {}, sha {}".format(
-        os.environ.get("GITHUB_RUN_ID", "local"),
-        sha,
-    )
-    aws_cli(
-        "codepipeline",
-        "put-approval-result",
-        "--pipeline-name", PIPELINE,
-        "--stage-name", "Release",
-        "--action-name", "ApproveApplicationRelease",
-        "--token", token,
-        "--result", "summary={},status=Approved".format(summary),
-        output_json=False,
-    )
-    print("Approved the AWS release gate after Test and Build succeeded.", flush=True)
-    return True
-
 
 def assert_required_actions(execution_id):
     actions = aws_cli(
@@ -133,7 +88,6 @@ def assert_required_actions(execution_id):
 def wait(sha, execution_id, timeout=10500):
     deadline = time.monotonic() + timeout
     previous = None
-    approved = False
     while time.monotonic() < deadline:
         # start-pipeline-execution 刚返回时 GetPipelineExecution 常 254 NotFound，必须重试，不能当终态失败。
         try:
@@ -156,8 +110,6 @@ def wait(sha, execution_id, timeout=10500):
         revisions = [item.get("revisionId") for item in run.get("artifactRevisions", [])]
         if revisions and revisions != [sha]:
             raise RuntimeError("Pipeline source revision differs from the dispatched SHA")
-        if not approved:
-            approved = maybe_approve(execution_id, sha)
         if verify_execution(run, sha):
             assert_required_actions(execution_id)
             return {
@@ -166,7 +118,6 @@ def wait(sha, execution_id, timeout=10500):
                 "sourceSha": sha,
                 "status": run["status"],
                 "region": REGION,
-                "approvalApplied": approved,
                 "requiredActions": list(REQUIRED_ACTIONS),
             }
         time.sleep(15)

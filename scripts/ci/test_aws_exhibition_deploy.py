@@ -34,34 +34,7 @@ class ExhibitionDeploymentTests(unittest.TestCase):
         self.assertEqual(deploy.PIPELINE, "tomirro-modelhub")
         self.assertEqual(deploy.REGION, "us-east-2")
         self.assertNotIn("AgentStream", deploy.REQUIRED_ACTIONS)
-
-    def test_maybe_approve_requires_matching_execution_and_gates(self):
-        state = {
-            "stageStates": [
-                {
-                    "stageName": "Test",
-                    "latestExecution": {"pipelineExecutionId": EXECUTION},
-                    "actionStates": [{"actionName": "Test", "latestExecution": {"status": "Succeeded"}}],
-                },
-                {
-                    "stageName": "Build",
-                    "latestExecution": {"pipelineExecutionId": EXECUTION},
-                    "actionStates": [{"actionName": "Build", "latestExecution": {"status": "Succeeded"}}],
-                },
-                {
-                    "stageName": "Release",
-                    "latestExecution": {"pipelineExecutionId": EXECUTION},
-                    "actionStates": [{
-                        "actionName": "ApproveApplicationRelease",
-                        "latestExecution": {"status": "InProgress", "token": "tok"},
-                    }],
-                },
-            ],
-        }
-        with patch.object(deploy, "aws_cli", side_effect=[state, ""]) as call:
-            self.assertTrue(deploy.maybe_approve(EXECUTION, SHA))
-        self.assertEqual(call.call_args_list[1].args[1], "put-approval-result")
-
+        self.assertNotIn("ApproveApplicationRelease", deploy.REQUIRED_ACTIONS)
 
     def test_wait_retries_when_execution_is_not_visible_yet(self):
         calls = {"n": 0}
@@ -87,7 +60,6 @@ class ExhibitionDeploymentTests(unittest.TestCase):
             raise AssertionError(args)
 
         with patch.object(deploy, "aws_cli", side_effect=fake_aws), \
-                patch.object(deploy, "maybe_approve", return_value=False), \
                 patch.object(deploy.time, "sleep"):
             result = deploy.wait(SHA, EXECUTION)
         self.assertEqual(result["executionId"], EXECUTION)
