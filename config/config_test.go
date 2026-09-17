@@ -188,6 +188,39 @@ func TestProviderSupportsOpenAIImage(t *testing.T) {
 	}
 }
 
+func TestProviderSupportsPhotoroomImageOnly(t *testing.T) {
+	photoroom := ProviderConfig{Photoroom: &PhotoroomProviderConfig{APIKey: "k"}}
+	if !ProviderSupports(photoroom, CapabilityImage) {
+		t.Fatal("photoroom should support image")
+	}
+	if ProviderSupports(photoroom, CapabilityText) || ProviderSupports(photoroom, CapabilityVideo) || ProviderSupports(photoroom, CapabilitySpeech) {
+		t.Fatal("photoroom should only support image")
+	}
+}
+
+func TestValidateRejectsPhotoroomWithoutAPIKey(t *testing.T) {
+	cfg := validConfig()
+	cfg.Providers["photoroom_bg"] = ProviderConfig{
+		Models:    []string{models.PhotoroomSegment},
+		Photoroom: &PhotoroomProviderConfig{},
+	}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "api_key") {
+		t.Fatalf("expected api_key error, got %v", err)
+	}
+}
+
+func TestValidateRejectsMixedPhotoroomAndOpenAI(t *testing.T) {
+	cfg := validConfig()
+	cfg.Providers["mixed"] = ProviderConfig{
+		Models:    []string{models.PhotoroomSegment},
+		Photoroom: &PhotoroomProviderConfig{APIKey: "k"},
+		OpenAI:    &OpenAIProviderConfig{APIKey: "k"},
+	}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "exactly one") {
+		t.Fatalf("expected mixed provider error, got %v", err)
+	}
+}
+
 func TestProviderSupportsVideoProviders(t *testing.T) {
 	cases := []ProviderConfig{
 		{DashScopeVideo: &DashScopeVideoProviderConfig{APIKey: "k"}},

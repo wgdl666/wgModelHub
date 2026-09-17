@@ -49,6 +49,8 @@ type ProviderConfig struct {
 	ArkVideo       *ArkVideoProviderConfig       `yaml:"ark_video"`
 	// MinimaxTTS 承接同步一次性 TTS；与 chat/completions OpenAI 实例分绑，避免误用文本能力。
 	MinimaxTTS *MinimaxTTSProviderConfig `yaml:"minimax_tts"`
+	// Photoroom 承接官方 Remove Background（POST /v1/segment）；与 OpenAI/Gemini 生图实例分绑，禁止共用。
+	Photoroom *PhotoroomProviderConfig `yaml:"photoroom"`
 }
 
 type GeminiProviderConfig struct {
@@ -127,6 +129,13 @@ type MinimaxTTSProviderConfig struct {
 	Speed         float64 `yaml:"speed"`
 	Volume        float64 `yaml:"volume"`
 	Pitch         int     `yaml:"pitch"`
+}
+
+// PhotoroomProviderConfig 承接官方 Remove Background Basic plan。
+// base_url 可选，默认 https://sdk.photoroom.com；路径固定 /v1/segment，调用方不得注入供应商地址。
+type PhotoroomProviderConfig struct {
+	APIKey  string `yaml:"api_key"`
+	BaseURL string `yaml:"base_url"`
 }
 
 type Config struct {
@@ -492,6 +501,10 @@ func validateProvider(name string, provider ProviderConfig) error {
 		if strings.TrimSpace(provider.MinimaxTTS.APIKey) == "" {
 			return fmt.Errorf("provider %s api_key is required", name)
 		}
+	case provider.Photoroom != nil:
+		if strings.TrimSpace(provider.Photoroom.APIKey) == "" {
+			return fmt.Errorf("provider %s api_key is required", name)
+		}
 	}
 	return nil
 }
@@ -528,6 +541,9 @@ func countConcreteProviders(provider ProviderConfig) int {
 	if provider.MinimaxTTS != nil {
 		n++
 	}
+	if provider.Photoroom != nil {
+		n++
+	}
 	return n
 }
 
@@ -536,6 +552,8 @@ func ProviderSupports(provider ProviderConfig, capability string) bool {
 	switch {
 	case provider.Gemini != nil, provider.OpenAI != nil:
 		return capability == CapabilityText || capability == CapabilityImage
+	case provider.Photoroom != nil:
+		return capability == CapabilityImage
 	case provider.VertexAI != nil, provider.Ark != nil:
 		return capability == CapabilityText
 	case provider.LTX != nil:

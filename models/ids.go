@@ -42,7 +42,10 @@ const (
 	GPTImage25Sunburst = "gpt-image-2.5-sunburst"
 	// Flux2Klein9B 当前 SeeTacloud 部署只开放 image edit / 多图 i2i，不能当文生图用。
 	Flux2Klein9B = "FLUX.2-klein-9B"
-	LTX          = "ltx"
+	// PhotoroomSegment 标识官方 Remove Background 产品端点 POST /v1/segment（operationId=remove-background）。
+	// 该 API 没有 request-level model 参数；本常量只用于 ModelHub 路由与 ListModels，禁止下发上游，也不是业务别名。
+	PhotoroomSegment = "photoroom-segment"
+	LTX              = "ltx"
 
 	// DashScope Wan / HappyHorse / Kling 图生视频。
 	Wan22I2VFlash              = "wan2.2-i2v-flash"
@@ -114,6 +117,7 @@ func All() []string {
 		GPTImage25Flare,
 		GPTImage25Sunburst,
 		Flux2Klein9B,
+		PhotoroomSegment,
 		LTX,
 		Wan22I2VFlash,
 		Wan22I2VPlus,

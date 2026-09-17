@@ -63,7 +63,8 @@
         "dashscope_video": { "$ref": "#/definitions/dashscopeVideo" },
         "ominilink_video": { "$ref": "#/definitions/ominilinkVideo" },
         "gemini_video": { "$ref": "#/definitions/geminiVideo" },
-        "ark_video": { "$ref": "#/definitions/arkVideo" }
+        "ark_video": { "$ref": "#/definitions/arkVideo" },
+        "photoroom": { "$ref": "#/definitions/photoroom" }
       },
       "oneOf": [
         { "required": ["gemini"] },
@@ -74,7 +75,8 @@
         { "required": ["dashscope_video"] },
         { "required": ["ominilink_video"] },
         { "required": ["gemini_video"] },
-        { "required": ["ark_video"] }
+        { "required": ["ark_video"] },
+        { "required": ["photoroom"] }
       ]
     },
     "gemini": {
@@ -171,6 +173,15 @@
         "base_url": { "type": "string" },
         "poll_interval": { "type": "number", "minimum": 0 },
         "max_poll_time": { "type": "number", "minimum": 0 }
+      }
+    },
+    "photoroom": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_key"],
+      "properties": {
+        "api_key": { "type": "string", "minLength": 1 },
+        "base_url": { "type": "string" }
       }
     }
   }

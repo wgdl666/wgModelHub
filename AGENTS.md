@@ -7,9 +7,10 @@
 # 配置与模型路由
 
 - Nacos Data ID：`wg.mirror.modelHub`；bootstrap 只保存 Nacos 定位信息，凭据与模型映射在 YAML 正文中。
-- 每个 provider 实例用互斥嵌套字段表达 Gemini/VertexAI/Ark/OpenAI/LTX 以及各类视频供应商，并声明 `models: [真实模型 ID...]`。
+- 每个 provider 实例用互斥嵌套字段表达 Gemini/VertexAI/Ark/OpenAI/Photoroom/LTX 以及各类视频供应商，并声明 `models: [真实模型 ID...]`。
 - `ark_video` 承接方舟 Seedance 2.5（`doubao-seedance-2-5-260628`）文生视频与首帧图生视频；与 `ark_chat` 文本实例分绑，不能共用一套能力。任务形态由 Input 推断，不另开模型 ID 或模式枚举。
 - OpenAI 实例同时承接 chat/completions 与 Images API；无参考图走 `/v1/images/generations`，有参考图走 `/v1/images/edits`。`gpt-image-2` / `gpt-image-2.5-flare` / `gpt-image-2.5-sunburst` 复用现网已实测的 AIG OpenAI-compatible Images 实例（`async_gpt_image`，`https://api.aig-ai.com/v1`），不能并入 Gemini generateContent 生图实例。
+- `photoroom` 承接官方 Remove Background（`POST /v1/segment`）；`photoroom-segment` 仅作路由常量、不下发上游。恰好一图入、透明 PNG 出；裁剪/填充/存储/业务重试留在调用方。
 - `FLUX.2-klein-9B` 必须单独绑到 OpenAI Images 实例，不能与 `gpt-image-2` / 2.5 共用。当前 SeeTacloud 部署只开放 i2i edits：无参考图在发 HTTP 前拒绝；edits 必须带 `response_format=b64_json`，因为 worker 默认回 `127.0.0.1` 下载地址。GPT Image（含 2 / 2.5）当前接入沿标准请求且默认返回可解析结果，ModelHub 不下发该字段；`response_format=b64_json` 仅是 FLUX.2 私有兼容特例。
 - `zhipu_glm` 承接智谱 `glm-5.3-flash`（`https://open.bigmodel.cn/api/paas/v4`）。思考字段走 `thinking.type=enabled`，禁止下发 `disabled` 或 DashScope 的 `enable_thinking`；统一协议 `DISABLED` 只映射为 `reasoning_effort=low`。
 - 启动时建立「真实模型 ID → provider 实例」路由：单 provider 声明可隐式选定；多 provider 声明同一模型时必须在顶层 `model_routes` 显式选定其一，不能依赖 map 顺序。无 profile、alias 或自动 failover。同名同资源 provider 仅 `models` 列表和/或顶层 `model_routes` 变化可通过 Nacos 热更新原子切换；provider 实例增删、类型、凭据、BaseURL/Endpoint 等连接资源参数变化仍须滚动重启，不得部分应用。

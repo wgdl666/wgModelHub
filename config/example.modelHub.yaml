@@ -147,6 +147,12 @@ providers:
     openai:
       api_key: "${FLUX2_KLEIN_API_KEY}"
       base_url: https://uu847021-9507-702f766a.bjb2.seetacloud.com:8443/flux2/v1
+  # Photoroom Remove Background：官方 POST /v1/segment；models 常量仅作路由，不发上游。
+  photoroom_bg:
+    models: [photoroom-segment]
+    photoroom:
+      api_key: "${PHOTOROOM_API_KEY}"
+      base_url: https://sdk.photoroom.com
   # LTX 供应商请求体里的 model 字段值就是 ltx，不是业务别名。
   ltx_video:
     models: [ltx]

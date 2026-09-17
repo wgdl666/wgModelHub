@@ -33,7 +33,7 @@ func TestAppConfigSchemaContract(t *testing.T) {
 	wantKinds := map[string]bool{
 		"gemini": false, "vertexai": false, "ark": false, "openai": false,
 		"ltx": false, "dashscope_video": false, "ominilink_video": false,
-		"gemini_video": false, "ark_video": false,
+		"gemini_video": false, "ark_video": false, "photoroom": false,
 	}
 	for _, entry := range oneOf {
 		required := mustSlice(t, mustMap(t, entry)["required"])
@@ -57,7 +57,7 @@ func TestAppConfigSchemaContract(t *testing.T) {
 
 	for _, definitionName := range []string{
 		"gemini", "ark", "openai", "ltx", "dashscopeVideo",
-		"ominilinkVideo", "geminiVideo", "arkVideo", "logfire", "database",
+		"ominilinkVideo", "geminiVideo", "arkVideo", "photoroom", "logfire", "database",
 	} {
 		properties := mustMap(t, mustMap(t, definitions[definitionName])["properties"])
 		for field, raw := range properties {

@@ -27,6 +27,7 @@ func TestCategoryOfKnownIDs(t *testing.T) {
 		{GPTImage25Flare, CategoryImageGeneration},
 		{GPTImage25Sunburst, CategoryImageGeneration},
 		{Flux2Klein9B, CategoryImageGeneration},
+		{PhotoroomSegment, CategoryImageGeneration},
 		{LTX, CategoryVideoGeneration},
 		{GeminiOmniFlashPreview, CategoryVideoGeneration},
 		{Speech28Turbo, CategorySpeech},

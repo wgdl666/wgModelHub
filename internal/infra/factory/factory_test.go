@@ -98,6 +98,30 @@ func TestBuildMinimaxTTSExposesSpeechOnly(t *testing.T) {
 	}
 }
 
+func TestBuildPhotoroomExposesImageOnly(t *testing.T) {
+	sets, err := Build(context.Background(), config.Config{
+		Providers: map[string]config.ProviderConfig{
+			"photoroom_bg": {
+				Models: []string{models.PhotoroomSegment},
+				Photoroom: &config.PhotoroomProviderConfig{
+					APIKey:  "k",
+					BaseURL: "https://sdk.photoroom.com",
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	set := sets["photoroom_bg"]
+	if set.Image == nil {
+		t.Fatal("missing image capability")
+	}
+	if set.Text != nil || set.Video != nil || set.Speech != nil {
+		t.Fatalf("photoroom should only expose image: %#v", set)
+	}
+}
+
 func TestBuildVideoProvidersAcceptZeroPollConfig(t *testing.T) {
 	_, err := Build(context.Background(), config.Config{
 		Providers: map[string]config.ProviderConfig{

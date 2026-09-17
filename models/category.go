@@ -40,6 +40,7 @@ var categories = map[string]Category{
 	GPTImage25Flare:    CategoryImageGeneration,
 	GPTImage25Sunburst: CategoryImageGeneration,
 	Flux2Klein9B:       CategoryImageGeneration,
+	PhotoroomSegment:   CategoryImageGeneration,
 
 	LTX:                        CategoryVideoGeneration,
 	Wan22I2VFlash:              CategoryVideoGeneration,

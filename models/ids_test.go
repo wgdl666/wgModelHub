@@ -76,6 +76,16 @@ func TestGPTImage25ModelIDs(t *testing.T) {
 	}
 }
 
+// TestPhotoroomSegmentModelID 锁定 Remove Background 产品端点常量；禁止写成业务别名或下发上游。
+func TestPhotoroomSegmentModelID(t *testing.T) {
+	if PhotoroomSegment != "photoroom-segment" {
+		t.Fatalf("PhotoroomSegment=%q, want photoroom-segment", PhotoroomSegment)
+	}
+	if !slices.Contains(All(), PhotoroomSegment) {
+		t.Fatalf("All() missing %q", PhotoroomSegment)
+	}
+}
+
 func TestAllAreUnique(t *testing.T) {
 	seen := map[string]struct{}{}
 	for _, model := range All() {

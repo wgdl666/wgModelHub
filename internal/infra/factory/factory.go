@@ -14,6 +14,7 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/infra/minimaxtts"
 	"github.com/wgdl666/wgModelHub/internal/infra/ominilinkvideo"
 	"github.com/wgdl666/wgModelHub/internal/infra/openai"
+	"github.com/wgdl666/wgModelHub/internal/infra/photoroom"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 )
 
@@ -122,6 +123,14 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 			return provider.Set{}, err
 		}
 		return provider.Set{Speech: client}, nil
+	case providerCfg.Photoroom != nil:
+		cfg := providerCfg.Photoroom
+		client, err := photoroom.New(name, cfg.APIKey, cfg.BaseURL)
+		if err != nil {
+			return provider.Set{}, err
+		}
+		// 仅暴露 Image：Remove Background 不是文本/视频能力，避免空实现伪装。
+		return provider.Set{Image: client}, nil
 	default:
 		return provider.Set{}, provider.New(provider.ErrorConfiguration, fmt.Sprintf("provider %s has no concrete type", name))
 	}
