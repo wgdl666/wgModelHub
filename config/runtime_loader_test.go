@@ -81,14 +81,10 @@ func TestRuntimeLoaderRejectsUnsupportedRegion(t *testing.T) {
 	}
 }
 
-func TestAppConfigListenAndCloseAreNoOps(t *testing.T) {
+func TestAppConfigListenRejectsUninitializedLoader(t *testing.T) {
 	loader := &AppConfigLoader{}
-	called := false
-	if err := loader.Listen(func(_, _, _ string) { called = true }); err != nil {
-		t.Fatal(err)
+	if err := loader.Listen(func(_, _, _ string) {}); err == nil {
+		t.Fatal("uninitialized AppConfig loader must not listen")
 	}
 	loader.Close()
-	if called {
-		t.Fatal("AppConfig startup loader must not register a listener")
-	}
 }

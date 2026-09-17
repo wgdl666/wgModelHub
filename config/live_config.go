@@ -10,7 +10,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// LiveConfig 通过 Nacos ListenConfig 回调原子切换整份 Config；禁止在原 Config 上逐字段修改。
+// LiveConfig 通过 loader.Listen 回调原子切换整份 Config；禁止在原 Config 上逐字段修改。
 type LiveConfig struct {
 	current atomic.Pointer[Config]
 }

@@ -5,7 +5,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
+
+	"github.com/wgdl666/wgModelHub/models"
 )
 
 func setValidAppConfigEnv(t *testing.T, endpoint string) {
@@ -138,5 +142,145 @@ func TestAppConfigLoaderRejectsInvalidResponses(t *testing.T) {
 				t.Fatalf("configuration content leaked in error: %v", err)
 			}
 		})
+	}
+}
+
+type appConfigAgentStub struct {
+	mu      sync.Mutex
+	version string
+	body    string
+}
+
+func (s *appConfigAgentStub) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.version != "" {
+		w.Header().Set("Configuration-Version", s.version)
+	}
+	_, _ = w.Write([]byte(s.body))
+}
+
+func (s *appConfigAgentStub) set(version, body string) {
+	s.mu.Lock()
+	s.version = version
+	s.body = body
+	s.mu.Unlock()
+}
+
+func newTestAppConfigLoader(t *testing.T, stub *appConfigAgentStub) *AppConfigLoader {
+	t.Helper()
+	server := httptest.NewServer(stub)
+	t.Cleanup(server.Close)
+	setValidAppConfigEnv(t, server.URL)
+	loader, err := NewAppConfigLoaderFromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	loader.pollInterval = 20 * time.Millisecond
+	t.Cleanup(loader.Close)
+	return loader
+}
+
+func waitForAppConfigCallback(t *testing.T, got *[]string, mu *sync.Mutex, want string) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		for _, item := range *got {
+			if item == want {
+				mu.Unlock()
+				return
+			}
+		}
+		mu.Unlock()
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for AppConfig callback %q", want)
+}
+
+func TestAppConfigListenAppliesBodyChange(t *testing.T) {
+	initial := mustYAML(t, validConfig())
+	nextCfg := validConfig()
+	gemini := nextCfg.Providers["gemini"]
+	gemini.Models = []string{models.Gemini25Flash, models.Gemini25FlashImage, models.Gemini37Flash}
+	nextCfg.Providers["gemini"] = gemini
+	next := mustYAML(t, nextCfg)
+	stub := &appConfigAgentStub{version: "1", body: initial}
+	loader := newTestAppConfigLoader(t, stub)
+	if _, _, err := loader.Load(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	var mu sync.Mutex
+	var got []string
+	if err := loader.Listen(func(_, _, content string) {
+		mu.Lock()
+		got = append(got, content)
+		mu.Unlock()
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	stub.set("2", next)
+	waitForAppConfigCallback(t, &got, &mu, next)
+}
+
+func TestAppConfigListenIgnoresVersionOnlyChange(t *testing.T) {
+	initial := mustYAML(t, validConfig())
+	stub := &appConfigAgentStub{version: "1", body: initial}
+	loader := newTestAppConfigLoader(t, stub)
+	if _, _, err := loader.Load(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	var mu sync.Mutex
+	var got []string
+	if err := loader.Listen(func(_, _, content string) {
+		mu.Lock()
+		got = append(got, content)
+		mu.Unlock()
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	stub.set("2", initial)
+	time.Sleep(120 * time.Millisecond)
+	mu.Lock()
+	defer mu.Unlock()
+	if len(got) != 0 {
+		t.Fatalf("same body must not callback, got %#v", got)
+	}
+}
+
+func TestAppConfigCloseStopsListen(t *testing.T) {
+	initial := mustYAML(t, validConfig())
+	nextCfg := validConfig()
+	gemini := nextCfg.Providers["gemini"]
+	gemini.Models = []string{models.Gemini25Flash, models.Gemini25FlashImage, models.Gemini37Flash}
+	nextCfg.Providers["gemini"] = gemini
+	next := mustYAML(t, nextCfg)
+	stub := &appConfigAgentStub{version: "1", body: initial}
+	loader := newTestAppConfigLoader(t, stub)
+	if _, _, err := loader.Load(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	var mu sync.Mutex
+	var got []string
+	if err := loader.Listen(func(_, _, content string) {
+		mu.Lock()
+		got = append(got, content)
+		mu.Unlock()
+	}); err != nil {
+		t.Fatal(err)
+	}
+	loader.Close()
+
+	stub.set("2", next)
+	time.Sleep(120 * time.Millisecond)
+	mu.Lock()
+	defer mu.Unlock()
+	if len(got) != 0 {
+		t.Fatalf("Close must stop callbacks, got %#v", got)
 	}
 }
