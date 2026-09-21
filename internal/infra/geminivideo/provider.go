@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -41,7 +42,7 @@ type Provider struct {
 	client      *http.Client
 }
 
-func New(name, apiKey, baseURL, authHeader string, pollInterval float64) (*Provider, error) {
+func New(name, apiKey, baseURL, authHeader, proxyURL string, pollInterval float64) (*Provider, error) {
 	apiKey = strings.TrimSpace(apiKey)
 	if apiKey == "" {
 		return nil, provider.New(provider.ErrorConfiguration, name+" api_key is required")
@@ -53,8 +54,10 @@ func New(name, apiKey, baseURL, authHeader string, pollInterval float64) (*Provi
 	if pollInterval <= 0 {
 		pollInterval = float64(defaultPollInterval) / float64(time.Second)
 	}
-	client := telemetry.NewHTTPClient()
-	client.Timeout = defaultHTTPTimeout
+	client, err := newHTTPClient(name, proxyURL)
+	if err != nil {
+		return nil, err
+	}
 	return &Provider{
 		name:         name,
 		apiKey:       apiKey,
@@ -64,6 +67,24 @@ func New(name, apiKey, baseURL, authHeader string, pollInterval float64) (*Provi
 		maxPollTime:  defaultHTTPTimeout,
 		client:       client,
 	}, nil
+}
+
+func newHTTPClient(name, proxyURL string) (*http.Client, error) {
+	client := telemetry.NewHTTPClient()
+	client.Timeout = defaultHTTPTimeout
+	proxyURL = strings.TrimSpace(proxyURL)
+	if proxyURL == "" {
+		return client, nil
+	}
+	parsed, err := url.Parse(proxyURL)
+	if err != nil {
+		return nil, provider.Wrap(provider.ErrorConfiguration, name+" proxy URL is invalid", err)
+	}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = http.ProxyURL(parsed)
+	client = telemetry.NewHTTPClientWithTransport(transport)
+	client.Timeout = defaultHTTPTimeout
+	return client, nil
 }
 
 // GenerateVideo 复用 Submit/Get/ReadResult；前台等待受 maxPollTime 限制，异步 Submit/Get 不受影响。

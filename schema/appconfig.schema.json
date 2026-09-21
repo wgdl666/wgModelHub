@@ -148,6 +148,7 @@
       "properties": {
         "api_key": { "type": "string", "minLength": 1 },
         "base_url": { "type": "string" },
+        "proxy_url": { "type": "string" },
         "auth_header": { "type": "string" },
         "poll_interval": { "type": "number", "minimum": 0 }
       }

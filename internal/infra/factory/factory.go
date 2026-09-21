@@ -95,7 +95,7 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 		return provider.Set{Video: client}, nil
 	case providerCfg.GeminiVideo != nil:
 		cfg := providerCfg.GeminiVideo
-		client, err := geminivideo.New(name, cfg.APIKey, cfg.BaseURL, cfg.AuthHeader, cfg.PollInterval)
+		client, err := geminivideo.New(name, cfg.APIKey, cfg.BaseURL, cfg.AuthHeader, cfg.ProxyURL, cfg.PollInterval)
 		if err != nil {
 			return provider.Set{}, err
 		}

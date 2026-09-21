@@ -107,6 +107,7 @@ type OminilinkVideoProviderConfig struct {
 type GeminiVideoProviderConfig struct {
 	APIKey       string  `yaml:"api_key"`
 	BaseURL      string  `yaml:"base_url"`
+	ProxyURL     string  `yaml:"proxy_url"`
 	AuthHeader   string  `yaml:"auth_header"`
 	PollInterval float64 `yaml:"poll_interval"`
 }

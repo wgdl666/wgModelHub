@@ -44,7 +44,7 @@ func disableFFmpeg(t *testing.T) {
 }
 
 func newTestProvider(baseURL string, client *http.Client) *Provider {
-	p, err := New("gemini", "sk-test", baseURL, "", 0.001)
+	p, err := New("gemini", "sk-test", baseURL, "", "", 0.001)
 	if err != nil {
 		panic(err)
 	}
@@ -63,7 +63,7 @@ func completedInteractionJSON(id string, videoField string) string {
 }
 
 func TestNewUsesDefaultPollWhenZero(t *testing.T) {
-	p, err := New("gemini", "sk-test", "", "", 0)
+	p, err := New("gemini", "sk-test", "", "", "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,6 +72,38 @@ func TestNewUsesDefaultPollWhenZero(t *testing.T) {
 	}
 	if p.maxPollTime != defaultHTTPTimeout {
 		t.Fatalf("maxPollTime=%v want=%v", p.maxPollTime, defaultHTTPTimeout)
+	}
+}
+
+func TestNewRejectsInvalidProxyURL(t *testing.T) {
+	_, err := New("gemini_video", "sk", "https://example.com/v1beta", "", "http://[", 1)
+	if err == nil || !strings.Contains(err.Error(), "proxy URL is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestNewRoutesHTTPThroughProxy(t *testing.T) {
+	var proxied atomic.Bool
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		proxied.Store(true)
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	defer proxy.Close()
+
+	p, err := New("gemini_video", "sk", "http://generativelanguage.example/v1beta", "", proxy.URL, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, err := http.NewRequest(http.MethodGet, "http://generativelanguage.example/v1beta/models", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := p.client.Do(req)
+	if err == nil {
+		resp.Body.Close()
+	}
+	if !proxied.Load() {
+		t.Fatal("request did not go through proxy")
 	}
 }
 
@@ -294,7 +326,7 @@ func TestGetVideoStatusMapping(t *testing.T) {
 }
 
 func TestLoadMediaBytesEnforcesCallerMaxBytes(t *testing.T) {
-	p, err := New("gemini", "sk", "https://example.com/v1beta", "", 1)
+	p, err := New("gemini", "sk", "https://example.com/v1beta", "", "", 1)
 	if err != nil {
 		t.Fatal(err)
 	}

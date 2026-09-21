@@ -215,6 +215,7 @@ providers:
     gemini_video:
       api_key: "${GEMINI_VIDEO_API_KEY}"
       base_url: https://generativelanguage.googleapis.com/v1beta
+      proxy_url: ""
       auth_header: x-goog-api-key
       poll_interval: 5
 
