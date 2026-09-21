@@ -2,6 +2,7 @@ package ominilinkvideo
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -186,6 +187,121 @@ func TestGenerateVeoUsesInstancesPayload(t *testing.T) {
 	}
 	if _, ok := createPayload["instances"]; !ok {
 		t.Fatalf("payload=%v", createPayload)
+	}
+}
+
+func testInlineImageRequest(data []byte, mime string) *modelhubv2.GenerateRequest {
+	return &modelhubv2.GenerateRequest{
+		Input: &modelhubv2.Input{Items: []*modelhubv2.InputItem{{
+			Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
+				Parts: []*modelhubv2.ContentPart{
+					{Content: &modelhubv2.ContentPart_Image{Image: &modelhubv2.Media{
+						MimeType: mime,
+						Source:   &modelhubv2.Media_Data{Data: data},
+					}}},
+					{Content: &modelhubv2.ContentPart_Text{Text: "walk"}},
+				},
+			}},
+		}}},
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Video{Video: &modelhubv2.VideoOutput{Resolution: "720p"}}},
+	}
+}
+
+func TestSubmitSeedanceInlineBytesAsDataURI(t *testing.T) {
+	const png = "fake-png"
+	const model = models.DreaminaSeedance20
+	var createPayload map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("method %s path %s", r.Method, r.URL.Path)
+		}
+		_ = json.NewDecoder(r.Body).Decode(&createPayload)
+		_, _ = w.Write([]byte(`{"id":"seed-inline"}`))
+	}))
+	defer server.Close()
+	p := newTestProvider(server)
+	id, err := p.SubmitVideo(context.Background(), model, testInlineImageRequest([]byte(png), "image/png"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id != "seed-inline" {
+		t.Fatalf("id=%s", id)
+	}
+	content, _ := createPayload["content"].([]any)
+	if len(content) != 2 {
+		t.Fatalf("content=%v", createPayload["content"])
+	}
+	imageBlock, _ := content[1].(map[string]any)
+	imageURL, _ := imageBlock["image_url"].(map[string]any)
+	url, _ := imageURL["url"].(string)
+	if !strings.HasPrefix(url, "data:image/png;base64,") {
+		t.Fatalf("url=%q", url)
+	}
+}
+
+func TestSubmitVeoInlineBytesSkipsFetch(t *testing.T) {
+	const png = "\x89PNG"
+	const model = models.Veo31Generate001
+	var createPayload map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		_ = json.NewDecoder(r.Body).Decode(&createPayload)
+		_, _ = w.Write([]byte(`{"name":"veo-inline"}`))
+	}))
+	defer server.Close()
+	p := newTestProvider(server)
+	id, err := p.SubmitVideo(context.Background(), model, testInlineImageRequest([]byte(png), "image/png"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id != "veo-inline" {
+		t.Fatalf("id=%s", id)
+	}
+	instances, _ := createPayload["instances"].([]any)
+	if len(instances) != 1 {
+		t.Fatalf("instances=%v", createPayload["instances"])
+	}
+	inst, _ := instances[0].(map[string]any)
+	image, _ := inst["image"].(map[string]any)
+	if image["mimeType"] != "image/png" {
+		t.Fatalf("image=%v", image)
+	}
+	got, _ := image["bytesBase64Encoded"].(string)
+	decoded, err := base64.StdEncoding.DecodeString(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(decoded) != png {
+		t.Fatalf("decoded=%q", decoded)
+	}
+}
+
+func TestSubmitKlingInlineBytesAsDataURI(t *testing.T) {
+	const png = "fake-png"
+	const model = models.KlingV3
+	var createPayload map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || !strings.HasSuffix(r.URL.Path, "/image2video") {
+			t.Fatalf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		_ = json.NewDecoder(r.Body).Decode(&createPayload)
+		_, _ = w.Write([]byte(`{"Response":{"JobId":"kling-inline"}}`))
+	}))
+	defer server.Close()
+	p := newTestProvider(server)
+	id, err := p.SubmitVideo(context.Background(), model, testInlineImageRequest([]byte(png), "image/png"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id != "kling-inline" {
+		t.Fatalf("id=%s", id)
+	}
+	image, _ := createPayload["Image"].(map[string]any)
+	url, _ := image["Url"].(string)
+	if !strings.HasPrefix(url, "data:image/png;base64,") {
+		t.Fatalf("Image.Url=%q payload=%v", url, createPayload)
 	}
 }
 

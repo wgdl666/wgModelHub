@@ -2,6 +2,7 @@ package dashscopevideo
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -249,6 +250,102 @@ func testGenRequest() *modelhubv2.GenerateRequest {
 		}}},
 		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Video{Video: &modelhubv2.VideoOutput{}}},
 	}
+}
+
+func assertDataURI(t *testing.T, url, png string) {
+	t.Helper()
+	const prefix = "data:image/png;base64,"
+	if !strings.HasPrefix(url, prefix) {
+		t.Fatalf("url=%q", url)
+	}
+	decoded, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(url, prefix))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(decoded) != png {
+		t.Fatalf("decoded=%q", decoded)
+	}
+}
+
+func testInlineImageRequest(data []byte, mime string) *modelhubv2.GenerateRequest {
+	return &modelhubv2.GenerateRequest{
+		Input: &modelhubv2.Input{Items: []*modelhubv2.InputItem{{
+			Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
+				Parts: []*modelhubv2.ContentPart{
+					{Content: &modelhubv2.ContentPart_Image{Image: &modelhubv2.Media{
+						MimeType: mime,
+						Source:   &modelhubv2.Media_Data{Data: data},
+					}}},
+					{Content: &modelhubv2.ContentPart_Text{Text: "walk"}},
+				},
+			}},
+		}}},
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Video{Video: &modelhubv2.VideoOutput{Resolution: "480p"}}},
+	}
+}
+
+func TestSubmitInlineBytesAsDataURI(t *testing.T) {
+	const png = "fake-png"
+	var createPayload map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/services/aigc/video-generation/video-synthesis" {
+			t.Fatalf("path %s", r.URL.Path)
+		}
+		_ = json.NewDecoder(r.Body).Decode(&createPayload)
+		_, _ = w.Write([]byte(`{"output":{"task_id":"tid-inline"}}`))
+	}))
+	defer server.Close()
+	p, err := New("dashscope", "sk-test", server.URL, 0.01, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.client = server.Client()
+	id, err := p.SubmitVideo(context.Background(), models.Wan22I2VFlash, testInlineImageRequest([]byte(png), "image/png"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id != "tid-inline" {
+		t.Fatalf("id=%s", id)
+	}
+	input, _ := createPayload["input"].(map[string]any)
+	url, _ := input["img_url"].(string)
+	assertDataURI(t, url, png)
+}
+
+func TestSubmitWan27InlineBytesAsDataURI(t *testing.T) {
+	const png = "fake-png"
+	var createPayload map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/services/aigc/video-generation/video-synthesis" {
+			t.Fatalf("path %s", r.URL.Path)
+		}
+		_ = json.NewDecoder(r.Body).Decode(&createPayload)
+		_, _ = w.Write([]byte(`{"output":{"task_id":"tid-w27-inline"}}`))
+	}))
+	defer server.Close()
+	p, err := New("dashscope", "sk-test", server.URL, 0.01, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.client = server.Client()
+	id, err := p.SubmitVideo(context.Background(), models.Wan27I2V, testInlineImageRequest([]byte(png), "image/png"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id != "tid-w27-inline" {
+		t.Fatalf("id=%s", id)
+	}
+	input, _ := createPayload["input"].(map[string]any)
+	media, _ := input["media"].([]any)
+	if len(media) != 1 {
+		t.Fatalf("media=%v", input["media"])
+	}
+	first, _ := media[0].(map[string]any)
+	if first["type"] != "first_frame" {
+		t.Fatalf("first=%v", first)
+	}
+	url, _ := first["url"].(string)
+	assertDataURI(t, url, png)
 }
 
 func TestWaitHonorsContextCancel(t *testing.T) {

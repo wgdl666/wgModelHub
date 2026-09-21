@@ -189,10 +189,8 @@ func (p *Provider) resolveImageURL(media *modelhubv2.Media) (string, error) {
 	if media == nil {
 		return "", provider.New(provider.ErrorInvalidArgument, "image is required in input")
 	}
-	if uri := provider.MediaURI(media); uri != "" {
-		return uri, nil
-	}
-	return "", provider.New(provider.ErrorInvalidArgument, "DashScope video requires image uri; inline bytes are not uploaded here")
+	// 万相 / HappyHorse 官方 img_url 与 media.url 都收公网 URL 或 data URI；百炼可灵文档只写了 HTTP(S)。
+	return provider.ResolveImageURL(media)
 }
 
 func (p *Provider) resolveVideoURL(media *modelhubv2.Media) (string, error) {

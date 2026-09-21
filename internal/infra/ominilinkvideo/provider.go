@@ -148,13 +148,7 @@ func (p *Provider) resolveImageURL(media *modelhubv2.Media) (string, error) {
 	if media == nil {
 		return "", provider.New(provider.ErrorInvalidArgument, "first_frame image is required in input")
 	}
-	if uri := provider.MediaURI(media); uri != "" {
-		return uri, nil
-	}
-	if data, ok := media.Source.(*modelhubv2.Media_Data); ok && len(data.Data) > 0 {
-		return "", provider.New(provider.ErrorInvalidArgument, "ominilink video requires image uri for async create")
-	}
-	return "", provider.New(provider.ErrorInvalidArgument, "image source is required")
+	return provider.ResolveImageURL(media)
 }
 
 func (p *Provider) createTask(ctx context.Context, model, imageURL, prompt, resolution string, duration int, aspectRatio string) (string, error) {
@@ -190,8 +184,8 @@ func (p *Provider) createTask(ctx context.Context, model, imageURL, prompt, reso
 	return taskID, nil
 }
 
-// buildCreateRequest 按 family 组装互斥 payload：Seedance/Vidu 用 image URL；Veo 需先拉取转 base64；
-// Kling 走独立 image2video 路径。各 family 轮询响应字段名不一致，由 parseTaskResponse 统一归一。
+// buildCreateRequest 按 family 组装互斥 payload：Seedance/Vidu 的 image_url 收 URL 或 data URI；
+// Veo 用 bytesBase64Encoded（内联 data URI 本地解码，公网 URI 再拉取）；Kling 走 image2video。
 func (p *Provider) buildCreateRequest(ctx context.Context, model, imageURL, prompt, resolution string, duration int, aspectRatio string) (string, []byte, error) {
 	model = strings.TrimSpace(model)
 	resolution, duration, aspectRatio = NormalizeParams(model, resolution, duration, aspectRatio)
@@ -214,7 +208,7 @@ func (p *Provider) buildCreateRequest(ctx context.Context, model, imageURL, prom
 		})
 		return p.modelCreateURL(model), body, err
 	case FamilyVeo:
-		imageB64, mimeType, err := p.fetchImageBase64(ctx, imageURL)
+		imageB64, mimeType, err := p.veoImageBase64(ctx, imageURL)
 		if err != nil {
 			return "", nil, err
 		}
@@ -260,6 +254,18 @@ func (p *Provider) buildCreateRequest(ctx context.Context, model, imageURL, prom
 	default:
 		return "", nil, provider.Errorf(provider.ErrorInvalidArgument, "unsupported ominilink video model %s", model)
 	}
+}
+
+func (p *Provider) veoImageBase64(ctx context.Context, imageURL string) (b64, mimeType string, err error) {
+	imageURL = strings.TrimSpace(imageURL)
+	if strings.HasPrefix(imageURL, "data:") {
+		mimeType, data, err := provider.ParseDataURI(imageURL)
+		if err != nil {
+			return "", "", err
+		}
+		return base64.StdEncoding.EncodeToString(data), mimeType, nil
+	}
+	return p.fetchImageBase64(ctx, imageURL)
 }
 
 func (p *Provider) fetchImageBase64(ctx context.Context, imageURL string) (b64, mimeType string, err error) {
