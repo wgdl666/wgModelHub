@@ -132,6 +132,9 @@ func (t *traceTransport) RoundTrip(request *http.Request) (*http.Response, error
 		return nil, err
 	}
 	span.SetAttributes(attribute.Int("http.response.status_code", response.StatusCode))
+	if response.StatusCode >= 400 {
+		span.SetStatus(codes.Error, fmt.Sprintf("HTTP %d", response.StatusCode))
+	}
 	if response.Body == nil || response.Body == http.NoBody {
 		span.End()
 		return response, nil

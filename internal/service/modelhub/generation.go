@@ -127,11 +127,11 @@ func (s *Service) SubmitGeneration(ctx context.Context, req *modelhubv2.SubmitGe
 	persistCtx, persistCancel := detachPersistContext(ctx)
 	defer persistCancel()
 	if submitErr != nil {
+		telemetry.RecordError(ctx, submitErr)
 		code, message, reason := normalizeProviderError(submitErr)
 		if isUncertainSubmit(submitErr) {
-			// 受理结果不确定：持久化 FAILED/SUBMIT_OUTCOME_UNKNOWN，禁止留下无 provider_task_id 的永久 PENDING。
+			// 超时/取消才标 unknown，禁止自动重提；error_message 仍留厂商/底层原文，供落库后查询。
 			code = int32(codes.Unavailable)
-			message = "submit outcome unknown; not auto-retried"
 			reason = string(provider.ErrorSubmitOutcomeUnknown)
 		}
 		if markErr := s.tasks.MarkFailed(persistCtx, stored.TaskID, taskstore.StatePending, code, message, reason); markErr != nil {
@@ -414,8 +414,7 @@ func isUncertainSubmit(err error) bool {
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return true
 	}
-	kind := provider.Kind(err)
-	return kind == provider.ErrorUnavailable || kind == provider.ErrorTimeout
+	return provider.Kind(err) == provider.ErrorTimeout
 }
 
 // detachPersistContext 剥离请求取消，保留短超时，专用于已拿到上游 id 后的落库。

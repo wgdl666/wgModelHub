@@ -318,6 +318,9 @@ func TestSubmitUncertainOutcomeMarksFailedNoRetry(t *testing.T) {
 	if stored.ErrorReason != string(provider.ErrorSubmitOutcomeUnknown) || stored.ProviderTaskID != "" {
 		t.Fatalf("stored=%#v", stored)
 	}
+	if !strings.Contains(stored.ErrorMessage, "upstream timed out") {
+		t.Fatalf("error_message=%q", stored.ErrorMessage)
+	}
 
 	second, err := service.SubmitGeneration(ctx, videoSubmitRequest("ltx", "req-uncertain"))
 	if err != nil {
@@ -328,6 +331,29 @@ func TestSubmitUncertainOutcomeMarksFailedNoRetry(t *testing.T) {
 	}
 	if video.submitCount != 1 {
 		t.Fatalf("submitCount=%d want 1 (no auto-retry)", video.submitCount)
+	}
+}
+
+func TestSubmitHTTPErrorPersistsVendorMessage(t *testing.T) {
+	const vendor = `ark_video create HTTP 404: {"error":{"code":"InvalidEndpoint","message":"Not Found"}}`
+	video := &fakeVideo{submitErr: provider.Errorf(provider.ErrorUnavailable, "%s", vendor)}
+	store := newMemoryStore()
+	service := videoService(video, store)
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(protocol.CallerMetadataKey, "wg-hub"))
+
+	task, err := service.SubmitGeneration(ctx, videoSubmitRequest("ltx", "req-ark-404"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := store.GetByTaskID(ctx, task.GetTaskId())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.ErrorMessage != vendor {
+		t.Fatalf("error_message=%q", stored.ErrorMessage)
+	}
+	if stored.ErrorReason == string(provider.ErrorSubmitOutcomeUnknown) {
+		t.Fatalf("HTTP 404 must not be wrapped as unknown: %#v", stored)
 	}
 }
 
