@@ -2,21 +2,18 @@
   "$schema": "http://json-schema.org/draft-04/schema#",
   "title": "wgModelHub AppConfig",
   "type": "object",
-  "additionalProperties": false,
   "required": ["database", "providers", "logfire"],
   "properties": {
     "database": { "$ref": "#/definitions/database" },
     "providers": {
       "type": "object",
       "minProperties": 1,
-      "additionalProperties": false,
       "patternProperties": {
         "^\\S(?:.*\\S)?$": { "$ref": "#/definitions/provider" }
       }
     },
     "model_routes": {
       "type": "object",
-      "additionalProperties": false,
       "patternProperties": {
         "^\\S(?:.*\\S)?$": { "type": "string", "minLength": 1 }
       }
@@ -26,7 +23,6 @@
   "definitions": {
     "database": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["dsn"],
       "properties": {
         "dsn": { "type": "string", "minLength": 1 }
@@ -34,7 +30,6 @@
     },
     "logfire": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["token"],
       "properties": {
         "token": { "type": "string", "minLength": 1 },
@@ -46,7 +41,6 @@
     },
     "provider": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["models"],
       "properties": {
         "models": {
@@ -81,7 +75,6 @@
     },
     "gemini": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["api_key"],
       "properties": {
         "api_key": { "type": "string", "minLength": 1 },
@@ -91,7 +84,6 @@
     },
     "vertexai": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["project", "location"],
       "properties": {
         "project": { "type": "string", "minLength": 1 },
@@ -100,7 +92,6 @@
     },
     "ark": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["api_key"],
       "properties": {
         "api_key": { "type": "string", "minLength": 1 },
@@ -110,7 +101,6 @@
     },
     "openai": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["api_key"],
       "properties": {
         "api_key": { "type": "string", "minLength": 1 },
@@ -119,7 +109,6 @@
     },
     "ltx": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["base_url", "duration", "fps", "poll_interval", "max_poll_time"],
       "properties": {
         "base_url": { "type": "string", "minLength": 1 },
@@ -133,7 +122,6 @@
     },
     "dashscopeVideo": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["api_key"],
       "properties": {
         "api_key": { "type": "string", "minLength": 1 },
@@ -144,7 +132,6 @@
     },
     "ominilinkVideo": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["api_key"],
       "properties": {
         "api_key": { "type": "string", "minLength": 1 },
@@ -155,7 +142,6 @@
     },
     "geminiVideo": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["api_key"],
       "properties": {
         "api_key": { "type": "string", "minLength": 1 },
@@ -166,7 +152,6 @@
     },
     "arkVideo": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["api_key"],
       "properties": {
         "api_key": { "type": "string", "minLength": 1 },
@@ -177,7 +162,6 @@
     },
     "photoroom": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["api_key"],
       "properties": {
         "api_key": { "type": "string", "minLength": 1 },

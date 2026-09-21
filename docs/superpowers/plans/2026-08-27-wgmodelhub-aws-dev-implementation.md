@@ -275,7 +275,7 @@ Expected: failure because the schema file is absent.
 
 - [ ] **Step 3: Add the complete draft-04 schema**
 
-Use `additionalProperties: false` for root and nested objects. Require a non-empty DSN, Logfire token, at least one provider, non-empty model IDs, and exactly one of `gemini`, `vertexai`, `ark`, `openai`, `ltx`, `dashscope_video`, `ominilink_video`, `gemini_video`, or `ark_video`. `model_routes` maps non-empty model IDs to non-empty provider names. Positive application durations/poll intervals use exclusive minimum zero.
+Allow unknown properties at root and nested objects (align with process YAML `ParseAndValidateYAML` ignoring unknown fields). Require a non-empty DSN, Logfire token, at least one provider, non-empty model IDs, and exactly one of `gemini`, `vertexai`, `ark`, `openai`, `ltx`, `dashscope_video`, `ominilink_video`, `gemini_video`, or `ark_video`. `model_routes` maps non-empty model IDs to non-empty provider names. Positive application durations/poll intervals use exclusive minimum zero. Local `schema/appconfig.schema.json` is a repo contract for tests/docs; it does not automatically bind the cloud AppConfig Validator unless the platform registers it.
 
 - [ ] **Step 4: Add platform metadata and image verification**
 

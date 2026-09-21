@@ -228,7 +228,7 @@ type configGetter interface {
 	CancelListenConfig(vo.ConfigParam) error
 }
 
-// NacosConfigLoader 只读取固定 Data ID，并在建立供应商客户端前完成严格校验。
+// NacosConfigLoader 只读取固定 Data ID，并在建立供应商客户端前完成校验（忽略未知字段，拒绝多文档与缺失项）。
 type NacosConfigLoader struct {
 	client configGetter
 	close  func()

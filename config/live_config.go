@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"io"
 	"reflect"
 	"strings"
@@ -39,7 +40,7 @@ func (lc *LiveConfig) Load() Config {
 	return Config{}
 }
 
-// ApplyYAML 严格解析/校验后切换；restart 字段变化或非法 YAML 整单拒绝并保留旧指针。
+// ApplyYAML 解析/校验后切换；restart 字段变化或非法 YAML 整单拒绝并保留旧指针。
 func (lc *LiveConfig) ApplyYAML(content string) {
 	next, err := ParseAndValidateYAML(content)
 	if err != nil {
@@ -61,15 +62,19 @@ func (lc *LiveConfig) ApplyYAML(content string) {
 	logs.Default().Info("nacos_config_applied")
 }
 
-// ParseAndValidateYAML 与启动路径相同：拒绝未知字段、多文档，并执行完整 Validate。
+// ParseAndValidateYAML 与启动路径相同：忽略未知字段、拒绝多文档，并执行完整 Validate。
+// 控制台与跨环境 YAML 常残留已下线或预留键；严格拒绝对齐会阻断启动/热更新，故忽略多余字段，已知字段仍加载并由 Validate 约束取值。
 func ParseAndValidateYAML(content string) (Config, error) {
 	decoder := yaml.NewDecoder(strings.NewReader(content))
-	decoder.KnownFields(true)
 	var cfg Config
 	if err := decoder.Decode(&cfg); err != nil {
 		return Config{}, err
 	}
 	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		// 第二份文档即使能解码进空 struct，也必须拒绝；不能把 nil decode 误差当作成功。
+		if err == nil {
+			return Config{}, fmt.Errorf("Nacos YAML config contains multiple documents")
+		}
 		return Config{}, err
 	}
 	if err := cfg.Validate(); err != nil {

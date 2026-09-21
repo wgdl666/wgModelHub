@@ -224,7 +224,7 @@ The Agent response, configuration body, DSN, provider credentials, prompts, medi
 - source selection: unset, `nacos`, `appconfig`, and unknown value;
 - successful AppConfig Agent response;
 - loopback endpoint enforcement;
-- timeout, connection failure, redirect, oversize body, empty body, invalid YAML, multiple documents, and unknown field rejection;
+- timeout, connection failure, redirect, oversize body, empty body, invalid YAML, multiple documents; unknown fields are ignored while required/type validation still applies;
 - no AppConfig-to-Nacos fallback;
 - unchanged Nacos initial load, listen, hot-apply, and restart-required rejection;
 - server startup with internal port only;

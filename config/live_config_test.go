@@ -23,6 +23,61 @@ func TestLiveConfigAppliesModelRoutes(t *testing.T) {
 	}
 }
 
+func TestLiveConfigIgnoresUnknownFieldsWhenApplyingHotFields(t *testing.T) {
+	initial := validConfigWithDualGeminiFlash()
+	lc := NewLiveConfig(initial)
+
+	next := cloneConfig(initial)
+	next.ModelRouteOverrides = map[string]string{models.Gemini25Flash: "gemini_backup"}
+	gemini := next.Providers["gemini"]
+	gemini.Models = []string{models.Gemini25Flash, models.Gemini25FlashImage, models.Gemini37Flash}
+	next.Providers["gemini"] = gemini
+	body := mustYAML(t, next) + "unexpected_top: true\n"
+	body = strings.Replace(body, "\n    dsn:", "\n    leftover: true\n    dsn:", 1)
+	lc.ApplyYAML(body)
+	got := lc.Load()
+	if got.ModelRoutes()[models.Gemini25Flash] != "gemini_backup" {
+		t.Fatalf("unknown fields must not block route hot update: %v", got.ModelRoutes())
+	}
+	if !reflect.DeepEqual(got.Providers["gemini"].Models, []string{models.Gemini25Flash, models.Gemini25FlashImage, models.Gemini37Flash}) {
+		t.Fatalf("unknown fields must not block models hot update: %v", got.Providers["gemini"].Models)
+	}
+	if got.Providers["ark"].Ark.APIKey != initial.Providers["ark"].Ark.APIKey {
+		t.Fatal("restart resource fields must stay unchanged")
+	}
+}
+
+func TestParseAndValidateYAMLIgnoresUnknownFields(t *testing.T) {
+	want := validConfig()
+	body := mustYAML(t, want) + "unexpected_top: true\n"
+	body = strings.Replace(body, "\n    dsn:", "\n    leftover: true\n    dsn:", 1)
+	got, err := ParseAndValidateYAML(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Database.DSN != want.Database.DSN {
+		t.Fatalf("known fields lost: %#v", got.Database)
+	}
+	if got.Providers["ark"].Ark == nil || got.Providers["ark"].Ark.APIKey != "key" {
+		t.Fatalf("known nested provider fields lost: %#v", got.Providers["ark"])
+	}
+}
+
+func TestParseAndValidateYAMLRejectsMultiDocAndTypeErrors(t *testing.T) {
+	valid := mustYAML(t, validConfig())
+	if _, err := ParseAndValidateYAML(valid + "---\n{}\n"); err == nil {
+		t.Fatal("multi-document yaml must be rejected")
+	}
+	badType := strings.Replace(valid, "dsn: postgres://modelhub:modelhub@127.0.0.1:5432/modelhub?sslmode=disable", "dsn: [not-a-string]", 1)
+	if _, err := ParseAndValidateYAML(badType); err == nil {
+		t.Fatal("type error must be rejected")
+	}
+	missing := strings.Replace(valid, "dsn: postgres://modelhub:modelhub@127.0.0.1:5432/modelhub?sslmode=disable", "dsn: \"\"", 1)
+	if _, err := ParseAndValidateYAML(missing); err == nil {
+		t.Fatal("missing required must be rejected")
+	}
+}
+
 func TestLiveConfigAppliesProviderModelsAppendDeleteReorder(t *testing.T) {
 	initial := validConfig()
 	lc := NewLiveConfig(initial)

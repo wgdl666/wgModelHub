@@ -26,7 +26,21 @@ func TestAppConfigSchemaContract(t *testing.T) {
 	}
 	assertStringSet(t, schema["required"], "database", "providers", "logfire")
 
+	// 仓库内 schema 是本地契约/测试对照，不自动绑定云端 AppConfig Validator；与进程 YAML 解析一致，允许未知字段。
+	if ap, exists := schema["additionalProperties"]; exists && ap == false {
+		t.Fatal("root must allow unknown fields")
+	}
 	definitions := mustMap(t, schema["definitions"])
+	for _, definitionName := range []string{
+		"database", "logfire", "provider", "gemini", "ark", "openai", "ltx",
+		"dashscopeVideo", "ominilinkVideo", "geminiVideo", "arkVideo", "photoroom",
+	} {
+		def := mustMap(t, definitions[definitionName])
+		if ap, exists := def["additionalProperties"]; exists && ap == false {
+			t.Fatalf("%s must allow unknown fields", definitionName)
+		}
+	}
+
 	provider := mustMap(t, definitions["provider"])
 	assertStringSet(t, provider["required"], "models")
 	oneOf := mustSlice(t, provider["oneOf"])

@@ -6,7 +6,7 @@
 
 # 配置与模型路由
 
-- Nacos Data ID：`wg.mirror.modelHub`；bootstrap 只保存 Nacos 定位信息，凭据与模型映射在 YAML 正文中。
+- Nacos Data ID：`wg.mirror.modelHub`；bootstrap 只保存 Nacos 定位信息，凭据与模型映射在 YAML 正文中。共享业务 YAML 忽略未知字段，但仍须拒绝多文档和缺少的必需配置；启动与热更新共用 `ParseAndValidateYAML`。
 - 每个 provider 实例用互斥嵌套字段表达 Gemini/VertexAI/Ark/OpenAI/Photoroom/LTX 以及各类视频供应商，并声明 `models: [真实模型 ID...]`。
 - `ark_video` 承接方舟 Seedance 2.5（`doubao-seedance-2-5-260628`）文生视频与首帧图生视频；与 `ark_chat` 文本实例分绑，不能共用一套能力。任务形态由 Input 推断，不另开模型 ID 或模式枚举。
 - OpenAI 实例同时承接 chat/completions 与 Images API；无参考图走 `/v1/images/generations`，有参考图走 `/v1/images/edits`。`gpt-image-2` / `gpt-image-2.5-flare` / `gpt-image-2.5-sunburst` 复用现网已实测的 AIG OpenAI-compatible Images 实例（`async_gpt_image`，`https://api.aig-ai.com/v1`），不能并入 Gemini generateContent 生图实例。
