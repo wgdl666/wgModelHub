@@ -3,8 +3,10 @@ package arkvideo
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -158,9 +160,21 @@ func (p *Provider) resolveImageURL(media *modelhubv2.Media) (string, error) {
 		return uri, nil
 	}
 	if data, ok := media.Source.(*modelhubv2.Media_Data); ok && len(data.Data) > 0 {
-		return "", provider.New(provider.ErrorInvalidArgument, "ark video requires image uri for async create")
+		// 方舟 create 的 image_url 同时接受公网 URL 与 data URI；衣橱只给内联 PNG，这里转成 data URI。
+		return imageDataURI(media.GetMimeType(), data.Data)
 	}
 	return "", provider.New(provider.ErrorInvalidArgument, "image source is required")
+}
+
+func imageDataURI(mimeType string, data []byte) (string, error) {
+	mimeType = strings.ToLower(strings.TrimSpace(mimeType))
+	if mimeType == "" {
+		return "", provider.New(provider.ErrorInvalidArgument, "first_frame mime_type is required")
+	}
+	if !strings.HasPrefix(mimeType, "image/") {
+		return "", provider.Errorf(provider.ErrorInvalidArgument, "first_frame mime_type %s is not an image", mimeType)
+	}
+	return fmt.Sprintf("data:%s;base64,%s", mimeType, base64.StdEncoding.EncodeToString(data)), nil
 }
 
 func (p *Provider) createTask(ctx context.Context, model, imageURL, prompt, resolution string, duration int, aspectRatio string) (string, error) {
