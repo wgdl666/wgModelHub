@@ -41,6 +41,19 @@ func TestAppConfigSchemaContract(t *testing.T) {
 		}
 	}
 
+	// providers / model_routes 的 additionalProperties:false 配合 patternProperties，约束动态 map 键名（非空白首尾），不是固定 struct 未知字段限制。
+	properties := mustMap(t, schema["properties"])
+	for _, mapName := range []string{"providers", "model_routes"} {
+		mapSchema := mustMap(t, properties[mapName])
+		if mapSchema["additionalProperties"] != false {
+			t.Fatalf("%s.additionalProperties=%v, want false (map key pattern gate)", mapName, mapSchema["additionalProperties"])
+		}
+		patterns := mustMap(t, mapSchema["patternProperties"])
+		if _, exists := patterns[`^\S(?:.*\S)?$`]; !exists {
+			t.Fatalf("%s.patternProperties missing non-blank key pattern", mapName)
+		}
+	}
+
 	provider := mustMap(t, definitions["provider"])
 	assertStringSet(t, provider["required"], "models")
 	oneOf := mustSlice(t, provider["oneOf"])

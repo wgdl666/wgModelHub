@@ -8,12 +8,14 @@
     "providers": {
       "type": "object",
       "minProperties": 1,
+      "additionalProperties": false,
       "patternProperties": {
         "^\\S(?:.*\\S)?$": { "$ref": "#/definitions/provider" }
       }
     },
     "model_routes": {
       "type": "object",
+      "additionalProperties": false,
       "patternProperties": {
         "^\\S(?:.*\\S)?$": { "type": "string", "minLength": 1 }
       }
