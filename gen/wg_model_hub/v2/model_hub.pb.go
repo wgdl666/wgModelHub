@@ -1674,6 +1674,11 @@ type TextOutput struct {
 	TopP           *float64        `protobuf:"fixed64,3,opt,name=top_p,json=topP,proto3,oneof" json:"top_p,omitempty"`
 	ResponseFormat *ResponseFormat `protobuf:"bytes,4,opt,name=response_format,json=responseFormat,proto3" json:"response_format,omitempty"`
 	Thinking       ThinkingMode    `protobuf:"varint,5,opt,name=thinking,proto3,enum=wg_model_hub.v2.ThinkingMode" json:"thinking,omitempty"`
+	// thinking_budget 由调用方指定，ModelHub 原样下发、不封顶。
+	// 只对 gemini-2.5 等 thinkingBudget 模型生效；未设置且需要思考时不写预算，交给供应商动态决定。
+	// 3.7/3.8/3.5-flash-lite 只接受 thinking level，此字段忽略。
+	// optional 保留显式 0，表示调用方要求关闭思考。
+	ThinkingBudget *int32 `protobuf:"varint,6,opt,name=thinking_budget,json=thinkingBudget,proto3,oneof" json:"thinking_budget,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -1741,6 +1746,13 @@ func (x *TextOutput) GetThinking() ThinkingMode {
 		return x.Thinking
 	}
 	return ThinkingMode_THINKING_MODE_UNSPECIFIED
+}
+
+func (x *TextOutput) GetThinkingBudget() int32 {
+	if x != nil && x.ThinkingBudget != nil {
+		return *x.ThinkingBudget
+	}
+	return 0
 }
 
 type ImageOutput struct {
@@ -2833,17 +2845,19 @@ const file_proto_wg_model_hub_v2_model_hub_proto_rawDesc = "" +
 	"\rfunction_name\x18\x02 \x01(\tR\ffunctionName\"O\n" +
 	"\rCachingConfig\x12\x18\n" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\x12$\n" +
-	"\x0eexpire_at_unix\x18\x02 \x01(\x03R\fexpireAtUnix\"\xb3\x02\n" +
+	"\x0eexpire_at_unix\x18\x02 \x01(\x03R\fexpireAtUnix\"\xf5\x02\n" +
 	"\n" +
 	"TextOutput\x12/\n" +
 	"\x11max_output_tokens\x18\x01 \x01(\x05H\x00R\x0fmaxOutputTokens\x88\x01\x01\x12%\n" +
 	"\vtemperature\x18\x02 \x01(\x01H\x01R\vtemperature\x88\x01\x01\x12\x18\n" +
 	"\x05top_p\x18\x03 \x01(\x01H\x02R\x04topP\x88\x01\x01\x12H\n" +
 	"\x0fresponse_format\x18\x04 \x01(\v2\x1f.wg_model_hub.v2.ResponseFormatR\x0eresponseFormat\x129\n" +
-	"\bthinking\x18\x05 \x01(\x0e2\x1d.wg_model_hub.v2.ThinkingModeR\bthinkingB\x14\n" +
+	"\bthinking\x18\x05 \x01(\x0e2\x1d.wg_model_hub.v2.ThinkingModeR\bthinking\x12,\n" +
+	"\x0fthinking_budget\x18\x06 \x01(\x05H\x03R\x0ethinkingBudget\x88\x01\x01B\x14\n" +
 	"\x12_max_output_tokensB\x0e\n" +
 	"\f_temperatureB\b\n" +
-	"\x06_top_p\"\xca\x02\n" +
+	"\x06_top_pB\x12\n" +
+	"\x10_thinking_budget\"\xca\x02\n" +
 	"\vImageOutput\x12Q\n" +
 	"\x11output_modalities\x18\x01 \x03(\x0e2$.wg_model_hub.v2.ImageOutputModalityR\x10outputModalities\x12&\n" +
 	"\faspect_ratio\x18\x02 \x01(\tH\x00R\vaspectRatio\x88\x01\x01\x12\"\n" +

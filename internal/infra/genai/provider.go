@@ -331,25 +331,8 @@ func (p *Provider) buildConfig(model string, request *modelhubv2.GenerateRequest
 		value := float32(*textSpec.TopP)
 		cfg.TopP = &value
 	}
+	applyTextThinking(cfg, model, textSpec)
 	if textSpec != nil {
-		switch textSpec.Thinking {
-		case modelhubv2.ThinkingMode_THINKING_MODE_DISABLED:
-			// 新一代 Gemini Flash：ThinkingBudget=0 在部分代理路径可被接受，但 3.7 实测仍有 thoughtsTokenCount，
-			// 且官方档位仅 LOW/MEDIUM/HIGH（Lite 另有 MINIMAL）。Hub DISABLED 统一落到供应商最低合法档，不伪称 true-off。
-			switch model {
-			case models.Gemini37Flash, models.Gemini38Flash:
-				// 3.7/3.8 仅 LOW/MEDIUM/HIGH；DISABLED → LOW。
-				cfg.ThinkingConfig = &genaisdk.ThinkingConfig{ThinkingLevel: genaisdk.ThinkingLevelLow}
-			case models.Gemini35FlashLite:
-				// 3.5 Flash-Lite 支持 MINIMAL；默认 DISABLED → MINIMAL，避免分类/路由被思考吃掉 token。
-				// 美东路演意图链路明确要求 LOW；只认运行面 XX_WG_ENV=ppe_exhibition，避免改默认值后误伤 CN/SG。
-				cfg.ThinkingConfig = &genaisdk.ThinkingConfig{ThinkingLevel: flashLiteDisabledThinkingLevel()}
-			default:
-				cfg.ThinkingConfig = &genaisdk.ThinkingConfig{ThinkingBudget: genaisdk.Ptr(int32(0))}
-			}
-		case modelhubv2.ThinkingMode_THINKING_MODE_ENABLED:
-			cfg.ThinkingConfig = &genaisdk.ThinkingConfig{ThinkingBudget: genaisdk.Ptr(int32(1024))}
-		}
 		if format := textSpec.ResponseFormat; format != nil {
 			switch format.Type {
 			case modelhubv2.ResponseFormatType_RESPONSE_FORMAT_TYPE_JSON_OBJECT:
@@ -391,6 +374,38 @@ func (p *Provider) buildConfig(model string, request *modelhubv2.GenerateRequest
 		{Category: genaisdk.HarmCategoryDangerousContent, Threshold: genaisdk.HarmBlockThresholdBlockNone},
 	}
 	return cfg
+}
+
+// applyTextThinking 映射文本思考参数。
+// gemini-2.5 等 thinkingBudget 模型：调用方 thinking_budget 原样下发（含 0），ModelHub 不封顶。
+// 未设置预算时，只有 DISABLED 发 0 以关掉默认思考；ENABLED 不写预算，由 Gemini 动态决定。
+// 3.7/3.8/3.5-flash-lite 只接受 thinking level，忽略 thinking_budget，DISABLED 仍落到最低合法档。
+func applyTextThinking(cfg *genaisdk.GenerateContentConfig, model string, textSpec *modelhubv2.TextOutput) {
+	if cfg == nil || textSpec == nil {
+		return
+	}
+	switch model {
+	case models.Gemini37Flash, models.Gemini38Flash:
+		if textSpec.Thinking == modelhubv2.ThinkingMode_THINKING_MODE_DISABLED {
+			// 3.7/3.8 仅 LOW/MEDIUM/HIGH，ThinkingBudget=0 仍会产出 thoughts。DISABLED → LOW。
+			cfg.ThinkingConfig = &genaisdk.ThinkingConfig{ThinkingLevel: genaisdk.ThinkingLevelLow}
+		}
+	case models.Gemini35FlashLite:
+		if textSpec.Thinking == modelhubv2.ThinkingMode_THINKING_MODE_DISABLED {
+			// 3.5 Flash-Lite 支持 MINIMAL；默认 DISABLED → MINIMAL，避免分类/路由被思考吃掉 token。
+			// 美东路演意图链路明确要求 LOW；只认运行面 XX_WG_ENV=ppe_exhibition，避免改默认值后误伤 CN/SG。
+			cfg.ThinkingConfig = &genaisdk.ThinkingConfig{ThinkingLevel: flashLiteDisabledThinkingLevel()}
+		}
+	default:
+		if textSpec.ThinkingBudget != nil {
+			budget := *textSpec.ThinkingBudget
+			cfg.ThinkingConfig = &genaisdk.ThinkingConfig{ThinkingBudget: &budget}
+			return
+		}
+		if textSpec.Thinking == modelhubv2.ThinkingMode_THINKING_MODE_DISABLED {
+			cfg.ThinkingConfig = &genaisdk.ThinkingConfig{ThinkingBudget: genaisdk.Ptr(int32(0))}
+		}
+	}
 }
 
 // flashLiteDisabledThinkingLevel 把 Hub DISABLED 映射到 3.5 Flash-Lite 的供应商档位。

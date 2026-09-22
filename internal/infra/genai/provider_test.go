@@ -263,6 +263,55 @@ func TestBuildConfigKeepsGemini25DisabledAsBudgetZero(t *testing.T) {
 	}
 }
 
+// TestBuildConfigLeavesGemini25EnabledBudgetUnset 证明打开思考时不再写死 1024，交给 Gemini 动态预算。
+func TestBuildConfigLeavesGemini25EnabledBudgetUnset(t *testing.T) {
+	cfg := (&Provider{}).buildConfig(models.Gemini25Flash, &modelhubv2.GenerateRequest{
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{
+			Thinking: modelhubv2.ThinkingMode_THINKING_MODE_ENABLED,
+		}}},
+	})
+	if cfg.ThinkingConfig != nil {
+		t.Fatalf("thinking = %#v, want unset so Gemini chooses the budget", cfg.ThinkingConfig)
+	}
+}
+
+// TestBuildConfigForwardsGemini25ThinkingBudget 证明调用方预算原样下发，含显式 0，ModelHub 不改写。
+func TestBuildConfigForwardsGemini25ThinkingBudget(t *testing.T) {
+	budget := int32(24576)
+	cfg := (&Provider{}).buildConfig(models.Gemini25Flash, &modelhubv2.GenerateRequest{
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{
+			Thinking:       modelhubv2.ThinkingMode_THINKING_MODE_ENABLED,
+			ThinkingBudget: &budget,
+		}}},
+	})
+	if cfg.ThinkingConfig == nil || cfg.ThinkingConfig.ThinkingBudget == nil || *cfg.ThinkingConfig.ThinkingBudget != 24576 {
+		t.Fatalf("thinking = %#v, want budget 24576", cfg.ThinkingConfig)
+	}
+	zero := int32(0)
+	cfg = (&Provider{}).buildConfig(models.Gemini25Flash, &modelhubv2.GenerateRequest{
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{
+			ThinkingBudget: &zero,
+		}}},
+	})
+	if cfg.ThinkingConfig == nil || cfg.ThinkingConfig.ThinkingBudget == nil || *cfg.ThinkingConfig.ThinkingBudget != 0 {
+		t.Fatalf("thinking = %#v, want explicit budget 0", cfg.ThinkingConfig)
+	}
+}
+
+// TestBuildConfigIgnoresThinkingBudgetOnLevelModels 证明 3.x 档位模型不接收 thinking_budget。
+func TestBuildConfigIgnoresThinkingBudgetOnLevelModels(t *testing.T) {
+	budget := int32(1024)
+	cfg := (&Provider{}).buildConfig(models.Gemini37Flash, &modelhubv2.GenerateRequest{
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{
+			Thinking:       modelhubv2.ThinkingMode_THINKING_MODE_ENABLED,
+			ThinkingBudget: &budget,
+		}}},
+	})
+	if cfg.ThinkingConfig != nil {
+		t.Fatalf("thinking = %#v, want unset for gemini-3.7-flash", cfg.ThinkingConfig)
+	}
+}
+
 func TestBuildImageConfigPreservesZeroTemperature(t *testing.T) {
 	zero := 0.0
 	ratio := "3:4"
