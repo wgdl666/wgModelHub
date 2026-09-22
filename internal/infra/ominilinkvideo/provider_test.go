@@ -126,6 +126,10 @@ func TestGenerateKlingUsesImage2VideoPath(t *testing.T) {
 	if createPayload["Model"] != "v3.0" {
 		t.Fatalf("Model=%v", createPayload["Model"])
 	}
+	image, _ := createPayload["Image"].(map[string]any)
+	if image["Url"] != "https://cdn.example/frame.png" || image["Base64"] != nil {
+		t.Fatalf("Image=%v", image)
+	}
 }
 
 func TestGenerateViduUsesImg2VideoPath(t *testing.T) {
@@ -278,7 +282,7 @@ func TestSubmitVeoInlineBytesSkipsFetch(t *testing.T) {
 	}
 }
 
-func TestSubmitKlingInlineBytesAsDataURI(t *testing.T) {
+func TestSubmitKlingInlineBytesAsBase64(t *testing.T) {
 	const png = "fake-png"
 	const model = models.KlingV3
 	var createPayload map[string]any
@@ -299,9 +303,34 @@ func TestSubmitKlingInlineBytesAsDataURI(t *testing.T) {
 		t.Fatalf("id=%s", id)
 	}
 	image, _ := createPayload["Image"].(map[string]any)
-	url, _ := image["Url"].(string)
-	if !strings.HasPrefix(url, "data:image/png;base64,") {
-		t.Fatalf("Image.Url=%q payload=%v", url, createPayload)
+	if _, ok := image["Url"]; ok {
+		t.Fatalf("Image=%v", image)
+	}
+	got, _ := image["Base64"].(string)
+	if strings.HasPrefix(got, "data:") {
+		t.Fatalf("Base64=%q", got)
+	}
+	decoded, err := base64.StdEncoding.DecodeString(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(decoded) != png {
+		t.Fatalf("decoded=%q", decoded)
+	}
+}
+
+func TestSubmitKlingCreateErrorIsSurfaced(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || !strings.HasSuffix(r.URL.Path, "/image2video") {
+			t.Fatalf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"Response":{"RequestId":"req-1","Error":{"Code":"InvalidParameterValue.UrlIllegal","Message":"URL格式不合法。"}}}`))
+	}))
+	defer server.Close()
+	p := newTestProvider(server)
+	_, err := p.SubmitVideo(context.Background(), models.KlingV3, testGenRequest("https://cdn.example/frame.png"))
+	if err == nil || !strings.Contains(err.Error(), "InvalidParameterValue.UrlIllegal") || !strings.Contains(err.Error(), "URL格式不合法") {
+		t.Fatalf("err=%v", err)
 	}
 }
 

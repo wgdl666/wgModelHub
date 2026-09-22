@@ -8,7 +8,7 @@ const (
 	Gemini37Flash = "gemini-3.7-flash"
 	// Gemini38Flash 只支持 LOW/MEDIUM/HIGH thinking；Hub DISABLED 统一映射为 LOW，不能发 ThinkingBudget=0。
 	Gemini38Flash = "gemini-3.8-flash"
-	// Gemini35FlashLite 支持 MINIMAL；路由/分类场景的 Hub DISABLED 应映射 MINIMAL，而非 LOW 或 budget=0。
+	// Gemini35FlashLite 支持 MINIMAL；默认 Hub DISABLED → MINIMAL。美东路演 ppe_exhibition 升到 LOW。
 	Gemini35FlashLite = "gemini-3.5-flash-lite"
 	Gemini20Flash001  = "gemini-2.0-flash-001"
 	DoubaoSeed16      = "doubao-seed-1.6"

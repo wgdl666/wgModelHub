@@ -179,13 +179,16 @@ func (p *Provider) createTask(ctx context.Context, model, imageURL, prompt, reso
 	}
 	taskID := taskIDFromCreateResponse(raw)
 	if taskID == "" {
+		if msg := createResponseError(raw); msg != "" {
+			return "", provider.Errorf(provider.ErrorInvalidResponse, "%s create rejected: %s", p.name, msg)
+		}
 		return "", provider.New(provider.ErrorInvalidResponse, p.name+" empty task id in create response")
 	}
 	return taskID, nil
 }
 
-// buildCreateRequest 按 family 组装互斥 payload：Seedance/Vidu 的 image_url 收 URL 或 data URI；
-// Veo 用 bytesBase64Encoded（内联 data URI 本地解码，公网 URI 再拉取）；Kling 走 image2video。
+// buildCreateRequest 按 family 组装互斥 payload：Seedance/Vidu 的 url 收公网地址或 data URI；
+// Veo 用 bytesBase64Encoded；Kling 的 Image.Url 只收公网地址，内联字节走 Image.Base64。
 func (p *Provider) buildCreateRequest(ctx context.Context, model, imageURL, prompt, resolution string, duration int, aspectRatio string) (string, []byte, error) {
 	model = strings.TrimSpace(model)
 	resolution, duration, aspectRatio = NormalizeParams(model, resolution, duration, aspectRatio)
@@ -228,8 +231,12 @@ func (p *Provider) buildCreateRequest(ctx context.Context, model, imageURL, prom
 		})
 		return p.modelCreateURL(model), body, err
 	case FamilyKling:
+		image, err := klingImageField(imageURL)
+		if err != nil {
+			return "", nil, err
+		}
 		payload := map[string]any{
-			"Image":    map[string]string{"Url": imageURL},
+			"Image":    image,
 			"Prompt":   prompt,
 			"Duration": strconv.Itoa(duration),
 			"Mode":     klingMode(resolution),
@@ -341,6 +348,48 @@ func mimeFromURL(raw string) string {
 		return "image/webp"
 	default:
 		return "image/jpeg"
+	}
+}
+
+// klingImageField 对齐腾讯云 Image：Url 与 Base64 二选一。data URI 去掉前缀后放 Base64，公网地址原样放 Url。
+func klingImageField(imageURL string) (map[string]string, error) {
+	imageURL = strings.TrimSpace(imageURL)
+	if imageURL == "" {
+		return nil, provider.New(provider.ErrorInvalidArgument, "kling image is required")
+	}
+	if strings.HasPrefix(imageURL, "data:") {
+		_, data, err := provider.ParseDataURI(imageURL)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]string{"Base64": base64.StdEncoding.EncodeToString(data)}, nil
+	}
+	return map[string]string{"Url": imageURL}, nil
+}
+
+// createResponseError 读腾讯云 HTTP 200 业务失败：Response.Error 有 Code/Message，但没有 JobId。
+func createResponseError(raw []byte) string {
+	var envelope map[string]any
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return ""
+	}
+	resp, ok := envelope["Response"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	errObj, ok := resp["Error"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	code := stringField(errObj, "Code")
+	msg := stringField(errObj, "Message")
+	switch {
+	case code != "" && msg != "":
+		return code + ": " + msg
+	case msg != "":
+		return msg
+	default:
+		return code
 	}
 }
 
