@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
@@ -392,9 +391,8 @@ func applyTextThinking(cfg *genaisdk.GenerateContentConfig, model string, textSp
 		}
 	case models.Gemini35FlashLite:
 		if textSpec.Thinking == modelhubv2.ThinkingMode_THINKING_MODE_DISABLED {
-			// 3.5 Flash-Lite 支持 MINIMAL；默认 DISABLED → MINIMAL，避免分类/路由被思考吃掉 token。
-			// 美东路演意图链路明确要求 LOW；只认运行面 XX_WG_ENV=ppe_exhibition，避免改默认值后误伤 CN/SG。
-			cfg.ThinkingConfig = &genaisdk.ThinkingConfig{ThinkingLevel: flashLiteDisabledThinkingLevel()}
+			// 3.5 Flash-Lite 支持 MINIMAL；Hub DISABLED 一律 MINIMAL，不按环境抬到 LOW。
+			cfg.ThinkingConfig = &genaisdk.ThinkingConfig{ThinkingLevel: genaisdk.ThinkingLevelMinimal}
 		}
 	default:
 		if textSpec.ThinkingBudget != nil {
@@ -406,15 +404,6 @@ func applyTextThinking(cfg *genaisdk.GenerateContentConfig, model string, textSp
 			cfg.ThinkingConfig = &genaisdk.ThinkingConfig{ThinkingBudget: genaisdk.Ptr(int32(0))}
 		}
 	}
-}
-
-// flashLiteDisabledThinkingLevel 把 Hub DISABLED 映射到 3.5 Flash-Lite 的供应商档位。
-// 非路演保持 MINIMAL；只有 ppe_exhibition 升到 LOW，让路演意图链路按要求开低档思考。
-func flashLiteDisabledThinkingLevel() genaisdk.ThinkingLevel {
-	if strings.TrimSpace(os.Getenv("XX_WG_ENV")) == "ppe_exhibition" {
-		return genaisdk.ThinkingLevelLow
-	}
-	return genaisdk.ThinkingLevelMinimal
 }
 
 func buildTools(tools []*modelhubv2.Tool) []*genaisdk.Tool {

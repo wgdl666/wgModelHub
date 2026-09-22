@@ -217,35 +217,23 @@ func TestBuildConfigMapsGemini38DisabledToThinkingLevelLow(t *testing.T) {
 	}
 }
 
-// TestBuildConfigMapsGemini35FlashLiteDisabledToMinimal 证明非路演 Flash-Lite 路由场景 DISABLED→MINIMAL。
+// TestBuildConfigMapsGemini35FlashLiteDisabledToMinimal 证明 Flash-Lite 路由场景 DISABLED→MINIMAL，不随环境抬档。
 func TestBuildConfigMapsGemini35FlashLiteDisabledToMinimal(t *testing.T) {
-	t.Setenv("XX_WG_ENV", "dev")
-	cfg := (&Provider{}).buildConfig(models.Gemini35FlashLite, &modelhubv2.GenerateRequest{
-		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{
-			Thinking: modelhubv2.ThinkingMode_THINKING_MODE_DISABLED,
-		}}},
-	})
-	if cfg.ThinkingConfig == nil || cfg.ThinkingConfig.ThinkingLevel != genaisdk.ThinkingLevelMinimal {
-		t.Fatalf("thinking = %#v, want MINIMAL", cfg.ThinkingConfig)
-	}
-	if cfg.ThinkingConfig.ThinkingBudget != nil {
-		t.Fatalf("thinking budget = %#v, want unset for gemini-3.5-flash-lite", cfg.ThinkingConfig.ThinkingBudget)
-	}
-}
-
-// TestBuildConfigMapsExhibitionGemini35FlashLiteDisabledToLow 证明路演意图链路 DISABLED→LOW。
-func TestBuildConfigMapsExhibitionGemini35FlashLiteDisabledToLow(t *testing.T) {
-	t.Setenv("XX_WG_ENV", "ppe_exhibition")
-	cfg := (&Provider{}).buildConfig(models.Gemini35FlashLite, &modelhubv2.GenerateRequest{
-		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{
-			Thinking: modelhubv2.ThinkingMode_THINKING_MODE_DISABLED,
-		}}},
-	})
-	if cfg.ThinkingConfig == nil || cfg.ThinkingConfig.ThinkingLevel != genaisdk.ThinkingLevelLow {
-		t.Fatalf("thinking = %#v, want LOW", cfg.ThinkingConfig)
-	}
-	if cfg.ThinkingConfig.ThinkingBudget != nil {
-		t.Fatalf("thinking budget = %#v, want unset for exhibition gemini-3.5-flash-lite", cfg.ThinkingConfig.ThinkingBudget)
+	for _, env := range []string{"", "dev", "ppe_exhibition"} {
+		t.Run("env_"+env, func(t *testing.T) {
+			t.Setenv("XX_WG_ENV", env)
+			cfg := (&Provider{}).buildConfig(models.Gemini35FlashLite, &modelhubv2.GenerateRequest{
+				Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{
+					Thinking: modelhubv2.ThinkingMode_THINKING_MODE_DISABLED,
+				}}},
+			})
+			if cfg.ThinkingConfig == nil || cfg.ThinkingConfig.ThinkingLevel != genaisdk.ThinkingLevelMinimal {
+				t.Fatalf("thinking = %#v, want MINIMAL", cfg.ThinkingConfig)
+			}
+			if cfg.ThinkingConfig.ThinkingBudget != nil {
+				t.Fatalf("thinking budget = %#v, want unset for gemini-3.5-flash-lite", cfg.ThinkingConfig.ThinkingBudget)
+			}
+		})
 	}
 }
 
