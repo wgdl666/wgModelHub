@@ -58,7 +58,7 @@ func TestListModelsReturnsRoutedPublicCategories(t *testing.T) {
 		t.Fatalf("models=%v want=%v", got, want)
 	}
 	if contains(got, "not-in-catalog") || contains(got, models.Qwen38Flash) || contains(got, models.DeepSeekV4Flash) {
-		t.Fatalf("uncatalogued or unrouted id leaked: %v", got)
+		t.Fatalf("unknown category or unrouted id leaked: %v", got)
 	}
 }
 
