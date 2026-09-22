@@ -299,7 +299,8 @@ func (p *Provider) createTask(ctx context.Context, model string, input, paramete
 		return "", provider.Wrap(provider.ErrorUnavailable, p.name+" read create response", err)
 	}
 	if resp.StatusCode >= 400 {
-		return "", provider.FromHTTP(p.name, resp.StatusCode)
+		// DashScope 非 2xx 的 code/message 在正文，不能只留状态码。
+		return "", provider.FromHTTPDetail(p.name, resp.StatusCode, string(raw))
 	}
 	var envelope struct {
 		Output struct {
@@ -340,7 +341,7 @@ func (p *Provider) getTask(ctx context.Context, taskID string) (status, videoURL
 		return "", "", "", "", provider.Wrap(provider.ErrorUnavailable, p.name+" read poll response", err)
 	}
 	if resp.StatusCode >= 400 {
-		return "", "", "", "", provider.FromHTTP(p.name, resp.StatusCode)
+		return "", "", "", "", provider.FromHTTPDetail(p.name, resp.StatusCode, string(raw))
 	}
 	var envelope struct {
 		Output struct {

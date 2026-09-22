@@ -516,7 +516,8 @@ func (p *Provider) mapError(ctx context.Context, operation string, err error) er
 	}
 	var apiError genaisdk.APIError
 	if errors.As(err, &apiError) {
-		return provider.FromHTTP(p.name, apiError.Code)
+		// Gemini 拒因在 error.message / error.status，不能只留 HTTP 状态码。
+		return provider.FromHTTPDetail(p.name, apiError.Code, strings.TrimSpace(apiError.Status+" "+apiError.Message))
 	}
 	return provider.Wrap(provider.ErrorUnavailable, p.name+" "+operation+" failed", err)
 }

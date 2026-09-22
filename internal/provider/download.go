@@ -43,8 +43,9 @@ func OpenPublicURL(ctx context.Context, client *http.Client, providerName, url s
 		return nil, Wrap(ErrorUnavailable, providerName+" download failed", err)
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		err := TakeHTTPError(providerName, response.StatusCode, response.Body)
 		response.Body.Close()
-		return nil, FromHTTP(providerName, response.StatusCode)
+		return nil, err
 	}
 	return response, nil
 }

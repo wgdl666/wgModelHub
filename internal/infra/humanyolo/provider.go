@@ -116,7 +116,7 @@ func (p *Provider) post(ctx context.Context, imageBytes []byte) ([]byte, error) 
 		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" read yolo response", err)
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, provider.Errorf(provider.ErrorUnavailable, "human-yolo returned HTTP %d", response.StatusCode)
+		return nil, provider.FromHTTPDetail(p.name, response.StatusCode, string(payload))
 	}
 	return payload, nil
 }

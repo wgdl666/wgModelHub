@@ -88,7 +88,7 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" read parser response", err)
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, provider.Errorf(provider.ErrorUnavailable, "human-parser returned HTTP %d", response.StatusCode)
+		return nil, provider.FromHTTPDetail(p.name, response.StatusCode, string(body))
 	}
 	return provider.TextFinalEvent(string(body), nil, "", "", nil), nil
 }

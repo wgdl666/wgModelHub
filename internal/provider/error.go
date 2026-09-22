@@ -3,6 +3,7 @@ package provider
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"unicode"
@@ -59,6 +60,19 @@ func FromHTTP(providerName string, statusCode int) error {
 
 // httpErrorDetailLimit 只保留供应商拒因摘要；完整 Prompt/密钥不得进入 Message。
 const httpErrorDetailLimit = 512
+
+// errorBodyReadLimit 只读拒因。成功响应里的图片、音频和视频不能从这里读。
+const errorBodyReadLimit = 2048
+
+// TakeHTTPError 读取非成功响应正文，截断后按状态码分类。各厂商字段不同，原文留给调用方对照。
+func TakeHTTPError(providerName string, statusCode int, body io.Reader) error {
+	detail := ""
+	if body != nil {
+		raw, _ := io.ReadAll(io.LimitReader(body, errorBodyReadLimit))
+		detail = string(raw)
+	}
+	return FromHTTPDetail(providerName, statusCode, detail)
+}
 
 // FromHTTPDetail 把供应商 HTTP 错误正文截断后附在分类消息上，供 gRPC status / Hub turn_error 对照。
 func FromHTTPDetail(providerName string, statusCode int, detail string) error {

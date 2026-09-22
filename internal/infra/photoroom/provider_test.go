@@ -295,7 +295,9 @@ func TestGenerateImageMapsUpstreamStatus(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(http.StatusText(tc.status), func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				http.Error(w, "secret-body-must-not-leak", tc.status)
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte(`{"error":{"message":"colorSpace is not supported"}}`))
 			}))
 			defer server.Close()
 
@@ -304,8 +306,8 @@ func TestGenerateImageMapsUpstreamStatus(t *testing.T) {
 				&modelhubv2.Media{MimeType: "image/png", Source: &modelhubv2.Media_Data{Data: []byte(tinyPNG)}},
 			))
 			assertKind(t, err, tc.kind)
-			if strings.Contains(err.Error(), "secret-body") {
-				t.Fatalf("error leaked response body: %v", err)
+			if !strings.Contains(err.Error(), "colorSpace is not supported") {
+				t.Fatalf("error dropped vendor body: %v", err)
 			}
 			if strings.Contains(err.Error(), "test-api-key") {
 				t.Fatalf("error leaked api key: %v", err)

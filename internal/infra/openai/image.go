@@ -155,7 +155,7 @@ func (p *Provider) materializeReferenceImage(ctx context.Context, media *modelhu
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			return nil, "", provider.FromHTTP(p.name, resp.StatusCode)
+			return nil, "", provider.TakeHTTPError(p.name, resp.StatusCode, resp.Body)
 		}
 		data, err := io.ReadAll(io.LimitReader(resp.Body, int64(protocol.MaxMediaBytes)+1))
 		if err != nil {
@@ -328,7 +328,7 @@ func (p *Provider) decodeImageItem(ctx context.Context, item imagesGenerationIte
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, provider.FromHTTP(p.name, resp.StatusCode)
+		return nil, provider.TakeHTTPError(p.name, resp.StatusCode, resp.Body)
 	}
 	limited := io.LimitReader(resp.Body, int64(protocol.MaxMediaBytes)+1)
 	data, err := io.ReadAll(limited)
@@ -369,7 +369,7 @@ func (p *Provider) doImageHTTP(ctx context.Context, url, contentType string, bod
 		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" read failed", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, provider.FromHTTP(p.name, resp.StatusCode)
+		return nil, provider.FromHTTPDetail(p.name, resp.StatusCode, string(raw))
 	}
 	if len(raw) > protocol.MaxRPCMessageBytes {
 		return nil, provider.Errorf(provider.ErrorInvalidResponse, "image response exceeds %d bytes", protocol.MaxRPCMessageBytes)

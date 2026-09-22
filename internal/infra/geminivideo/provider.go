@@ -295,7 +295,7 @@ func (p *Provider) createInteraction(ctx context.Context, body []byte) (string, 
 		return "", provider.Wrap(provider.ErrorUnavailable, p.name+" read interaction response", err)
 	}
 	if resp.StatusCode >= 400 {
-		return "", provider.FromHTTP(p.name, resp.StatusCode)
+		return "", provider.FromHTTPDetail(p.name, resp.StatusCode, string(raw))
 	}
 	var interaction interactionResponse
 	if err := json.Unmarshal(raw, &interaction); err != nil {
@@ -337,7 +337,7 @@ func (p *Provider) fetchInteraction(ctx context.Context, interactionID string) (
 		return interactionResponse{}, provider.Wrap(provider.ErrorUnavailable, p.name+" read interaction poll response", err)
 	}
 	if resp.StatusCode >= 400 {
-		return interactionResponse{}, provider.FromHTTP(p.name, resp.StatusCode)
+		return interactionResponse{}, provider.FromHTTPDetail(p.name, resp.StatusCode, string(raw))
 	}
 	var interaction interactionResponse
 	if err := json.Unmarshal(raw, &interaction); err != nil {
@@ -386,7 +386,7 @@ func (p *Provider) streamDownloadVideoURI(ctx context.Context, uri string) (path
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		return "", nil, provider.FromHTTP(p.name, resp.StatusCode)
+		return "", nil, provider.TakeHTTPError(p.name, resp.StatusCode, resp.Body)
 	}
 	tmp, err := os.CreateTemp("", "gemini-video-in-*.mp4")
 	if err != nil {
@@ -473,8 +473,12 @@ func (p *Provider) uploadVideoToFiles(ctx context.Context, videoBytes []byte, mi
 		return "", provider.Wrap(provider.ErrorUnavailable, "files upload start", err)
 	}
 	uploadURL := startResp.Header.Get("X-Goog-Upload-URL")
+	startRaw, _ := io.ReadAll(io.LimitReader(startResp.Body, 2048))
 	startResp.Body.Close()
-	if startResp.StatusCode >= 400 || uploadURL == "" {
+	if startResp.StatusCode >= 400 {
+		return "", provider.FromHTTPDetail(p.name, startResp.StatusCode, string(startRaw))
+	}
+	if uploadURL == "" {
 		return "", provider.Errorf(provider.ErrorUnavailable, "%s files upload start failed: status=%d", p.name, startResp.StatusCode)
 	}
 	upReq, err := http.NewRequestWithContext(ctx, http.MethodPost, uploadURL, bytes.NewReader(videoBytes))
@@ -491,7 +495,7 @@ func (p *Provider) uploadVideoToFiles(ctx context.Context, videoBytes []byte, mi
 	raw, _ := io.ReadAll(io.LimitReader(upResp.Body, 1<<20))
 	upResp.Body.Close()
 	if upResp.StatusCode >= 400 {
-		return "", provider.FromHTTP(p.name, upResp.StatusCode)
+		return "", provider.FromHTTPDetail(p.name, upResp.StatusCode, string(raw))
 	}
 	var fileResp struct {
 		File struct {
@@ -533,7 +537,7 @@ func (p *Provider) waitFileActive(ctx context.Context, fileID string) error {
 			return readErr
 		}
 		if resp.StatusCode >= 400 {
-			return provider.FromHTTP(p.name, resp.StatusCode)
+			return provider.FromHTTPDetail(p.name, resp.StatusCode, string(raw))
 		}
 		var fileInfo struct {
 			State string `json:"state"`
@@ -545,7 +549,7 @@ func (p *Provider) waitFileActive(ctx context.Context, fileID string) error {
 		case "ACTIVE":
 			return nil
 		case "FAILED":
-			return provider.New(provider.ErrorUnavailable, p.name+" video file processing failed")
+			return provider.Errorf(provider.ErrorUnavailable, "%s video file processing failed: %s", p.name, provider.CompactHTTPErrorDetail(string(raw)))
 		}
 		if time.Now().After(deadline) {
 			return provider.Errorf(provider.ErrorTimeout, "%s timed out waiting for video file ACTIVE", p.name)

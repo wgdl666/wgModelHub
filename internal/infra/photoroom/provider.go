@@ -147,7 +147,7 @@ func (p *Provider) fetchImageURI(ctx context.Context, rawURL string) ([]byte, st
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, "", provider.FromHTTP(p.name, resp.StatusCode)
+		return nil, "", provider.TakeHTTPError(p.name, resp.StatusCode, resp.Body)
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, int64(protocol.MaxMediaBytes)+1))
 	if err != nil {
@@ -222,13 +222,13 @@ func (p *Provider) doSegment(ctx context.Context, data []byte, mimeType string) 
 		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" request failed", err)
 	}
 	defer resp.Body.Close()
-	// 错误正文只用于状态码分类，绝不回传给调用方，避免泄露供应商细节或密钥痕迹。
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, int64(protocol.MaxMediaBytes)+1))
 	if err != nil {
 		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" read failed", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, provider.FromHTTP(p.name, resp.StatusCode)
+		// PhotoRoom 失败是 JSON error.message，成功才是图片字节。
+		return nil, provider.FromHTTPDetail(p.name, resp.StatusCode, string(raw))
 	}
 	if len(raw) > protocol.MaxMediaBytes {
 		return nil, provider.Errorf(provider.ErrorInvalidResponse, "image exceeds %d bytes", protocol.MaxMediaBytes)

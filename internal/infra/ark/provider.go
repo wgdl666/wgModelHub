@@ -520,11 +520,16 @@ func (p *Provider) mapError(ctx context.Context, operation string, err error) er
 	}
 	var apiError *arkmodel.APIError
 	if errors.As(err, &apiError) && apiError != nil && apiError.HTTPStatusCode != 0 {
-		return provider.FromHTTP(p.name, apiError.HTTPStatusCode)
+		// 方舟 error.code 与 error.message 在 SDK 错误上，状态码单独不够对照。
+		return provider.FromHTTPDetail(p.name, apiError.HTTPStatusCode, strings.TrimSpace(apiError.Code+": "+apiError.Message))
 	}
 	var requestError *arkmodel.RequestError
 	if errors.As(err, &requestError) && requestError != nil && requestError.HTTPStatusCode != 0 {
-		return provider.FromHTTP(p.name, requestError.HTTPStatusCode)
+		detail := ""
+		if requestError.Err != nil {
+			detail = requestError.Err.Error()
+		}
+		return provider.FromHTTPDetail(p.name, requestError.HTTPStatusCode, detail)
 	}
 	return provider.Wrap(provider.ErrorUnavailable, p.name+" "+operation+" failed", err)
 }

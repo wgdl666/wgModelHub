@@ -126,8 +126,8 @@ func (p *Provider) SynthesizeSpeech(ctx context.Context, model string, request *
 		return nil, provider.Errorf(provider.ErrorInvalidResponse, "speech audio exceeds %d bytes", protocol.MaxMediaBytes)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		// 正文可能含供应商错误细节；只回传状态码，避免把上游原文写进调用方日志链。
-		return nil, provider.Errorf(provider.ErrorUnavailable, "elevenlabs tts upstream status %d", resp.StatusCode)
+		// ElevenLabs 拒因在 JSON detail，截断后进入 status；这里不是音频正文。
+		return nil, provider.FromHTTPDetail(p.cfg.Name, resp.StatusCode, string(payload))
 	}
 	if len(payload) == 0 {
 		return nil, provider.New(provider.ErrorInvalidResponse, "speech provider returned empty audio")

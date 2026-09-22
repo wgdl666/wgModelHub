@@ -203,7 +203,10 @@ func (p *Provider) newStream(ctx context.Context, model, voiceID string, audioCb
 	conn, resp, err := dialer.DialContext(ctx, p.cfg.Endpoint, header)
 	if err != nil {
 		if resp != nil {
-			return nil, nil, provider.FromHTTP(p.cfg.Name, resp.StatusCode)
+			// 握手失败时 MiniMax 把原因放在 HTTP 正文，Upgrade 错误本身没有这段。
+			err := provider.TakeHTTPError(p.cfg.Name, resp.StatusCode, resp.Body)
+			resp.Body.Close()
+			return nil, nil, err
 		}
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return nil, nil, err

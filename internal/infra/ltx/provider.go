@@ -131,7 +131,7 @@ func (p *Provider) ReadVideoResult(ctx context.Context, _ string, providerTaskID
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return provider.FromHTTP(p.name, response.StatusCode)
+		return provider.TakeHTTPError(p.name, response.StatusCode, response.Body)
 	}
 	return provider.EmitVideoChunksFromReader(response.Body, videoMIMEType, providerTaskID, 0, emit)
 }
@@ -166,7 +166,7 @@ func (p *Provider) loadFirstFrame(ctx context.Context, media *modelhubv2.Media) 
 		}
 		defer response.Body.Close()
 		if response.StatusCode < 200 || response.StatusCode >= 300 {
-			return nil, provider.FromHTTP(p.name, response.StatusCode)
+			return nil, provider.TakeHTTPError(p.name, response.StatusCode, response.Body)
 		}
 		data, err := io.ReadAll(io.LimitReader(response.Body, protocol.MaxMediaBytes+1))
 		if err != nil {
@@ -240,13 +240,13 @@ func (p *Provider) submit(ctx context.Context, model string, imageBytes []byte, 
 			}
 			return result.JobID, nil
 		}
-		_, _ = io.ReadAll(io.LimitReader(response.Body, 1000))
+		raw, _ := io.ReadAll(io.LimitReader(response.Body, 2048))
 		response.Body.Close()
 		// 404/429 明确未受理可重试；5xx 可能已受理，禁止自动重提。
 		retryable := response.StatusCode == http.StatusNotFound ||
 			response.StatusCode == http.StatusTooManyRequests
 		if !retryable || attempt == 3 {
-			return "", provider.FromHTTP(p.name, response.StatusCode)
+			return "", provider.FromHTTPDetail(p.name, response.StatusCode, string(raw))
 		}
 		timer := time.NewTimer(time.Duration(attempt) * 300 * time.Millisecond)
 		select {
@@ -274,13 +274,16 @@ func (p *Provider) getJob(ctx context.Context, jobID string) (map[string]any, er
 		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" poll failed", err)
 	}
 	defer response.Body.Close()
-	var job map[string]any
-	decodeErr := json.NewDecoder(io.LimitReader(response.Body, 2<<20)).Decode(&job)
+	raw, readErr := io.ReadAll(io.LimitReader(response.Body, 2<<20))
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, provider.FromHTTP(p.name, response.StatusCode)
+		return nil, provider.FromHTTPDetail(p.name, response.StatusCode, string(raw))
 	}
-	if decodeErr != nil {
-		return nil, provider.Wrap(provider.ErrorInvalidResponse, p.name+" decode poll response", decodeErr)
+	if readErr != nil {
+		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" read poll response", readErr)
+	}
+	var job map[string]any
+	if err := json.Unmarshal(raw, &job); err != nil {
+		return nil, provider.Wrap(provider.ErrorInvalidResponse, p.name+" decode poll response", err)
 	}
 	return job, nil
 }

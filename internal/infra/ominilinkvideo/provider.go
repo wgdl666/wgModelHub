@@ -175,7 +175,7 @@ func (p *Provider) createTask(ctx context.Context, model, imageURL, prompt, reso
 		return "", provider.Wrap(provider.ErrorUnavailable, p.name+" read create response", err)
 	}
 	if resp.StatusCode >= 400 {
-		return "", provider.FromHTTP(p.name, resp.StatusCode)
+		return "", provider.FromHTTPDetail(p.name, resp.StatusCode, string(raw))
 	}
 	taskID := taskIDFromCreateResponse(raw)
 	if taskID == "" {
@@ -310,7 +310,7 @@ func (p *Provider) getTask(ctx context.Context, model, taskID string) (taskPollR
 		return taskPollResult{}, provider.Wrap(provider.ErrorUnavailable, p.name+" read poll response", err)
 	}
 	if resp.StatusCode >= 400 {
-		return taskPollResult{}, provider.FromHTTP(p.name, resp.StatusCode)
+		return taskPollResult{}, provider.FromHTTPDetail(p.name, resp.StatusCode, string(raw))
 	}
 	parsed, err := parseTaskResponse(raw, taskID)
 	if err != nil {
