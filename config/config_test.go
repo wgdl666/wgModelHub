@@ -198,6 +198,27 @@ func TestProviderSupportsPhotoroomImageOnly(t *testing.T) {
 	}
 }
 
+func TestProviderSupportsSegmentPersonImageOnly(t *testing.T) {
+	segment := ProviderConfig{SegmentPerson: &SegmentPersonProviderConfig{BaseURL: "https://segment.example", Method: "person-bria-rmbg"}}
+	if !ProviderSupports(segment, CapabilityImage) {
+		t.Fatal("segment_person should support image")
+	}
+	if ProviderSupports(segment, CapabilityText) || ProviderSupports(segment, CapabilityVideo) || ProviderSupports(segment, CapabilitySpeech) {
+		t.Fatal("segment_person should only support image")
+	}
+}
+
+func TestValidateRejectsSegmentPersonWithoutMethod(t *testing.T) {
+	cfg := validConfig()
+	cfg.Providers["segment_person_bria"] = ProviderConfig{
+		Models:        []string{models.SegmentPersonBria},
+		SegmentPerson: &SegmentPersonProviderConfig{BaseURL: "https://segment.example"},
+	}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "method") {
+		t.Fatalf("expected method error, got %v", err)
+	}
+}
+
 func TestValidateRejectsPhotoroomWithoutAPIKey(t *testing.T) {
 	cfg := validConfig()
 	cfg.Providers["photoroom_bg"] = ProviderConfig{

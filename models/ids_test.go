@@ -86,6 +86,15 @@ func TestPhotoroomSegmentModelID(t *testing.T) {
 	}
 }
 
+func TestSegmentBriaModelIDs(t *testing.T) {
+	if SegmentPersonBria != "segment-person-bria" || SegmentSubjectBria != "segment-subject-bria" {
+		t.Fatalf("person=%q subject=%q", SegmentPersonBria, SegmentSubjectBria)
+	}
+	if !slices.Contains(All(), SegmentPersonBria) || !slices.Contains(All(), SegmentSubjectBria) {
+		t.Fatal("All() missing domestic segment model IDs")
+	}
+}
+
 func TestAllAreUnique(t *testing.T) {
 	seen := map[string]struct{}{}
 	for _, model := range All() {

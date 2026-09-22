@@ -45,7 +45,13 @@ const (
 	// PhotoroomSegment 标识官方 Remove Background 产品端点 POST /v1/segment（operationId=remove-background）。
 	// 该 API 没有 request-level model 参数；本常量只用于 ModelHub 路由与 ListModels，禁止下发上游，也不是业务别名。
 	PhotoroomSegment = "photoroom-segment"
-	LTX              = "ltx"
+	// SegmentPersonBria 是国内自建人物抠图 POST /api/segment。
+	// 上游 method 在供应商配置里；本常量只选端点，不下发上游，也不能拿去替代商品主体抠图。
+	SegmentPersonBria = "segment-person-bria"
+	// SegmentSubjectBria 是国内自建商品主体抠图 POST /api/segment_subject。
+	// 平铺/人台衣物不能走人物端点，所以和 SegmentPersonBria 分两个真实模型 ID。
+	SegmentSubjectBria = "segment-subject-bria"
+	LTX                = "ltx"
 
 	// DashScope Wan / HappyHorse / Kling 图生视频。
 	Wan22I2VFlash              = "wan2.2-i2v-flash"
@@ -118,6 +124,8 @@ func All() []string {
 		GPTImage25Sunburst,
 		Flux2Klein9B,
 		PhotoroomSegment,
+		SegmentPersonBria,
+		SegmentSubjectBria,
 		LTX,
 		Wan22I2VFlash,
 		Wan22I2VPlus,

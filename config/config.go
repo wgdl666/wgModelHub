@@ -51,6 +51,8 @@ type ProviderConfig struct {
 	MinimaxTTS *MinimaxTTSProviderConfig `yaml:"minimax_tts"`
 	// Photoroom 承接官方 Remove Background（POST /v1/segment）；与 OpenAI/Gemini 生图实例分绑，禁止共用。
 	Photoroom *PhotoroomProviderConfig `yaml:"photoroom"`
+	// SegmentPerson 承接国内自建人物/商品主体抠图；与 Photoroom 分实例，靠 models 列表切换。
+	SegmentPerson *SegmentPersonProviderConfig `yaml:"segment_person"`
 }
 
 type GeminiProviderConfig struct {
@@ -137,6 +139,15 @@ type MinimaxTTSProviderConfig struct {
 type PhotoroomProviderConfig struct {
 	APIKey  string `yaml:"api_key"`
 	BaseURL string `yaml:"base_url"`
+}
+
+// SegmentPersonProviderConfig 承接国内自建抠图。
+// base_url / method / Basic Auth 只在 ModelHub；人物与商品主体靠 models 里的两个真实 ID 区分。
+type SegmentPersonProviderConfig struct {
+	BaseURL  string `yaml:"base_url"`
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
+	Method   string `yaml:"method"`
 }
 
 type Config struct {
@@ -506,6 +517,14 @@ func validateProvider(name string, provider ProviderConfig) error {
 		if strings.TrimSpace(provider.Photoroom.APIKey) == "" {
 			return fmt.Errorf("provider %s api_key is required", name)
 		}
+	case provider.SegmentPerson != nil:
+		segment := provider.SegmentPerson
+		if strings.TrimSpace(segment.BaseURL) == "" || strings.TrimSpace(segment.Method) == "" {
+			return fmt.Errorf("provider %s segment_person base_url and method are required", name)
+		}
+		if (strings.TrimSpace(segment.Username) == "") != (strings.TrimSpace(segment.Password) == "") {
+			return fmt.Errorf("provider %s segment_person username and password must be configured together", name)
+		}
 	}
 	return nil
 }
@@ -545,6 +564,9 @@ func countConcreteProviders(provider ProviderConfig) int {
 	if provider.Photoroom != nil {
 		n++
 	}
+	if provider.SegmentPerson != nil {
+		n++
+	}
 	return n
 }
 
@@ -553,7 +575,7 @@ func ProviderSupports(provider ProviderConfig, capability string) bool {
 	switch {
 	case provider.Gemini != nil, provider.OpenAI != nil:
 		return capability == CapabilityText || capability == CapabilityImage
-	case provider.Photoroom != nil:
+	case provider.Photoroom != nil, provider.SegmentPerson != nil:
 		return capability == CapabilityImage
 	case provider.VertexAI != nil, provider.Ark != nil:
 		return capability == CapabilityText
