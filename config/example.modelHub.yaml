@@ -153,6 +153,15 @@ providers:
     photoroom:
       api_key: "${PHOTOROOM_API_KEY}"
       base_url: https://sdk.photoroom.com
+  # 国内自建抠图。两个模型 ID 分别对应人物 /api/segment 与商品主体 /api/segment_subject。
+  # username/password 可成对省略（匿名）；method 是上游算法名，不是模型 ID。
+  segment_person_bria:
+    models: [segment-person-bria, segment-subject-bria]
+    segment_person:
+      base_url: https://segment-person.model.wgdl.tech
+      username: "${SEGMENT_PERSON_USERNAME}"
+      password: "${SEGMENT_PERSON_PASSWORD}"
+      method: person-bria-rmbg
   # LTX 供应商请求体里的 model 字段值就是 ltx，不是业务别名。
   ltx_video:
     models: [ltx]

@@ -60,7 +60,8 @@
         "ominilink_video": { "$ref": "#/definitions/ominilinkVideo" },
         "gemini_video": { "$ref": "#/definitions/geminiVideo" },
         "ark_video": { "$ref": "#/definitions/arkVideo" },
-        "photoroom": { "$ref": "#/definitions/photoroom" }
+        "photoroom": { "$ref": "#/definitions/photoroom" },
+        "segment_person": { "$ref": "#/definitions/segmentPerson" }
       },
       "oneOf": [
         { "required": ["gemini"] },
@@ -72,7 +73,8 @@
         { "required": ["ominilink_video"] },
         { "required": ["gemini_video"] },
         { "required": ["ark_video"] },
-        { "required": ["photoroom"] }
+        { "required": ["photoroom"] },
+        { "required": ["segment_person"] }
       ]
     },
     "gemini": {
@@ -169,6 +171,16 @@
       "properties": {
         "api_key": { "type": "string", "minLength": 1 },
         "base_url": { "type": "string" }
+      }
+    },
+    "segmentPerson": {
+      "type": "object",
+      "required": ["base_url", "method"],
+      "properties": {
+        "base_url": { "type": "string", "minLength": 1 },
+        "username": { "type": "string" },
+        "password": { "type": "string" },
+        "method": { "type": "string", "minLength": 1 }
       }
     }
   }

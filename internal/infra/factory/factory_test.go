@@ -122,6 +122,30 @@ func TestBuildPhotoroomExposesImageOnly(t *testing.T) {
 	}
 }
 
+func TestBuildSegmentPersonExposesImageOnly(t *testing.T) {
+	sets, err := Build(context.Background(), config.Config{
+		Providers: map[string]config.ProviderConfig{
+			"segment_person_bria": {
+				Models: []string{models.SegmentPersonBria, models.SegmentSubjectBria},
+				SegmentPerson: &config.SegmentPersonProviderConfig{
+					BaseURL: "https://segment-person.example",
+					Method:  "person-bria-rmbg",
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	set := sets["segment_person_bria"]
+	if set.Image == nil {
+		t.Fatal("missing image capability")
+	}
+	if set.Text != nil || set.Video != nil || set.Speech != nil {
+		t.Fatalf("segment-person should only expose image: %#v", set)
+	}
+}
+
 func TestBuildVideoProvidersAcceptZeroPollConfig(t *testing.T) {
 	_, err := Build(context.Background(), config.Config{
 		Providers: map[string]config.ProviderConfig{

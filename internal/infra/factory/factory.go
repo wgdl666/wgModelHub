@@ -15,6 +15,7 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/infra/ominilinkvideo"
 	"github.com/wgdl666/wgModelHub/internal/infra/openai"
 	"github.com/wgdl666/wgModelHub/internal/infra/photoroom"
+	"github.com/wgdl666/wgModelHub/internal/infra/segmentperson"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 )
 
@@ -130,6 +131,13 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 			return provider.Set{}, err
 		}
 		// 仅暴露 Image：Remove Background 不是文本/视频能力，避免空实现伪装。
+		return provider.Set{Image: client}, nil
+	case providerCfg.SegmentPerson != nil:
+		cfg := providerCfg.SegmentPerson
+		client, err := segmentperson.New(name, cfg.BaseURL, cfg.Username, cfg.Password, cfg.Method)
+		if err != nil {
+			return provider.Set{}, err
+		}
 		return provider.Set{Image: client}, nil
 	default:
 		return provider.Set{}, provider.New(provider.ErrorConfiguration, fmt.Sprintf("provider %s has no concrete type", name))
