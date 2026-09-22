@@ -51,7 +51,13 @@ const (
 	// SegmentSubjectBria 是国内自建商品主体抠图 POST /api/segment_subject。
 	// 平铺/人台衣物不能走人物端点，所以和 SegmentPersonBria 分两个真实模型 ID。
 	SegmentSubjectBria = "segment-subject-bria"
-	LTX                = "ltx"
+	// HumanYOLO 是自建人体检测 POST /predict。置信度和 IoU 属于该服务契约，不下发成调用方参数。
+	HumanYOLO = "human-yolo"
+	// RekognitionDetectLabels 是 DetectLabels 的 Person 实例框，和 HumanYOLO 不能互相替代。
+	RekognitionDetectLabels = "rekognition-detect-labels"
+	// HumanParser 是自建人体解析 POST /predict，输出分割图而不是检测框。
+	HumanParser = "human-parser"
+	LTX         = "ltx"
 
 	// DashScope Wan / HappyHorse / Kling 图生视频。
 	Wan22I2VFlash              = "wan2.2-i2v-flash"
@@ -129,6 +135,9 @@ func All() []string {
 		PhotoroomSegment,
 		SegmentPersonBria,
 		SegmentSubjectBria,
+		HumanYOLO,
+		RekognitionDetectLabels,
+		HumanParser,
 		LTX,
 		Wan22I2VFlash,
 		Wan22I2VPlus,

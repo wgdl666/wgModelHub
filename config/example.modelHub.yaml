@@ -169,6 +169,27 @@ providers:
       username: "${SEGMENT_PERSON_USERNAME}"
       password: "${SEGMENT_PERSON_PASSWORD}"
       method: person-bria-rmbg
+  # 自建人体检测。conf/iou 固定在供应商代码里。
+  human_yolo_cn:
+    models: [human-yolo]
+    human_yolo:
+      base_url: https://human-yolo.model.wgdl.tech
+      username: "${HUMAN_YOLO_USERNAME}"
+      password: "${HUMAN_YOLO_PASSWORD}"
+  # 自建人体解析。username/password 成对省略则匿名。
+  human_parser_cn:
+    models: [human-parser]
+    human_parser:
+      base_url: https://human-parser.model.wgdl.tech
+      username: "${HUMAN_PARSER_USERNAME}"
+      password: "${HUMAN_PARSER_PASSWORD}"
+  # DetectLabels 人检。空钥走任务角色，region 不能是 cn-*。
+  rekognition_person:
+    models: [rekognition-detect-labels]
+    rekognition_detect:
+      region: us-east-1
+      access_key_id: "${AWS_ACCESS_KEY_ID}"
+      access_key_secret: "${AWS_SECRET_ACCESS_KEY}"
   # LTX 供应商请求体里的 model 字段值就是 ltx，不是业务别名。
   ltx_video:
     models: [ltx]

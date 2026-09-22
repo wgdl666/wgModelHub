@@ -11,11 +11,14 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/infra/elevenlabstts"
 	"github.com/wgdl666/wgModelHub/internal/infra/geminivideo"
 	"github.com/wgdl666/wgModelHub/internal/infra/genai"
+	"github.com/wgdl666/wgModelHub/internal/infra/humanparser"
+	"github.com/wgdl666/wgModelHub/internal/infra/humanyolo"
 	"github.com/wgdl666/wgModelHub/internal/infra/ltx"
 	"github.com/wgdl666/wgModelHub/internal/infra/minimaxtts"
 	"github.com/wgdl666/wgModelHub/internal/infra/ominilinkvideo"
 	"github.com/wgdl666/wgModelHub/internal/infra/openai"
 	"github.com/wgdl666/wgModelHub/internal/infra/photoroom"
+	"github.com/wgdl666/wgModelHub/internal/infra/rekognitiondetect"
 	"github.com/wgdl666/wgModelHub/internal/infra/segmentperson"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 )
@@ -145,6 +148,27 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 		}
 		// 仅暴露 Image：Remove Background 不是文本/视频能力，避免空实现伪装。
 		return provider.Set{Image: client}, nil
+	case providerCfg.HumanYOLO != nil:
+		cfg := providerCfg.HumanYOLO
+		client, err := humanyolo.New(name, cfg.BaseURL, cfg.Username, cfg.Password)
+		if err != nil {
+			return provider.Set{}, err
+		}
+		return provider.Set{Text: client}, nil
+	case providerCfg.HumanParser != nil:
+		cfg := providerCfg.HumanParser
+		client, err := humanparser.New(name, cfg.BaseURL, cfg.Username, cfg.Password)
+		if err != nil {
+			return provider.Set{}, err
+		}
+		return provider.Set{Text: client}, nil
+	case providerCfg.RekognitionDetect != nil:
+		cfg := providerCfg.RekognitionDetect
+		client, err := rekognitiondetect.New(ctx, name, cfg.Region, cfg.AccessKeyID, cfg.AccessKeySecret, cfg.SessionToken)
+		if err != nil {
+			return provider.Set{}, err
+		}
+		return provider.Set{Text: client}, nil
 	case providerCfg.SegmentPerson != nil:
 		cfg := providerCfg.SegmentPerson
 		client, err := segmentperson.New(name, cfg.BaseURL, cfg.Username, cfg.Password, cfg.Method)

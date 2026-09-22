@@ -63,7 +63,10 @@
         "minimax_tts": { "$ref": "#/definitions/minimaxTts" },
         "elevenlabs_tts": { "$ref": "#/definitions/elevenlabsTts" },
         "photoroom": { "$ref": "#/definitions/photoroom" },
-        "segment_person": { "$ref": "#/definitions/segmentPerson" }
+        "segment_person": { "$ref": "#/definitions/segmentPerson" },
+        "human_yolo": { "$ref": "#/definitions/humanYolo" },
+        "human_parser": { "$ref": "#/definitions/humanParser" },
+        "rekognition_detect": { "$ref": "#/definitions/rekognitionDetect" }
       },
       "oneOf": [
         { "required": ["gemini"] },
@@ -78,7 +81,10 @@
         { "required": ["minimax_tts"] },
         { "required": ["elevenlabs_tts"] },
         { "required": ["photoroom"] },
-        { "required": ["segment_person"] }
+        { "required": ["segment_person"] },
+        { "required": ["human_yolo"] },
+        { "required": ["human_parser"] },
+        { "required": ["rekognition_detect"] }
       ]
     },
     "gemini": {
@@ -207,6 +213,34 @@
         "username": { "type": "string" },
         "password": { "type": "string" },
         "method": { "type": "string", "minLength": 1 }
+      }
+    },
+    "humanYolo": {
+      "type": "object",
+      "required": ["base_url", "username", "password"],
+      "properties": {
+        "base_url": { "type": "string", "minLength": 1 },
+        "username": { "type": "string", "minLength": 1 },
+        "password": { "type": "string", "minLength": 1 }
+      }
+    },
+    "humanParser": {
+      "type": "object",
+      "required": ["base_url"],
+      "properties": {
+        "base_url": { "type": "string", "minLength": 1 },
+        "username": { "type": "string" },
+        "password": { "type": "string" }
+      }
+    },
+    "rekognitionDetect": {
+      "type": "object",
+      "required": ["region"],
+      "properties": {
+        "region": { "type": "string", "minLength": 1 },
+        "access_key_id": { "type": "string" },
+        "access_key_secret": { "type": "string" },
+        "session_token": { "type": "string" }
       }
     }
   }

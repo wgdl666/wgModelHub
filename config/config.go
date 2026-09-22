@@ -55,6 +55,12 @@ type ProviderConfig struct {
 	Photoroom *PhotoroomProviderConfig `yaml:"photoroom"`
 	// SegmentPerson 承接国内自建人物/商品主体抠图；与 Photoroom 分实例，靠 models 列表切换。
 	SegmentPerson *SegmentPersonProviderConfig `yaml:"segment_person"`
+	// HumanYOLO 承接自建人体检测。和 Rekognition、人体解析分实例。
+	HumanYOLO *HumanYOLOProviderConfig `yaml:"human_yolo"`
+	// HumanParser 承接自建人体解析，输出分割 JSON 而不是检测框。
+	HumanParser *HumanParserProviderConfig `yaml:"human_parser"`
+	// RekognitionDetect 承接 DetectLabels 人检。Region 不能是 cn-*。
+	RekognitionDetect *RekognitionDetectProviderConfig `yaml:"rekognition_detect"`
 }
 
 type GeminiProviderConfig struct {
@@ -158,6 +164,28 @@ type SegmentPersonProviderConfig struct {
 	Username string `yaml:"username"`
 	Password string `yaml:"password"`
 	Method   string `yaml:"method"`
+}
+
+// HumanYOLOProviderConfig 是自建检测服务的地址和 Basic Auth。阈值在供应商代码里，不进 YAML。
+type HumanYOLOProviderConfig struct {
+	BaseURL  string `yaml:"base_url"`
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
+}
+
+// HumanParserProviderConfig 是自建解析服务。账号密码成对，两个都空则匿名。
+type HumanParserProviderConfig struct {
+	BaseURL  string `yaml:"base_url"`
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
+}
+
+// RekognitionDetectProviderConfig 是 DetectLabels 的区域和可选静态钥。空钥走任务角色。
+type RekognitionDetectProviderConfig struct {
+	Region          string `yaml:"region"`
+	AccessKeyID     string `yaml:"access_key_id"`
+	AccessKeySecret string `yaml:"access_key_secret"`
+	SessionToken    string `yaml:"session_token"`
 }
 
 type Config struct {
@@ -542,6 +570,29 @@ func validateProvider(name string, provider ProviderConfig) error {
 		if (strings.TrimSpace(segment.Username) == "") != (strings.TrimSpace(segment.Password) == "") {
 			return fmt.Errorf("provider %s segment_person username and password must be configured together", name)
 		}
+	case provider.HumanYOLO != nil:
+		yolo := provider.HumanYOLO
+		if strings.TrimSpace(yolo.BaseURL) == "" || strings.TrimSpace(yolo.Username) == "" || strings.TrimSpace(yolo.Password) == "" {
+			return fmt.Errorf("provider %s human_yolo base_url, username and password are required", name)
+		}
+	case provider.HumanParser != nil:
+		parser := provider.HumanParser
+		if strings.TrimSpace(parser.BaseURL) == "" {
+			return fmt.Errorf("provider %s human_parser base_url is required", name)
+		}
+		if (strings.TrimSpace(parser.Username) == "") != (strings.TrimSpace(parser.Password) == "") {
+			return fmt.Errorf("provider %s human_parser username and password must be configured together", name)
+		}
+	case provider.RekognitionDetect != nil:
+		detect := provider.RekognitionDetect
+		region := strings.TrimSpace(detect.Region)
+		if region == "" || strings.HasPrefix(strings.ToLower(region), "cn-") {
+			return fmt.Errorf("provider %s rekognition region is required and cannot be cn-*", name)
+		}
+		key, secret := strings.TrimSpace(detect.AccessKeyID), strings.TrimSpace(detect.AccessKeySecret)
+		if (key == "") != (secret == "") || (strings.TrimSpace(detect.SessionToken) != "" && key == "") {
+			return fmt.Errorf("provider %s rekognition access key and secret must be configured together", name)
+		}
 	}
 	return nil
 }
@@ -587,6 +638,15 @@ func countConcreteProviders(provider ProviderConfig) int {
 	if provider.SegmentPerson != nil {
 		n++
 	}
+	if provider.HumanYOLO != nil {
+		n++
+	}
+	if provider.HumanParser != nil {
+		n++
+	}
+	if provider.RekognitionDetect != nil {
+		n++
+	}
 	return n
 }
 
@@ -597,6 +657,8 @@ func ProviderSupports(provider ProviderConfig, capability string) bool {
 		return capability == CapabilityText || capability == CapabilityImage
 	case provider.Photoroom != nil, provider.SegmentPerson != nil:
 		return capability == CapabilityImage
+	case provider.HumanYOLO != nil, provider.HumanParser != nil, provider.RekognitionDetect != nil:
+		return capability == CapabilityText
 	case provider.VertexAI != nil, provider.Ark != nil:
 		return capability == CapabilityText
 	case provider.LTX != nil:

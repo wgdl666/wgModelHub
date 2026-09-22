@@ -35,6 +35,7 @@ func TestAppConfigSchemaContract(t *testing.T) {
 		"database", "logfire", "provider", "gemini", "ark", "openai", "ltx",
 		"dashscopeVideo", "ominilinkVideo", "geminiVideo", "arkVideo", "photoroom",
 		"minimaxTts", "elevenlabsTts", "segmentPerson",
+		"humanYolo", "humanParser", "rekognitionDetect",
 	} {
 		def := mustMap(t, definitions[definitionName])
 		if ap, exists := def["additionalProperties"]; exists && ap == false {
@@ -63,6 +64,7 @@ func TestAppConfigSchemaContract(t *testing.T) {
 		"ltx": false, "dashscope_video": false, "ominilink_video": false,
 		"gemini_video": false, "ark_video": false, "minimax_tts": false,
 		"elevenlabs_tts": false, "photoroom": false, "segment_person": false,
+		"human_yolo": false, "human_parser": false, "rekognition_detect": false,
 	}
 	for _, entry := range oneOf {
 		required := mustSlice(t, mustMap(t, entry)["required"])
@@ -86,7 +88,8 @@ func TestAppConfigSchemaContract(t *testing.T) {
 
 	for _, definitionName := range []string{
 		"gemini", "ark", "openai", "ltx", "dashscopeVideo",
-		"ominilinkVideo", "geminiVideo", "arkVideo", "photoroom", "segmentPerson", "logfire", "database",
+		"ominilinkVideo", "geminiVideo", "arkVideo", "photoroom", "segmentPerson",
+		"humanYolo", "humanParser", "rekognitionDetect", "logfire", "database",
 	} {
 		properties := mustMap(t, mustMap(t, definitions[definitionName])["properties"])
 		for field, raw := range properties {
