@@ -2,6 +2,7 @@ package modelhub
 
 import (
 	"context"
+	"sort"
 
 	"github.com/wgdl666/kangaroo/logs"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
@@ -9,8 +10,8 @@ import (
 	"github.com/wgdl666/wgModelHub/models"
 )
 
-// ListModels 只返回当前进程 ModelRoutes 已选定、且 models 包已编目的真实 ID。
-// 分类按产品主用途过滤；未编目路由不进清单，避免半残目录。
+// ListModels 只返回当前进程 ModelRoutes 已选定的模型，类别用 CategoryOf 判定。
+// 配置里有、代码没有类别的名字不进清单。
 func (s *Service) ListModels(_ context.Context, request *modelhubv2.ListModelsRequest) (*modelhubv2.ListModelsResponse, error) {
 	match, err := catalogFilter(request.GetCategory())
 	if err != nil {
@@ -20,20 +21,13 @@ func (s *Service) ListModels(_ context.Context, request *modelhubv2.ListModelsRe
 	if s != nil && s.live != nil {
 		routes = s.live.Load().ModelRoutes()
 	}
-	catalog := make(map[string]struct{}, len(models.All()))
-	for _, id := range models.All() {
-		catalog[id] = struct{}{}
-	}
+	ids := make([]string, 0, len(routes))
 	for id := range routes {
-		if _, ok := catalog[id]; !ok {
-			logs.Default().Info("list_models_skip_uncatalogued_route", "model", id)
-		}
+		ids = append(ids, id)
 	}
-	out := make([]*modelhubv2.ModelInfo, 0)
-	for _, id := range models.All() {
-		if _, routed := routes[id]; !routed {
-			continue
-		}
+	sort.Strings(ids)
+	out := make([]*modelhubv2.ModelInfo, 0, len(ids))
+	for _, id := range ids {
 		category, ok := models.CategoryOf(id)
 		if !ok {
 			logs.Default().Info("list_models_skip_unknown_category", "model", id)
