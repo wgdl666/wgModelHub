@@ -8,7 +8,7 @@ const (
 	Gemini37Flash = "gemini-3.7-flash"
 	// Gemini38Flash 只支持 LOW/MEDIUM/HIGH thinking；Hub DISABLED 统一映射为 LOW，不能发 ThinkingBudget=0。
 	Gemini38Flash = "gemini-3.8-flash"
-	// Gemini35FlashLite 支持 MINIMAL；默认 Hub DISABLED → MINIMAL。美东路演 ppe_exhibition 升到 LOW。
+	// Gemini35FlashLite 支持 MINIMAL；Hub DISABLED 一律映射 MINIMAL，不按环境抬档。
 	Gemini35FlashLite = "gemini-3.5-flash-lite"
 	Gemini20Flash001  = "gemini-2.0-flash-001"
 	DoubaoSeed16      = "doubao-seed-1.6"
@@ -93,6 +93,9 @@ const (
 
 	// Minimax 同步 TTS（与线上 wgHub DefaultMinimaxConfig 一致）。
 	Speech28Turbo = "speech-2.8-turbo"
+
+	// ElevenFlashV25 是镜子口播首选：低延迟且含中文；账号/中文不可用时再配 eleven_multilingual_v2，不用纯英型号。
+	ElevenFlashV25 = "eleven_flash_v2_5"
 )
 
 // All 返回当前仓库承认的全部真实模型 ID，顺序稳定便于对照。
@@ -159,5 +162,6 @@ func All() []string {
 		Veo31Generate001,
 		GeminiOmniFlashPreview,
 		Speech28Turbo,
+		ElevenFlashV25,
 	}
 }

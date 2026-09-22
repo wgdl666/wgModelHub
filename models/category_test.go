@@ -33,6 +33,7 @@ func TestCategoryOfKnownIDs(t *testing.T) {
 		{LTX, CategoryVideoGeneration},
 		{GeminiOmniFlashPreview, CategoryVideoGeneration},
 		{Speech28Turbo, CategorySpeech},
+		{ElevenFlashV25, CategorySpeech},
 	}
 	for _, tc := range cases {
 		got, ok := CategoryOf(tc.id)

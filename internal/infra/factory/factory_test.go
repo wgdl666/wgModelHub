@@ -98,6 +98,30 @@ func TestBuildMinimaxTTSExposesSpeechOnly(t *testing.T) {
 	}
 }
 
+func TestBuildElevenLabsTTSExposesSpeechOnly(t *testing.T) {
+	sets, err := Build(context.Background(), config.Config{
+		Providers: map[string]config.ProviderConfig{
+			"elevenlabs_tts": {
+				Models: []string{models.ElevenFlashV25},
+				ElevenLabsTTS: &config.ElevenLabsTTSProviderConfig{
+					APIKey:  "k",
+					VoiceID: "EXAVITQu4vr4xnSDxMaL",
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	set := sets["elevenlabs_tts"]
+	if set.Speech == nil {
+		t.Fatal("missing speech capability")
+	}
+	if set.Text != nil || set.Image != nil || set.Video != nil {
+		t.Fatalf("tts should only expose speech: %#v", set)
+	}
+}
+
 func TestBuildPhotoroomExposesImageOnly(t *testing.T) {
 	sets, err := Build(context.Background(), config.Config{
 		Providers: map[string]config.ProviderConfig{

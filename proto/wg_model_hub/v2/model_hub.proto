@@ -207,6 +207,11 @@ message TextOutput {
   optional double top_p = 3;
   ResponseFormat response_format = 4;
   ThinkingMode thinking = 5;
+  // thinking_budget 由调用方指定，ModelHub 原样下发、不封顶。
+  // 只对 gemini-2.5 等 thinkingBudget 模型生效；未设置且需要思考时不写预算，交给供应商动态决定。
+  // 3.7/3.8/3.5-flash-lite 只接受 thinking level，此字段忽略。
+  // optional 保留显式 0，表示调用方要求关闭思考。
+  optional int32 thinking_budget = 6;
 }
 
 enum ImageOutputModality {
