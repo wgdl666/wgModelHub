@@ -49,6 +49,8 @@ type ProviderConfig struct {
 	ArkVideo       *ArkVideoProviderConfig       `yaml:"ark_video"`
 	// MinimaxTTS 承接同步一次性 TTS；与 chat/completions OpenAI 实例分绑，避免误用文本能力。
 	MinimaxTTS *MinimaxTTSProviderConfig `yaml:"minimax_tts"`
+	// ElevenLabsTTS 承接同步一次性 TTS；与 Minimax 分绑，未配置时不影响现有 speech 路由。
+	ElevenLabsTTS *ElevenLabsTTSProviderConfig `yaml:"elevenlabs_tts"`
 	// Photoroom 承接官方 Remove Background（POST /v1/segment）；与 OpenAI/Gemini 生图实例分绑，禁止共用。
 	Photoroom *PhotoroomProviderConfig `yaml:"photoroom"`
 }
@@ -130,6 +132,14 @@ type MinimaxTTSProviderConfig struct {
 	Speed         float64 `yaml:"speed"`
 	Volume        float64 `yaml:"volume"`
 	Pitch         int     `yaml:"pitch"`
+}
+
+// ElevenLabsTTSProviderConfig 对齐 ElevenLabs HTTP TTS。
+// voice_id 必须由部署配置注入（路演可选音色），禁止业务代码写死成唯一路径。
+type ElevenLabsTTSProviderConfig struct {
+	APIKey  string `yaml:"api_key"`
+	BaseURL string `yaml:"base_url"`
+	VoiceID string `yaml:"voice_id"`
 }
 
 // PhotoroomProviderConfig 承接官方 Remove Background Basic plan。
@@ -502,6 +512,13 @@ func validateProvider(name string, provider ProviderConfig) error {
 		if strings.TrimSpace(provider.MinimaxTTS.APIKey) == "" {
 			return fmt.Errorf("provider %s api_key is required", name)
 		}
+	case provider.ElevenLabsTTS != nil:
+		if strings.TrimSpace(provider.ElevenLabsTTS.APIKey) == "" {
+			return fmt.Errorf("provider %s api_key is required", name)
+		}
+		if strings.TrimSpace(provider.ElevenLabsTTS.VoiceID) == "" {
+			return fmt.Errorf("provider %s voice_id is required", name)
+		}
 	case provider.Photoroom != nil:
 		if strings.TrimSpace(provider.Photoroom.APIKey) == "" {
 			return fmt.Errorf("provider %s api_key is required", name)
@@ -542,6 +559,9 @@ func countConcreteProviders(provider ProviderConfig) int {
 	if provider.MinimaxTTS != nil {
 		n++
 	}
+	if provider.ElevenLabsTTS != nil {
+		n++
+	}
 	if provider.Photoroom != nil {
 		n++
 	}
@@ -561,7 +581,7 @@ func ProviderSupports(provider ProviderConfig, capability string) bool {
 		return capability == CapabilityVideo
 	case provider.DashScopeVideo != nil, provider.OminilinkVideo != nil, provider.GeminiVideo != nil, provider.ArkVideo != nil:
 		return capability == CapabilityVideo
-	case provider.MinimaxTTS != nil:
+	case provider.MinimaxTTS != nil, provider.ElevenLabsTTS != nil:
 		return capability == CapabilitySpeech
 	default:
 		return false

@@ -75,7 +75,8 @@ var categories = map[string]Category{
 	Veo31Generate001:           CategoryVideoGeneration,
 	GeminiOmniFlashPreview:     CategoryVideoGeneration,
 
-	Speech28Turbo: CategorySpeech,
+	Speech28Turbo:  CategorySpeech,
+	ElevenFlashV25: CategorySpeech,
 }
 
 // CategoryOf 返回真实模型 ID 的产品分类；未知 ID 不得猜测。

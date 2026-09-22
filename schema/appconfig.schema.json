@@ -60,6 +60,8 @@
         "ominilink_video": { "$ref": "#/definitions/ominilinkVideo" },
         "gemini_video": { "$ref": "#/definitions/geminiVideo" },
         "ark_video": { "$ref": "#/definitions/arkVideo" },
+        "minimax_tts": { "$ref": "#/definitions/minimaxTts" },
+        "elevenlabs_tts": { "$ref": "#/definitions/elevenlabsTts" },
         "photoroom": { "$ref": "#/definitions/photoroom" }
       },
       "oneOf": [
@@ -72,6 +74,8 @@
         { "required": ["ominilink_video"] },
         { "required": ["gemini_video"] },
         { "required": ["ark_video"] },
+        { "required": ["minimax_tts"] },
+        { "required": ["elevenlabs_tts"] },
         { "required": ["photoroom"] }
       ]
     },
@@ -169,6 +173,28 @@
       "properties": {
         "api_key": { "type": "string", "minLength": 1 },
         "base_url": { "type": "string" }
+      }
+    },
+    "minimaxTts": {
+      "type": "object",
+      "required": ["api_key"],
+      "properties": {
+        "api_key": { "type": "string", "minLength": 1 },
+        "endpoint": { "type": "string" },
+        "language_boost": { "type": "string" },
+        "voice_id": { "type": "string" },
+        "speed": { "type": "number" },
+        "volume": { "type": "number" },
+        "pitch": { "type": "integer" }
+      }
+    },
+    "elevenlabsTts": {
+      "type": "object",
+      "required": ["api_key", "voice_id"],
+      "properties": {
+        "api_key": { "type": "string", "minLength": 1 },
+        "base_url": { "type": "string" },
+        "voice_id": { "type": "string", "minLength": 1 }
       }
     }
   }

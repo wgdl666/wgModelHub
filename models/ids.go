@@ -87,6 +87,9 @@ const (
 
 	// Minimax 同步 TTS（与线上 wgHub DefaultMinimaxConfig 一致）。
 	Speech28Turbo = "speech-2.8-turbo"
+
+	// ElevenFlashV25 是镜子口播首选：低延迟且含中文；账号/中文不可用时再配 eleven_multilingual_v2，不用纯英型号。
+	ElevenFlashV25 = "eleven_flash_v2_5"
 )
 
 // All 返回当前仓库承认的全部真实模型 ID，顺序稳定便于对照。
@@ -151,5 +154,6 @@ func All() []string {
 		Veo31Generate001,
 		GeminiOmniFlashPreview,
 		Speech28Turbo,
+		ElevenFlashV25,
 	}
 }

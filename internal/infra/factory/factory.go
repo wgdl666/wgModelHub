@@ -8,6 +8,7 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/infra/ark"
 	"github.com/wgdl666/wgModelHub/internal/infra/arkvideo"
 	"github.com/wgdl666/wgModelHub/internal/infra/dashscopevideo"
+	"github.com/wgdl666/wgModelHub/internal/infra/elevenlabstts"
 	"github.com/wgdl666/wgModelHub/internal/infra/geminivideo"
 	"github.com/wgdl666/wgModelHub/internal/infra/genai"
 	"github.com/wgdl666/wgModelHub/internal/infra/ltx"
@@ -118,6 +119,18 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 			Speed:         cfg.Speed,
 			Volume:        cfg.Volume,
 			Pitch:         cfg.Pitch,
+		})
+		if err != nil {
+			return provider.Set{}, err
+		}
+		return provider.Set{Speech: client}, nil
+	case providerCfg.ElevenLabsTTS != nil:
+		cfg := providerCfg.ElevenLabsTTS
+		client, err := elevenlabstts.New(elevenlabstts.Config{
+			Name:    name,
+			APIKey:  cfg.APIKey,
+			BaseURL: cfg.BaseURL,
+			VoiceID: cfg.VoiceID,
 		})
 		if err != nil {
 			return provider.Set{}, err

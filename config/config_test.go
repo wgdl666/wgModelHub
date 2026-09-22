@@ -176,6 +176,10 @@ func TestProviderSupportsSpeech(t *testing.T) {
 	if ProviderSupports(tts, CapabilityText) || ProviderSupports(tts, CapabilityImage) || ProviderSupports(tts, CapabilityVideo) {
 		t.Fatal("minimax_tts should not support text/image/video")
 	}
+	eleven := ProviderConfig{ElevenLabsTTS: &ElevenLabsTTSProviderConfig{APIKey: "k", VoiceID: "v"}}
+	if !ProviderSupports(eleven, CapabilitySpeech) {
+		t.Fatal("elevenlabs_tts should support speech")
+	}
 }
 
 func TestProviderSupportsOpenAIImage(t *testing.T) {
