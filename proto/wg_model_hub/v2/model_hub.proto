@@ -25,6 +25,7 @@ service ModelHubService {
 }
 
 // ModelCategory 是产品目录分类，不是 Generate 的 OutputSpec capability。
+// 同一分类里的模型可以互相替换。看图回文本、出图、抠图、向量、精排、人脸和人体工具用途不同，必须分开。
 enum ModelCategory {
   MODEL_CATEGORY_UNSPECIFIED = 0;
   MODEL_CATEGORY_LLM = 1;
@@ -32,10 +33,22 @@ enum ModelCategory {
   MODEL_CATEGORY_IMAGE_GENERATION = 3;
   MODEL_CATEGORY_VIDEO_GENERATION = 4;
   MODEL_CATEGORY_SPEECH = 5;
+  MODEL_CATEGORY_EMBEDDING = 6;
+  MODEL_CATEGORY_RERANK = 7;
+  MODEL_CATEGORY_FACE_COMPARE = 8;
+  MODEL_CATEGORY_FACE_DETECT = 9;
+  MODEL_CATEGORY_FACE_LIBRARY = 10;
+  // 人检返回人框。human-yolo 与 rekognition-detect-labels 同属这一类，调用方仍填具体模型 ID。
+  MODEL_CATEGORY_PERSON_DETECT = 11;
+  // 人体解析输出衣服和身体区域，不是检测框，也不和看图说话的多模态模型混放。
+  MODEL_CATEGORY_HUMAN_PARSER = 12;
+  // 抠图出透明图。和文生图、图生图不是同一类。
+  MODEL_CATEGORY_SEGMENT = 13;
 }
 
 message ListModelsRequest {
   // UNSPECIFIED 返回全部对外分类（含 speech）；指定则只返回该类。
+  // llm 与 multimodal 互不包含，调用方要对话全量时分别查询再合并。
   ModelCategory category = 1;
 }
 

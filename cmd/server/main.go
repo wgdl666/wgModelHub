@@ -18,6 +18,7 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/auth"
 	"github.com/wgdl666/wgModelHub/internal/callledger"
 	"github.com/wgdl666/wgModelHub/internal/infra/factory"
+	"github.com/wgdl666/wgModelHub/internal/infra/grpclistener"
 	"github.com/wgdl666/wgModelHub/internal/infra/httpserver"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/publicrpc"
@@ -121,7 +122,8 @@ func main() {
 		grpcServer := newGRPCServer()
 		listener := listen("intranet", addr)
 		go func() {
-			serveErr <- grpcServer.Serve(listener)
+			// 公网端口走 HTTP，不包这一层，避免 net/http 拿不到 *net.TCPConn。
+			serveErr <- grpcServer.Serve(grpclistener.ObserveResets(listener))
 		}()
 	}
 	if addr := strings.TrimSpace(runtimeConfig.Server.PublicListenAddress); addr != "" {

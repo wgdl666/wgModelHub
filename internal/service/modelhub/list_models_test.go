@@ -39,6 +39,34 @@ func listModelsTestService() *Service {
 				Models:     []string{models.Speech28Turbo},
 				MinimaxTTS: &config.MinimaxTTSProviderConfig{APIKey: "k"},
 			},
+			"embed": {
+				Models:             []string{models.Qwen3VLEmbedding},
+				DashScopeEmbedding: &config.DashScopeEmbeddingProviderConfig{BaseURL: "https://example.invalid", APIKey: "k"},
+			},
+			"rerank": {
+				Models:          []string{models.Qwen37TextRerank},
+				DashScopeRerank: &config.DashScopeRerankProviderConfig{BaseURL: "https://example.invalid", APIKey: "k"},
+			},
+			"face_compare": {
+				Models:          []string{models.FacebodyCompareFace},
+				FacebodyCompare: &config.FacebodyCompareProviderConfig{Endpoint: "facebody.example.com", AccessKeyID: "k", AccessKeySecret: "s"},
+			},
+			"face_detect": {
+				Models:         []string{models.FacebodyDetectFace},
+				FacebodyDetect: &config.FacebodyDetectProviderConfig{Endpoint: "facebody.example.com", AccessKeyID: "k", AccessKeySecret: "s"},
+			},
+			"face_library": {
+				Models:          []string{models.FacebodyFaceLibrary},
+				FacebodyLibrary: &config.FacebodyLibraryProviderConfig{Endpoint: "facebody.example.com", AccessKeyID: "k", AccessKeySecret: "s", Database: "wgdl_dev"},
+			},
+			"person_detect": {
+				Models:    []string{models.HumanYOLO},
+				HumanYOLO: &config.HumanYOLOProviderConfig{BaseURL: "https://example.invalid", Username: "u", Password: "p"},
+			},
+			"human_parser": {
+				Models:      []string{models.HumanParser},
+				HumanParser: &config.HumanParserProviderConfig{BaseURL: "https://example.invalid"},
+			},
 			"extra": {
 				Models: []string{"not-in-catalog"},
 				Ark:    &config.ArkProviderConfig{APIKey: "k"},
@@ -53,7 +81,7 @@ func TestListModelsReturnsRoutedPublicCategories(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := listModelIDs(resp)
-	want := []string{models.Gemini37Flash, models.DeepSeekV41Flash, models.Qwen3VLPlus, models.Qwen37Flash, models.GPTImage2, models.LTX, models.Speech28Turbo}
+	want := []string{models.Gemini37Flash, models.DeepSeekV41Flash, models.Qwen3VLPlus, models.Qwen37Flash, models.GPTImage2, models.LTX, models.Speech28Turbo, models.Qwen3VLEmbedding, models.Qwen37TextRerank, models.FacebodyCompareFace, models.FacebodyDetectFace, models.FacebodyFaceLibrary, models.HumanYOLO, models.HumanParser}
 	if !sameStrings(got, want) {
 		t.Fatalf("models=%v want=%v", got, want)
 	}
@@ -70,7 +98,7 @@ func TestListModelsFiltersLLM(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := listModelIDs(resp)
-	want := []string{models.Gemini37Flash, models.DeepSeekV41Flash, models.Qwen37Flash}
+	want := []string{models.DeepSeekV41Flash}
 	if !sameStrings(got, want) {
 		t.Fatalf("llm=%v want=%v", got, want)
 	}
@@ -94,6 +122,48 @@ func TestListModelsFiltersSpeech(t *testing.T) {
 	}
 	if resp.GetModels()[0].GetCategory() != modelhubv2.ModelCategory_MODEL_CATEGORY_SPEECH {
 		t.Fatalf("category=%v", resp.GetModels()[0].GetCategory())
+	}
+}
+
+func TestListModelsFiltersEmbeddingApartFromMultimodal(t *testing.T) {
+	resp, err := listModelsTestService().ListModels(context.Background(), &modelhubv2.ListModelsRequest{
+		Category: modelhubv2.ModelCategory_MODEL_CATEGORY_EMBEDDING,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sameStrings(listModelIDs(resp), []string{models.Qwen3VLEmbedding}) {
+		t.Fatalf("embedding=%v", listModelIDs(resp))
+	}
+	if resp.GetModels()[0].GetCategory() != modelhubv2.ModelCategory_MODEL_CATEGORY_EMBEDDING {
+		t.Fatalf("category=%v", resp.GetModels()[0].GetCategory())
+	}
+	multi, err := listModelsTestService().ListModels(context.Background(), &modelhubv2.ListModelsRequest{
+		Category: modelhubv2.ModelCategory_MODEL_CATEGORY_MULTIMODAL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sameStrings(listModelIDs(multi), []string{models.Gemini37Flash, models.Qwen3VLPlus, models.Qwen37Flash}) {
+		t.Fatalf("multimodal=%v", listModelIDs(multi))
+	}
+	person, err := listModelsTestService().ListModels(context.Background(), &modelhubv2.ListModelsRequest{
+		Category: modelhubv2.ModelCategory_MODEL_CATEGORY_PERSON_DETECT,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sameStrings(listModelIDs(person), []string{models.HumanYOLO}) {
+		t.Fatalf("person_detect=%v", listModelIDs(person))
+	}
+	parser, err := listModelsTestService().ListModels(context.Background(), &modelhubv2.ListModelsRequest{
+		Category: modelhubv2.ModelCategory_MODEL_CATEGORY_HUMAN_PARSER,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sameStrings(listModelIDs(parser), []string{models.HumanParser}) {
+		t.Fatalf("human_parser=%v", listModelIDs(parser))
 	}
 }
 

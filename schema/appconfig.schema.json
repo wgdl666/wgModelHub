@@ -68,7 +68,16 @@
         "human_parser": { "$ref": "#/definitions/humanParser" },
         "rekognition_detect": { "$ref": "#/definitions/rekognitionDetect" },
         "facebody_compare": { "$ref": "#/definitions/facebodyCompare" },
-        "rekognition_compare": { "$ref": "#/definitions/rekognitionCompare" }
+        "rekognition_compare": { "$ref": "#/definitions/rekognitionCompare" },
+        "dashscope_embedding": { "$ref": "#/definitions/dashscopeEmbedding" },
+        "cohere_embedding": { "$ref": "#/definitions/cohereEmbedding" },
+        "bedrock_embedding": { "$ref": "#/definitions/bedrockEmbedding" },
+        "dashscope_rerank": { "$ref": "#/definitions/dashscopeRerank" },
+        "bedrock_rerank": { "$ref": "#/definitions/bedrockRerank" },
+        "facebody_detect": { "$ref": "#/definitions/facebodyDetect" },
+        "facebody_library": { "$ref": "#/definitions/facebodyLibrary" },
+        "rekognition_faces": { "$ref": "#/definitions/rekognitionFaces" },
+        "rekognition_library": { "$ref": "#/definitions/rekognitionLibrary" }
       },
       "oneOf": [
         { "required": ["gemini"] },
@@ -88,7 +97,16 @@
         { "required": ["human_parser"] },
         { "required": ["rekognition_detect"] },
         { "required": ["facebody_compare"] },
-        { "required": ["rekognition_compare"] }
+        { "required": ["rekognition_compare"] },
+        { "required": ["dashscope_embedding"] },
+        { "required": ["cohere_embedding"] },
+        { "required": ["bedrock_embedding"] },
+        { "required": ["dashscope_rerank"] },
+        { "required": ["bedrock_rerank"] },
+        { "required": ["facebody_detect"] },
+        { "required": ["facebody_library"] },
+        { "required": ["rekognition_faces"] },
+        { "required": ["rekognition_library"] }
       ]
     },
     "gemini": {
@@ -264,6 +282,86 @@
         "access_key_id": { "type": "string" },
         "access_key_secret": { "type": "string" },
         "session_token": { "type": "string" }
+      }
+    },
+    "dashscopeEmbedding": {
+      "type": "object",
+      "required": ["base_url", "api_key"],
+      "properties": {
+        "base_url": { "type": "string", "minLength": 1 },
+        "api_key": { "type": "string", "minLength": 1 }
+      }
+    },
+    "cohereEmbedding": {
+      "type": "object",
+      "required": ["base_url", "api_key"],
+      "properties": {
+        "base_url": { "type": "string", "minLength": 1 },
+        "api_key": { "type": "string", "minLength": 1 }
+      }
+    },
+    "bedrockEmbedding": {
+      "type": "object",
+      "required": ["region"],
+      "properties": {
+        "region": { "type": "string", "minLength": 1 },
+        "role_arn": { "type": "string" }
+      }
+    },
+    "dashscopeRerank": {
+      "type": "object",
+      "required": ["base_url", "api_key"],
+      "properties": {
+        "base_url": { "type": "string", "minLength": 1 },
+        "api_key": { "type": "string", "minLength": 1 }
+      }
+    },
+    "bedrockRerank": {
+      "type": "object",
+      "required": ["region"],
+      "properties": {
+        "region": { "type": "string", "minLength": 1 },
+        "role_arn": { "type": "string" }
+      }
+    },
+    "facebodyDetect": {
+      "type": "object",
+      "required": ["endpoint", "access_key_id", "access_key_secret"],
+      "properties": {
+        "endpoint": { "type": "string", "minLength": 1 },
+        "access_key_id": { "type": "string", "minLength": 1 },
+        "access_key_secret": { "type": "string", "minLength": 1 }
+      }
+    },
+    "facebodyLibrary": {
+      "type": "object",
+      "required": ["endpoint", "access_key_id", "access_key_secret", "database"],
+      "properties": {
+        "endpoint": { "type": "string", "minLength": 1 },
+        "access_key_id": { "type": "string", "minLength": 1 },
+        "access_key_secret": { "type": "string", "minLength": 1 },
+        "database": { "type": "string", "minLength": 1 }
+      }
+    },
+    "rekognitionFaces": {
+      "type": "object",
+      "required": ["region"],
+      "properties": {
+        "region": { "type": "string", "minLength": 1 },
+        "access_key_id": { "type": "string" },
+        "access_key_secret": { "type": "string" },
+        "session_token": { "type": "string" }
+      }
+    },
+    "rekognitionLibrary": {
+      "type": "object",
+      "required": ["region", "collection"],
+      "properties": {
+        "region": { "type": "string", "minLength": 1 },
+        "access_key_id": { "type": "string" },
+        "access_key_secret": { "type": "string" },
+        "session_token": { "type": "string" },
+        "collection": { "type": "string", "minLength": 1 }
       }
     }
   }

@@ -1,7 +1,8 @@
 package models
 
-// Category 是产品主用途，不是 OutputSpec capability。
-// Gemini 聊天模型即使能收图仍归 llm，避免和 *-image 出图 ID 混成一类。
+// Category 是模型自己的产品用途，不是某个调用方这次拿它干什么。
+// 能看图并回文本的归 multimodal。纯文本对话归 llm。两类清单互不包含。
+// *-image 出图 ID 仍归 image_generation。
 type Category string
 
 const (
@@ -10,28 +11,57 @@ const (
 	CategoryImageGeneration Category = "image_generation"
 	CategoryVideoGeneration Category = "video_generation"
 	CategorySpeech          Category = "speech"
+	CategoryEmbedding       Category = "embedding"
+	CategoryRerank          Category = "rerank"
+	CategoryFaceCompare     Category = "face_compare"
+	CategoryFaceDetect      Category = "face_detect"
+	CategoryFaceLibrary     Category = "face_library"
+	// CategoryPersonDetect 是画面里的人框。和检脸、看图说话分开。
+	CategoryPersonDetect Category = "person_detect"
+	// CategoryHumanParser 是人体和衣服区域解析，输出分割而不是框。
+	CategoryHumanParser Category = "human_parser"
+	// CategorySegment 是抠图。透明图出，不是文生图。
+	CategorySegment Category = "segment"
 )
 
 var categories = map[string]Category{
-	Gemini25Flash:     CategoryLLM,
-	Gemini37Flash:     CategoryLLM,
-	Gemini38Flash:     CategoryLLM,
-	Gemini35FlashLite: CategoryLLM,
-	Gemini20Flash001:  CategoryLLM,
-	DoubaoSeed16:      CategoryLLM,
-	DoubaoSeed20Mini:  CategoryLLM,
-	DoubaoSeed20Lite:  CategoryLLM,
-	DoubaoSeed21Pro:   CategoryLLM,
-	DeepSeekV4Flash:   CategoryLLM,
-	DeepSeekV41Flash:  CategoryLLM,
-	QwenFlash:         CategoryLLM,
-	Qwen35Flash:       CategoryLLM,
-	Qwen37Flash:       CategoryLLM,
-	Qwen38Flash:       CategoryLLM,
-	ClaudeHaiku45:     CategoryLLM,
-	GLM53Flash:        CategoryLLM,
+	// 纯文本对话。DeepSeek 视觉是另一个未接入的 ID；qwen-flash 不收图。
+	DeepSeekV4Flash:  CategoryLLM,
+	DeepSeekV41Flash: CategoryLLM,
+	QwenFlash:        CategoryLLM,
 
-	Qwen3VLPlus: CategoryMultimodal,
+	Gemini25Flash:     CategoryMultimodal,
+	Gemini37Flash:     CategoryMultimodal,
+	Gemini38Flash:     CategoryMultimodal,
+	Gemini35FlashLite: CategoryMultimodal,
+	Gemini20Flash001:  CategoryMultimodal,
+	DoubaoSeed16:      CategoryMultimodal,
+	DoubaoSeed20Mini:  CategoryMultimodal,
+	DoubaoSeed20Lite:  CategoryMultimodal,
+	DoubaoSeed21Pro:   CategoryMultimodal,
+	Qwen3VLPlus:       CategoryMultimodal,
+	Qwen35Flash:       CategoryMultimodal,
+	Qwen37Flash:       CategoryMultimodal,
+	Qwen38Flash:       CategoryMultimodal,
+	ClaudeHaiku45:     CategoryMultimodal,
+	GLM53Flash:        CategoryMultimodal,
+
+	Qwen3VLEmbedding:     CategoryEmbedding,
+	CohereEmbedV4:        CategoryEmbedding,
+	CohereEmbedV4Bedrock: CategoryEmbedding,
+
+	Qwen37TextRerank: CategoryRerank,
+	Qwen3VLRerank:    CategoryRerank,
+	CohereRerankV35:  CategoryRerank,
+
+	FacebodyCompareFace:     CategoryFaceCompare,
+	RekognitionCompareFaces: CategoryFaceCompare,
+
+	FacebodyDetectFace:     CategoryFaceDetect,
+	RekognitionDetectFaces: CategoryFaceDetect,
+
+	FacebodyFaceLibrary:    CategoryFaceLibrary,
+	RekognitionFaceLibrary: CategoryFaceLibrary,
 
 	Gemini3ProImage:         CategoryImageGeneration,
 	Gemini25FlashImage:      CategoryImageGeneration,
@@ -40,14 +70,12 @@ var categories = map[string]Category{
 	GPTImage25Flare:         CategoryImageGeneration,
 	GPTImage25Sunburst:      CategoryImageGeneration,
 	Flux2Klein9B:            CategoryImageGeneration,
-	PhotoroomSegment:        CategoryImageGeneration,
-	SegmentPersonBria:       CategoryImageGeneration,
-	SegmentSubjectBria:      CategoryImageGeneration,
-	HumanYOLO:               CategoryMultimodal,
-	RekognitionDetectLabels: CategoryMultimodal,
-	FacebodyCompareFace:     CategoryMultimodal,
-	RekognitionCompareFaces: CategoryMultimodal,
-	HumanParser:             CategoryMultimodal,
+	PhotoroomSegment:        CategorySegment,
+	SegmentPersonBria:       CategorySegment,
+	SegmentSubjectBria:      CategorySegment,
+	HumanYOLO:               CategoryPersonDetect,
+	RekognitionDetectLabels: CategoryPersonDetect,
+	HumanParser:             CategoryHumanParser,
 
 	LTX:                        CategoryVideoGeneration,
 	Wan22I2VFlash:              CategoryVideoGeneration,
@@ -95,7 +123,9 @@ func CategoryOf(id string) (Category, bool) {
 // Public 表示该分类会出现在 ListModels 对外清单里。
 func (c Category) Public() bool {
 	switch c {
-	case CategoryLLM, CategoryMultimodal, CategoryImageGeneration, CategoryVideoGeneration, CategorySpeech:
+	case CategoryLLM, CategoryMultimodal, CategoryImageGeneration, CategoryVideoGeneration, CategorySpeech,
+		CategoryEmbedding, CategoryRerank, CategoryFaceCompare, CategoryFaceDetect, CategoryFaceLibrary,
+		CategoryPersonDetect, CategoryHumanParser, CategorySegment:
 		return true
 	default:
 		return false

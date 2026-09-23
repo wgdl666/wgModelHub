@@ -34,8 +34,10 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 FROM ${ALPINE_RUNTIME_IMAGE} AS runtime
 
+# 镜像摘要不变时，国内流水线 set image 不会换 Pod。供应商在启动时绑定，这次必须让摘要变掉。
 LABEL org.opencontainers.image.title="wg-model-hub" \
-      org.opencontainers.image.source="https://github.com/wgdl666/wgModelHub"
+      org.opencontainers.image.source="https://github.com/wgdl666/wgModelHub" \
+      org.wgdl.rollout="2026-09-23-providers"
 
 ARG ALPINE_MIRROR=""
 RUN if [ -n "$ALPINE_MIRROR" ]; then \

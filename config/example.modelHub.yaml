@@ -204,6 +204,51 @@ providers:
       region: us-east-1
       access_key_id: "${AWS_ACCESS_KEY_ID}"
       access_key_secret: "${AWS_SECRET_ACCESS_KEY}"
+  dashscope_embedding_cn:
+    models: [qwen3-vl-embedding]
+    dashscope_embedding:
+      base_url: https://dashscope.aliyuncs.com/api/v1
+      api_key: "${DASHSCOPE_API_KEY}"
+  cohere_embedding_us:
+    models: [embed-v4.0]
+    cohere_embedding:
+      base_url: https://api.cohere.com
+      api_key: "${COHERE_API_KEY}"
+  bedrock_embedding_us:
+    models: [us.cohere.embed-v4:0]
+    bedrock_embedding:
+      region: us-east-1
+  dashscope_rerank_cn:
+    models: [qwen3.7-text-rerank, qwen3-vl-rerank]
+    dashscope_rerank:
+      base_url: https://dashscope.aliyuncs.com/compatible-api/v1
+      api_key: "${DASHSCOPE_API_KEY}"
+  bedrock_rerank_us:
+    models: [cohere.rerank-v3-5:0]
+    bedrock_rerank:
+      region: us-east-1
+  facebody_detect_cn:
+    models: [facebody-detect-face]
+    facebody_detect:
+      endpoint: facebody.cn-shanghai.aliyuncs.com
+      access_key_id: "${FACEBODY_ACCESS_KEY_ID}"
+      access_key_secret: "${FACEBODY_ACCESS_KEY_SECRET}"
+  facebody_library_cn:
+    models: [facebody-face-library]
+    facebody_library:
+      endpoint: facebody.cn-shanghai.aliyuncs.com
+      access_key_id: "${FACEBODY_ACCESS_KEY_ID}"
+      access_key_secret: "${FACEBODY_ACCESS_KEY_SECRET}"
+      database: wgdl_dev
+  rekognition_faces_us:
+    models: [rekognition-detect-faces]
+    rekognition_faces:
+      region: us-east-2
+  rekognition_library_us:
+    models: [rekognition-face-library]
+    rekognition_library:
+      region: us-east-2
+      collection: wg-face-identity-us
   # LTX 供应商请求体里的 model 字段值就是 ltx，不是业务别名。
   ltx_video:
     models: [ltx]
