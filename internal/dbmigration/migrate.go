@@ -14,7 +14,11 @@ import (
 const advisoryLockKey int64 = 0x57474d4f44454c
 
 func Run(ctx context.Context, db *sql.DB) error {
-	return runSQL(ctx, db, migrations.GenerationTaskSQL)
+	// 显式 migration 顺序执行；IF NOT EXISTS，可重复跑。禁止启动自动 DDL。
+	if err := runSQL(ctx, db, migrations.GenerationTaskSQL); err != nil {
+		return err
+	}
+	return runSQL(ctx, db, migrations.ModelCallSQL)
 }
 
 func runSQL(ctx context.Context, db *sql.DB, statement string) (returnErr error) {

@@ -72,25 +72,25 @@ func validateGeminiGenerateInput(request *modelhubv2.GenerateRequest) error {
 // validateGeminiInputMedia Gemini NewPartFromBytes/URI 需要 MIME；在 provider 边界给出明确错误。
 func validateGeminiInputMedia(media *modelhubv2.Media) error {
 	if media == nil {
-		return provider.New(provider.ErrorInvalidArgument, "media is required")
+		return provider.NotAttempted(provider.ErrorInvalidArgument, "media is required")
 	}
 	switch source := media.GetSource().(type) {
 	case *modelhubv2.Media_Data:
 		if strings.TrimSpace(media.GetMimeType()) == "" {
-			return provider.New(provider.ErrorInvalidArgument, "gemini requires media mime_type for inline data")
+			return provider.NotAttempted(provider.ErrorInvalidArgument, "gemini requires media mime_type for inline data")
 		}
 		if len(source.Data) == 0 {
-			return provider.New(provider.ErrorInvalidArgument, "media data is empty")
+			return provider.NotAttempted(provider.ErrorInvalidArgument, "media data is empty")
 		}
 	case *modelhubv2.Media_Uri:
 		if strings.TrimSpace(source.Uri) == "" {
-			return provider.New(provider.ErrorInvalidArgument, "media uri is empty")
+			return provider.NotAttempted(provider.ErrorInvalidArgument, "media uri is empty")
 		}
 		if strings.TrimSpace(media.GetMimeType()) == "" {
-			return provider.New(provider.ErrorInvalidArgument, "gemini requires media mime_type for uri")
+			return provider.NotAttempted(provider.ErrorInvalidArgument, "gemini requires media mime_type for uri")
 		}
 	default:
-		return provider.New(provider.ErrorInvalidArgument, "media source is required")
+		return provider.NotAttempted(provider.ErrorInvalidArgument, "media source is required")
 	}
 	return nil
 }

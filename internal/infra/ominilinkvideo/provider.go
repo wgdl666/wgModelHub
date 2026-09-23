@@ -73,14 +73,14 @@ func (p *Provider) GenerateVideo(ctx context.Context, model string, request *mod
 // SubmitVideo 按 family 创建 OminiLink 异步任务，task id 足以后续 getTask 查询。
 func (p *Provider) SubmitVideo(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (string, error) {
 	if request == nil {
-		return "", provider.New(provider.ErrorInvalidArgument, "video request is required")
+		return "", provider.NotAttempted(provider.ErrorInvalidArgument, "video request is required")
 	}
 	if provider.FirstVideoMedia(request.GetInput()) != nil {
-		return "", provider.New(provider.ErrorInvalidArgument, "ominilink video generation does not accept video input")
+		return "", provider.NotAttempted(provider.ErrorInvalidArgument, "ominilink video generation does not accept video input")
 	}
 	prompt := provider.JoinedText(request.GetInput())
 	if strings.TrimSpace(prompt) == "" {
-		return "", provider.New(provider.ErrorInvalidArgument, "video prompt text is required in input")
+		return "", provider.NotAttempted(provider.ErrorInvalidArgument, "video prompt text is required in input")
 	}
 	imageURL, err := p.resolveImageURL(provider.FirstImageMedia(request.GetInput()))
 	if err != nil {
@@ -146,7 +146,7 @@ func (p *Provider) ReadVideoResult(ctx context.Context, model, providerTaskID st
 
 func (p *Provider) resolveImageURL(media *modelhubv2.Media) (string, error) {
 	if media == nil {
-		return "", provider.New(provider.ErrorInvalidArgument, "first_frame image is required in input")
+		return "", provider.NotAttempted(provider.ErrorInvalidArgument, "first_frame image is required in input")
 	}
 	return provider.ResolveImageURL(media)
 }
@@ -158,7 +158,7 @@ func (p *Provider) createTask(ctx context.Context, model, imageURL, prompt, reso
 	}
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, createURL, bytes.NewReader(body))
 	if err != nil {
-		return "", provider.Wrap(provider.ErrorInvalidArgument, "create submit request", err)
+		return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "create submit request", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
@@ -259,16 +259,17 @@ func (p *Provider) buildCreateRequest(ctx context.Context, model, imageURL, prom
 		})
 		return p.baseURL + "/" + url.PathEscape(model) + "/img2video", body, err
 	default:
-		return "", nil, provider.Errorf(provider.ErrorInvalidArgument, "unsupported ominilink video model %s", model)
+		return "", nil, provider.NotAttemptedf(provider.ErrorInvalidArgument, "unsupported ominilink video model %s", model)
 	}
 }
 
 func (p *Provider) veoImageBase64(ctx context.Context, imageURL string) (b64, mimeType string, err error) {
 	imageURL = strings.TrimSpace(imageURL)
 	if strings.HasPrefix(imageURL, "data:") {
+		// ParseDataURI 也可能解析供应商回传；此处是提交前输入，失败标本地。
 		mimeType, data, err := provider.ParseDataURI(imageURL)
 		if err != nil {
-			return "", "", err
+			return "", "", provider.AsNotAttempted(err)
 		}
 		return base64.StdEncoding.EncodeToString(data), mimeType, nil
 	}
@@ -276,9 +277,10 @@ func (p *Provider) veoImageBase64(ctx context.Context, imageURL string) (b64, mi
 }
 
 func (p *Provider) fetchImageBase64(ctx context.Context, imageURL string) (b64, mimeType string, err error) {
+	// 拉取输入图失败不得记成模型调用。
 	data, err := provider.DownloadPublicURL(ctx, p.client, p.name, imageURL, protocol.MaxMediaBytes)
 	if err != nil {
-		return "", "", err
+		return "", "", provider.AsNotAttempted(err)
 	}
 	mimeType = mimeFromURL(imageURL)
 	return base64.StdEncoding.EncodeToString(data), mimeType, nil
@@ -292,6 +294,7 @@ type taskPollResult struct {
 }
 
 func (p *Provider) getTask(ctx context.Context, model, taskID string) (taskPollResult, error) {
+	// Submit 已成功后的轮询；create poll 失败仍记真实调用，不得 NotAttempted。
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.modelQueryURL(model, taskID), nil)
 	if err != nil {
 		return taskPollResult{}, provider.Wrap(provider.ErrorInvalidArgument, "create poll request", err)
@@ -355,12 +358,13 @@ func mimeFromURL(raw string) string {
 func klingImageField(imageURL string) (map[string]string, error) {
 	imageURL = strings.TrimSpace(imageURL)
 	if imageURL == "" {
-		return nil, provider.New(provider.ErrorInvalidArgument, "kling image is required")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "kling image is required")
 	}
 	if strings.HasPrefix(imageURL, "data:") {
+		// 提交前解析调用方 data URI；ParseDataURI 本身不标 Local，由此处认定。
 		_, data, err := provider.ParseDataURI(imageURL)
 		if err != nil {
-			return nil, err
+			return nil, provider.AsNotAttempted(err)
 		}
 		return map[string]string{"Base64": base64.StdEncoding.EncodeToString(data)}, nil
 	}

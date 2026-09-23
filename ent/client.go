@@ -15,6 +15,7 @@ import (
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
 	"github.com/wgdl666/wgModelHub/ent/generationtask"
+	"github.com/wgdl666/wgModelHub/ent/modelcall"
 	"github.com/wgdl666/wgModelHub/ent/modelhubapikey"
 
 	"github.com/wgdl666/wgModelHub/ent/internal"
@@ -27,6 +28,8 @@ type Client struct {
 	Schema *migrate.Schema
 	// GenerationTask is the client for interacting with the GenerationTask builders.
 	GenerationTask *GenerationTaskClient
+	// ModelCall is the client for interacting with the ModelCall builders.
+	ModelCall *ModelCallClient
 	// ModelhubAPIKey is the client for interacting with the ModelhubAPIKey builders.
 	ModelhubAPIKey *ModelhubAPIKeyClient
 }
@@ -41,6 +44,7 @@ func NewClient(opts ...Option) *Client {
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.GenerationTask = NewGenerationTaskClient(c.config)
+	c.ModelCall = NewModelCallClient(c.config)
 	c.ModelhubAPIKey = NewModelhubAPIKeyClient(c.config)
 }
 
@@ -138,6 +142,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		ctx:            ctx,
 		config:         cfg,
 		GenerationTask: NewGenerationTaskClient(cfg),
+		ModelCall:      NewModelCallClient(cfg),
 		ModelhubAPIKey: NewModelhubAPIKeyClient(cfg),
 	}, nil
 }
@@ -159,6 +164,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		ctx:            ctx,
 		config:         cfg,
 		GenerationTask: NewGenerationTaskClient(cfg),
+		ModelCall:      NewModelCallClient(cfg),
 		ModelhubAPIKey: NewModelhubAPIKeyClient(cfg),
 	}, nil
 }
@@ -189,6 +195,7 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	c.GenerationTask.Use(hooks...)
+	c.ModelCall.Use(hooks...)
 	c.ModelhubAPIKey.Use(hooks...)
 }
 
@@ -196,6 +203,7 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	c.GenerationTask.Intercept(interceptors...)
+	c.ModelCall.Intercept(interceptors...)
 	c.ModelhubAPIKey.Intercept(interceptors...)
 }
 
@@ -204,6 +212,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
 	case *GenerationTaskMutation:
 		return c.GenerationTask.mutate(ctx, m)
+	case *ModelCallMutation:
+		return c.ModelCall.mutate(ctx, m)
 	case *ModelhubAPIKeyMutation:
 		return c.ModelhubAPIKey.mutate(ctx, m)
 	default:
@@ -344,6 +354,139 @@ func (c *GenerationTaskClient) mutate(ctx context.Context, m *GenerationTaskMuta
 	}
 }
 
+// ModelCallClient is a client for the ModelCall schema.
+type ModelCallClient struct {
+	config
+}
+
+// NewModelCallClient returns a client for the ModelCall from the given config.
+func NewModelCallClient(c config) *ModelCallClient {
+	return &ModelCallClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `modelcall.Hooks(f(g(h())))`.
+func (c *ModelCallClient) Use(hooks ...Hook) {
+	c.hooks.ModelCall = append(c.hooks.ModelCall, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `modelcall.Intercept(f(g(h())))`.
+func (c *ModelCallClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ModelCall = append(c.inters.ModelCall, interceptors...)
+}
+
+// Create returns a builder for creating a ModelCall entity.
+func (c *ModelCallClient) Create() *ModelCallCreate {
+	mutation := newModelCallMutation(c.config, OpCreate)
+	return &ModelCallCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ModelCall entities.
+func (c *ModelCallClient) CreateBulk(builders ...*ModelCallCreate) *ModelCallCreateBulk {
+	return &ModelCallCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ModelCallClient) MapCreateBulk(slice any, setFunc func(*ModelCallCreate, int)) *ModelCallCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ModelCallCreateBulk{err: fmt.Errorf("calling to ModelCallClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ModelCallCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ModelCallCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ModelCall.
+func (c *ModelCallClient) Update() *ModelCallUpdate {
+	mutation := newModelCallMutation(c.config, OpUpdate)
+	return &ModelCallUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ModelCallClient) UpdateOne(_m *ModelCall) *ModelCallUpdateOne {
+	mutation := newModelCallMutation(c.config, OpUpdateOne, withModelCall(_m))
+	return &ModelCallUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ModelCallClient) UpdateOneID(id string) *ModelCallUpdateOne {
+	mutation := newModelCallMutation(c.config, OpUpdateOne, withModelCallID(id))
+	return &ModelCallUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ModelCall.
+func (c *ModelCallClient) Delete() *ModelCallDelete {
+	mutation := newModelCallMutation(c.config, OpDelete)
+	return &ModelCallDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ModelCallClient) DeleteOne(_m *ModelCall) *ModelCallDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ModelCallClient) DeleteOneID(id string) *ModelCallDeleteOne {
+	builder := c.Delete().Where(modelcall.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ModelCallDeleteOne{builder}
+}
+
+// Query returns a query builder for ModelCall.
+func (c *ModelCallClient) Query() *ModelCallQuery {
+	return &ModelCallQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeModelCall},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ModelCall entity by its id.
+func (c *ModelCallClient) Get(ctx context.Context, id string) (*ModelCall, error) {
+	return c.Query().Where(modelcall.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ModelCallClient) GetX(ctx context.Context, id string) *ModelCall {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ModelCallClient) Hooks() []Hook {
+	return c.hooks.ModelCall
+}
+
+// Interceptors returns the client interceptors.
+func (c *ModelCallClient) Interceptors() []Interceptor {
+	return c.inters.ModelCall
+}
+
+func (c *ModelCallClient) mutate(ctx context.Context, m *ModelCallMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ModelCallCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ModelCallUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ModelCallUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ModelCallDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ModelCall mutation op: %q", m.Op())
+	}
+}
+
 // ModelhubAPIKeyClient is a client for the ModelhubAPIKey schema.
 type ModelhubAPIKeyClient struct {
 	config
@@ -480,10 +623,10 @@ func (c *ModelhubAPIKeyClient) mutate(ctx context.Context, m *ModelhubAPIKeyMuta
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		GenerationTask, ModelhubAPIKey []ent.Hook
+		GenerationTask, ModelCall, ModelhubAPIKey []ent.Hook
 	}
 	inters struct {
-		GenerationTask, ModelhubAPIKey []ent.Interceptor
+		GenerationTask, ModelCall, ModelhubAPIKey []ent.Interceptor
 	}
 )
 
@@ -491,6 +634,7 @@ var (
 	// DefaultSchemaConfig represents the default schema names for all tables as defined in ent/schema.
 	DefaultSchemaConfig = SchemaConfig{
 		GenerationTask: tableSchemas[0],
+		ModelCall:      tableSchemas[0],
 		ModelhubAPIKey: tableSchemas[0],
 	}
 	tableSchemas = [...]string{"modelhub"}

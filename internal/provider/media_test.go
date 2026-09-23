@@ -46,6 +46,20 @@ func TestImageDataURIRequiresMime(t *testing.T) {
 	if err == nil || Kind(err) != ErrorInvalidArgument || !strings.Contains(err.Error(), "mime_type is required") {
 		t.Fatalf("err=%v", err)
 	}
+	if !IsNotAttempted(err) {
+		t.Fatal("ImageDataURI local validation must be NotAttempted")
+	}
+}
+
+func TestResolveImageURLLocalFailuresAreNotAttempted(t *testing.T) {
+	_, err := ResolveImageURL(nil)
+	if !IsNotAttempted(err) {
+		t.Fatalf("nil media: %v", err)
+	}
+	_, err = ResolveImageURL(&modelhubv2.Media{MimeType: "text/plain", Source: &modelhubv2.Media_Data{Data: []byte("x")}})
+	if !IsNotAttempted(err) {
+		t.Fatalf("bad mime: %v", err)
+	}
 }
 
 func TestParseDataURIRoundTrip(t *testing.T) {

@@ -16,6 +16,7 @@ import (
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/apikeystore"
 	"github.com/wgdl666/wgModelHub/internal/auth"
+	"github.com/wgdl666/wgModelHub/internal/callledger"
 	"github.com/wgdl666/wgModelHub/internal/infra/factory"
 	"github.com/wgdl666/wgModelHub/internal/infra/httpserver"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
@@ -86,7 +87,8 @@ func main() {
 	defer entClient.Close()
 
 	apiKeys := apikeystore.New(entClient)
-	hubService := modelhub.New(live, providers, taskstore.NewPostgres(entClient))
+	ledger := callledger.NewPostgres(entClient)
+	hubService := modelhub.NewWithLedger(live, providers, taskstore.NewPostgres(entClient), ledger)
 
 	healthServer := health.NewServer()
 	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)

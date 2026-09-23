@@ -58,7 +58,7 @@ func New(name, apiKey, baseURL string) (*Provider, error) {
 func (p *Provider) GenerateImage(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
 	_ = model // 路由层已选定本实例；Photoroom segment 无 request-level model 参数。
 	if request == nil {
-		return nil, provider.New(provider.ErrorInvalidArgument, "generate request is required")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "generate request is required")
 	}
 	media, err := exactlyOneImage(request.GetInput())
 	if err != nil {
@@ -91,73 +91,75 @@ func exactlyOneImage(input *modelhubv2.Input) (*modelhubv2.Media, error) {
 	images := provider.ImageMedias(input)
 	switch len(images) {
 	case 0:
-		return nil, provider.New(provider.ErrorInvalidArgument, "photoroom remove background requires exactly one input image")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "photoroom remove background requires exactly one input image")
 	case 1:
 		return images[0], nil
 	default:
-		return nil, provider.New(provider.ErrorInvalidArgument, "photoroom remove background accepts exactly one input image")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "photoroom remove background accepts exactly one input image")
 	}
 }
 
 func (p *Provider) materializeInputImage(ctx context.Context, media *modelhubv2.Media) ([]byte, string, error) {
 	if media == nil {
-		return nil, "", provider.New(provider.ErrorInvalidArgument, "input image is required")
+		return nil, "", provider.NotAttempted(provider.ErrorInvalidArgument, "input image is required")
 	}
 	switch source := media.Source.(type) {
 	case *modelhubv2.Media_Data:
 		// 内联 MIME/非空/大小已由 service validateMedia 保证；此处只确认可上传内容。
 		if len(source.Data) == 0 {
-			return nil, "", provider.New(provider.ErrorInvalidArgument, "input image has no content")
+			return nil, "", provider.NotAttempted(provider.ErrorInvalidArgument, "input image has no content")
 		}
 		mimeType := strings.TrimSpace(media.GetMimeType())
 		if normalizedImageMIME(mimeType) == "" {
-			return nil, "", provider.New(provider.ErrorInvalidArgument, "input image MIME is not image/*")
+			return nil, "", provider.NotAttempted(provider.ErrorInvalidArgument, "input image MIME is not image/*")
 		}
 		return source.Data, mimeType, nil
 	case *modelhubv2.Media_Uri:
 		return p.fetchImageURI(ctx, source.Uri)
 	default:
-		return nil, "", provider.New(provider.ErrorInvalidArgument, "input image source is required")
+		return nil, "", provider.NotAttempted(provider.ErrorInvalidArgument, "input image source is required")
 	}
 }
 
 func (p *Provider) fetchImageURI(ctx context.Context, rawURL string) ([]byte, string, error) {
+	// 拉取调用方输入 URI：失败不得记成模型调用（含输入侧 HTTP 非 2xx）。
 	rawURL = strings.TrimSpace(rawURL)
 	if rawURL == "" {
-		return nil, "", provider.New(provider.ErrorInvalidArgument, "input image uri is empty")
+		return nil, "", provider.NotAttempted(provider.ErrorInvalidArgument, "input image uri is empty")
 	}
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
-		return nil, "", provider.Wrap(provider.ErrorInvalidArgument, "input image uri is invalid", err)
+		return nil, "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "input image uri is invalid", err)
 	}
 	scheme := strings.ToLower(parsed.Scheme)
 	if scheme != "http" && scheme != "https" {
-		return nil, "", provider.New(provider.ErrorInvalidArgument, "input image uri must be http or https")
+		return nil, "", provider.NotAttempted(provider.ErrorInvalidArgument, "input image uri must be http or https")
 	}
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
-		return nil, "", provider.Wrap(provider.ErrorInvalidArgument, "create input image request", err)
+		return nil, "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "create input image request", err)
 	}
 	resp, err := p.client.Do(httpReq)
 	if err != nil {
 		if ctx.Err() != nil {
-			return nil, "", ctx.Err()
+			// 输入图拉取阶段取消，不得裸记为已调模型。
+			return nil, "", provider.AsNotAttempted(ctx.Err())
 		}
-		return nil, "", provider.Wrap(provider.ErrorUnavailable, p.name+" fetch input image failed", err)
+		return nil, "", provider.AsNotAttempted(provider.Wrap(provider.ErrorUnavailable, p.name+" fetch input image failed", err))
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, "", provider.TakeHTTPError(p.name, resp.StatusCode, resp.Body)
+		return nil, "", provider.AsNotAttempted(provider.TakeHTTPError(p.name, resp.StatusCode, resp.Body))
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, int64(protocol.MaxMediaBytes)+1))
 	if err != nil {
-		return nil, "", provider.Wrap(provider.ErrorUnavailable, p.name+" read input image failed", err)
+		return nil, "", provider.AsNotAttempted(provider.Wrap(provider.ErrorUnavailable, p.name+" read input image failed", err))
 	}
 	if len(data) == 0 {
-		return nil, "", provider.New(provider.ErrorInvalidArgument, "input image has no content")
+		return nil, "", provider.NotAttempted(provider.ErrorInvalidArgument, "input image has no content")
 	}
 	if len(data) > protocol.MaxMediaBytes {
-		return nil, "", provider.Errorf(provider.ErrorInvalidArgument, "input image exceeds %d bytes", protocol.MaxMediaBytes)
+		return nil, "", provider.NotAttemptedf(provider.ErrorInvalidArgument, "input image exceeds %d bytes", protocol.MaxMediaBytes)
 	}
 	mimeType, err := resolveInputImageMIME(resp.Header.Get("Content-Type"), data)
 	if err != nil {
@@ -174,7 +176,7 @@ func resolveInputImageMIME(contentType string, data []byte) (string, error) {
 	if mime := normalizedImageMIME(http.DetectContentType(data)); mime != "" {
 		return mime, nil
 	}
-	return "", provider.New(provider.ErrorInvalidArgument, "input image MIME is not image/*")
+	return "", provider.NotAttempted(provider.ErrorInvalidArgument, "input image MIME is not image/*")
 }
 
 func normalizedImageMIME(contentType string) string {
@@ -197,19 +199,19 @@ func (p *Provider) doSegment(ctx context.Context, data []byte, mimeType string) 
 	partHeader.Set("Content-Type", mimeType)
 	part, err := writer.CreatePart(partHeader)
 	if err != nil {
-		return nil, provider.Wrap(provider.ErrorInvalidArgument, p.name+" build segment request failed", err)
+		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" build segment request failed", err)
 	}
 	if _, err := part.Write(data); err != nil {
-		return nil, provider.Wrap(provider.ErrorInvalidArgument, p.name+" build segment request failed", err)
+		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" build segment request failed", err)
 	}
 	contentType := writer.FormDataContentType()
 	if err := writer.Close(); err != nil {
-		return nil, provider.Wrap(provider.ErrorInvalidArgument, p.name+" build segment request failed", err)
+		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" build segment request failed", err)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.segmentURL(), &buf)
 	if err != nil {
-		return nil, provider.Wrap(provider.ErrorInvalidArgument, p.name+" create request failed", err)
+		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" create request failed", err)
 	}
 	httpReq.Header.Set("Content-Type", contentType)
 	httpReq.Header.Set("x-api-key", p.apiKey)

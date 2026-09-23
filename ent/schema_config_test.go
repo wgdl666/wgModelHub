@@ -13,4 +13,7 @@ func TestDefaultSchemaConfigQualifiesModelhubTables(t *testing.T) {
 	if got := ent.DefaultSchemaConfig.ModelhubAPIKey; got != "modelhub" {
 		t.Fatalf("ModelhubAPIKey schema=%q, want modelhub", got)
 	}
+	if got := ent.DefaultSchemaConfig.ModelCall; got != "modelhub" {
+		t.Fatalf("ModelCall schema=%q, want modelhub", got)
+	}
 }

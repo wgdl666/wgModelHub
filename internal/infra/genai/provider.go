@@ -73,12 +73,12 @@ func NewVertexAI(ctx context.Context, name, project, location string) (*Provider
 // CreateCachedContent 把 system + tools 落到 Gemini CachedContent，供后续 Generate 引用。
 func (p *Provider) CreateCachedContent(ctx context.Context, model string, request *modelhubv2.CreateCachedContentRequest) (*modelhubv2.CreateCachedContentResponse, error) {
 	if request == nil {
-		return nil, provider.New(provider.ErrorInvalidArgument, p.name+" create cached content request is required")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, p.name+" create cached content request is required")
 	}
 	systemText := strings.TrimSpace(request.GetSystemInstruction())
 	tools := buildTools(request.GetTools())
 	if systemText == "" && len(tools) == 0 {
-		return nil, provider.New(provider.ErrorInvalidArgument, p.name+" cached content requires system_instruction or tools")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, p.name+" cached content requires system_instruction or tools")
 	}
 	ttl := defaultCachedContentTTL
 	if request.GetTtlSeconds() > 0 {
@@ -205,7 +205,7 @@ func (p *Provider) buildContents(request *modelhubv2.GenerateRequest) []*genaisd
 // CachedContent 只是前缀资源，仍需要本轮非 system contents；本校验不改写角色或补占位。
 func requireGeminiContents(contents []*genaisdk.Content) error {
 	if len(contents) == 0 {
-		return provider.New(provider.ErrorInvalidArgument, "Gemini requires at least one non-system content message")
+		return provider.NotAttempted(provider.ErrorInvalidArgument, "Gemini requires at least one non-system content message")
 	}
 	return nil
 }

@@ -21,6 +21,18 @@ func (f GenerationTaskFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Val
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.GenerationTaskMutation", m)
 }
 
+// The ModelCallFunc type is an adapter to allow the use of ordinary
+// function as ModelCall mutator.
+type ModelCallFunc func(context.Context, *ent.ModelCallMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ModelCallFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ModelCallMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ModelCallMutation", m)
+}
+
 // The ModelhubAPIKeyFunc type is an adapter to allow the use of ordinary
 // function as ModelhubAPIKey mutator.
 type ModelhubAPIKeyFunc func(context.Context, *ent.ModelhubAPIKeyMutation) (ent.Value, error)

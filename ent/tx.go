@@ -14,6 +14,8 @@ type Tx struct {
 	config
 	// GenerationTask is the client for interacting with the GenerationTask builders.
 	GenerationTask *GenerationTaskClient
+	// ModelCall is the client for interacting with the ModelCall builders.
+	ModelCall *ModelCallClient
 	// ModelhubAPIKey is the client for interacting with the ModelhubAPIKey builders.
 	ModelhubAPIKey *ModelhubAPIKeyClient
 
@@ -148,6 +150,7 @@ func (tx *Tx) Client() *Client {
 
 func (tx *Tx) init() {
 	tx.GenerationTask = NewGenerationTaskClient(tx.config)
+	tx.ModelCall = NewModelCallClient(tx.config)
 	tx.ModelhubAPIKey = NewModelhubAPIKeyClient(tx.config)
 }
 

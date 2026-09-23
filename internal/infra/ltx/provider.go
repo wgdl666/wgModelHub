@@ -71,7 +71,7 @@ func (p *Provider) GenerateVideo(ctx context.Context, model string, request *mod
 // SubmitVideo 加载首帧并提交 LTX /vton，返回 job_id 供后续 Get/Read 使用。
 func (p *Provider) SubmitVideo(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (string, error) {
 	if request == nil {
-		return "", provider.New(provider.ErrorInvalidArgument, "video request is required")
+		return "", provider.NotAttempted(provider.ErrorInvalidArgument, "video request is required")
 	}
 	firstFrame := provider.FirstImageMedia(request.GetInput())
 	imageBytes, err := p.loadFirstFrame(ctx, firstFrame)
@@ -117,6 +117,7 @@ func (p *Provider) ReadVideoResult(ctx context.Context, _ string, providerTaskID
 	if err != nil {
 		return err
 	}
+	// 结果下载在 Submit 成功之后；构造失败仍算已发起生成，不得标 NotAttempted 以免账本丢弃。
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
 		return provider.Wrap(provider.ErrorInvalidArgument, "create download request", err)
@@ -138,46 +139,47 @@ func (p *Provider) ReadVideoResult(ctx context.Context, _ string, providerTaskID
 
 func (p *Provider) loadFirstFrame(ctx context.Context, media *modelhubv2.Media) ([]byte, error) {
 	if media == nil {
-		return nil, provider.New(provider.ErrorInvalidArgument, "first_frame is required")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "first_frame is required")
 	}
 	switch source := media.Source.(type) {
 	case *modelhubv2.Media_Data:
 		if len(source.Data) == 0 {
-			return nil, provider.New(provider.ErrorInvalidArgument, "first_frame data is empty")
+			return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "first_frame data is empty")
 		}
 		if len(source.Data) > protocol.MaxMediaBytes {
-			return nil, provider.Errorf(provider.ErrorInvalidArgument, "first_frame exceeds %d bytes", protocol.MaxMediaBytes)
+			return nil, provider.NotAttemptedf(provider.ErrorInvalidArgument, "first_frame exceeds %d bytes", protocol.MaxMediaBytes)
 		}
 		return source.Data, nil
 	case *modelhubv2.Media_Uri:
 		if strings.TrimSpace(source.Uri) == "" {
-			return nil, provider.New(provider.ErrorInvalidArgument, "first_frame uri is empty")
+			return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "first_frame uri is empty")
 		}
 		request, err := http.NewRequestWithContext(ctx, http.MethodGet, source.Uri, nil)
 		if err != nil {
-			return nil, provider.Wrap(provider.ErrorInvalidArgument, "create first_frame request", err)
+			return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, "create first_frame request", err)
 		}
 		response, err := p.client.Do(request)
 		if err != nil {
 			if ctx.Err() != nil {
-				return nil, ctx.Err()
+				// 输入准备阶段取消：包住以免裸 context.Canceled 被记成已调模型。
+				return nil, provider.AsNotAttempted(ctx.Err())
 			}
-			return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" fetch first_frame failed", err)
+			return nil, provider.AsNotAttempted(provider.Wrap(provider.ErrorUnavailable, p.name+" fetch first_frame failed", err))
 		}
 		defer response.Body.Close()
 		if response.StatusCode < 200 || response.StatusCode >= 300 {
-			return nil, provider.TakeHTTPError(p.name, response.StatusCode, response.Body)
+			return nil, provider.AsNotAttempted(provider.TakeHTTPError(p.name, response.StatusCode, response.Body))
 		}
 		data, err := io.ReadAll(io.LimitReader(response.Body, protocol.MaxMediaBytes+1))
 		if err != nil {
-			return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" read first_frame failed", err)
+			return nil, provider.AsNotAttempted(provider.Wrap(provider.ErrorUnavailable, p.name+" read first_frame failed", err))
 		}
 		if len(data) > protocol.MaxMediaBytes {
-			return nil, provider.Errorf(provider.ErrorInvalidArgument, "first_frame exceeds %d bytes", protocol.MaxMediaBytes)
+			return nil, provider.NotAttemptedf(provider.ErrorInvalidArgument, "first_frame exceeds %d bytes", protocol.MaxMediaBytes)
 		}
 		return data, nil
 	default:
-		return nil, provider.New(provider.ErrorInvalidArgument, "first_frame source is required")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "first_frame source is required")
 	}
 }
 
@@ -186,10 +188,10 @@ func (p *Provider) submit(ctx context.Context, model string, imageBytes []byte, 
 	writer := multipart.NewWriter(&body)
 	imagePart, err := writer.CreateFormFile("image", "first_frame.png")
 	if err != nil {
-		return "", provider.Wrap(provider.ErrorInvalidArgument, "create multipart image", err)
+		return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "create multipart image", err)
 	}
 	if _, err := imagePart.Write(imageBytes); err != nil {
-		return "", provider.Wrap(provider.ErrorInvalidArgument, "write multipart image", err)
+		return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "write multipart image", err)
 	}
 	fields := map[string]string{
 		"prompt":     prompt,
@@ -201,11 +203,11 @@ func (p *Provider) submit(ctx context.Context, model string, imageBytes []byte, 
 	}
 	for name, value := range fields {
 		if err := writer.WriteField(name, value); err != nil {
-			return "", provider.Wrap(provider.ErrorInvalidArgument, "write multipart field", err)
+			return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "write multipart field", err)
 		}
 	}
 	if err := writer.Close(); err != nil {
-		return "", provider.Wrap(provider.ErrorInvalidArgument, "close multipart body", err)
+		return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "close multipart body", err)
 	}
 	contentType := writer.FormDataContentType()
 	payload := append([]byte(nil), body.Bytes()...)
@@ -215,7 +217,7 @@ func (p *Provider) submit(ctx context.Context, model string, imageBytes []byte, 
 		}
 		request, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/vton", bytes.NewReader(payload))
 		if err != nil {
-			return "", provider.Wrap(provider.ErrorInvalidArgument, "create submit request", err)
+			return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "create submit request", err)
 		}
 		request.Header.Set("Content-Type", contentType)
 		p.setToken(request)
@@ -261,6 +263,7 @@ func (p *Provider) submit(ctx context.Context, model string, imageBytes []byte, 
 
 // getJob 单次 GET /jobs/{id}，供 GetVideo 与 ReadVideoResult 共用，不在此层 sleep 轮询。
 func (p *Provider) getJob(ctx context.Context, jobID string) (map[string]any, error) {
+	// 轮询发生在 Submit 成功之后，create poll 失败不得标整次生成为 NotAttempted。
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, p.baseURL+"/jobs/"+jobID, nil)
 	if err != nil {
 		return nil, provider.Wrap(provider.ErrorInvalidArgument, "create poll request", err)

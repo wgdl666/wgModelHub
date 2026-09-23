@@ -71,7 +71,7 @@ func (p *Provider) GenerateVideo(ctx context.Context, model string, request *mod
 // SubmitVideo 按模型分支创建 DashScope 异步任务；wan2.7-videoedit 走编辑请求形态。
 func (p *Provider) SubmitVideo(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (string, error) {
 	if request == nil {
-		return "", provider.New(provider.ErrorInvalidArgument, "video request is required")
+		return "", provider.NotAttempted(provider.ErrorInvalidArgument, "video request is required")
 	}
 	videoOut := request.GetOutput().GetVideo()
 	resolution := ""
@@ -84,18 +84,18 @@ func (p *Provider) SubmitVideo(ctx context.Context, model string, request *model
 	}
 	prompt := provider.JoinedText(request.GetInput())
 	if strings.TrimSpace(prompt) == "" {
-		return "", provider.New(provider.ErrorInvalidArgument, "video prompt text is required in input")
+		return "", provider.NotAttempted(provider.ErrorInvalidArgument, "video prompt text is required in input")
 	}
 
 	hasVideo := provider.FirstVideoMedia(request.GetInput()) != nil
 	if model == models.Wan27VideoEdit {
 		if !hasVideo {
-			return "", provider.New(provider.ErrorInvalidArgument, "wan2.7-videoedit requires video in input")
+			return "", provider.NotAttempted(provider.ErrorInvalidArgument, "wan2.7-videoedit requires video in input")
 		}
 		return p.submitEdit(ctx, model, request, prompt, resolution)
 	}
 	if hasVideo {
-		return "", provider.New(provider.ErrorInvalidArgument, "DashScope generation model does not accept video input")
+		return "", provider.NotAttempted(provider.ErrorInvalidArgument, "DashScope generation model does not accept video input")
 	}
 	return p.submitI2V(ctx, model, request, prompt, resolution, duration)
 }
@@ -176,7 +176,7 @@ func (p *Provider) submitEdit(
 		}
 		refURLs = append(refURLs, refURL)
 		if len(refURLs) > maxReferenceImgs {
-			return "", provider.New(provider.ErrorInvalidArgument, "at most 4 reference images for video edit")
+			return "", provider.NotAttempted(provider.ErrorInvalidArgument, "at most 4 reference images for video edit")
 		}
 	}
 	if model == "" {
@@ -187,7 +187,7 @@ func (p *Provider) submitEdit(
 
 func (p *Provider) resolveImageURL(media *modelhubv2.Media) (string, error) {
 	if media == nil {
-		return "", provider.New(provider.ErrorInvalidArgument, "image is required in input")
+		return "", provider.NotAttempted(provider.ErrorInvalidArgument, "image is required in input")
 	}
 	// 万相 / HappyHorse 官方 img_url 与 media.url 都收公网 URL 或 data URI；百炼可灵文档只写了 HTTP(S)。
 	return provider.ResolveImageURL(media)
@@ -195,12 +195,12 @@ func (p *Provider) resolveImageURL(media *modelhubv2.Media) (string, error) {
 
 func (p *Provider) resolveVideoURL(media *modelhubv2.Media) (string, error) {
 	if media == nil {
-		return "", provider.New(provider.ErrorInvalidArgument, "video is required in input")
+		return "", provider.NotAttempted(provider.ErrorInvalidArgument, "video is required in input")
 	}
 	if uri := provider.MediaURI(media); uri != "" {
 		return uri, nil
 	}
-	return "", provider.New(provider.ErrorInvalidArgument, "DashScope video edit requires video uri")
+	return "", provider.NotAttempted(provider.ErrorInvalidArgument, "DashScope video edit requires video uri")
 }
 
 func (p *Provider) createI2VTask(ctx context.Context, model, imageURL, prompt, resolution string, duration int) (string, error) {
@@ -280,7 +280,7 @@ func (p *Provider) createTask(ctx context.Context, model string, input, paramete
 	}
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+createPath, bytes.NewReader(body))
 	if err != nil {
-		return "", provider.Wrap(provider.ErrorInvalidArgument, "create submit request", err)
+		return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "create submit request", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
@@ -323,6 +323,7 @@ func (p *Provider) createTask(ctx context.Context, model string, input, paramete
 }
 
 func (p *Provider) getTask(ctx context.Context, taskID string) (status, videoURL, code, message string, err error) {
+	// Submit 已成功后的轮询；create poll 失败仍记真实调用，不得 NotAttempted。
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.baseURL+"/tasks/"+taskID, nil)
 	if err != nil {
 		return "", "", "", "", provider.Wrap(provider.ErrorInvalidArgument, "create poll request", err)

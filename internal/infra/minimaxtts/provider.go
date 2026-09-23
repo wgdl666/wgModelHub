@@ -91,19 +91,19 @@ func New(cfg Config) (*Provider, error) {
 
 func (p *Provider) SynthesizeSpeech(ctx context.Context, model string, request *modelhubv2.SynthesizeSpeechRequest) (*modelhubv2.SynthesizeSpeechResponse, error) {
 	if request == nil {
-		return nil, provider.New(provider.ErrorInvalidArgument, "synthesize speech request is required")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "synthesize speech request is required")
 	}
 	text := strings.TrimSpace(request.GetText())
 	if text == "" {
-		return nil, provider.New(provider.ErrorInvalidArgument, "text is required")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "text is required")
 	}
 	// Minimax 文档为「小于 10000 字符」；用 rune 计数对齐中文场景。
 	if utf8.RuneCountInString(text) >= protocol.MaxSpeechTextChars {
-		return nil, provider.Errorf(provider.ErrorInvalidArgument, "text exceeds %d characters", protocol.MaxSpeechTextChars)
+		return nil, provider.NotAttemptedf(provider.ErrorInvalidArgument, "text exceeds %d characters", protocol.MaxSpeechTextChars)
 	}
 	model = strings.TrimSpace(model)
 	if model == "" {
-		return nil, provider.New(provider.ErrorInvalidArgument, "model is required")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "model is required")
 	}
 
 	voiceID := strings.TrimSpace(request.GetVoiceId())

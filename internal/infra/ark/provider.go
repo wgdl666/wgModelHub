@@ -479,7 +479,7 @@ func (p *Provider) buildTools(tools []*modelhubv2.Tool) ([]*responses.ResponsesT
 		})
 	}
 	if len(arkTools) == 0 && len(tools) > 0 {
-		return nil, provider.New(provider.ErrorInvalidArgument, p.name+" tools are invalid")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, p.name+" tools are invalid")
 	}
 	return arkTools, nil
 }

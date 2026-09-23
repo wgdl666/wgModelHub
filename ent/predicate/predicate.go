@@ -9,5 +9,8 @@ import (
 // GenerationTask is the predicate function for generationtask builders.
 type GenerationTask func(*sql.Selector)
 
+// ModelCall is the predicate function for modelcall builders.
+type ModelCall func(*sql.Selector)
+
 // ModelhubAPIKey is the predicate function for modelhubapikey builders.
 type ModelhubAPIKey func(*sql.Selector)

@@ -77,14 +77,14 @@ func (p *Provider) GenerateVideo(ctx context.Context, model string, request *mod
 // 同一真实模型 ID，不另开 capability / 模式枚举。视频参考/编辑/延长另开阶段。
 func (p *Provider) SubmitVideo(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (string, error) {
 	if request == nil {
-		return "", provider.New(provider.ErrorInvalidArgument, "video request is required")
+		return "", provider.NotAttempted(provider.ErrorInvalidArgument, "video request is required")
 	}
 	if provider.FirstVideoMedia(request.GetInput()) != nil {
-		return "", provider.New(provider.ErrorInvalidArgument, "ark seedance 2.5 does not accept video input")
+		return "", provider.NotAttempted(provider.ErrorInvalidArgument, "ark seedance 2.5 does not accept video input")
 	}
 	prompt := provider.JoinedText(request.GetInput())
 	if strings.TrimSpace(prompt) == "" {
-		return "", provider.New(provider.ErrorInvalidArgument, "video prompt text is required in input")
+		return "", provider.NotAttempted(provider.ErrorInvalidArgument, "video prompt text is required in input")
 	}
 	imageURL := ""
 	if image := provider.FirstImageMedia(request.GetInput()); image != nil {
@@ -152,7 +152,7 @@ func (p *Provider) ReadVideoResult(ctx context.Context, _, providerTaskID string
 
 func (p *Provider) resolveImageURL(media *modelhubv2.Media) (string, error) {
 	if media == nil {
-		return "", provider.New(provider.ErrorInvalidArgument, "first_frame image is required in input")
+		return "", provider.NotAttempted(provider.ErrorInvalidArgument, "first_frame image is required in input")
 	}
 	return provider.ResolveImageURL(media)
 }
@@ -186,7 +186,7 @@ func (p *Provider) createTask(ctx context.Context, model, imageURL, prompt, reso
 	}
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+createPath, bytes.NewReader(body))
 	if err != nil {
-		return "", provider.Wrap(provider.ErrorInvalidArgument, "create submit request", err)
+		return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "create submit request", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
@@ -240,8 +240,9 @@ type taskPollResult struct {
 func (p *Provider) getTask(ctx context.Context, taskID string) (taskPollResult, error) {
 	taskID = strings.TrimSpace(taskID)
 	if taskID == "" {
-		return taskPollResult{}, provider.New(provider.ErrorInvalidArgument, "task id is required")
+		return taskPollResult{}, provider.NotAttempted(provider.ErrorInvalidArgument, "task id is required")
 	}
+	// Submit 已成功后的轮询；create poll 失败仍记真实调用，不得 NotAttempted。
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.baseURL+createPath+"/"+taskID, nil)
 	if err != nil {
 		return taskPollResult{}, provider.Wrap(provider.ErrorInvalidArgument, "create poll request", err)

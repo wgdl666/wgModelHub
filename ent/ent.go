@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/wgdl666/wgModelHub/ent/generationtask"
+	"github.com/wgdl666/wgModelHub/ent/modelcall"
 	"github.com/wgdl666/wgModelHub/ent/modelhubapikey"
 )
 
@@ -75,6 +76,7 @@ func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
 			generationtask.Table: generationtask.ValidColumn,
+			modelcall.Table:      modelcall.ValidColumn,
 			modelhubapikey.Table: modelhubapikey.ValidColumn,
 		})
 	})

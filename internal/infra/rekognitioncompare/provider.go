@@ -74,7 +74,7 @@ func New(ctx context.Context, name, region, accessKey, secret, sessionToken stri
 
 func (p *Provider) Generate(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
 	if model != models.RekognitionCompareFaces {
-		return nil, provider.Errorf(provider.ErrorInvalidArgument, "rekognition-compare does not serve model %q", model)
+		return nil, provider.NotAttemptedf(provider.ErrorInvalidArgument, "rekognition-compare does not serve model %q", model)
 	}
 	if p == nil || p.client == nil {
 		return nil, provider.New(provider.ErrorConfiguration, "rekognition client is not configured")
@@ -152,15 +152,15 @@ func inlinePair(request *modelhubv2.GenerateRequest) ([]byte, []byte, error) {
 	}
 	images := provider.ImageMedias(input)
 	if len(images) != 2 {
-		return nil, nil, provider.New(provider.ErrorInvalidArgument, "face compare requires exactly two input images")
+		return nil, nil, provider.NotAttempted(provider.ErrorInvalidArgument, "face compare requires exactly two input images")
 	}
 	source, ok := imageBytes(images[0])
 	if !ok {
-		return nil, nil, provider.New(provider.ErrorInvalidArgument, "face compare requires inline image bytes")
+		return nil, nil, provider.NotAttempted(provider.ErrorInvalidArgument, "face compare requires inline image bytes")
 	}
 	generated, ok := imageBytes(images[1])
 	if !ok {
-		return nil, nil, provider.New(provider.ErrorInvalidArgument, "face compare requires inline image bytes")
+		return nil, nil, provider.NotAttempted(provider.ErrorInvalidArgument, "face compare requires inline image bytes")
 	}
 	return source, generated, nil
 }
@@ -185,7 +185,7 @@ func fitBytes(data []byte) ([]byte, error) {
 	}
 	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
-		return nil, provider.Wrap(provider.ErrorInvalidArgument, "decode oversize compare image", err)
+		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, "decode oversize compare image", err)
 	}
 	current := rgbaOf(img)
 	for attempt := 0; attempt < 6; attempt++ {
@@ -200,7 +200,7 @@ func fitBytes(data []byte) ([]byte, error) {
 		}
 		current = scale(current, 0.7)
 	}
-	return nil, provider.New(provider.ErrorInvalidArgument, "compare image exceeds rekognition 5MB limit")
+	return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "compare image exceeds rekognition 5MB limit")
 }
 
 func rgbaOf(img image.Image) *image.NRGBA {

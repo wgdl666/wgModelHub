@@ -12,6 +12,7 @@ import (
 	"github.com/wgdl666/wgModelHub/config"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/auth"
+	"github.com/wgdl666/wgModelHub/internal/callledger"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/internal/taskstore"
@@ -53,7 +54,7 @@ func (s *Service) SubmitGeneration(ctx context.Context, req *modelhubv2.SubmitGe
 		return nil, statusErr
 	}
 	if req == nil || strings.TrimSpace(req.GetRequestId()) == "" {
-		err := provider.New(provider.ErrorInvalidArgument, "request_id is required")
+		err := provider.NotAttempted(provider.ErrorInvalidArgument, "request_id is required")
 		statusErr := provider.ToStatus(err)
 		telemetry.RecordError(ctx, statusErr)
 		return nil, statusErr
@@ -66,7 +67,7 @@ func (s *Service) SubmitGeneration(ctx context.Context, req *modelhubv2.SubmitGe
 		return nil, statusErr
 	}
 	if capability != config.CapabilityVideo {
-		err := provider.New(provider.ErrorInvalidArgument, "SubmitGeneration only accepts output.video in this phase")
+		err := provider.NotAttempted(provider.ErrorInvalidArgument, "SubmitGeneration only accepts output.video in this phase")
 		statusErr := provider.ToStatus(err)
 		telemetry.RecordError(ctx, statusErr)
 		return nil, statusErr
@@ -93,7 +94,7 @@ func (s *Service) SubmitGeneration(ctx context.Context, req *modelhubv2.SubmitGe
 
 	requestHash, err := hashGenerateRequest(generateReq)
 	if err != nil {
-		statusErr := provider.ToStatus(provider.Wrap(provider.ErrorInvalidArgument, "hash generate request", err))
+		statusErr := provider.ToStatus(provider.WrapNotAttempted(provider.ErrorInvalidArgument, "hash generate request", err))
 		telemetry.RecordError(ctx, statusErr)
 		return nil, statusErr
 	}
@@ -124,8 +125,21 @@ func (s *Service) SubmitGeneration(ctx context.Context, req *modelhubv2.SubmitGe
 	}
 
 	providerTaskID, submitErr := bound.set.Video.SubmitVideo(ctx, bound.model, generateReq)
+	submitFinished := time.Now()
 	persistCtx, persistCancel := detachPersistContext(ctx)
 	defer persistCancel()
+
+	// 真实 Submit 已发出：按 task_id 写入/更新账本；幂等命中不会走到这里。
+	rec := s.baseRecord(ctx, callledger.OperationSubmitGeneration, callledger.CapabilityVideo, bound.model, providerName, stored.CreatedAt)
+	if rec.StartedAt.IsZero() {
+		rec.StartedAt = time.Now()
+	}
+	rec.GenerationTaskID = stored.TaskID
+	rec.InputPayload = callledger.BuildGenerateInput(generateReq)
+	resolution, durationSec, aspect := callledger.RequestVideoSpec(generateReq)
+	rec.VideoResolution, rec.VideoDurationSec, rec.VideoAspectRatio = resolution, durationSec, aspect
+	rec.Status = callledger.StatusPending
+
 	if submitErr != nil {
 		telemetry.RecordError(ctx, submitErr)
 		code, message, reason := normalizeProviderError(submitErr)
@@ -139,6 +153,11 @@ func (s *Service) SubmitGeneration(ctx context.Context, req *modelhubv2.SubmitGe
 			telemetry.RecordError(ctx, statusErr)
 			return nil, statusErr
 		}
+		if s.shouldRecord(submitErr) || isUncertainSubmit(submitErr) {
+			stampCallTiming(&rec, rec.StartedAt, submitFinished)
+			s.finishRecord(&rec, submitErr, nil)
+			callledger.BestEffort(ctx, s.ledger, rec)
+		}
 		return &modelhubv2.GenerationTask{
 			TaskId: stored.TaskID,
 			State:  modelhubv2.GenerationTaskState_GENERATION_TASK_STATE_FAILED,
@@ -150,8 +169,12 @@ func (s *Service) SubmitGeneration(ctx context.Context, req *modelhubv2.SubmitGe
 			"failed to persist provider task id", string(provider.ErrorSubmitOutcomeUnknown))
 		statusErr := provider.ToStatus(provider.Wrap(provider.ErrorUnavailable, "persist provider task id", err))
 		telemetry.RecordError(ctx, statusErr)
+		s.finishRecord(&rec, statusErr, nil)
+		callledger.BestEffort(ctx, s.ledger, rec)
 		return nil, statusErr
 	}
+	// 受理成功：保持 pending，无人 Get 则长期未完成；不启后台轮询。
+	callledger.BestEffort(ctx, s.ledger, rec)
 	return &modelhubv2.GenerationTask{
 		TaskId: stored.TaskID,
 		State:  modelhubv2.GenerationTaskState_GENERATION_TASK_STATE_RUNNING,
@@ -171,7 +194,7 @@ func (s *Service) GetGeneration(req *modelhubv2.GetGenerationRequest, stream mod
 		return statusErr
 	}
 	if req == nil || strings.TrimSpace(req.GetTaskId()) == "" {
-		err := provider.New(provider.ErrorInvalidArgument, "task_id is required")
+		err := provider.NotAttempted(provider.ErrorInvalidArgument, "task_id is required")
 		statusErr := provider.ToStatus(err)
 		telemetry.RecordError(ctx, statusErr)
 		return statusErr
@@ -274,6 +297,8 @@ func (s *Service) pollRunningTask(ctx context.Context, task taskstore.Task, stre
 			return statusErr
 		}
 		task.ErrorCode, task.ErrorMessage, task.ErrorReason = code, message, reason
+		// 首次获知模型失败即固定终态与耗时。
+		s.recordAsyncVideoModelTerminal(ctx, task, callledger.StatusFailed, job.Err, nil, 0, "", 0)
 		return stream.Send(statusEvent(modelhubv2.GenerationTaskState_GENERATION_TASK_STATE_FAILED, 0, taskRPCStatus(task)))
 	case provider.VideoJobSucceeded:
 		if err := s.tasks.MarkSucceeded(ctx, task.TaskID); err != nil {
@@ -281,7 +306,10 @@ func (s *Service) pollRunningTask(ctx context.Context, task taskstore.Task, stre
 			telemetry.RecordError(ctx, statusErr)
 			return statusErr
 		}
+		// 首次获知模型成功即固定终态/耗时；后续读结果或发送失败只更新交付，不回退。
+		s.recordAsyncVideoModelTerminal(ctx, task, callledger.StatusSucceeded, nil, nil, 0, "", 0)
 		if err := stream.Send(statusEvent(modelhubv2.GenerationTaskState_GENERATION_TASK_STATE_SUCCEEDED, 0, nil)); err != nil {
+			s.recordAsyncVideoDelivery(ctx, task, err, 0, "", 0, nil)
 			return err
 		}
 		return s.streamVideoResult(ctx, task, stream)
@@ -298,22 +326,117 @@ func (s *Service) streamVideoResult(ctx context.Context, task taskstore.Task, st
 	if err != nil {
 		statusErr := provider.ToStatus(err)
 		telemetry.RecordError(ctx, statusErr)
+		// 模型终态已固定；结果读取配置失败只记交付/结果错误。
+		s.recordAsyncVideoDelivery(ctx, task, statusErr, 0, "", 0, nil)
 		return statusErr
 	}
+	var totalBytes int64
+	var chunkCount int
+	var mimeType string
+	var sendErr error
+	var lastUsage *modelhubv2.Usage
 	emit := func(event *modelhubv2.GenerateEvent) error {
 		if event == nil {
 			return nil
 		}
-		return stream.Send(&modelhubv2.GenerationTaskEvent{
+		// 保留事件中已返回的 usage 到同 task 行；无需新 provider 接口。
+		if event.GetUsage() != nil {
+			lastUsage = event.GetUsage()
+		}
+		for _, item := range event.GetItems() {
+			if media := item.GetVideo(); media != nil {
+				mimeType = media.GetMimeType()
+				if data := media.GetData(); len(data) > 0 {
+					totalBytes += int64(len(data))
+					chunkCount++
+				}
+			}
+		}
+		sendErr = stream.Send(&modelhubv2.GenerationTaskEvent{
 			Event: &modelhubv2.GenerationTaskEvent_Output{Output: event},
 		})
+		return sendErr
 	}
 	if err := video.ReadVideoResult(ctx, task.Model, task.ProviderTaskID, emit); err != nil {
+		if sendErr != nil {
+			s.recordAsyncVideoDelivery(ctx, task, sendErr, 1, mimeType, totalBytes, lastUsage)
+			telemetry.RecordError(ctx, sendErr)
+			return sendErr
+		}
 		statusErr := provider.ToStatus(err)
 		telemetry.RecordError(ctx, statusErr)
+		// 下载/读结果失败不得把已确认的模型成功改成 failed。
+		s.recordAsyncVideoDelivery(ctx, task, statusErr, 0, mimeType, totalBytes, lastUsage)
 		return statusErr
 	}
-	return nil
+	s.recordAsyncVideoDelivery(ctx, task, sendErr, 1, mimeType, totalBytes, lastUsage)
+	return sendErr
+}
+
+// recordAsyncVideoModelTerminal：首次获知模型终态时固定 status/finished_at/latency；场景取 Submit 已写入值，不读本次 Get metadata。
+func (s *Service) recordAsyncVideoModelTerminal(ctx context.Context, task taskstore.Task, status string, providerErr, sendErr error, videoCount int, mimeType string, totalBytes int64) {
+	if s.ledger == nil {
+		return
+	}
+	finished := time.Now()
+	rec := callledger.Record{
+		GenerationTaskID: task.TaskID,
+		CallerService:    callledger.NormalizeOrUnknown(task.Caller),
+		// 故意不写 BusinessScene：merge 保留 Submit 场景，避免 Get 侧 metadata 覆盖。
+		Operation:      callledger.OperationSubmitGeneration,
+		Capability:     callledger.CapabilityVideo,
+		Model:          task.Model,
+		Provider:       task.Provider,
+		Status:         status,
+		DeliveryStatus: callledger.DeliveryOK,
+		StartedAt:      task.CreatedAt,
+		FinishedAt:     &finished,
+	}
+	if !task.CreatedAt.IsZero() {
+		rec.LatencyMS = finished.Sub(task.CreatedAt).Milliseconds()
+	}
+	if sendErr != nil {
+		rec.DeliveryStatus = callledger.DeliveryClientSendFailed
+	}
+	if providerErr != nil {
+		rec.ErrorCategory, rec.ErrorCode, rec.ErrorReason, rec.ErrorMessage = callledger.ClassifyError(providerErr)
+	}
+	if videoCount > 0 || totalBytes > 0 {
+		rec.VideoCount = intPtr(videoCount)
+		rec.OutputPayload = callledger.BuildVideoOutputSummary(videoCount, totalBytes, mimeType, 0)
+	}
+	callledger.BestEffort(ctx, s.ledger, rec)
+}
+
+// recordAsyncVideoDelivery：结果读取或发送失败只更新交付/输出/usage，不改模型终态、不延长耗时。
+func (s *Service) recordAsyncVideoDelivery(ctx context.Context, task taskstore.Task, deliveryErr error, videoCount int, mimeType string, totalBytes int64, usage *modelhubv2.Usage) {
+	if s.ledger == nil {
+		return
+	}
+	rec := callledger.Record{
+		GenerationTaskID: task.TaskID,
+		CallerService:    callledger.NormalizeOrUnknown(task.Caller),
+		Operation:        callledger.OperationSubmitGeneration,
+		Capability:       callledger.CapabilityVideo,
+		Model:            task.Model,
+		Provider:         task.Provider,
+		// 不传 Status/FinishedAt/Latency：merge 在已终态时忽略回退与延长。
+		DeliveryStatus: callledger.DeliveryOK,
+		StartedAt:      task.CreatedAt,
+	}
+	if deliveryErr != nil {
+		// 流式回传失败标 client_send_failed；读结果失败只写错误摘要，模型终态仍为成功。
+		rec.DeliveryStatus = callledger.DeliveryClientSendFailed
+		rec.ErrorCategory, rec.ErrorCode, rec.ErrorReason, rec.ErrorMessage = callledger.ClassifyError(deliveryErr)
+	}
+	if videoCount > 0 || totalBytes > 0 {
+		rec.VideoCount = intPtr(videoCount)
+		rec.OutputPayload = callledger.BuildVideoOutputSummary(videoCount, totalBytes, mimeType, 0)
+	}
+	if usage != nil {
+		rec.Usage, rec.UsageDetail = callledger.UsageFromProto(usage)
+	}
+	callledger.BestEffort(ctx, s.ledger, rec)
 }
 
 func (s *Service) videoProvider(providerName, model string) (provider.VideoProvider, error) {

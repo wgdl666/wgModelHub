@@ -541,11 +541,11 @@ func (p *Provider) doRequest(ctx context.Context, body map[string]any) (io.ReadC
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
 	if err := enc.Encode(body); err != nil {
-		return nil, provider.Wrap(provider.ErrorInvalidArgument, p.name+" marshal failed", err)
+		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" marshal failed", err)
 	}
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/chat/completions", bytes.NewReader(buf.Bytes()))
 	if err != nil {
-		return nil, provider.Wrap(provider.ErrorInvalidArgument, p.name+" create request failed", err)
+		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" create request failed", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)

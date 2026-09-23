@@ -10,34 +10,36 @@ import (
 )
 
 // ResolveImageURL 把首帧变成供应商 image_url 字段：已有公网 URI 原样下发，内联字节编成 data URI。
+// 校验失败均为出站前本地拒识，不得记成真实模型调用。
 func ResolveImageURL(media *modelhubv2.Media) (string, error) {
 	if media == nil {
-		return "", New(ErrorInvalidArgument, "image is required in input")
+		return "", NotAttempted(ErrorInvalidArgument, "image is required in input")
 	}
 	if uri := MediaURI(media); uri != "" {
 		return uri, nil
 	}
 	data, ok := media.Source.(*modelhubv2.Media_Data)
 	if !ok || len(data.Data) == 0 {
-		return "", New(ErrorInvalidArgument, "image source is required")
+		return "", NotAttempted(ErrorInvalidArgument, "image source is required")
 	}
 	if len(data.Data) > protocol.MaxMediaBytes {
-		return "", Errorf(ErrorInvalidArgument, "image exceeds %d bytes", protocol.MaxMediaBytes)
+		return "", NotAttemptedf(ErrorInvalidArgument, "image exceeds %d bytes", protocol.MaxMediaBytes)
 	}
 	return ImageDataURI(media.GetMimeType(), data.Data)
 }
 
 // ImageDataURI 把内联图片编成 data:{mime};base64,...，供方舟 / 万相 / Vidu / Dreamina 的 url 字段。
+// 仅用于构造出站请求；校验失败为本地拒识。
 func ImageDataURI(mimeType string, data []byte) (string, error) {
 	if len(data) == 0 {
-		return "", New(ErrorInvalidArgument, "image data is empty")
+		return "", NotAttempted(ErrorInvalidArgument, "image data is empty")
 	}
 	mimeType = strings.ToLower(strings.TrimSpace(mimeType))
 	if mimeType == "" {
-		return "", New(ErrorInvalidArgument, "first_frame mime_type is required")
+		return "", NotAttempted(ErrorInvalidArgument, "first_frame mime_type is required")
 	}
 	if !strings.HasPrefix(mimeType, "image/") {
-		return "", Errorf(ErrorInvalidArgument, "first_frame mime_type %s is not an image", mimeType)
+		return "", NotAttemptedf(ErrorInvalidArgument, "first_frame mime_type %s is not an image", mimeType)
 	}
 	return fmt.Sprintf("data:%s;base64,%s", mimeType, base64.StdEncoding.EncodeToString(data)), nil
 }

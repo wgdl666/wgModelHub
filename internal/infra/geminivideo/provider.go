@@ -101,14 +101,14 @@ func (p *Provider) GenerateVideo(ctx context.Context, model string, request *mod
 // SubmitVideo 创建 background interaction 并立即返回 id，不在 Submit 阶段等待成片。
 func (p *Provider) SubmitVideo(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (string, error) {
 	if request == nil {
-		return "", provider.New(provider.ErrorInvalidArgument, "video request is required")
+		return "", provider.NotAttempted(provider.ErrorInvalidArgument, "video request is required")
 	}
 	if strings.TrimSpace(model) == "" {
 		model = models.GeminiOmniFlashPreview
 	}
 	prompt := augmentPromptForSilentVideo(provider.JoinedText(request.GetInput()))
 	if strings.TrimSpace(provider.JoinedText(request.GetInput())) == "" {
-		return "", provider.New(provider.ErrorInvalidArgument, "video prompt text is required in input")
+		return "", provider.NotAttempted(provider.ErrorInvalidArgument, "video prompt text is required in input")
 	}
 	isEdit := provider.FirstVideoMedia(request.GetInput()) != nil
 	var body []byte
@@ -197,7 +197,7 @@ func (p *Provider) ReadVideoResult(ctx context.Context, _ string, providerTaskID
 func (p *Provider) buildI2VBody(ctx context.Context, model string, request *modelhubv2.GenerateRequest, prompt, aspectRatio string, duration int) ([]byte, error) {
 	imageMedia := provider.FirstImageMedia(request.GetInput())
 	if imageMedia == nil {
-		return nil, provider.New(provider.ErrorInvalidArgument, "first_frame image is required in input")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "first_frame image is required in input")
 	}
 	imageBytes, mimeType, err := p.loadMediaBytes(ctx, imageMedia, protocol.MaxMediaBytes)
 	if err != nil {
@@ -230,11 +230,11 @@ func (p *Provider) buildI2VBody(ctx context.Context, model string, request *mode
 func (p *Provider) buildEditBody(ctx context.Context, model string, request *modelhubv2.GenerateRequest, prompt string) ([]byte, error) {
 	videoMedia := provider.FirstVideoMedia(request.GetInput())
 	if videoMedia == nil {
-		return nil, provider.New(provider.ErrorInvalidArgument, "video is required in input for edit")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "video is required in input for edit")
 	}
 	refImages := provider.ImageMedias(request.GetInput())
 	if len(refImages) == 0 {
-		return nil, provider.New(provider.ErrorInvalidArgument, "reference image is required in input for edit")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "reference image is required in input for edit")
 	}
 	videoBytes, videoMIME, err := p.loadMediaBytes(ctx, videoMedia, protocol.MaxVideoBytes)
 	if err != nil {
@@ -278,7 +278,7 @@ func (p *Provider) buildEditBody(ctx context.Context, model string, request *mod
 func (p *Provider) createInteraction(ctx context.Context, body []byte) (string, error) {
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.interactionsURL(), bytes.NewReader(body))
 	if err != nil {
-		return "", provider.Wrap(provider.ErrorInvalidArgument, "create interaction request", err)
+		return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "create interaction request", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set(p.authHeader, p.apiKey)
@@ -319,6 +319,7 @@ func (p *Provider) createInteraction(ctx context.Context, body []byte) (string, 
 }
 
 func (p *Provider) fetchInteraction(ctx context.Context, interactionID string) (interactionResponse, error) {
+	// interaction 已创建后的轮询；构造失败不得标整次生成为 NotAttempted。
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, p.interactionURL(interactionID), nil)
 	if err != nil {
 		return interactionResponse{}, provider.Wrap(provider.ErrorInvalidArgument, "create interaction poll request", err)
@@ -417,26 +418,27 @@ func (p *Provider) streamDownloadVideoURI(ctx context.Context, uri string) (path
 // loadMediaBytes 由调用方传入上限：编辑源视频 MaxVideoBytes，参考图/首帧 MaxMediaBytes。
 func (p *Provider) loadMediaBytes(ctx context.Context, media *modelhubv2.Media, maxBytes int) ([]byte, string, error) {
 	if media == nil {
-		return nil, "", provider.New(provider.ErrorInvalidArgument, "media is required")
+		return nil, "", provider.NotAttempted(provider.ErrorInvalidArgument, "media is required")
 	}
 	mimeType := strings.TrimSpace(media.GetMimeType())
 	if data, ok := media.Source.(*modelhubv2.Media_Data); ok {
 		if len(data.Data) == 0 {
-			return nil, "", provider.New(provider.ErrorInvalidArgument, "media data is empty")
+			return nil, "", provider.NotAttempted(provider.ErrorInvalidArgument, "media data is empty")
 		}
 		if len(data.Data) > maxBytes {
-			return nil, "", provider.Errorf(provider.ErrorInvalidArgument, "media exceeds %d bytes", maxBytes)
+			return nil, "", provider.NotAttemptedf(provider.ErrorInvalidArgument, "media exceeds %d bytes", maxBytes)
 		}
 		return append([]byte(nil), data.Data...), mimeType, nil
 	}
 	if uri := provider.MediaURI(media); uri != "" {
+		// 提交前拉输入媒体；共享下载函数不标 Local，由此处认定未触达生成。
 		data, err := provider.DownloadPublicURL(ctx, p.client, p.name, uri, maxBytes)
 		if err != nil {
-			return nil, "", err
+			return nil, "", provider.AsNotAttempted(err)
 		}
 		return data, mimeType, nil
 	}
-	return nil, "", provider.New(provider.ErrorInvalidArgument, "media source is required")
+	return nil, "", provider.NotAttempted(provider.ErrorInvalidArgument, "media source is required")
 }
 
 func (p *Provider) interactionsURL() string {
@@ -453,7 +455,7 @@ func (p *Provider) uploadBaseURL() string {
 
 func (p *Provider) uploadVideoToFiles(ctx context.Context, videoBytes []byte, mime string) (string, error) {
 	if len(videoBytes) == 0 {
-		return "", provider.New(provider.ErrorInvalidArgument, "empty video bytes")
+		return "", provider.NotAttempted(provider.ErrorInvalidArgument, "empty video bytes")
 	}
 	if mime == "" {
 		mime = videoMIMEType

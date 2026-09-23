@@ -26,6 +26,7 @@ func DownloadPublicURL(ctx context.Context, client *http.Client, providerName, u
 }
 
 // OpenPublicURL 发起 GET 并在 2xx 时返回 Body 仍打开的响应；调用方负责 Close，供视频流式分块而不 ReadAll。
+// 此函数同时服务输入拉取与结果下载，错误保持普通 Wrap；输入侧调用点自行 AsNotAttempted。
 func OpenPublicURL(ctx context.Context, client *http.Client, providerName, url string) (*http.Response, error) {
 	url = strings.TrimSpace(url)
 	if url == "" {

@@ -8,6 +8,7 @@ import (
 
 	"github.com/wgdl666/wgModelHub/config"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/callledger"
 	"github.com/wgdl666/wgModelHub/internal/infra/llmmetric"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
@@ -21,9 +22,15 @@ type Service struct {
 	providers   map[string]provider.Set
 	providerCfg map[string]config.ProviderConfig
 	tasks       taskstore.Store
+	ledger      callledger.Store
 }
 
 func New(live *config.LiveConfig, providers map[string]provider.Set, tasks taskstore.Store) *Service {
+	return NewWithLedger(live, providers, tasks, nil)
+}
+
+// NewWithLedger 注入调用账本；ledger 可为 nil（不落库），测试可传 Memory。
+func NewWithLedger(live *config.LiveConfig, providers map[string]provider.Set, tasks taskstore.Store, ledger callledger.Store) *Service {
 	cfg := config.Config{}
 	if live != nil {
 		cfg = live.Load()
@@ -33,6 +40,7 @@ func New(live *config.LiveConfig, providers map[string]provider.Set, tasks tasks
 		providers:   providers,
 		providerCfg: cfg.Providers,
 		tasks:       tasks,
+		ledger:      ledger,
 	}
 }
 
@@ -70,19 +78,23 @@ func (s *Service) Generate(request *modelhubv2.GenerateRequest, stream modelhubv
 	case config.CapabilityVideo:
 		return s.generateVideo(ctx, binding, request, stream)
 	default:
-		statusErr := provider.ToStatus(provider.Errorf(provider.ErrorInvalidArgument, "unsupported capability %s", capability))
+		statusErr := provider.ToStatus(provider.NotAttemptedf(provider.ErrorInvalidArgument, "unsupported capability %s", capability))
 		telemetry.RecordError(ctx, statusErr)
 		return statusErr
 	}
 }
 
-func (s *Service) generateText(ctx context.Context, binding binding, request *modelhubv2.GenerateRequest, stream modelhubv2.ModelHubService_GenerateServer, startedAt time.Time) (retErr error) {
+func (s *Service) generateText(ctx context.Context, binding binding, request *modelhubv2.GenerateRequest, stream modelhubv2.ModelHubService_GenerateServer, metricStarted time.Time) (retErr error) {
 	if binding.set.Text == nil {
 		err := provider.Errorf(provider.ErrorConfiguration, "model %s does not support text", request.GetModel())
 		statusErr := provider.ToStatus(err)
 		telemetry.RecordError(ctx, statusErr)
 		return statusErr
 	}
+	// StartedAt 在 provider 调用前由 stampCallTiming 写入；此处占位。
+	rec := s.baseRecord(ctx, callledger.OperationGenerateText, callledger.CapabilityText, binding.model, binding.provider, time.Time{})
+	// 输入快照必须在缓存策略改写请求之前，保留调用方原始参数。
+	rec.InputPayload = callledger.BuildGenerateInput(request)
 	// 应用文本缓存策略（普通缺省开启 / endpoint-bound Ark 隐式自动）；返回实际生效遥测模式。
 	cachingMode := applyTextCachingPolicy(request, s.providerCfg[binding.provider])
 	streamMode := request.GetOutput().GetStream()
@@ -91,21 +103,24 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 	llmmetric.RecordRequest(ctx, labels)
 	defer func() {
 		labels.Outcome = llmmetric.MapOutcome(retErr)
-		llmmetric.RecordTerminal(ctx, labels, time.Since(startedAt))
+		llmmetric.RecordTerminal(ctx, labels, time.Since(metricStarted))
 	}()
 
 	if streamMode {
 		var sendErr error
 		var sequence uint32
 		var ttftRecorded bool
+		acc := callledger.NewTextAccumulator()
 		emit := func(event *modelhubv2.GenerateEvent) error {
 			// 文本 stream 的唯一 final 由 service 发送；供应商误标 final 的事件只当增量丢弃终态标记。
 			if event == nil || event.GetFinal() {
 				return nil
 			}
+			acc.Consume(event)
+			applyEventUsage(&rec, event)
 			// TTFT：仅流式；空 chunk / 只有 arguments 的 tool delta 不算；一次请求最多一个样本。
 			if !ttftRecorded && llmmetric.IsFirstModelOutput(event) {
-				llmmetric.RecordTTFT(ctx, labels, time.Since(startedAt))
+				llmmetric.RecordTTFT(ctx, labels, time.Since(metricStarted))
 				ttftRecorded = true
 			}
 			event.Sequence = sequence
@@ -113,23 +128,39 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 			sendErr = stream.Send(event)
 			return sendErr
 		}
+		// 流式：provider 执行内同步 emit 的 Send 背压无法从模型耗时拆开，见 receipt。
+		callStarted := time.Now()
 		final, err := binding.set.Text.GenerateStream(ctx, binding.model, request, emit)
+		callFinished := time.Now()
+		stampCallTiming(&rec, callStarted, callFinished)
+		if final == nil {
+			final = &modelhubv2.GenerateEvent{}
+		}
+		// 取消/失败也保留已知增量与最新 usage；最终 Send 失败不得丢 usage。
+		applyEventUsage(&rec, final)
+		if rec.Usage == nil {
+			_, rec.UsageDetail = callledger.UsageFromProto(nil)
+		}
+		rec.OutputPayload = callledger.BuildTextOutput(acc, final)
 		if sendErr != nil {
+			if s.shouldRecord(err) || err == nil {
+				s.finishRecord(&rec, err, sendErr)
+				callledger.BestEffort(ctx, s.ledger, rec)
+			}
 			telemetry.RecordError(ctx, sendErr)
 			return sendErr
 		}
 		if err != nil {
+			if s.shouldRecord(err) {
+				s.finishRecord(&rec, err, nil)
+				callledger.BestEffort(ctx, s.ledger, rec)
+			}
 			statusErr := provider.ToStatus(err)
 			telemetry.RecordError(ctx, statusErr)
 			return statusErr
 		}
-		if final == nil {
-			final = &modelhubv2.GenerateEvent{}
-		}
-		// 供应商 usage 先落 Prometheus，再 Send；客户端最终 Send 失败也不能丢掉已产生的 usage。
 		llmmetric.RecordUsageAndCache(ctx, labels, cachingMode, final.GetUsage())
-		// 调用方自行累计增量；final 只携带 response_id/finish_reason/usage 等终态元数据。
-		return stream.Send(&modelhubv2.GenerateEvent{
+		finalSendErr := stream.Send(&modelhubv2.GenerateEvent{
 			Sequence:     sequence,
 			Final:        true,
 			ResponseId:   final.GetResponseId(),
@@ -137,21 +168,41 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 			Usage:        final.GetUsage(),
 			Safety:       final.GetSafety(),
 		})
+		s.finishRecord(&rec, nil, finalSendErr)
+		callledger.BestEffort(ctx, s.ledger, rec)
+		return finalSendErr
 	}
 
+	callStarted := time.Now()
 	event, err := binding.set.Text.Generate(ctx, binding.model, request)
+	callFinished := time.Now()
+	stampCallTiming(&rec, callStarted, callFinished)
+	if event == nil {
+		event = &modelhubv2.GenerateEvent{}
+	}
+	acc := callledger.NewTextAccumulator()
+	acc.Consume(event)
+	applyEventUsage(&rec, event)
+	if rec.Usage == nil {
+		_, rec.UsageDetail = callledger.UsageFromProto(nil)
+	}
+	rec.OutputPayload = callledger.BuildTextOutput(acc, event)
 	if err != nil {
+		if s.shouldRecord(err) {
+			s.finishRecord(&rec, err, nil)
+			callledger.BestEffort(ctx, s.ledger, rec)
+		}
 		statusErr := provider.ToStatus(err)
 		telemetry.RecordError(ctx, statusErr)
 		return statusErr
 	}
-	if event == nil {
-		event = &modelhubv2.GenerateEvent{}
-	}
 	event.Sequence = 0
 	event.Final = true
 	llmmetric.RecordUsageAndCache(ctx, labels, cachingMode, event.GetUsage())
-	return stream.Send(event)
+	sendErr := stream.Send(event)
+	s.finishRecord(&rec, nil, sendErr)
+	callledger.BestEffort(ctx, s.ledger, rec)
+	return sendErr
 }
 
 // CreateCachedContent 将 system+tools 前缀落到支持显式缓存的 TextProvider（当前为 Gemini）。
@@ -159,7 +210,7 @@ func (s *Service) CreateCachedContent(ctx context.Context, request *modelhubv2.C
 	ctx, span := telemetry.StartSpan(ctx, "modelhub.CreateCachedContent")
 	defer span.End()
 	if request == nil || strings.TrimSpace(request.GetModel()) == "" {
-		err := provider.New(provider.ErrorInvalidArgument, "model is required")
+		err := provider.NotAttempted(provider.ErrorInvalidArgument, "model is required")
 		statusErr := provider.ToStatus(err)
 		telemetry.RecordError(ctx, statusErr)
 		return nil, statusErr
@@ -207,17 +258,33 @@ func (s *Service) SynthesizeSpeech(ctx context.Context, request *modelhubv2.Synt
 		telemetry.RecordError(ctx, statusErr)
 		return nil, statusErr
 	}
+	rec := s.baseRecord(ctx, callledger.OperationSynthesizeSpeech, callledger.CapabilitySpeech, binding.model, binding.provider, time.Time{})
+	rec.InputPayload = callledger.BuildSpeechInput(request)
+	callStarted := time.Now()
 	resp, err := binding.set.Speech.SynthesizeSpeech(ctx, binding.model, request)
+	callFinished := time.Now()
+	stampCallTiming(&rec, callStarted, callFinished)
 	if err != nil {
+		if s.shouldRecord(err) {
+			s.finishRecord(&rec, err, nil)
+			callledger.BestEffort(ctx, s.ledger, rec)
+		}
 		statusErr := provider.ToStatus(err)
 		telemetry.RecordError(ctx, statusErr)
 		return nil, statusErr
 	}
 	if err := validateSpeechResponse(resp); err != nil {
+		// 供应商已返回但响应不合约：记为真实调用失败。
+		rec.OutputPayload = callledger.BuildSpeechOutput(resp)
+		s.finishRecord(&rec, err, nil)
+		callledger.BestEffort(ctx, s.ledger, rec)
 		statusErr := provider.ToStatus(err)
 		telemetry.RecordError(ctx, statusErr)
 		return nil, statusErr
 	}
+	rec.OutputPayload = callledger.BuildSpeechOutput(resp)
+	s.finishRecord(&rec, nil, nil)
+	callledger.BestEffort(ctx, s.ledger, rec)
 	return resp, nil
 }
 
@@ -228,20 +295,51 @@ func (s *Service) generateImage(ctx context.Context, binding binding, request *m
 		telemetry.RecordError(ctx, statusErr)
 		return statusErr
 	}
+	rec := s.baseRecord(ctx, callledger.OperationGenerateImage, callledger.CapabilityImage, binding.model, binding.provider, time.Time{})
+	rec.InputPayload = callledger.BuildGenerateInput(request)
+	rec.ImageSize, rec.ImageAspectRatio = callledger.RequestImageSpec(request)
+	callStarted := time.Now()
 	event, err := binding.set.Image.GenerateImage(ctx, binding.model, request)
+	callFinished := time.Now()
+	stampCallTiming(&rec, callStarted, callFinished)
+	// event+err 也保留已知输出/usage，不只成功支路。
+	if event != nil {
+		out, n := callledger.BuildImageOutput(event)
+		rec.OutputPayload = out
+		rec.ImageCount = intPtr(n)
+		applyEventUsage(&rec, event)
+	}
 	if err != nil {
+		if s.shouldRecord(err) {
+			if rec.Usage == nil {
+				_, rec.UsageDetail = callledger.UsageFromProto(nil)
+			}
+			s.finishRecord(&rec, err, nil)
+			callledger.BestEffort(ctx, s.ledger, rec)
+		}
 		statusErr := provider.ToStatus(err)
 		telemetry.RecordError(ctx, statusErr)
 		return statusErr
 	}
 	if err := validateImageEvent(event); err != nil {
+		if rec.Usage == nil {
+			_, rec.UsageDetail = callledger.UsageFromProto(nil)
+		}
+		s.finishRecord(&rec, err, nil)
+		callledger.BestEffort(ctx, s.ledger, rec)
 		statusErr := provider.ToStatus(err)
 		telemetry.RecordError(ctx, statusErr)
 		return statusErr
 	}
+	if rec.Usage == nil {
+		_, rec.UsageDetail = callledger.UsageFromProto(nil)
+	}
 	event.Sequence = 0
 	event.Final = true
-	return stream.Send(event)
+	sendErr := stream.Send(event)
+	s.finishRecord(&rec, nil, sendErr)
+	callledger.BestEffort(ctx, s.ledger, rec)
+	return sendErr
 }
 
 func (s *Service) generateVideo(ctx context.Context, binding binding, request *modelhubv2.GenerateRequest, stream modelhubv2.ModelHubService_GenerateServer) error {
@@ -251,20 +349,62 @@ func (s *Service) generateVideo(ctx context.Context, binding binding, request *m
 		telemetry.RecordError(ctx, statusErr)
 		return statusErr
 	}
+	rec := s.baseRecord(ctx, callledger.OperationGenerateVideo, callledger.CapabilityVideo, binding.model, binding.provider, time.Time{})
+	rec.InputPayload = callledger.BuildGenerateInput(request)
+	resolution, durationSec, aspect := callledger.RequestVideoSpec(request)
+	rec.VideoResolution, rec.VideoDurationSec, rec.VideoAspectRatio = resolution, durationSec, aspect
 	var sendErr error
+	var totalBytes int64
+	var chunkCount int
+	var mimeType string
+	var sawVideo bool
 	emit := func(event *modelhubv2.GenerateEvent) error {
+		if event != nil {
+			applyEventUsage(&rec, event)
+			for _, item := range event.GetItems() {
+				if video := item.GetVideo(); video != nil {
+					sawVideo = true
+					mimeType = video.GetMimeType()
+					if data := video.GetData(); len(data) > 0 {
+						totalBytes += int64(len(data))
+						chunkCount++
+					}
+				}
+			}
+		}
 		sendErr = stream.Send(event)
 		return sendErr
 	}
-	if err := binding.set.Video.GenerateVideo(ctx, binding.model, request, emit); err != nil {
-		if sendErr != nil {
-			telemetry.RecordError(ctx, sendErr)
-			return sendErr
+	// 流式视频：emit 内 Send 背压计入 provider 耗时，无法拆开。
+	callStarted := time.Now()
+	err := binding.set.Video.GenerateVideo(ctx, binding.model, request, emit)
+	callFinished := time.Now()
+	stampCallTiming(&rec, callStarted, callFinished)
+	videoCount := 0
+	if sawVideo {
+		videoCount = 1
+	}
+	rec.VideoCount = intPtr(videoCount)
+	rec.OutputPayload = callledger.BuildVideoOutputSummary(videoCount, totalBytes, mimeType, chunkCount)
+	if sendErr != nil {
+		if s.shouldRecord(err) || err == nil {
+			s.finishRecord(&rec, err, sendErr)
+			callledger.BestEffort(ctx, s.ledger, rec)
+		}
+		telemetry.RecordError(ctx, sendErr)
+		return sendErr
+	}
+	if err != nil {
+		if s.shouldRecord(err) {
+			s.finishRecord(&rec, err, nil)
+			callledger.BestEffort(ctx, s.ledger, rec)
 		}
 		statusErr := provider.ToStatus(err)
 		telemetry.RecordError(ctx, statusErr)
 		return statusErr
 	}
+	s.finishRecord(&rec, nil, nil)
+	callledger.BestEffort(ctx, s.ledger, rec)
 	return nil
 }
 
@@ -284,7 +424,7 @@ func (s *Service) resolve(model, capability string) (binding, error) {
 	}
 	providerName, ok := routes[model]
 	if !ok {
-		return binding{}, provider.Errorf(provider.ErrorInvalidArgument, "unknown model %s", model)
+		return binding{}, provider.NotAttemptedf(provider.ErrorInvalidArgument, "unknown model %s", model)
 	}
 	providerCfg, ok := s.providerCfg[providerName]
 	if !ok {
@@ -308,7 +448,7 @@ func (s *Service) resolve(model, capability string) (binding, error) {
 
 func capabilityOf(request *modelhubv2.GenerateRequest) (string, error) {
 	if request == nil || request.GetOutput() == nil {
-		return "", provider.New(provider.ErrorInvalidArgument, "output is required")
+		return "", provider.NotAttempted(provider.ErrorInvalidArgument, "output is required")
 	}
 	switch request.GetOutput().GetKind().(type) {
 	case *modelhubv2.OutputSpec_Text:
@@ -318,16 +458,16 @@ func capabilityOf(request *modelhubv2.GenerateRequest) (string, error) {
 	case *modelhubv2.OutputSpec_Video:
 		return config.CapabilityVideo, nil
 	default:
-		return "", provider.New(provider.ErrorInvalidArgument, "output kind is required")
+		return "", provider.NotAttempted(provider.ErrorInvalidArgument, "output kind is required")
 	}
 }
 
 func validateGenerateRequest(request *modelhubv2.GenerateRequest, capability string) error {
 	if request == nil {
-		return provider.New(provider.ErrorInvalidArgument, "generate request is required")
+		return provider.NotAttempted(provider.ErrorInvalidArgument, "generate request is required")
 	}
 	if request.GetModel() == "" {
-		return provider.New(provider.ErrorInvalidArgument, "model is required")
+		return provider.NotAttempted(provider.ErrorInvalidArgument, "model is required")
 	}
 	if err := validateInput(request.GetInput()); err != nil {
 		return err
@@ -337,11 +477,11 @@ func validateGenerateRequest(request *modelhubv2.GenerateRequest, capability str
 		hasImage := provider.FirstImageMedia(request.GetInput()) != nil
 		hasText := strings.TrimSpace(provider.JoinedText(request.GetInput())) != ""
 		if hasVideo && !hasText {
-			return provider.New(provider.ErrorInvalidArgument, "video edit prompt text is required in input")
+			return provider.NotAttempted(provider.ErrorInvalidArgument, "video edit prompt text is required in input")
 		}
 		// 文生视频只有文本；不能在 service 层一律要求首帧，否则 Seedance 2.5 T2V 进不了 provider。
 		if !hasVideo && !hasImage && !hasText {
-			return provider.New(provider.ErrorInvalidArgument, "video prompt text or first_frame image is required in input")
+			return provider.NotAttempted(provider.ErrorInvalidArgument, "video prompt text or first_frame image is required in input")
 		}
 	}
 	return nil
@@ -349,17 +489,17 @@ func validateGenerateRequest(request *modelhubv2.GenerateRequest, capability str
 
 func validateSynthesizeSpeechRequest(request *modelhubv2.SynthesizeSpeechRequest) error {
 	if request == nil {
-		return provider.New(provider.ErrorInvalidArgument, "synthesize speech request is required")
+		return provider.NotAttempted(provider.ErrorInvalidArgument, "synthesize speech request is required")
 	}
 	if strings.TrimSpace(request.GetModel()) == "" {
-		return provider.New(provider.ErrorInvalidArgument, "model is required")
+		return provider.NotAttempted(provider.ErrorInvalidArgument, "model is required")
 	}
 	text := strings.TrimSpace(request.GetText())
 	if text == "" {
-		return provider.New(provider.ErrorInvalidArgument, "text is required")
+		return provider.NotAttempted(provider.ErrorInvalidArgument, "text is required")
 	}
 	if utf8.RuneCountInString(text) >= protocol.MaxSpeechTextChars {
-		return provider.Errorf(provider.ErrorInvalidArgument, "text exceeds %d characters", protocol.MaxSpeechTextChars)
+		return provider.NotAttemptedf(provider.ErrorInvalidArgument, "text exceeds %d characters", protocol.MaxSpeechTextChars)
 	}
 	return nil
 }

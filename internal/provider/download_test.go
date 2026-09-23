@@ -20,3 +20,18 @@ func TestDownloadPublicURLRejectsOversizedBody(t *testing.T) {
 		t.Fatalf("err=%v", err)
 	}
 }
+
+// TestOpenPublicURLCreateRequestKeepsOrdinaryError：共享下载不可全局 NotAttempted，
+// 否则结果下载失败会被 service.shouldRecord 丢弃已提交生成的账本。
+func TestOpenPublicURLCreateRequestKeepsOrdinaryError(t *testing.T) {
+	err := func() error {
+		_, err := OpenPublicURL(context.Background(), http.DefaultClient, "test", "://bad")
+		return err
+	}()
+	if err == nil {
+		t.Fatal("expected create request error")
+	}
+	if IsNotAttempted(err) {
+		t.Fatal("shared OpenPublicURL must not mark NotAttempted")
+	}
+}

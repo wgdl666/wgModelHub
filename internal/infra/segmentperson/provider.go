@@ -70,7 +70,7 @@ func New(name, baseURL, username, password, method string) (*Provider, error) {
 // GenerateImage 按模型 ID 选择人物或商品主体端点，返回一张透明 PNG。
 func (p *Provider) GenerateImage(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
 	if request == nil {
-		return nil, provider.New(provider.ErrorInvalidArgument, "generate request is required")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "generate request is required")
 	}
 	endpoint, person, err := endpointFor(model)
 	if err != nil {
@@ -109,7 +109,7 @@ func endpointFor(model string) (string, bool, error) {
 	case models.SegmentSubjectBria:
 		return subjectPath, false, nil
 	default:
-		return "", false, provider.Errorf(provider.ErrorInvalidArgument, "segment-person does not serve model %q", model)
+		return "", false, provider.NotAttemptedf(provider.ErrorInvalidArgument, "segment-person does not serve model %q", model)
 	}
 }
 
@@ -117,21 +117,21 @@ func exactlyOneImage(input *modelhubv2.Input) (*modelhubv2.Media, error) {
 	images := provider.ImageMedias(input)
 	switch len(images) {
 	case 0:
-		return nil, provider.New(provider.ErrorInvalidArgument, "segment-person requires exactly one input image")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "segment-person requires exactly one input image")
 	case 1:
 		return images[0], nil
 	default:
-		return nil, provider.New(provider.ErrorInvalidArgument, "segment-person accepts exactly one input image")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "segment-person accepts exactly one input image")
 	}
 }
 
 func inlineImage(media *modelhubv2.Media) ([]byte, error) {
 	if media == nil {
-		return nil, provider.New(provider.ErrorInvalidArgument, "input image is required")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "input image is required")
 	}
 	data, ok := media.Source.(*modelhubv2.Media_Data)
 	if !ok || len(data.Data) == 0 {
-		return nil, provider.New(provider.ErrorInvalidArgument, "segment-person requires inline image bytes")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "segment-person requires inline image bytes")
 	}
 	return data.Data, nil
 }
@@ -150,7 +150,7 @@ func (p *Provider) doSegment(ctx context.Context, endpoint string, imageBytes []
 	}
 	for name, value := range fields {
 		if err := writer.WriteField(name, value); err != nil {
-			return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" build segment request", err)
+			return nil, provider.WrapNotAttempted(provider.ErrorUnavailable, p.name+" build segment request", err)
 		}
 	}
 	if err := writer.Close(); err != nil {
@@ -158,7 +158,7 @@ func (p *Provider) doSegment(ctx context.Context, endpoint string, imageBytes []
 	}
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+endpoint, &body)
 	if err != nil {
-		return nil, provider.Wrap(provider.ErrorInvalidArgument, p.name+" create segment request", err)
+		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" create segment request", err)
 	}
 	httpReq.Header.Set("content-type", writer.FormDataContentType())
 	if p.username != "" {

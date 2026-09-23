@@ -53,7 +53,7 @@ func New(name, endpoint, accessKey, secret string) (*Provider, error) {
 
 func (p *Provider) Generate(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
 	if model != models.FacebodyCompareFace {
-		return nil, provider.Errorf(provider.ErrorInvalidArgument, "facebody-compare does not serve model %q", model)
+		return nil, provider.NotAttemptedf(provider.ErrorInvalidArgument, "facebody-compare does not serve model %q", model)
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" compare canceled", err)
@@ -111,15 +111,15 @@ func twoImages(request *modelhubv2.GenerateRequest) ([]byte, []byte, error) {
 	}
 	images := provider.ImageMedias(input)
 	if len(images) != 2 {
-		return nil, nil, provider.New(provider.ErrorInvalidArgument, "face compare requires exactly two input images")
+		return nil, nil, provider.NotAttempted(provider.ErrorInvalidArgument, "face compare requires exactly two input images")
 	}
 	source, ok := imageBytes(images[0])
 	if !ok {
-		return nil, nil, provider.New(provider.ErrorInvalidArgument, "face compare requires inline image bytes")
+		return nil, nil, provider.NotAttempted(provider.ErrorInvalidArgument, "face compare requires inline image bytes")
 	}
 	generated, ok := imageBytes(images[1])
 	if !ok {
-		return nil, nil, provider.New(provider.ErrorInvalidArgument, "face compare requires inline image bytes")
+		return nil, nil, provider.NotAttempted(provider.ErrorInvalidArgument, "face compare requires inline image bytes")
 	}
 	return source, generated, nil
 }

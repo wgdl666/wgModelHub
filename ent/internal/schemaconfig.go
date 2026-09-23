@@ -8,6 +8,7 @@ import "context"
 // that can be passed at runtime.
 type SchemaConfig struct {
 	GenerationTask string // GenerationTask table.
+	ModelCall      string // ModelCall table.
 	ModelhubAPIKey string // ModelhubAPIKey table.
 }
 

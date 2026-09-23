@@ -74,22 +74,22 @@ func New(ctx context.Context, name, region, accessKey, secret, sessionToken stri
 
 func (p *Provider) Generate(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
 	if model != models.RekognitionDetectLabels {
-		return nil, provider.Errorf(provider.ErrorInvalidArgument, "rekognition-detect does not serve model %q", model)
+		return nil, provider.NotAttemptedf(provider.ErrorInvalidArgument, "rekognition-detect does not serve model %q", model)
 	}
 	if p == nil || p.client == nil {
 		return nil, provider.New(provider.ErrorConfiguration, "rekognition client is not configured")
 	}
 	images := provider.ImageMedias(request.GetInput())
 	if len(images) != 1 {
-		return nil, provider.New(provider.ErrorInvalidArgument, "rekognition-detect requires exactly one input image")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "rekognition-detect requires exactly one input image")
 	}
 	data, ok := images[0].Source.(*modelhubv2.Media_Data)
 	if !ok || len(data.Data) == 0 {
-		return nil, provider.New(provider.ErrorInvalidArgument, "rekognition-detect requires inline image bytes")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "rekognition-detect requires inline image bytes")
 	}
 	decoded, _, err := image.Decode(bytes.NewReader(data.Data))
 	if err != nil {
-		return nil, provider.Wrap(provider.ErrorInvalidArgument, "decode person-detect image", err)
+		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, "decode person-detect image", err)
 	}
 	width, height := decoded.Bounds().Dx(), decoded.Bounds().Dy()
 	payload, err := fitBytes(data.Data)
@@ -177,7 +177,7 @@ func fitBytes(data []byte) ([]byte, error) {
 	}
 	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
-		return nil, provider.Wrap(provider.ErrorInvalidArgument, "decode oversize person-detect image", err)
+		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, "decode oversize person-detect image", err)
 	}
 	current := rgba(img)
 	for attempt := 0; attempt < 6; attempt++ {
@@ -192,7 +192,7 @@ func fitBytes(data []byte) ([]byte, error) {
 		}
 		current = scale(current, 0.7)
 	}
-	return nil, provider.New(provider.ErrorInvalidArgument, "person-detect image exceeds Rekognition 5MB limit")
+	return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "person-detect image exceeds Rekognition 5MB limit")
 }
 
 func rgba(src image.Image) image.Image {

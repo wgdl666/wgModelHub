@@ -57,7 +57,7 @@ func New(name, baseURL, username, password string) (*Provider, error) {
 
 func (p *Provider) Generate(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
 	if model != models.HumanYOLO {
-		return nil, provider.Errorf(provider.ErrorInvalidArgument, "human-yolo does not serve model %q", model)
+		return nil, provider.NotAttemptedf(provider.ErrorInvalidArgument, "human-yolo does not serve model %q", model)
 	}
 	imageBytes, err := oneInlineImage(request.GetInput())
 	if err != nil {
@@ -92,7 +92,7 @@ func (p *Provider) post(ctx context.Context, imageBytes []byte) ([]byte, error) 
 	writer := multipart.NewWriter(&body)
 	file, err := writer.CreateFormFile("file", "person.png")
 	if err != nil {
-		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" build yolo request", err)
+		return nil, provider.WrapNotAttempted(provider.ErrorUnavailable, p.name+" build yolo request", err)
 	}
 	if _, err := file.Write(imageBytes); err != nil {
 		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" write yolo image", err)
@@ -102,7 +102,7 @@ func (p *Provider) post(ctx context.Context, imageBytes []byte) ([]byte, error) 
 	}
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+predictPath, &body)
 	if err != nil {
-		return nil, provider.Wrap(provider.ErrorInvalidArgument, p.name+" create yolo request", err)
+		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" create yolo request", err)
 	}
 	httpReq.Header.Set("content-type", writer.FormDataContentType())
 	httpReq.SetBasicAuth(p.username, p.password)
@@ -124,11 +124,11 @@ func (p *Provider) post(ctx context.Context, imageBytes []byte) ([]byte, error) 
 func oneInlineImage(input *modelhubv2.Input) ([]byte, error) {
 	images := provider.ImageMedias(input)
 	if len(images) != 1 {
-		return nil, provider.New(provider.ErrorInvalidArgument, "human-yolo requires exactly one input image")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "human-yolo requires exactly one input image")
 	}
 	data, ok := images[0].Source.(*modelhubv2.Media_Data)
 	if !ok || len(data.Data) == 0 {
-		return nil, provider.New(provider.ErrorInvalidArgument, "human-yolo requires inline image bytes")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "human-yolo requires inline image bytes")
 	}
 	return data.Data, nil
 }

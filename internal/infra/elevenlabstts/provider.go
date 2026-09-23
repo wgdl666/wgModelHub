@@ -66,22 +66,22 @@ func New(cfg Config) (*Provider, error) {
 
 func (p *Provider) SynthesizeSpeech(ctx context.Context, model string, request *modelhubv2.SynthesizeSpeechRequest) (*modelhubv2.SynthesizeSpeechResponse, error) {
 	if request == nil {
-		return nil, provider.New(provider.ErrorInvalidArgument, "synthesize speech request is required")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "synthesize speech request is required")
 	}
 	text := strings.TrimSpace(request.GetText())
 	if text == "" {
-		return nil, provider.New(provider.ErrorInvalidArgument, "text is required")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "text is required")
 	}
 	if utf8.RuneCountInString(text) >= protocol.MaxSpeechTextChars {
-		return nil, provider.Errorf(provider.ErrorInvalidArgument, "text exceeds %d characters", protocol.MaxSpeechTextChars)
+		return nil, provider.NotAttemptedf(provider.ErrorInvalidArgument, "text exceeds %d characters", protocol.MaxSpeechTextChars)
 	}
 	model = strings.TrimSpace(model)
 	if model == "" {
-		return nil, provider.New(provider.ErrorInvalidArgument, "model is required")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "model is required")
 	}
 	// 镜子口播只接受含中文的低延迟/多语种型号；拒绝英文专用型号，避免路演中文口播静默劣化。
 	if model != models.ElevenFlashV25 && model != "eleven_multilingual_v2" {
-		return nil, provider.Errorf(provider.ErrorInvalidArgument, "unsupported elevenlabs speech model %q", model)
+		return nil, provider.NotAttemptedf(provider.ErrorInvalidArgument, "unsupported elevenlabs speech model %q", model)
 	}
 
 	voiceID := strings.TrimSpace(request.GetVoiceId())
@@ -94,13 +94,13 @@ func (p *Provider) SynthesizeSpeech(ctx context.Context, model string, request *
 		"model_id": model,
 	})
 	if err != nil {
-		return nil, provider.Wrap(provider.ErrorInvalidArgument, "elevenlabs tts marshal request failed", err)
+		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, "elevenlabs tts marshal request failed", err)
 	}
 
 	url := fmt.Sprintf("%s/v1/text-to-speech/%s?output_format=%s", p.cfg.BaseURL, voiceID, defaultOutputFormat)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		return nil, provider.Wrap(provider.ErrorUnavailable, "elevenlabs tts build request failed", err)
+		return nil, provider.WrapNotAttempted(provider.ErrorUnavailable, "elevenlabs tts build request failed", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "audio/mpeg")

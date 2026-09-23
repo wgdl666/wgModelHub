@@ -137,6 +137,8 @@ type fakeVideo struct {
 	job         provider.VideoJob
 	result      []byte
 	submitErr   error
+	getErr      error
+	readError   error
 }
 
 func (f *fakeVideo) SubmitVideo(context.Context, string, *modelhubv2.GenerateRequest) (string, error) {
@@ -148,10 +150,16 @@ func (f *fakeVideo) SubmitVideo(context.Context, string, *modelhubv2.GenerateReq
 }
 
 func (f *fakeVideo) GetVideo(context.Context, string, string) (provider.VideoJob, error) {
+	if f.getErr != nil {
+		return provider.VideoJob{}, f.getErr
+	}
 	return f.job, nil
 }
 
 func (f *fakeVideo) ReadVideoResult(_ context.Context, _ string, _ string, emit provider.EmitEvent) error {
+	if f.readError != nil {
+		return f.readError
+	}
 	return provider.EmitVideoChunksFromReader(strings.NewReader(string(f.result)), "video/mp4", "provider-task-1", 0, emit)
 }
 

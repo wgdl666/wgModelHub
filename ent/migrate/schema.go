@@ -38,6 +38,76 @@ var (
 			},
 		},
 	}
+	// ModelCallColumns holds the columns for the "model_call" table.
+	ModelCallColumns = []*schema.Column{
+		{Name: "call_id", Type: field.TypeString},
+		{Name: "generation_task_id", Type: field.TypeString, Unique: true, Nullable: true},
+		{Name: "caller_service", Type: field.TypeString, Default: "unknown"},
+		{Name: "business_scene", Type: field.TypeString, Default: "unknown"},
+		{Name: "operation", Type: field.TypeString},
+		{Name: "capability", Type: field.TypeString},
+		{Name: "model", Type: field.TypeString},
+		{Name: "provider", Type: field.TypeString},
+		{Name: "status", Type: field.TypeString},
+		{Name: "delivery_status", Type: field.TypeString, Default: "ok"},
+		{Name: "error_category", Type: field.TypeString, Default: ""},
+		{Name: "error_code", Type: field.TypeString, Default: ""},
+		{Name: "error_reason", Type: field.TypeString, Default: ""},
+		{Name: "error_message", Type: field.TypeString, Default: ""},
+		{Name: "input_tokens", Type: field.TypeInt64, Nullable: true},
+		{Name: "output_tokens", Type: field.TypeInt64, Nullable: true},
+		{Name: "total_tokens", Type: field.TypeInt64, Nullable: true},
+		{Name: "cached_tokens", Type: field.TypeInt64, Nullable: true},
+		{Name: "reasoning_tokens", Type: field.TypeInt64, Nullable: true},
+		{Name: "image_count", Type: field.TypeInt, Nullable: true},
+		{Name: "image_size", Type: field.TypeString, Default: ""},
+		{Name: "image_aspect_ratio", Type: field.TypeString, Default: ""},
+		{Name: "video_count", Type: field.TypeInt, Nullable: true},
+		{Name: "video_resolution", Type: field.TypeString, Default: ""},
+		{Name: "video_duration_seconds", Type: field.TypeInt, Nullable: true},
+		{Name: "video_aspect_ratio", Type: field.TypeString, Default: ""},
+		{Name: "latency_ms", Type: field.TypeInt64, Default: 0},
+		{Name: "started_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "finished_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "input_payload", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "output_payload", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "usage_detail", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// ModelCallTable holds the schema information for the "model_call" table.
+	ModelCallTable = &schema.Table{
+		Name:       "model_call",
+		Columns:    ModelCallColumns,
+		PrimaryKey: []*schema.Column{ModelCallColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "modelcall_started_at",
+				Unique:  false,
+				Columns: []*schema.Column{ModelCallColumns[27]},
+			},
+			{
+				Name:    "modelcall_caller_service_started_at",
+				Unique:  false,
+				Columns: []*schema.Column{ModelCallColumns[2], ModelCallColumns[27]},
+			},
+			{
+				Name:    "modelcall_business_scene_started_at",
+				Unique:  false,
+				Columns: []*schema.Column{ModelCallColumns[3], ModelCallColumns[27]},
+			},
+			{
+				Name:    "modelcall_model_started_at",
+				Unique:  false,
+				Columns: []*schema.Column{ModelCallColumns[6], ModelCallColumns[27]},
+			},
+			{
+				Name:    "modelcall_status_started_at",
+				Unique:  false,
+				Columns: []*schema.Column{ModelCallColumns[8], ModelCallColumns[27]},
+			},
+		},
+	}
 	// ModelhubAPIKeyColumns holds the columns for the "modelhub_api_key" table.
 	ModelhubAPIKeyColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -71,6 +141,7 @@ var (
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		GenerationTaskTable,
+		ModelCallTable,
 		ModelhubAPIKeyTable,
 	}
 )
@@ -78,6 +149,9 @@ var (
 func init() {
 	GenerationTaskTable.Annotation = &entsql.Annotation{
 		Table: "generation_task",
+	}
+	ModelCallTable.Annotation = &entsql.Annotation{
+		Table: "model_call",
 	}
 	ModelhubAPIKeyTable.Annotation = &entsql.Annotation{
 		Table: "modelhub_api_key",

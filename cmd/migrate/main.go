@@ -52,7 +52,7 @@ func run(ctx context.Context, args []string) error {
 		return fmt.Errorf("ping database")
 	}
 	if err := dbmigration.Run(ctx, db); err != nil {
-		return fmt.Errorf("apply generation task migration")
+		return fmt.Errorf("apply modelhub migrations")
 	}
 	return nil
 }

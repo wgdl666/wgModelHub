@@ -39,11 +39,11 @@ var horizontalRatios = map[string]struct{}{
 func (p *Provider) GenerateImage(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
 	prompt := strings.TrimSpace(provider.JoinedText(request.GetInput()))
 	if prompt == "" {
-		return nil, provider.New(provider.ErrorInvalidArgument, "image prompt is required")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "image prompt is required")
 	}
 	refs := imageReferenceMedias(request.GetInput())
 	if model == models.Flux2Klein9B && len(refs) == 0 {
-		return nil, provider.New(provider.ErrorInvalidArgument, models.Flux2Klein9B+" only supports image edit (i2i); at least one reference image is required")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, models.Flux2Klein9B+" only supports image edit (i2i); at least one reference image is required")
 	}
 	var raw []byte
 	var err error
@@ -142,27 +142,29 @@ func (p *Provider) materializeReferenceImage(ctx context.Context, media *modelhu
 		// 内联 data 的 MIME 由协议必填，不在此处嗅探。
 		return source.Data, media.GetMimeType(), nil
 	case *modelhubv2.Media_Uri:
+		// 拉取参考图是出站前输入准备；失败（含输入侧 HTTP）不得记成模型调用。
 		httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, source.Uri, nil)
 		if err != nil {
-			return nil, "", provider.Wrap(provider.ErrorInvalidArgument, "create reference image request", err)
+			return nil, "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "create reference image request", err)
 		}
 		resp, err := p.client.Do(httpReq)
 		if err != nil {
 			if ctx.Err() != nil {
-				return nil, "", ctx.Err()
+				// 输入参考图拉取阶段取消，不得裸记为已调模型。
+				return nil, "", provider.AsNotAttempted(ctx.Err())
 			}
-			return nil, "", provider.Wrap(provider.ErrorUnavailable, p.name+" fetch reference image failed", err)
+			return nil, "", provider.AsNotAttempted(provider.Wrap(provider.ErrorUnavailable, p.name+" fetch reference image failed", err))
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			return nil, "", provider.TakeHTTPError(p.name, resp.StatusCode, resp.Body)
+			return nil, "", provider.AsNotAttempted(provider.TakeHTTPError(p.name, resp.StatusCode, resp.Body))
 		}
 		data, err := io.ReadAll(io.LimitReader(resp.Body, int64(protocol.MaxMediaBytes)+1))
 		if err != nil {
-			return nil, "", provider.Wrap(provider.ErrorUnavailable, p.name+" read reference image failed", err)
+			return nil, "", provider.AsNotAttempted(provider.Wrap(provider.ErrorUnavailable, p.name+" read reference image failed", err))
 		}
 		if len(data) > protocol.MaxMediaBytes {
-			return nil, "", provider.Errorf(provider.ErrorInvalidArgument, "reference image exceeds %d bytes", protocol.MaxMediaBytes)
+			return nil, "", provider.NotAttemptedf(provider.ErrorInvalidArgument, "reference image exceeds %d bytes", protocol.MaxMediaBytes)
 		}
 		mimeType, err := resolveReferenceImageMIME(resp.Header.Get("Content-Type"), data)
 		if err != nil {
@@ -183,7 +185,7 @@ func resolveReferenceImageMIME(contentType string, data []byte) (string, error) 
 	if mime := normalizedImageMIME(http.DetectContentType(data)); mime != "" {
 		return mime, nil
 	}
-	return "", provider.New(provider.ErrorInvalidArgument, "reference image MIME is not image/*")
+	return "", provider.NotAttempted(provider.ErrorInvalidArgument, "reference image MIME is not image/*")
 }
 
 func normalizedImageMIME(contentType string) string {
@@ -201,23 +203,23 @@ func (p *Provider) doImageEdits(ctx context.Context, model, prompt string, reque
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 	if err := writer.WriteField("model", model); err != nil {
-		return nil, provider.Wrap(provider.ErrorInvalidArgument, p.name+" build edits request failed", err)
+		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" build edits request failed", err)
 	}
 	if err := writer.WriteField("prompt", prompt); err != nil {
-		return nil, provider.Wrap(provider.ErrorInvalidArgument, p.name+" build edits request failed", err)
+		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" build edits request failed", err)
 	}
 	if err := writer.WriteField("n", "1"); err != nil {
-		return nil, provider.Wrap(provider.ErrorInvalidArgument, p.name+" build edits request failed", err)
+		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" build edits request failed", err)
 	}
 	// FLUX.2 worker 默认回 127.0.0.1 下载 URL，ModelHub 无法拉取；必须要求 b64_json。该字段仅 FLUX.2 私有兼容特例，不带给 gpt-image-2 / 2.5。
 	if model == models.Flux2Klein9B {
 		if err := writer.WriteField("response_format", "b64_json"); err != nil {
-			return nil, provider.Wrap(provider.ErrorInvalidArgument, p.name+" build edits request failed", err)
+			return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" build edits request failed", err)
 		}
 	}
 	if size := imageSize(request.GetOutput().GetImage()); size != "" {
 		if err := writer.WriteField("size", size); err != nil {
-			return nil, provider.Wrap(provider.ErrorInvalidArgument, p.name+" build edits request failed", err)
+			return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" build edits request failed", err)
 		}
 	}
 	for i, media := range refs {
@@ -228,7 +230,7 @@ func (p *Provider) doImageEdits(ctx context.Context, model, prompt string, reque
 		}
 		if len(data) == 0 {
 			_ = writer.Close()
-			return nil, provider.New(provider.ErrorInvalidArgument, "reference image has no uploadable content")
+			return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "reference image has no uploadable content")
 		}
 		partHeader := make(textproto.MIMEHeader)
 		partHeader.Set("Content-Disposition", fmt.Sprintf(`form-data; name="image"; filename="%s"`, referenceImageFilename(mimeType, i)))
@@ -236,16 +238,16 @@ func (p *Provider) doImageEdits(ctx context.Context, model, prompt string, reque
 		part, err := writer.CreatePart(partHeader)
 		if err != nil {
 			_ = writer.Close()
-			return nil, provider.Wrap(provider.ErrorInvalidArgument, p.name+" build edits request failed", err)
+			return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" build edits request failed", err)
 		}
 		if _, err := part.Write(data); err != nil {
 			_ = writer.Close()
-			return nil, provider.Wrap(provider.ErrorInvalidArgument, p.name+" build edits request failed", err)
+			return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" build edits request failed", err)
 		}
 	}
 	contentType := writer.FormDataContentType()
 	if err := writer.Close(); err != nil {
-		return nil, provider.Wrap(provider.ErrorInvalidArgument, p.name+" build edits request failed", err)
+		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" build edits request failed", err)
 	}
 	return p.doImageHTTP(ctx, p.imagesAPIURL("edits"), contentType, &buf)
 }
@@ -343,7 +345,7 @@ func (p *Provider) doJSON(ctx context.Context, url string, body map[string]any) 
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
 	if err := enc.Encode(body); err != nil {
-		return nil, provider.Wrap(provider.ErrorInvalidArgument, p.name+" marshal failed", err)
+		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" marshal failed", err)
 	}
 	return p.doImageHTTP(ctx, url, "application/json", bytes.NewReader(buf.Bytes()))
 }
@@ -352,7 +354,7 @@ func (p *Provider) doJSON(ctx context.Context, url string, body map[string]any) 
 func (p *Provider) doImageHTTP(ctx context.Context, url, contentType string, body io.Reader) ([]byte, error) {
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, body)
 	if err != nil {
-		return nil, provider.Wrap(provider.ErrorInvalidArgument, p.name+" create request failed", err)
+		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" create request failed", err)
 	}
 	httpReq.Header.Set("Content-Type", contentType)
 	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)

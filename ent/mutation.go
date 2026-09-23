@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/wgdl666/wgModelHub/ent/generationtask"
+	"github.com/wgdl666/wgModelHub/ent/modelcall"
 	"github.com/wgdl666/wgModelHub/ent/modelhubapikey"
 	"github.com/wgdl666/wgModelHub/ent/predicate"
 )
@@ -26,6 +27,7 @@ const (
 
 	// Node types.
 	TypeGenerationTask = "GenerationTask"
+	TypeModelCall      = "ModelCall"
 	TypeModelhubAPIKey = "ModelhubAPIKey"
 )
 
@@ -989,6 +991,2567 @@ func (m *GenerationTaskMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *GenerationTaskMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown GenerationTask edge %s", name)
+}
+
+// ModelCallMutation represents an operation that mutates the ModelCall nodes in the graph.
+type ModelCallMutation struct {
+	config
+	op                        Op
+	typ                       string
+	id                        *string
+	generation_task_id        *string
+	caller_service            *string
+	business_scene            *string
+	operation                 *string
+	capability                *string
+	model                     *string
+	provider                  *string
+	status                    *string
+	delivery_status           *string
+	error_category            *string
+	error_code                *string
+	error_reason              *string
+	error_message             *string
+	input_tokens              *int64
+	addinput_tokens           *int64
+	output_tokens             *int64
+	addoutput_tokens          *int64
+	total_tokens              *int64
+	addtotal_tokens           *int64
+	cached_tokens             *int64
+	addcached_tokens          *int64
+	reasoning_tokens          *int64
+	addreasoning_tokens       *int64
+	image_count               *int
+	addimage_count            *int
+	image_size                *string
+	image_aspect_ratio        *string
+	video_count               *int
+	addvideo_count            *int
+	video_resolution          *string
+	video_duration_seconds    *int
+	addvideo_duration_seconds *int
+	video_aspect_ratio        *string
+	latency_ms                *int64
+	addlatency_ms             *int64
+	started_at                *time.Time
+	finished_at               *time.Time
+	input_payload             *map[string]interface{}
+	output_payload            *map[string]interface{}
+	usage_detail              *map[string]interface{}
+	created_at                *time.Time
+	updated_at                *time.Time
+	clearedFields             map[string]struct{}
+	done                      bool
+	oldValue                  func(context.Context) (*ModelCall, error)
+	predicates                []predicate.ModelCall
+}
+
+var _ ent.Mutation = (*ModelCallMutation)(nil)
+
+// modelcallOption allows management of the mutation configuration using functional options.
+type modelcallOption func(*ModelCallMutation)
+
+// newModelCallMutation creates new mutation for the ModelCall entity.
+func newModelCallMutation(c config, op Op, opts ...modelcallOption) *ModelCallMutation {
+	m := &ModelCallMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeModelCall,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withModelCallID sets the ID field of the mutation.
+func withModelCallID(id string) modelcallOption {
+	return func(m *ModelCallMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *ModelCall
+		)
+		m.oldValue = func(ctx context.Context) (*ModelCall, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().ModelCall.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withModelCall sets the old ModelCall of the mutation.
+func withModelCall(node *ModelCall) modelcallOption {
+	return func(m *ModelCallMutation) {
+		m.oldValue = func(context.Context) (*ModelCall, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ModelCallMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ModelCallMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of ModelCall entities.
+func (m *ModelCallMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ModelCallMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ModelCallMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().ModelCall.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetGenerationTaskID sets the "generation_task_id" field.
+func (m *ModelCallMutation) SetGenerationTaskID(s string) {
+	m.generation_task_id = &s
+}
+
+// GenerationTaskID returns the value of the "generation_task_id" field in the mutation.
+func (m *ModelCallMutation) GenerationTaskID() (r string, exists bool) {
+	v := m.generation_task_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGenerationTaskID returns the old "generation_task_id" field's value of the ModelCall entity.
+// If the ModelCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelCallMutation) OldGenerationTaskID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGenerationTaskID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGenerationTaskID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGenerationTaskID: %w", err)
+	}
+	return oldValue.GenerationTaskID, nil
+}
+
+// ClearGenerationTaskID clears the value of the "generation_task_id" field.
+func (m *ModelCallMutation) ClearGenerationTaskID() {
+	m.generation_task_id = nil
+	m.clearedFields[modelcall.FieldGenerationTaskID] = struct{}{}
+}
+
+// GenerationTaskIDCleared returns if the "generation_task_id" field was cleared in this mutation.
+func (m *ModelCallMutation) GenerationTaskIDCleared() bool {
+	_, ok := m.clearedFields[modelcall.FieldGenerationTaskID]
+	return ok
+}
+
+// ResetGenerationTaskID resets all changes to the "generation_task_id" field.
+func (m *ModelCallMutation) ResetGenerationTaskID() {
+	m.generation_task_id = nil
+	delete(m.clearedFields, modelcall.FieldGenerationTaskID)
+}
+
+// SetCallerService sets the "caller_service" field.
+func (m *ModelCallMutation) SetCallerService(s string) {
+	m.caller_service = &s
+}
+
+// CallerService returns the value of the "caller_service" field in the mutation.
+func (m *ModelCallMutation) CallerService() (r string, exists bool) {
+	v := m.caller_service
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCallerService returns the old "caller_service" field's value of the ModelCall entity.
+// If the ModelCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelCallMutation) OldCallerService(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCallerService is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCallerService requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCallerService: %w", err)
+	}
+	return oldValue.CallerService, nil
+}
+
+// ResetCallerService resets all changes to the "caller_service" field.
+func (m *ModelCallMutation) ResetCallerService() {
+	m.caller_service = nil
+}
+
+// SetBusinessScene sets the "business_scene" field.
+func (m *ModelCallMutation) SetBusinessScene(s string) {
+	m.business_scene = &s
+}
+
+// BusinessScene returns the value of the "business_scene" field in the mutation.
+func (m *ModelCallMutation) BusinessScene() (r string, exists bool) {
+	v := m.business_scene
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBusinessScene returns the old "business_scene" field's value of the ModelCall entity.
+// If the ModelCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelCallMutation) OldBusinessScene(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBusinessScene is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBusinessScene requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBusinessScene: %w", err)
+	}
+	return oldValue.BusinessScene, nil
+}
+
+// ResetBusinessScene resets all changes to the "business_scene" field.
+func (m *ModelCallMutation) ResetBusinessScene() {
+	m.business_scene = nil
+}
+
+// SetOperation sets the "operation" field.
+func (m *ModelCallMutation) SetOperation(s string) {
+	m.operation = &s
+}
+
+// Operation returns the value of the "operation" field in the mutation.
+func (m *ModelCallMutation) Operation() (r string, exists bool) {
+	v := m.operation
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOperation returns the old "operation" field's value of the ModelCall entity.
+// If the ModelCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelCallMutation) OldOperation(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOperation is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOperation requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOperation: %w", err)
+	}
+	return oldValue.Operation, nil
+}
+
+// ResetOperation resets all changes to the "operation" field.
+func (m *ModelCallMutation) ResetOperation() {
+	m.operation = nil
+}
+
+// SetCapability sets the "capability" field.
+func (m *ModelCallMutation) SetCapability(s string) {
+	m.capability = &s
+}
+
+// Capability returns the value of the "capability" field in the mutation.
+func (m *ModelCallMutation) Capability() (r string, exists bool) {
+	v := m.capability
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCapability returns the old "capability" field's value of the ModelCall entity.
+// If the ModelCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelCallMutation) OldCapability(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCapability is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCapability requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCapability: %w", err)
+	}
+	return oldValue.Capability, nil
+}
+
+// ResetCapability resets all changes to the "capability" field.
+func (m *ModelCallMutation) ResetCapability() {
+	m.capability = nil
+}
+
+// SetModel sets the "model" field.
+func (m *ModelCallMutation) SetModel(s string) {
+	m.model = &s
+}
+
+// Model returns the value of the "model" field in the mutation.
+func (m *ModelCallMutation) Model() (r string, exists bool) {
+	v := m.model
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldModel returns the old "model" field's value of the ModelCall entity.
+// If the ModelCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelCallMutation) OldModel(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldModel is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldModel requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldModel: %w", err)
+	}
+	return oldValue.Model, nil
+}
+
+// ResetModel resets all changes to the "model" field.
+func (m *ModelCallMutation) ResetModel() {
+	m.model = nil
+}
+
+// SetProvider sets the "provider" field.
+func (m *ModelCallMutation) SetProvider(s string) {
+	m.provider = &s
+}
+
+// Provider returns the value of the "provider" field in the mutation.
+func (m *ModelCallMutation) Provider() (r string, exists bool) {
+	v := m.provider
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProvider returns the old "provider" field's value of the ModelCall entity.
+// If the ModelCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelCallMutation) OldProvider(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProvider is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProvider requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProvider: %w", err)
+	}
+	return oldValue.Provider, nil
+}
+
+// ResetProvider resets all changes to the "provider" field.
+func (m *ModelCallMutation) ResetProvider() {
+	m.provider = nil
+}
+
+// SetStatus sets the "status" field.
+func (m *ModelCallMutation) SetStatus(s string) {
+	m.status = &s
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *ModelCallMutation) Status() (r string, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the ModelCall entity.
+// If the ModelCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelCallMutation) OldStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *ModelCallMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetDeliveryStatus sets the "delivery_status" field.
+func (m *ModelCallMutation) SetDeliveryStatus(s string) {
+	m.delivery_status = &s
+}
+
+// DeliveryStatus returns the value of the "delivery_status" field in the mutation.
+func (m *ModelCallMutation) DeliveryStatus() (r string, exists bool) {
+	v := m.delivery_status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDeliveryStatus returns the old "delivery_status" field's value of the ModelCall entity.
+// If the ModelCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelCallMutation) OldDeliveryStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDeliveryStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDeliveryStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDeliveryStatus: %w", err)
+	}
+	return oldValue.DeliveryStatus, nil
+}
+
+// ResetDeliveryStatus resets all changes to the "delivery_status" field.
+func (m *ModelCallMutation) ResetDeliveryStatus() {
+	m.delivery_status = nil
+}
+
+// SetErrorCategory sets the "error_category" field.
+func (m *ModelCallMutation) SetErrorCategory(s string) {
+	m.error_category = &s
+}
+
+// ErrorCategory returns the value of the "error_category" field in the mutation.
+func (m *ModelCallMutation) ErrorCategory() (r string, exists bool) {
+	v := m.error_category
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldErrorCategory returns the old "error_category" field's value of the ModelCall entity.
+// If the ModelCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelCallMutation) OldErrorCategory(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldErrorCategory is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldErrorCategory requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldErrorCategory: %w", err)
+	}
+	return oldValue.ErrorCategory, nil
+}
+
+// ResetErrorCategory resets all changes to the "error_category" field.
+func (m *ModelCallMutation) ResetErrorCategory() {
+	m.error_category = nil
+}
+
+// SetErrorCode sets the "error_code" field.
+func (m *ModelCallMutation) SetErrorCode(s string) {
+	m.error_code = &s
+}
+
+// ErrorCode returns the value of the "error_code" field in the mutation.
+func (m *ModelCallMutation) ErrorCode() (r string, exists bool) {
+	v := m.error_code
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldErrorCode returns the old "error_code" field's value of the ModelCall entity.
+// If the ModelCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelCallMutation) OldErrorCode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldErrorCode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldErrorCode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldErrorCode: %w", err)
+	}
+	return oldValue.ErrorCode, nil
+}
+
+// ResetErrorCode resets all changes to the "error_code" field.
+func (m *ModelCallMutation) ResetErrorCode() {
+	m.error_code = nil
+}
+
+// SetErrorReason sets the "error_reason" field.
+func (m *ModelCallMutation) SetErrorReason(s string) {
+	m.error_reason = &s
+}
+
+// ErrorReason returns the value of the "error_reason" field in the mutation.
+func (m *ModelCallMutation) ErrorReason() (r string, exists bool) {
+	v := m.error_reason
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldErrorReason returns the old "error_reason" field's value of the ModelCall entity.
+// If the ModelCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelCallMutation) OldErrorReason(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldErrorReason is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldErrorReason requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldErrorReason: %w", err)
+	}
+	return oldValue.ErrorReason, nil
+}
+
+// ResetErrorReason resets all changes to the "error_reason" field.
+func (m *ModelCallMutation) ResetErrorReason() {
+	m.error_reason = nil
+}
+
+// SetErrorMessage sets the "error_message" field.
+func (m *ModelCallMutation) SetErrorMessage(s string) {
+	m.error_message = &s
+}
+
+// ErrorMessage returns the value of the "error_message" field in the mutation.
+func (m *ModelCallMutation) ErrorMessage() (r string, exists bool) {
+	v := m.error_message
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldErrorMessage returns the old "error_message" field's value of the ModelCall entity.
+// If the ModelCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelCallMutation) OldErrorMessage(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldErrorMessage is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldErrorMessage requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldErrorMessage: %w", err)
+	}
+	return oldValue.ErrorMessage, nil
+}
+
+// ResetErrorMessage resets all changes to the "error_message" field.
+func (m *ModelCallMutation) ResetErrorMessage() {
+	m.error_message = nil
+}
+
+// SetInputTokens sets the "input_tokens" field.
+func (m *ModelCallMutation) SetInputTokens(i int64) {
+	m.input_tokens = &i
+	m.addinput_tokens = nil
+}
+
+// InputTokens returns the value of the "input_tokens" field in the mutation.
+func (m *ModelCallMutation) InputTokens() (r int64, exists bool) {
+	v := m.input_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldInputTokens returns the old "input_tokens" field's value of the ModelCall entity.
+// If the ModelCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelCallMutation) OldInputTokens(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldInputTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldInputTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldInputTokens: %w", err)
+	}
+	return oldValue.InputTokens, nil
+}
+
+// AddInputTokens adds i to the "input_tokens" field.
+func (m *ModelCallMutation) AddInputTokens(i int64) {
+	if m.addinput_tokens != nil {
+		*m.addinput_tokens += i
+	} else {
+		m.addinput_tokens = &i
+	}
+}
+
+// AddedInputTokens returns the value that was added to the "input_tokens" field in this mutation.
+func (m *ModelCallMutation) AddedInputTokens() (r int64, exists bool) {
+	v := m.addinput_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearInputTokens clears the value of the "input_tokens" field.
+func (m *ModelCallMutation) ClearInputTokens() {
+	m.input_tokens = nil
+	m.addinput_tokens = nil
+	m.clearedFields[modelcall.FieldInputTokens] = struct{}{}
+}
+
+// InputTokensCleared returns if the "input_tokens" field was cleared in this mutation.
+func (m *ModelCallMutation) InputTokensCleared() bool {
+	_, ok := m.clearedFields[modelcall.FieldInputTokens]
+	return ok
+}
+
+// ResetInputTokens resets all changes to the "input_tokens" field.
+func (m *ModelCallMutation) ResetInputTokens() {
+	m.input_tokens = nil
+	m.addinput_tokens = nil
+	delete(m.clearedFields, modelcall.FieldInputTokens)
+}
+
+// SetOutputTokens sets the "output_tokens" field.
+func (m *ModelCallMutation) SetOutputTokens(i int64) {
+	m.output_tokens = &i
+	m.addoutput_tokens = nil
+}
+
+// OutputTokens returns the value of the "output_tokens" field in the mutation.
+func (m *ModelCallMutation) OutputTokens() (r int64, exists bool) {
+	v := m.output_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOutputTokens returns the old "output_tokens" field's value of the ModelCall entity.
+// If the ModelCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelCallMutation) OldOutputTokens(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOutputTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOutputTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOutputTokens: %w", err)
+	}
+	return oldValue.OutputTokens, nil
+}
+
+// AddOutputTokens adds i to the "output_tokens" field.
+func (m *ModelCallMutation) AddOutputTokens(i int64) {
+	if m.addoutput_tokens != nil {
+		*m.addoutput_tokens += i
+	} else {
+		m.addoutput_tokens = &i
+	}
+}
+
+// AddedOutputTokens returns the value that was added to the "output_tokens" field in this mutation.
+func (m *ModelCallMutation) AddedOutputTokens() (r int64, exists bool) {
+	v := m.addoutput_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearOutputTokens clears the value of the "output_tokens" field.
+func (m *ModelCallMutation) ClearOutputTokens() {
+	m.output_tokens = nil
+	m.addoutput_tokens = nil
+	m.clearedFields[modelcall.FieldOutputTokens] = struct{}{}
+}
+
+// OutputTokensCleared returns if the "output_tokens" field was cleared in this mutation.
+func (m *ModelCallMutation) OutputTokensCleared() bool {
+	_, ok := m.clearedFields[modelcall.FieldOutputTokens]
+	return ok
+}
+
+// ResetOutputTokens resets all changes to the "output_tokens" field.
+func (m *ModelCallMutation) ResetOutputTokens() {
+	m.output_tokens = nil
+	m.addoutput_tokens = nil
+	delete(m.clearedFields, modelcall.FieldOutputTokens)
+}
+
+// SetTotalTokens sets the "total_tokens" field.
+func (m *ModelCallMutation) SetTotalTokens(i int64) {
+	m.total_tokens = &i
+	m.addtotal_tokens = nil
+}
+
+// TotalTokens returns the value of the "total_tokens" field in the mutation.
+func (m *ModelCallMutation) TotalTokens() (r int64, exists bool) {
+	v := m.total_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTotalTokens returns the old "total_tokens" field's value of the ModelCall entity.
+// If the ModelCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelCallMutation) OldTotalTokens(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTotalTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTotalTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTotalTokens: %w", err)
+	}
+	return oldValue.TotalTokens, nil
+}
+
+// AddTotalTokens adds i to the "total_tokens" field.
+func (m *ModelCallMutation) AddTotalTokens(i int64) {
+	if m.addtotal_tokens != nil {
+		*m.addtotal_tokens += i
+	} else {
+		m.addtotal_tokens = &i
+	}
+}
+
+// AddedTotalTokens returns the value that was added to the "total_tokens" field in this mutation.
+func (m *ModelCallMutation) AddedTotalTokens() (r int64, exists bool) {
+	v := m.addtotal_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearTotalTokens clears the value of the "total_tokens" field.
+func (m *ModelCallMutation) ClearTotalTokens() {
+	m.total_tokens = nil
+	m.addtotal_tokens = nil
+	m.clearedFields[modelcall.FieldTotalTokens] = struct{}{}
+}
+
+// TotalTokensCleared returns if the "total_tokens" field was cleared in this mutation.
+func (m *ModelCallMutation) TotalTokensCleared() bool {
+	_, ok := m.clearedFields[modelcall.FieldTotalTokens]
+	return ok
+}
+
+// ResetTotalTokens resets all changes to the "total_tokens" field.
+func (m *ModelCallMutation) ResetTotalTokens() {
+	m.total_tokens = nil
+	m.addtotal_tokens = nil
+	delete(m.clearedFields, modelcall.FieldTotalTokens)
+}
+
+// SetCachedTokens sets the "cached_tokens" field.
+func (m *ModelCallMutation) SetCachedTokens(i int64) {
+	m.cached_tokens = &i
+	m.addcached_tokens = nil
+}
+
+// CachedTokens returns the value of the "cached_tokens" field in the mutation.
+func (m *ModelCallMutation) CachedTokens() (r int64, exists bool) {
+	v := m.cached_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCachedTokens returns the old "cached_tokens" field's value of the ModelCall entity.
+// If the ModelCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelCallMutation) OldCachedTokens(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCachedTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCachedTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCachedTokens: %w", err)
+	}
+	return oldValue.CachedTokens, nil
+}
+
+// AddCachedTokens adds i to the "cached_tokens" field.
+func (m *ModelCallMutation) AddCachedTokens(i int64) {
+	if m.addcached_tokens != nil {
+		*m.addcached_tokens += i
+	} else {
+		m.addcached_tokens = &i
+	}
+}
+
+// AddedCachedTokens returns the value that was added to the "cached_tokens" field in this mutation.
+func (m *ModelCallMutation) AddedCachedTokens() (r int64, exists bool) {
+	v := m.addcached_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearCachedTokens clears the value of the "cached_tokens" field.
+func (m *ModelCallMutation) ClearCachedTokens() {
+	m.cached_tokens = nil
+	m.addcached_tokens = nil
+	m.clearedFields[modelcall.FieldCachedTokens] = struct{}{}
+}
+
+// CachedTokensCleared returns if the "cached_tokens" field was cleared in this mutation.
+func (m *ModelCallMutation) CachedTokensCleared() bool {
+	_, ok := m.clearedFields[modelcall.FieldCachedTokens]
+	return ok
+}
+
+// ResetCachedTokens resets all changes to the "cached_tokens" field.
+func (m *ModelCallMutation) ResetCachedTokens() {
+	m.cached_tokens = nil
+	m.addcached_tokens = nil
+	delete(m.clearedFields, modelcall.FieldCachedTokens)
+}
+
+// SetReasoningTokens sets the "reasoning_tokens" field.
+func (m *ModelCallMutation) SetReasoningTokens(i int64) {
+	m.reasoning_tokens = &i
+	m.addreasoning_tokens = nil
+}
+
+// ReasoningTokens returns the value of the "reasoning_tokens" field in the mutation.
+func (m *ModelCallMutation) ReasoningTokens() (r int64, exists bool) {
+	v := m.reasoning_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReasoningTokens returns the old "reasoning_tokens" field's value of the ModelCall entity.
+// If the ModelCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelCallMutation) OldReasoningTokens(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReasoningTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReasoningTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReasoningTokens: %w", err)
+	}
+	return oldValue.ReasoningTokens, nil
+}
+
+// AddReasoningTokens adds i to the "reasoning_tokens" field.
+func (m *ModelCallMutation) AddReasoningTokens(i int64) {
+	if m.addreasoning_tokens != nil {
+		*m.addreasoning_tokens += i
+	} else {
+		m.addreasoning_tokens = &i
+	}
+}
+
+// AddedReasoningTokens returns the value that was added to the "reasoning_tokens" field in this mutation.
+func (m *ModelCallMutation) AddedReasoningTokens() (r int64, exists bool) {
+	v := m.addreasoning_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearReasoningTokens clears the value of the "reasoning_tokens" field.
+func (m *ModelCallMutation) ClearReasoningTokens() {
+	m.reasoning_tokens = nil
+	m.addreasoning_tokens = nil
+	m.clearedFields[modelcall.FieldReasoningTokens] = struct{}{}
+}
+
+// ReasoningTokensCleared returns if the "reasoning_tokens" field was cleared in this mutation.
+func (m *ModelCallMutation) ReasoningTokensCleared() bool {
+	_, ok := m.clearedFields[modelcall.FieldReasoningTokens]
+	return ok
+}
+
+// ResetReasoningTokens resets all changes to the "reasoning_tokens" field.
+func (m *ModelCallMutation) ResetReasoningTokens() {
+	m.reasoning_tokens = nil
+	m.addreasoning_tokens = nil
+	delete(m.clearedFields, modelcall.FieldReasoningTokens)
+}
+
+// SetImageCount sets the "image_count" field.
+func (m *ModelCallMutation) SetImageCount(i int) {
+	m.image_count = &i
+	m.addimage_count = nil
+}
+
+// ImageCount returns the value of the "image_count" field in the mutation.
+func (m *ModelCallMutation) ImageCount() (r int, exists bool) {
+	v := m.image_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldImageCount returns the old "image_count" field's value of the ModelCall entity.
+// If the ModelCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelCallMutation) OldImageCount(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldImageCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldImageCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldImageCount: %w", err)
+	}
+	return oldValue.ImageCount, nil
+}
+
+// AddImageCount adds i to the "image_count" field.
+func (m *ModelCallMutation) AddImageCount(i int) {
+	if m.addimage_count != nil {
+		*m.addimage_count += i
+	} else {
+		m.addimage_count = &i
+	}
+}
+
+// AddedImageCount returns the value that was added to the "image_count" field in this mutation.
+func (m *ModelCallMutation) AddedImageCount() (r int, exists bool) {
+	v := m.addimage_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearImageCount clears the value of the "image_count" field.
+func (m *ModelCallMutation) ClearImageCount() {
+	m.image_count = nil
+	m.addimage_count = nil
+	m.clearedFields[modelcall.FieldImageCount] = struct{}{}
+}
+
+// ImageCountCleared returns if the "image_count" field was cleared in this mutation.
+func (m *ModelCallMutation) ImageCountCleared() bool {
+	_, ok := m.clearedFields[modelcall.FieldImageCount]
+	return ok
+}
+
+// ResetImageCount resets all changes to the "image_count" field.
+func (m *ModelCallMutation) ResetImageCount() {
+	m.image_count = nil
+	m.addimage_count = nil
+	delete(m.clearedFields, modelcall.FieldImageCount)
+}
+
+// SetImageSize sets the "image_size" field.
+func (m *ModelCallMutation) SetImageSize(s string) {
+	m.image_size = &s
+}
+
+// ImageSize returns the value of the "image_size" field in the mutation.
+func (m *ModelCallMutation) ImageSize() (r string, exists bool) {
+	v := m.image_size
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldImageSize returns the old "image_size" field's value of the ModelCall entity.
+// If the ModelCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelCallMutation) OldImageSize(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldImageSize is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldImageSize requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldImageSize: %w", err)
+	}
+	return oldValue.ImageSize, nil
+}
+
+// ResetImageSize resets all changes to the "image_size" field.
+func (m *ModelCallMutation) ResetImageSize() {
+	m.image_size = nil
+}
+
+// SetImageAspectRatio sets the "image_aspect_ratio" field.
+func (m *ModelCallMutation) SetImageAspectRatio(s string) {
+	m.image_aspect_ratio = &s
+}
+
+// ImageAspectRatio returns the value of the "image_aspect_ratio" field in the mutation.
+func (m *ModelCallMutation) ImageAspectRatio() (r string, exists bool) {
+	v := m.image_aspect_ratio
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldImageAspectRatio returns the old "image_aspect_ratio" field's value of the ModelCall entity.
+// If the ModelCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelCallMutation) OldImageAspectRatio(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldImageAspectRatio is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldImageAspectRatio requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldImageAspectRatio: %w", err)
+	}
+	return oldValue.ImageAspectRatio, nil
+}
+
+// ResetImageAspectRatio resets all changes to the "image_aspect_ratio" field.
+func (m *ModelCallMutation) ResetImageAspectRatio() {
+	m.image_aspect_ratio = nil
+}
+
+// SetVideoCount sets the "video_count" field.
+func (m *ModelCallMutation) SetVideoCount(i int) {
+	m.video_count = &i
+	m.addvideo_count = nil
+}
+
+// VideoCount returns the value of the "video_count" field in the mutation.
+func (m *ModelCallMutation) VideoCount() (r int, exists bool) {
+	v := m.video_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVideoCount returns the old "video_count" field's value of the ModelCall entity.
+// If the ModelCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelCallMutation) OldVideoCount(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVideoCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVideoCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVideoCount: %w", err)
+	}
+	return oldValue.VideoCount, nil
+}
+
+// AddVideoCount adds i to the "video_count" field.
+func (m *ModelCallMutation) AddVideoCount(i int) {
+	if m.addvideo_count != nil {
+		*m.addvideo_count += i
+	} else {
+		m.addvideo_count = &i
+	}
+}
+
+// AddedVideoCount returns the value that was added to the "video_count" field in this mutation.
+func (m *ModelCallMutation) AddedVideoCount() (r int, exists bool) {
+	v := m.addvideo_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearVideoCount clears the value of the "video_count" field.
+func (m *ModelCallMutation) ClearVideoCount() {
+	m.video_count = nil
+	m.addvideo_count = nil
+	m.clearedFields[modelcall.FieldVideoCount] = struct{}{}
+}
+
+// VideoCountCleared returns if the "video_count" field was cleared in this mutation.
+func (m *ModelCallMutation) VideoCountCleared() bool {
+	_, ok := m.clearedFields[modelcall.FieldVideoCount]
+	return ok
+}
+
+// ResetVideoCount resets all changes to the "video_count" field.
+func (m *ModelCallMutation) ResetVideoCount() {
+	m.video_count = nil
+	m.addvideo_count = nil
+	delete(m.clearedFields, modelcall.FieldVideoCount)
+}
+
+// SetVideoResolution sets the "video_resolution" field.
+func (m *ModelCallMutation) SetVideoResolution(s string) {
+	m.video_resolution = &s
+}
+
+// VideoResolution returns the value of the "video_resolution" field in the mutation.
+func (m *ModelCallMutation) VideoResolution() (r string, exists bool) {
+	v := m.video_resolution
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVideoResolution returns the old "video_resolution" field's value of the ModelCall entity.
+// If the ModelCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelCallMutation) OldVideoResolution(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVideoResolution is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVideoResolution requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVideoResolution: %w", err)
+	}
+	return oldValue.VideoResolution, nil
+}
+
+// ResetVideoResolution resets all changes to the "video_resolution" field.
+func (m *ModelCallMutation) ResetVideoResolution() {
+	m.video_resolution = nil
+}
+
+// SetVideoDurationSeconds sets the "video_duration_seconds" field.
+func (m *ModelCallMutation) SetVideoDurationSeconds(i int) {
+	m.video_duration_seconds = &i
+	m.addvideo_duration_seconds = nil
+}
+
+// VideoDurationSeconds returns the value of the "video_duration_seconds" field in the mutation.
+func (m *ModelCallMutation) VideoDurationSeconds() (r int, exists bool) {
+	v := m.video_duration_seconds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVideoDurationSeconds returns the old "video_duration_seconds" field's value of the ModelCall entity.
+// If the ModelCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelCallMutation) OldVideoDurationSeconds(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVideoDurationSeconds is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVideoDurationSeconds requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVideoDurationSeconds: %w", err)
+	}
+	return oldValue.VideoDurationSeconds, nil
+}
+
+// AddVideoDurationSeconds adds i to the "video_duration_seconds" field.
+func (m *ModelCallMutation) AddVideoDurationSeconds(i int) {
+	if m.addvideo_duration_seconds != nil {
+		*m.addvideo_duration_seconds += i
+	} else {
+		m.addvideo_duration_seconds = &i
+	}
+}
+
+// AddedVideoDurationSeconds returns the value that was added to the "video_duration_seconds" field in this mutation.
+func (m *ModelCallMutation) AddedVideoDurationSeconds() (r int, exists bool) {
+	v := m.addvideo_duration_seconds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearVideoDurationSeconds clears the value of the "video_duration_seconds" field.
+func (m *ModelCallMutation) ClearVideoDurationSeconds() {
+	m.video_duration_seconds = nil
+	m.addvideo_duration_seconds = nil
+	m.clearedFields[modelcall.FieldVideoDurationSeconds] = struct{}{}
+}
+
+// VideoDurationSecondsCleared returns if the "video_duration_seconds" field was cleared in this mutation.
+func (m *ModelCallMutation) VideoDurationSecondsCleared() bool {
+	_, ok := m.clearedFields[modelcall.FieldVideoDurationSeconds]
+	return ok
+}
+
+// ResetVideoDurationSeconds resets all changes to the "video_duration_seconds" field.
+func (m *ModelCallMutation) ResetVideoDurationSeconds() {
+	m.video_duration_seconds = nil
+	m.addvideo_duration_seconds = nil
+	delete(m.clearedFields, modelcall.FieldVideoDurationSeconds)
+}
+
+// SetVideoAspectRatio sets the "video_aspect_ratio" field.
+func (m *ModelCallMutation) SetVideoAspectRatio(s string) {
+	m.video_aspect_ratio = &s
+}
+
+// VideoAspectRatio returns the value of the "video_aspect_ratio" field in the mutation.
+func (m *ModelCallMutation) VideoAspectRatio() (r string, exists bool) {
+	v := m.video_aspect_ratio
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVideoAspectRatio returns the old "video_aspect_ratio" field's value of the ModelCall entity.
+// If the ModelCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelCallMutation) OldVideoAspectRatio(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVideoAspectRatio is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVideoAspectRatio requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVideoAspectRatio: %w", err)
+	}
+	return oldValue.VideoAspectRatio, nil
+}
+
+// ResetVideoAspectRatio resets all changes to the "video_aspect_ratio" field.
+func (m *ModelCallMutation) ResetVideoAspectRatio() {
+	m.video_aspect_ratio = nil
+}
+
+// SetLatencyMs sets the "latency_ms" field.
+func (m *ModelCallMutation) SetLatencyMs(i int64) {
+	m.latency_ms = &i
+	m.addlatency_ms = nil
+}
+
+// LatencyMs returns the value of the "latency_ms" field in the mutation.
+func (m *ModelCallMutation) LatencyMs() (r int64, exists bool) {
+	v := m.latency_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLatencyMs returns the old "latency_ms" field's value of the ModelCall entity.
+// If the ModelCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelCallMutation) OldLatencyMs(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLatencyMs is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLatencyMs requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLatencyMs: %w", err)
+	}
+	return oldValue.LatencyMs, nil
+}
+
+// AddLatencyMs adds i to the "latency_ms" field.
+func (m *ModelCallMutation) AddLatencyMs(i int64) {
+	if m.addlatency_ms != nil {
+		*m.addlatency_ms += i
+	} else {
+		m.addlatency_ms = &i
+	}
+}
+
+// AddedLatencyMs returns the value that was added to the "latency_ms" field in this mutation.
+func (m *ModelCallMutation) AddedLatencyMs() (r int64, exists bool) {
+	v := m.addlatency_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetLatencyMs resets all changes to the "latency_ms" field.
+func (m *ModelCallMutation) ResetLatencyMs() {
+	m.latency_ms = nil
+	m.addlatency_ms = nil
+}
+
+// SetStartedAt sets the "started_at" field.
+func (m *ModelCallMutation) SetStartedAt(t time.Time) {
+	m.started_at = &t
+}
+
+// StartedAt returns the value of the "started_at" field in the mutation.
+func (m *ModelCallMutation) StartedAt() (r time.Time, exists bool) {
+	v := m.started_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStartedAt returns the old "started_at" field's value of the ModelCall entity.
+// If the ModelCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelCallMutation) OldStartedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStartedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStartedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStartedAt: %w", err)
+	}
+	return oldValue.StartedAt, nil
+}
+
+// ResetStartedAt resets all changes to the "started_at" field.
+func (m *ModelCallMutation) ResetStartedAt() {
+	m.started_at = nil
+}
+
+// SetFinishedAt sets the "finished_at" field.
+func (m *ModelCallMutation) SetFinishedAt(t time.Time) {
+	m.finished_at = &t
+}
+
+// FinishedAt returns the value of the "finished_at" field in the mutation.
+func (m *ModelCallMutation) FinishedAt() (r time.Time, exists bool) {
+	v := m.finished_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFinishedAt returns the old "finished_at" field's value of the ModelCall entity.
+// If the ModelCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelCallMutation) OldFinishedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFinishedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFinishedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFinishedAt: %w", err)
+	}
+	return oldValue.FinishedAt, nil
+}
+
+// ClearFinishedAt clears the value of the "finished_at" field.
+func (m *ModelCallMutation) ClearFinishedAt() {
+	m.finished_at = nil
+	m.clearedFields[modelcall.FieldFinishedAt] = struct{}{}
+}
+
+// FinishedAtCleared returns if the "finished_at" field was cleared in this mutation.
+func (m *ModelCallMutation) FinishedAtCleared() bool {
+	_, ok := m.clearedFields[modelcall.FieldFinishedAt]
+	return ok
+}
+
+// ResetFinishedAt resets all changes to the "finished_at" field.
+func (m *ModelCallMutation) ResetFinishedAt() {
+	m.finished_at = nil
+	delete(m.clearedFields, modelcall.FieldFinishedAt)
+}
+
+// SetInputPayload sets the "input_payload" field.
+func (m *ModelCallMutation) SetInputPayload(value map[string]interface{}) {
+	m.input_payload = &value
+}
+
+// InputPayload returns the value of the "input_payload" field in the mutation.
+func (m *ModelCallMutation) InputPayload() (r map[string]interface{}, exists bool) {
+	v := m.input_payload
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldInputPayload returns the old "input_payload" field's value of the ModelCall entity.
+// If the ModelCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelCallMutation) OldInputPayload(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldInputPayload is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldInputPayload requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldInputPayload: %w", err)
+	}
+	return oldValue.InputPayload, nil
+}
+
+// ResetInputPayload resets all changes to the "input_payload" field.
+func (m *ModelCallMutation) ResetInputPayload() {
+	m.input_payload = nil
+}
+
+// SetOutputPayload sets the "output_payload" field.
+func (m *ModelCallMutation) SetOutputPayload(value map[string]interface{}) {
+	m.output_payload = &value
+}
+
+// OutputPayload returns the value of the "output_payload" field in the mutation.
+func (m *ModelCallMutation) OutputPayload() (r map[string]interface{}, exists bool) {
+	v := m.output_payload
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOutputPayload returns the old "output_payload" field's value of the ModelCall entity.
+// If the ModelCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelCallMutation) OldOutputPayload(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOutputPayload is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOutputPayload requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOutputPayload: %w", err)
+	}
+	return oldValue.OutputPayload, nil
+}
+
+// ResetOutputPayload resets all changes to the "output_payload" field.
+func (m *ModelCallMutation) ResetOutputPayload() {
+	m.output_payload = nil
+}
+
+// SetUsageDetail sets the "usage_detail" field.
+func (m *ModelCallMutation) SetUsageDetail(value map[string]interface{}) {
+	m.usage_detail = &value
+}
+
+// UsageDetail returns the value of the "usage_detail" field in the mutation.
+func (m *ModelCallMutation) UsageDetail() (r map[string]interface{}, exists bool) {
+	v := m.usage_detail
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUsageDetail returns the old "usage_detail" field's value of the ModelCall entity.
+// If the ModelCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelCallMutation) OldUsageDetail(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUsageDetail is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUsageDetail requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUsageDetail: %w", err)
+	}
+	return oldValue.UsageDetail, nil
+}
+
+// ResetUsageDetail resets all changes to the "usage_detail" field.
+func (m *ModelCallMutation) ResetUsageDetail() {
+	m.usage_detail = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *ModelCallMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *ModelCallMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the ModelCall entity.
+// If the ModelCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelCallMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *ModelCallMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *ModelCallMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *ModelCallMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the ModelCall entity.
+// If the ModelCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelCallMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *ModelCallMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the ModelCallMutation builder.
+func (m *ModelCallMutation) Where(ps ...predicate.ModelCall) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ModelCallMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ModelCallMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.ModelCall, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ModelCallMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ModelCallMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (ModelCall).
+func (m *ModelCallMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ModelCallMutation) Fields() []string {
+	fields := make([]string, 0, 33)
+	if m.generation_task_id != nil {
+		fields = append(fields, modelcall.FieldGenerationTaskID)
+	}
+	if m.caller_service != nil {
+		fields = append(fields, modelcall.FieldCallerService)
+	}
+	if m.business_scene != nil {
+		fields = append(fields, modelcall.FieldBusinessScene)
+	}
+	if m.operation != nil {
+		fields = append(fields, modelcall.FieldOperation)
+	}
+	if m.capability != nil {
+		fields = append(fields, modelcall.FieldCapability)
+	}
+	if m.model != nil {
+		fields = append(fields, modelcall.FieldModel)
+	}
+	if m.provider != nil {
+		fields = append(fields, modelcall.FieldProvider)
+	}
+	if m.status != nil {
+		fields = append(fields, modelcall.FieldStatus)
+	}
+	if m.delivery_status != nil {
+		fields = append(fields, modelcall.FieldDeliveryStatus)
+	}
+	if m.error_category != nil {
+		fields = append(fields, modelcall.FieldErrorCategory)
+	}
+	if m.error_code != nil {
+		fields = append(fields, modelcall.FieldErrorCode)
+	}
+	if m.error_reason != nil {
+		fields = append(fields, modelcall.FieldErrorReason)
+	}
+	if m.error_message != nil {
+		fields = append(fields, modelcall.FieldErrorMessage)
+	}
+	if m.input_tokens != nil {
+		fields = append(fields, modelcall.FieldInputTokens)
+	}
+	if m.output_tokens != nil {
+		fields = append(fields, modelcall.FieldOutputTokens)
+	}
+	if m.total_tokens != nil {
+		fields = append(fields, modelcall.FieldTotalTokens)
+	}
+	if m.cached_tokens != nil {
+		fields = append(fields, modelcall.FieldCachedTokens)
+	}
+	if m.reasoning_tokens != nil {
+		fields = append(fields, modelcall.FieldReasoningTokens)
+	}
+	if m.image_count != nil {
+		fields = append(fields, modelcall.FieldImageCount)
+	}
+	if m.image_size != nil {
+		fields = append(fields, modelcall.FieldImageSize)
+	}
+	if m.image_aspect_ratio != nil {
+		fields = append(fields, modelcall.FieldImageAspectRatio)
+	}
+	if m.video_count != nil {
+		fields = append(fields, modelcall.FieldVideoCount)
+	}
+	if m.video_resolution != nil {
+		fields = append(fields, modelcall.FieldVideoResolution)
+	}
+	if m.video_duration_seconds != nil {
+		fields = append(fields, modelcall.FieldVideoDurationSeconds)
+	}
+	if m.video_aspect_ratio != nil {
+		fields = append(fields, modelcall.FieldVideoAspectRatio)
+	}
+	if m.latency_ms != nil {
+		fields = append(fields, modelcall.FieldLatencyMs)
+	}
+	if m.started_at != nil {
+		fields = append(fields, modelcall.FieldStartedAt)
+	}
+	if m.finished_at != nil {
+		fields = append(fields, modelcall.FieldFinishedAt)
+	}
+	if m.input_payload != nil {
+		fields = append(fields, modelcall.FieldInputPayload)
+	}
+	if m.output_payload != nil {
+		fields = append(fields, modelcall.FieldOutputPayload)
+	}
+	if m.usage_detail != nil {
+		fields = append(fields, modelcall.FieldUsageDetail)
+	}
+	if m.created_at != nil {
+		fields = append(fields, modelcall.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, modelcall.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ModelCallMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case modelcall.FieldGenerationTaskID:
+		return m.GenerationTaskID()
+	case modelcall.FieldCallerService:
+		return m.CallerService()
+	case modelcall.FieldBusinessScene:
+		return m.BusinessScene()
+	case modelcall.FieldOperation:
+		return m.Operation()
+	case modelcall.FieldCapability:
+		return m.Capability()
+	case modelcall.FieldModel:
+		return m.Model()
+	case modelcall.FieldProvider:
+		return m.Provider()
+	case modelcall.FieldStatus:
+		return m.Status()
+	case modelcall.FieldDeliveryStatus:
+		return m.DeliveryStatus()
+	case modelcall.FieldErrorCategory:
+		return m.ErrorCategory()
+	case modelcall.FieldErrorCode:
+		return m.ErrorCode()
+	case modelcall.FieldErrorReason:
+		return m.ErrorReason()
+	case modelcall.FieldErrorMessage:
+		return m.ErrorMessage()
+	case modelcall.FieldInputTokens:
+		return m.InputTokens()
+	case modelcall.FieldOutputTokens:
+		return m.OutputTokens()
+	case modelcall.FieldTotalTokens:
+		return m.TotalTokens()
+	case modelcall.FieldCachedTokens:
+		return m.CachedTokens()
+	case modelcall.FieldReasoningTokens:
+		return m.ReasoningTokens()
+	case modelcall.FieldImageCount:
+		return m.ImageCount()
+	case modelcall.FieldImageSize:
+		return m.ImageSize()
+	case modelcall.FieldImageAspectRatio:
+		return m.ImageAspectRatio()
+	case modelcall.FieldVideoCount:
+		return m.VideoCount()
+	case modelcall.FieldVideoResolution:
+		return m.VideoResolution()
+	case modelcall.FieldVideoDurationSeconds:
+		return m.VideoDurationSeconds()
+	case modelcall.FieldVideoAspectRatio:
+		return m.VideoAspectRatio()
+	case modelcall.FieldLatencyMs:
+		return m.LatencyMs()
+	case modelcall.FieldStartedAt:
+		return m.StartedAt()
+	case modelcall.FieldFinishedAt:
+		return m.FinishedAt()
+	case modelcall.FieldInputPayload:
+		return m.InputPayload()
+	case modelcall.FieldOutputPayload:
+		return m.OutputPayload()
+	case modelcall.FieldUsageDetail:
+		return m.UsageDetail()
+	case modelcall.FieldCreatedAt:
+		return m.CreatedAt()
+	case modelcall.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ModelCallMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case modelcall.FieldGenerationTaskID:
+		return m.OldGenerationTaskID(ctx)
+	case modelcall.FieldCallerService:
+		return m.OldCallerService(ctx)
+	case modelcall.FieldBusinessScene:
+		return m.OldBusinessScene(ctx)
+	case modelcall.FieldOperation:
+		return m.OldOperation(ctx)
+	case modelcall.FieldCapability:
+		return m.OldCapability(ctx)
+	case modelcall.FieldModel:
+		return m.OldModel(ctx)
+	case modelcall.FieldProvider:
+		return m.OldProvider(ctx)
+	case modelcall.FieldStatus:
+		return m.OldStatus(ctx)
+	case modelcall.FieldDeliveryStatus:
+		return m.OldDeliveryStatus(ctx)
+	case modelcall.FieldErrorCategory:
+		return m.OldErrorCategory(ctx)
+	case modelcall.FieldErrorCode:
+		return m.OldErrorCode(ctx)
+	case modelcall.FieldErrorReason:
+		return m.OldErrorReason(ctx)
+	case modelcall.FieldErrorMessage:
+		return m.OldErrorMessage(ctx)
+	case modelcall.FieldInputTokens:
+		return m.OldInputTokens(ctx)
+	case modelcall.FieldOutputTokens:
+		return m.OldOutputTokens(ctx)
+	case modelcall.FieldTotalTokens:
+		return m.OldTotalTokens(ctx)
+	case modelcall.FieldCachedTokens:
+		return m.OldCachedTokens(ctx)
+	case modelcall.FieldReasoningTokens:
+		return m.OldReasoningTokens(ctx)
+	case modelcall.FieldImageCount:
+		return m.OldImageCount(ctx)
+	case modelcall.FieldImageSize:
+		return m.OldImageSize(ctx)
+	case modelcall.FieldImageAspectRatio:
+		return m.OldImageAspectRatio(ctx)
+	case modelcall.FieldVideoCount:
+		return m.OldVideoCount(ctx)
+	case modelcall.FieldVideoResolution:
+		return m.OldVideoResolution(ctx)
+	case modelcall.FieldVideoDurationSeconds:
+		return m.OldVideoDurationSeconds(ctx)
+	case modelcall.FieldVideoAspectRatio:
+		return m.OldVideoAspectRatio(ctx)
+	case modelcall.FieldLatencyMs:
+		return m.OldLatencyMs(ctx)
+	case modelcall.FieldStartedAt:
+		return m.OldStartedAt(ctx)
+	case modelcall.FieldFinishedAt:
+		return m.OldFinishedAt(ctx)
+	case modelcall.FieldInputPayload:
+		return m.OldInputPayload(ctx)
+	case modelcall.FieldOutputPayload:
+		return m.OldOutputPayload(ctx)
+	case modelcall.FieldUsageDetail:
+		return m.OldUsageDetail(ctx)
+	case modelcall.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case modelcall.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown ModelCall field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ModelCallMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case modelcall.FieldGenerationTaskID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGenerationTaskID(v)
+		return nil
+	case modelcall.FieldCallerService:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCallerService(v)
+		return nil
+	case modelcall.FieldBusinessScene:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBusinessScene(v)
+		return nil
+	case modelcall.FieldOperation:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOperation(v)
+		return nil
+	case modelcall.FieldCapability:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCapability(v)
+		return nil
+	case modelcall.FieldModel:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetModel(v)
+		return nil
+	case modelcall.FieldProvider:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProvider(v)
+		return nil
+	case modelcall.FieldStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case modelcall.FieldDeliveryStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDeliveryStatus(v)
+		return nil
+	case modelcall.FieldErrorCategory:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetErrorCategory(v)
+		return nil
+	case modelcall.FieldErrorCode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetErrorCode(v)
+		return nil
+	case modelcall.FieldErrorReason:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetErrorReason(v)
+		return nil
+	case modelcall.FieldErrorMessage:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetErrorMessage(v)
+		return nil
+	case modelcall.FieldInputTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetInputTokens(v)
+		return nil
+	case modelcall.FieldOutputTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOutputTokens(v)
+		return nil
+	case modelcall.FieldTotalTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTotalTokens(v)
+		return nil
+	case modelcall.FieldCachedTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCachedTokens(v)
+		return nil
+	case modelcall.FieldReasoningTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReasoningTokens(v)
+		return nil
+	case modelcall.FieldImageCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetImageCount(v)
+		return nil
+	case modelcall.FieldImageSize:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetImageSize(v)
+		return nil
+	case modelcall.FieldImageAspectRatio:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetImageAspectRatio(v)
+		return nil
+	case modelcall.FieldVideoCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVideoCount(v)
+		return nil
+	case modelcall.FieldVideoResolution:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVideoResolution(v)
+		return nil
+	case modelcall.FieldVideoDurationSeconds:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVideoDurationSeconds(v)
+		return nil
+	case modelcall.FieldVideoAspectRatio:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVideoAspectRatio(v)
+		return nil
+	case modelcall.FieldLatencyMs:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLatencyMs(v)
+		return nil
+	case modelcall.FieldStartedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStartedAt(v)
+		return nil
+	case modelcall.FieldFinishedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFinishedAt(v)
+		return nil
+	case modelcall.FieldInputPayload:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetInputPayload(v)
+		return nil
+	case modelcall.FieldOutputPayload:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOutputPayload(v)
+		return nil
+	case modelcall.FieldUsageDetail:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUsageDetail(v)
+		return nil
+	case modelcall.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case modelcall.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ModelCall field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ModelCallMutation) AddedFields() []string {
+	var fields []string
+	if m.addinput_tokens != nil {
+		fields = append(fields, modelcall.FieldInputTokens)
+	}
+	if m.addoutput_tokens != nil {
+		fields = append(fields, modelcall.FieldOutputTokens)
+	}
+	if m.addtotal_tokens != nil {
+		fields = append(fields, modelcall.FieldTotalTokens)
+	}
+	if m.addcached_tokens != nil {
+		fields = append(fields, modelcall.FieldCachedTokens)
+	}
+	if m.addreasoning_tokens != nil {
+		fields = append(fields, modelcall.FieldReasoningTokens)
+	}
+	if m.addimage_count != nil {
+		fields = append(fields, modelcall.FieldImageCount)
+	}
+	if m.addvideo_count != nil {
+		fields = append(fields, modelcall.FieldVideoCount)
+	}
+	if m.addvideo_duration_seconds != nil {
+		fields = append(fields, modelcall.FieldVideoDurationSeconds)
+	}
+	if m.addlatency_ms != nil {
+		fields = append(fields, modelcall.FieldLatencyMs)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ModelCallMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case modelcall.FieldInputTokens:
+		return m.AddedInputTokens()
+	case modelcall.FieldOutputTokens:
+		return m.AddedOutputTokens()
+	case modelcall.FieldTotalTokens:
+		return m.AddedTotalTokens()
+	case modelcall.FieldCachedTokens:
+		return m.AddedCachedTokens()
+	case modelcall.FieldReasoningTokens:
+		return m.AddedReasoningTokens()
+	case modelcall.FieldImageCount:
+		return m.AddedImageCount()
+	case modelcall.FieldVideoCount:
+		return m.AddedVideoCount()
+	case modelcall.FieldVideoDurationSeconds:
+		return m.AddedVideoDurationSeconds()
+	case modelcall.FieldLatencyMs:
+		return m.AddedLatencyMs()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ModelCallMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case modelcall.FieldInputTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddInputTokens(v)
+		return nil
+	case modelcall.FieldOutputTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddOutputTokens(v)
+		return nil
+	case modelcall.FieldTotalTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddTotalTokens(v)
+		return nil
+	case modelcall.FieldCachedTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCachedTokens(v)
+		return nil
+	case modelcall.FieldReasoningTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddReasoningTokens(v)
+		return nil
+	case modelcall.FieldImageCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddImageCount(v)
+		return nil
+	case modelcall.FieldVideoCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddVideoCount(v)
+		return nil
+	case modelcall.FieldVideoDurationSeconds:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddVideoDurationSeconds(v)
+		return nil
+	case modelcall.FieldLatencyMs:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddLatencyMs(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ModelCall numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ModelCallMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(modelcall.FieldGenerationTaskID) {
+		fields = append(fields, modelcall.FieldGenerationTaskID)
+	}
+	if m.FieldCleared(modelcall.FieldInputTokens) {
+		fields = append(fields, modelcall.FieldInputTokens)
+	}
+	if m.FieldCleared(modelcall.FieldOutputTokens) {
+		fields = append(fields, modelcall.FieldOutputTokens)
+	}
+	if m.FieldCleared(modelcall.FieldTotalTokens) {
+		fields = append(fields, modelcall.FieldTotalTokens)
+	}
+	if m.FieldCleared(modelcall.FieldCachedTokens) {
+		fields = append(fields, modelcall.FieldCachedTokens)
+	}
+	if m.FieldCleared(modelcall.FieldReasoningTokens) {
+		fields = append(fields, modelcall.FieldReasoningTokens)
+	}
+	if m.FieldCleared(modelcall.FieldImageCount) {
+		fields = append(fields, modelcall.FieldImageCount)
+	}
+	if m.FieldCleared(modelcall.FieldVideoCount) {
+		fields = append(fields, modelcall.FieldVideoCount)
+	}
+	if m.FieldCleared(modelcall.FieldVideoDurationSeconds) {
+		fields = append(fields, modelcall.FieldVideoDurationSeconds)
+	}
+	if m.FieldCleared(modelcall.FieldFinishedAt) {
+		fields = append(fields, modelcall.FieldFinishedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ModelCallMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ModelCallMutation) ClearField(name string) error {
+	switch name {
+	case modelcall.FieldGenerationTaskID:
+		m.ClearGenerationTaskID()
+		return nil
+	case modelcall.FieldInputTokens:
+		m.ClearInputTokens()
+		return nil
+	case modelcall.FieldOutputTokens:
+		m.ClearOutputTokens()
+		return nil
+	case modelcall.FieldTotalTokens:
+		m.ClearTotalTokens()
+		return nil
+	case modelcall.FieldCachedTokens:
+		m.ClearCachedTokens()
+		return nil
+	case modelcall.FieldReasoningTokens:
+		m.ClearReasoningTokens()
+		return nil
+	case modelcall.FieldImageCount:
+		m.ClearImageCount()
+		return nil
+	case modelcall.FieldVideoCount:
+		m.ClearVideoCount()
+		return nil
+	case modelcall.FieldVideoDurationSeconds:
+		m.ClearVideoDurationSeconds()
+		return nil
+	case modelcall.FieldFinishedAt:
+		m.ClearFinishedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ModelCall nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ModelCallMutation) ResetField(name string) error {
+	switch name {
+	case modelcall.FieldGenerationTaskID:
+		m.ResetGenerationTaskID()
+		return nil
+	case modelcall.FieldCallerService:
+		m.ResetCallerService()
+		return nil
+	case modelcall.FieldBusinessScene:
+		m.ResetBusinessScene()
+		return nil
+	case modelcall.FieldOperation:
+		m.ResetOperation()
+		return nil
+	case modelcall.FieldCapability:
+		m.ResetCapability()
+		return nil
+	case modelcall.FieldModel:
+		m.ResetModel()
+		return nil
+	case modelcall.FieldProvider:
+		m.ResetProvider()
+		return nil
+	case modelcall.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case modelcall.FieldDeliveryStatus:
+		m.ResetDeliveryStatus()
+		return nil
+	case modelcall.FieldErrorCategory:
+		m.ResetErrorCategory()
+		return nil
+	case modelcall.FieldErrorCode:
+		m.ResetErrorCode()
+		return nil
+	case modelcall.FieldErrorReason:
+		m.ResetErrorReason()
+		return nil
+	case modelcall.FieldErrorMessage:
+		m.ResetErrorMessage()
+		return nil
+	case modelcall.FieldInputTokens:
+		m.ResetInputTokens()
+		return nil
+	case modelcall.FieldOutputTokens:
+		m.ResetOutputTokens()
+		return nil
+	case modelcall.FieldTotalTokens:
+		m.ResetTotalTokens()
+		return nil
+	case modelcall.FieldCachedTokens:
+		m.ResetCachedTokens()
+		return nil
+	case modelcall.FieldReasoningTokens:
+		m.ResetReasoningTokens()
+		return nil
+	case modelcall.FieldImageCount:
+		m.ResetImageCount()
+		return nil
+	case modelcall.FieldImageSize:
+		m.ResetImageSize()
+		return nil
+	case modelcall.FieldImageAspectRatio:
+		m.ResetImageAspectRatio()
+		return nil
+	case modelcall.FieldVideoCount:
+		m.ResetVideoCount()
+		return nil
+	case modelcall.FieldVideoResolution:
+		m.ResetVideoResolution()
+		return nil
+	case modelcall.FieldVideoDurationSeconds:
+		m.ResetVideoDurationSeconds()
+		return nil
+	case modelcall.FieldVideoAspectRatio:
+		m.ResetVideoAspectRatio()
+		return nil
+	case modelcall.FieldLatencyMs:
+		m.ResetLatencyMs()
+		return nil
+	case modelcall.FieldStartedAt:
+		m.ResetStartedAt()
+		return nil
+	case modelcall.FieldFinishedAt:
+		m.ResetFinishedAt()
+		return nil
+	case modelcall.FieldInputPayload:
+		m.ResetInputPayload()
+		return nil
+	case modelcall.FieldOutputPayload:
+		m.ResetOutputPayload()
+		return nil
+	case modelcall.FieldUsageDetail:
+		m.ResetUsageDetail()
+		return nil
+	case modelcall.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case modelcall.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ModelCall field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ModelCallMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ModelCallMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ModelCallMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ModelCallMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ModelCallMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ModelCallMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ModelCallMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown ModelCall unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ModelCallMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown ModelCall edge %s", name)
 }
 
 // ModelhubAPIKeyMutation represents an operation that mutates the ModelhubAPIKey nodes in the graph.

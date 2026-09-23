@@ -17,4 +17,6 @@ const (
 
 	// CallerMetadataKey 是 SubmitGeneration 幂等命名空间与来源归因用的 gRPC metadata 键；不做鉴权。
 	CallerMetadataKey = "x-wg-caller-service"
+	// BusinessSceneMetadataKey 是可选业务场景标签（如 ootd）；缺失记 unknown，公网不得用它覆盖可信 caller。
+	BusinessSceneMetadataKey = "x-wg-business-scene"
 )

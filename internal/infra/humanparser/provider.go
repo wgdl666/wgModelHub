@@ -56,15 +56,15 @@ func New(name, baseURL, username, password string) (*Provider, error) {
 
 func (p *Provider) Generate(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
 	if model != models.HumanParser {
-		return nil, provider.Errorf(provider.ErrorInvalidArgument, "human-parser does not serve model %q", model)
+		return nil, provider.NotAttemptedf(provider.ErrorInvalidArgument, "human-parser does not serve model %q", model)
 	}
 	images := provider.ImageMedias(request.GetInput())
 	if len(images) != 1 {
-		return nil, provider.New(provider.ErrorInvalidArgument, "human-parser requires exactly one input image")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "human-parser requires exactly one input image")
 	}
 	data, ok := images[0].Source.(*modelhubv2.Media_Data)
 	if !ok || len(data.Data) == 0 {
-		return nil, provider.New(provider.ErrorInvalidArgument, "human-parser requires inline image bytes")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "human-parser requires inline image bytes")
 	}
 	payload, err := json.Marshal(map[string]string{"image": base64.StdEncoding.EncodeToString(data.Data)})
 	if err != nil {
@@ -72,7 +72,7 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 	}
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+predictPath, bytes.NewReader(payload))
 	if err != nil {
-		return nil, provider.Wrap(provider.ErrorInvalidArgument, p.name+" create parser request", err)
+		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" create parser request", err)
 	}
 	httpReq.Header.Set("content-type", "application/json")
 	if p.username != "" {

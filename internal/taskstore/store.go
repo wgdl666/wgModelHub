@@ -79,6 +79,7 @@ func Open(ctx context.Context, dsn string) (*ent.Client, error) {
 	// 现网在 public；若这里仍查 modelhub.modelhub_api_key，所有公网 Key 都会变成 Unavailable。
 	return ent.NewClient(ent.Driver(drv), ent.AlternateSchema(ent.SchemaConfig{
 		GenerationTask: "modelhub",
+		ModelCall:      "modelhub",
 		ModelhubAPIKey: "",
 	})), nil
 }
