@@ -65,6 +65,24 @@ type ProviderConfig struct {
 	FacebodyCompare *FacebodyCompareProviderConfig `yaml:"facebody_compare"`
 	// RekognitionCompare 承接 CompareFaces。与 DetectLabels 人检分实例，Region 不能是 cn-*。
 	RekognitionCompare *RekognitionCompareProviderConfig `yaml:"rekognition_compare"`
+	// DashScopeEmbedding 承接 qwen3-vl-embedding。维度固定 1024。
+	DashScopeEmbedding *DashScopeEmbeddingProviderConfig `yaml:"dashscope_embedding"`
+	// CohereEmbedding 承接官方 embed-v4.0，和 Bedrock 推理配置分实例。
+	CohereEmbedding *CohereEmbeddingProviderConfig `yaml:"cohere_embedding"`
+	// BedrockEmbedding 承接 us.cohere.embed-v4:0。role_arn 为空时用任务角色。
+	BedrockEmbedding *BedrockEmbeddingProviderConfig `yaml:"bedrock_embedding"`
+	// DashScopeRerank 承接 qwen3.7-text-rerank 和 qwen3-vl-rerank。
+	DashScopeRerank *DashScopeRerankProviderConfig `yaml:"dashscope_rerank"`
+	// BedrockRerank 承接 cohere.rerank-v3-5:0。instruct 不会发给该模型。
+	BedrockRerank *BedrockRerankProviderConfig `yaml:"bedrock_rerank"`
+	// FacebodyDetect 承接 DetectFace，只返回脸框。
+	FacebodyDetect *FacebodyDetectProviderConfig `yaml:"facebody_detect"`
+	// FacebodyLibrary 承接人脸库查重、录脸、删脸。database 是 Facebody 库名。
+	FacebodyLibrary *FacebodyLibraryProviderConfig `yaml:"facebody_library"`
+	// RekognitionFaces 承接 DetectFaces，和 DetectLabels 人检分实例。
+	RekognitionFaces *RekognitionFacesProviderConfig `yaml:"rekognition_faces"`
+	// RekognitionLibrary 承接 Collection 查重、录脸、删脸。
+	RekognitionLibrary *RekognitionLibraryProviderConfig `yaml:"rekognition_library"`
 }
 
 type GeminiProviderConfig struct {
@@ -205,6 +223,59 @@ type RekognitionCompareProviderConfig struct {
 	AccessKeyID     string `yaml:"access_key_id"`
 	AccessKeySecret string `yaml:"access_key_secret"`
 	SessionToken    string `yaml:"session_token"`
+}
+
+type DashScopeEmbeddingProviderConfig struct {
+	BaseURL string `yaml:"base_url"`
+	APIKey  string `yaml:"api_key"`
+}
+
+type CohereEmbeddingProviderConfig struct {
+	BaseURL string `yaml:"base_url"`
+	APIKey  string `yaml:"api_key"`
+}
+
+type BedrockEmbeddingProviderConfig struct {
+	Region  string `yaml:"region"`
+	RoleARN string `yaml:"role_arn"`
+}
+
+type DashScopeRerankProviderConfig struct {
+	BaseURL string `yaml:"base_url"`
+	APIKey  string `yaml:"api_key"`
+}
+
+type BedrockRerankProviderConfig struct {
+	Region  string `yaml:"region"`
+	RoleARN string `yaml:"role_arn"`
+}
+
+type FacebodyDetectProviderConfig struct {
+	Endpoint        string `yaml:"endpoint"`
+	AccessKeyID     string `yaml:"access_key_id"`
+	AccessKeySecret string `yaml:"access_key_secret"`
+}
+
+type FacebodyLibraryProviderConfig struct {
+	Endpoint        string `yaml:"endpoint"`
+	AccessKeyID     string `yaml:"access_key_id"`
+	AccessKeySecret string `yaml:"access_key_secret"`
+	Database        string `yaml:"database"`
+}
+
+type RekognitionFacesProviderConfig struct {
+	Region          string `yaml:"region"`
+	AccessKeyID     string `yaml:"access_key_id"`
+	AccessKeySecret string `yaml:"access_key_secret"`
+	SessionToken    string `yaml:"session_token"`
+}
+
+type RekognitionLibraryProviderConfig struct {
+	Region          string `yaml:"region"`
+	AccessKeyID     string `yaml:"access_key_id"`
+	AccessKeySecret string `yaml:"access_key_secret"`
+	SessionToken    string `yaml:"session_token"`
+	Collection      string `yaml:"collection"`
 }
 
 type Config struct {
@@ -627,6 +698,50 @@ func validateProvider(name string, provider ProviderConfig) error {
 		if (key == "") != (secret == "") || (strings.TrimSpace(compare.SessionToken) != "" && key == "") {
 			return fmt.Errorf("provider %s rekognition access key and secret must be configured together", name)
 		}
+	case provider.DashScopeEmbedding != nil:
+		item := provider.DashScopeEmbedding
+		if strings.TrimSpace(item.BaseURL) == "" || strings.TrimSpace(item.APIKey) == "" {
+			return fmt.Errorf("provider %s dashscope embedding base_url and api_key are required", name)
+		}
+	case provider.CohereEmbedding != nil:
+		item := provider.CohereEmbedding
+		if strings.TrimSpace(item.BaseURL) == "" || strings.TrimSpace(item.APIKey) == "" {
+			return fmt.Errorf("provider %s cohere embedding base_url and api_key are required", name)
+		}
+	case provider.BedrockEmbedding != nil:
+		if strings.TrimSpace(provider.BedrockEmbedding.Region) == "" || strings.HasPrefix(strings.ToLower(strings.TrimSpace(provider.BedrockEmbedding.Region)), "cn-") {
+			return fmt.Errorf("provider %s bedrock embedding region is required and cannot be cn-*", name)
+		}
+	case provider.DashScopeRerank != nil:
+		item := provider.DashScopeRerank
+		if strings.TrimSpace(item.BaseURL) == "" || strings.TrimSpace(item.APIKey) == "" {
+			return fmt.Errorf("provider %s dashscope rerank base_url and api_key are required", name)
+		}
+	case provider.BedrockRerank != nil:
+		if strings.TrimSpace(provider.BedrockRerank.Region) == "" || strings.HasPrefix(strings.ToLower(strings.TrimSpace(provider.BedrockRerank.Region)), "cn-") {
+			return fmt.Errorf("provider %s bedrock rerank region is required and cannot be cn-*", name)
+		}
+	case provider.FacebodyDetect != nil:
+		item := provider.FacebodyDetect
+		if strings.TrimSpace(item.Endpoint) == "" || strings.TrimSpace(item.AccessKeyID) == "" || strings.TrimSpace(item.AccessKeySecret) == "" {
+			return fmt.Errorf("provider %s facebody detect endpoint and key pair are required", name)
+		}
+	case provider.FacebodyLibrary != nil:
+		item := provider.FacebodyLibrary
+		if strings.TrimSpace(item.Endpoint) == "" || strings.TrimSpace(item.AccessKeyID) == "" || strings.TrimSpace(item.AccessKeySecret) == "" || strings.TrimSpace(item.Database) == "" {
+			return fmt.Errorf("provider %s facebody library endpoint, key pair and database are required", name)
+		}
+	case provider.RekognitionFaces != nil:
+		if err := validateRekognitionRegion(name, provider.RekognitionFaces.Region, provider.RekognitionFaces.AccessKeyID, provider.RekognitionFaces.AccessKeySecret, provider.RekognitionFaces.SessionToken); err != nil {
+			return err
+		}
+	case provider.RekognitionLibrary != nil:
+		if err := validateRekognitionRegion(name, provider.RekognitionLibrary.Region, provider.RekognitionLibrary.AccessKeyID, provider.RekognitionLibrary.AccessKeySecret, provider.RekognitionLibrary.SessionToken); err != nil {
+			return err
+		}
+		if strings.TrimSpace(provider.RekognitionLibrary.Collection) == "" {
+			return fmt.Errorf("provider %s rekognition library collection is required", name)
+		}
 	}
 	return nil
 }
@@ -687,7 +802,46 @@ func countConcreteProviders(provider ProviderConfig) int {
 	if provider.RekognitionCompare != nil {
 		n++
 	}
+	if provider.DashScopeEmbedding != nil {
+		n++
+	}
+	if provider.CohereEmbedding != nil {
+		n++
+	}
+	if provider.BedrockEmbedding != nil {
+		n++
+	}
+	if provider.DashScopeRerank != nil {
+		n++
+	}
+	if provider.BedrockRerank != nil {
+		n++
+	}
+	if provider.FacebodyDetect != nil {
+		n++
+	}
+	if provider.FacebodyLibrary != nil {
+		n++
+	}
+	if provider.RekognitionFaces != nil {
+		n++
+	}
+	if provider.RekognitionLibrary != nil {
+		n++
+	}
 	return n
+}
+
+func validateRekognitionRegion(name, region, accessKey, secret, sessionToken string) error {
+	region = strings.TrimSpace(region)
+	if region == "" || strings.HasPrefix(strings.ToLower(region), "cn-") {
+		return fmt.Errorf("provider %s rekognition region is required and cannot be cn-*", name)
+	}
+	key, secretKey := strings.TrimSpace(accessKey), strings.TrimSpace(secret)
+	if (key == "") != (secretKey == "") || (strings.TrimSpace(sessionToken) != "" && key == "") {
+		return fmt.Errorf("provider %s rekognition access key and secret must be configured together", name)
+	}
+	return nil
 }
 
 // ProviderSupports 根据供应商类型判断能否承接 OutputSpec 对应能力。
@@ -697,7 +851,7 @@ func ProviderSupports(provider ProviderConfig, capability string) bool {
 		return capability == CapabilityText || capability == CapabilityImage
 	case provider.Photoroom != nil, provider.SegmentPerson != nil:
 		return capability == CapabilityImage
-	case provider.HumanYOLO != nil, provider.HumanParser != nil, provider.RekognitionDetect != nil, provider.FacebodyCompare != nil, provider.RekognitionCompare != nil:
+	case provider.HumanYOLO != nil, provider.HumanParser != nil, provider.RekognitionDetect != nil, provider.FacebodyCompare != nil, provider.RekognitionCompare != nil, provider.DashScopeEmbedding != nil, provider.CohereEmbedding != nil, provider.BedrockEmbedding != nil, provider.DashScopeRerank != nil, provider.BedrockRerank != nil, provider.FacebodyDetect != nil, provider.FacebodyLibrary != nil, provider.RekognitionFaces != nil, provider.RekognitionLibrary != nil:
 		return capability == CapabilityText
 	case provider.VertexAI != nil, provider.Ark != nil:
 		return capability == CapabilityText

@@ -36,6 +36,8 @@ func TestAppConfigSchemaContract(t *testing.T) {
 		"dashscopeVideo", "ominilinkVideo", "geminiVideo", "arkVideo", "photoroom",
 		"minimaxTts", "elevenlabsTts", "segmentPerson",
 		"humanYolo", "humanParser", "rekognitionDetect", "facebodyCompare", "rekognitionCompare",
+		"dashscopeEmbedding", "cohereEmbedding", "bedrockEmbedding", "dashscopeRerank", "bedrockRerank",
+		"facebodyDetect", "facebodyLibrary", "rekognitionFaces", "rekognitionLibrary",
 	} {
 		def := mustMap(t, definitions[definitionName])
 		if ap, exists := def["additionalProperties"]; exists && ap == false {
@@ -66,6 +68,10 @@ func TestAppConfigSchemaContract(t *testing.T) {
 		"elevenlabs_tts": false, "photoroom": false, "segment_person": false,
 		"human_yolo": false, "human_parser": false, "rekognition_detect": false,
 		"facebody_compare": false, "rekognition_compare": false,
+		"dashscope_embedding": false, "cohere_embedding": false, "bedrock_embedding": false,
+		"dashscope_rerank": false, "bedrock_rerank": false,
+		"facebody_detect": false, "facebody_library": false,
+		"rekognition_faces": false, "rekognition_library": false,
 	}
 	for _, entry := range oneOf {
 		required := mustSlice(t, mustMap(t, entry)["required"])
@@ -90,7 +96,9 @@ func TestAppConfigSchemaContract(t *testing.T) {
 	for _, definitionName := range []string{
 		"gemini", "ark", "openai", "ltx", "dashscopeVideo",
 		"ominilinkVideo", "geminiVideo", "arkVideo", "photoroom", "segmentPerson",
-		"humanYolo", "humanParser", "rekognitionDetect", "facebodyCompare", "rekognitionCompare", "logfire", "database",
+		"humanYolo", "humanParser", "rekognitionDetect", "facebodyCompare", "rekognitionCompare",
+		"dashscopeEmbedding", "cohereEmbedding", "bedrockEmbedding", "dashscopeRerank", "bedrockRerank",
+		"facebodyDetect", "facebodyLibrary", "rekognitionFaces", "rekognitionLibrary", "logfire", "database",
 	} {
 		properties := mustMap(t, mustMap(t, definitions[definitionName])["properties"])
 		for field, raw := range properties {

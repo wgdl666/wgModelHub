@@ -18,18 +18,31 @@ func TestCategoryOfKnownIDs(t *testing.T) {
 		id   string
 		want Category
 	}{
-		{Gemini37Flash, CategoryLLM},
 		{DeepSeekV4Flash, CategoryLLM},
 		{DeepSeekV41Flash, CategoryLLM},
-		{GLM53Flash, CategoryLLM},
+		{QwenFlash, CategoryLLM},
+		{Gemini37Flash, CategoryMultimodal},
+		{DoubaoSeed16, CategoryMultimodal},
+		{Qwen35Flash, CategoryMultimodal},
+		{Qwen38Flash, CategoryMultimodal},
+		{ClaudeHaiku45, CategoryMultimodal},
+		{GLM53Flash, CategoryMultimodal},
 		{Qwen3VLPlus, CategoryMultimodal},
+		{Qwen3VLEmbedding, CategoryEmbedding},
+		{Qwen37TextRerank, CategoryRerank},
+		{FacebodyCompareFace, CategoryFaceCompare},
+		{RekognitionDetectFaces, CategoryFaceDetect},
+		{RekognitionFaceLibrary, CategoryFaceLibrary},
+		{HumanYOLO, CategoryPersonDetect},
+		{RekognitionDetectLabels, CategoryPersonDetect},
+		{HumanParser, CategoryHumanParser},
 		{GPTImage2, CategoryImageGeneration},
 		{GPTImage25Flare, CategoryImageGeneration},
 		{GPTImage25Sunburst, CategoryImageGeneration},
 		{Flux2Klein9B, CategoryImageGeneration},
-		{PhotoroomSegment, CategoryImageGeneration},
-		{SegmentPersonBria, CategoryImageGeneration},
-		{SegmentSubjectBria, CategoryImageGeneration},
+		{PhotoroomSegment, CategorySegment},
+		{SegmentPersonBria, CategorySegment},
+		{SegmentSubjectBria, CategorySegment},
 		{LTX, CategoryVideoGeneration},
 		{GeminiOmniFlashPreview, CategoryVideoGeneration},
 		{Speech28Turbo, CategorySpeech},
@@ -53,7 +66,7 @@ func TestCategoryOfUnknown(t *testing.T) {
 }
 
 func TestPublicCategoriesIncludeSpeech(t *testing.T) {
-	if !CategoryLLM.Public() || !CategoryMultimodal.Public() || !CategoryImageGeneration.Public() || !CategoryVideoGeneration.Public() || !CategorySpeech.Public() {
+	if !CategoryLLM.Public() || !CategoryMultimodal.Public() || !CategoryImageGeneration.Public() || !CategoryVideoGeneration.Public() || !CategorySpeech.Public() || !CategoryEmbedding.Public() || !CategoryRerank.Public() || !CategoryFaceCompare.Public() || !CategoryFaceDetect.Public() || !CategoryFaceLibrary.Public() || !CategoryPersonDetect.Public() || !CategoryHumanParser.Public() || !CategorySegment.Public() {
 		t.Fatal("llm/multimodal/image/video/speech must be public")
 	}
 	if Category("unknown").Public() {

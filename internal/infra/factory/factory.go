@@ -7,9 +7,16 @@ import (
 	"github.com/wgdl666/wgModelHub/config"
 	"github.com/wgdl666/wgModelHub/internal/infra/ark"
 	"github.com/wgdl666/wgModelHub/internal/infra/arkvideo"
+	"github.com/wgdl666/wgModelHub/internal/infra/bedrockembed"
+	"github.com/wgdl666/wgModelHub/internal/infra/bedrockrerank"
+	"github.com/wgdl666/wgModelHub/internal/infra/cohereembed"
+	"github.com/wgdl666/wgModelHub/internal/infra/dashscopeembed"
+	"github.com/wgdl666/wgModelHub/internal/infra/dashscopererank"
 	"github.com/wgdl666/wgModelHub/internal/infra/dashscopevideo"
 	"github.com/wgdl666/wgModelHub/internal/infra/elevenlabstts"
 	"github.com/wgdl666/wgModelHub/internal/infra/facebodycompare"
+	"github.com/wgdl666/wgModelHub/internal/infra/facebodydetect"
+	"github.com/wgdl666/wgModelHub/internal/infra/facebodylibrary"
 	"github.com/wgdl666/wgModelHub/internal/infra/geminivideo"
 	"github.com/wgdl666/wgModelHub/internal/infra/genai"
 	"github.com/wgdl666/wgModelHub/internal/infra/humanparser"
@@ -20,6 +27,7 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/infra/openai"
 	"github.com/wgdl666/wgModelHub/internal/infra/photoroom"
 	"github.com/wgdl666/wgModelHub/internal/infra/rekognitioncompare"
+	"github.com/wgdl666/wgModelHub/internal/infra/rekognitionfaces"
 	"github.com/wgdl666/wgModelHub/internal/infra/rekognitiondetect"
 	"github.com/wgdl666/wgModelHub/internal/infra/segmentperson"
 	"github.com/wgdl666/wgModelHub/internal/provider"
@@ -181,6 +189,69 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 	case providerCfg.RekognitionCompare != nil:
 		cfg := providerCfg.RekognitionCompare
 		client, err := rekognitioncompare.New(ctx, name, cfg.Region, cfg.AccessKeyID, cfg.AccessKeySecret, cfg.SessionToken)
+		if err != nil {
+			return provider.Set{}, err
+		}
+		return provider.Set{Text: client}, nil
+	case providerCfg.DashScopeEmbedding != nil:
+		cfg := providerCfg.DashScopeEmbedding
+		client, err := dashscopeembed.New(name, cfg.BaseURL, cfg.APIKey)
+		if err != nil {
+			return provider.Set{}, err
+		}
+		return provider.Set{Text: client}, nil
+	case providerCfg.CohereEmbedding != nil:
+		cfg := providerCfg.CohereEmbedding
+		client, err := cohereembed.New(name, cfg.BaseURL, cfg.APIKey)
+		if err != nil {
+			return provider.Set{}, err
+		}
+		return provider.Set{Text: client}, nil
+	case providerCfg.BedrockEmbedding != nil:
+		cfg := providerCfg.BedrockEmbedding
+		client, err := bedrockembed.New(ctx, name, cfg.Region, cfg.RoleARN)
+		if err != nil {
+			return provider.Set{}, err
+		}
+		return provider.Set{Text: client}, nil
+	case providerCfg.DashScopeRerank != nil:
+		cfg := providerCfg.DashScopeRerank
+		client, err := dashscopererank.New(name, cfg.BaseURL, cfg.APIKey)
+		if err != nil {
+			return provider.Set{}, err
+		}
+		return provider.Set{Text: client}, nil
+	case providerCfg.BedrockRerank != nil:
+		cfg := providerCfg.BedrockRerank
+		client, err := bedrockrerank.New(ctx, name, cfg.Region, cfg.RoleARN)
+		if err != nil {
+			return provider.Set{}, err
+		}
+		return provider.Set{Text: client}, nil
+	case providerCfg.FacebodyDetect != nil:
+		cfg := providerCfg.FacebodyDetect
+		client, err := facebodydetect.New(name, cfg.Endpoint, cfg.AccessKeyID, cfg.AccessKeySecret)
+		if err != nil {
+			return provider.Set{}, err
+		}
+		return provider.Set{Text: client}, nil
+	case providerCfg.FacebodyLibrary != nil:
+		cfg := providerCfg.FacebodyLibrary
+		client, err := facebodylibrary.New(name, cfg.Endpoint, cfg.AccessKeyID, cfg.AccessKeySecret, cfg.Database)
+		if err != nil {
+			return provider.Set{}, err
+		}
+		return provider.Set{Text: client}, nil
+	case providerCfg.RekognitionFaces != nil:
+		cfg := providerCfg.RekognitionFaces
+		client, err := rekognitionfaces.NewDetect(ctx, name, cfg.Region, cfg.AccessKeyID, cfg.AccessKeySecret, cfg.SessionToken)
+		if err != nil {
+			return provider.Set{}, err
+		}
+		return provider.Set{Text: client}, nil
+	case providerCfg.RekognitionLibrary != nil:
+		cfg := providerCfg.RekognitionLibrary
+		client, err := rekognitionfaces.NewLibrary(ctx, name, cfg.Region, cfg.AccessKeyID, cfg.AccessKeySecret, cfg.SessionToken, cfg.Collection)
 		if err != nil {
 			return provider.Set{}, err
 		}

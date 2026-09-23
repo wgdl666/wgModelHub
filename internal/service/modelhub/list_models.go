@@ -58,6 +58,22 @@ func catalogFilter(category modelhubv2.ModelCategory) (func(models.Category) boo
 		return func(c models.Category) bool { return c == models.CategoryVideoGeneration }, nil
 	case modelhubv2.ModelCategory_MODEL_CATEGORY_SPEECH:
 		return func(c models.Category) bool { return c == models.CategorySpeech }, nil
+	case modelhubv2.ModelCategory_MODEL_CATEGORY_EMBEDDING:
+		return func(c models.Category) bool { return c == models.CategoryEmbedding }, nil
+	case modelhubv2.ModelCategory_MODEL_CATEGORY_RERANK:
+		return func(c models.Category) bool { return c == models.CategoryRerank }, nil
+	case modelhubv2.ModelCategory_MODEL_CATEGORY_FACE_COMPARE:
+		return func(c models.Category) bool { return c == models.CategoryFaceCompare }, nil
+	case modelhubv2.ModelCategory_MODEL_CATEGORY_FACE_DETECT:
+		return func(c models.Category) bool { return c == models.CategoryFaceDetect }, nil
+	case modelhubv2.ModelCategory_MODEL_CATEGORY_FACE_LIBRARY:
+		return func(c models.Category) bool { return c == models.CategoryFaceLibrary }, nil
+	case modelhubv2.ModelCategory_MODEL_CATEGORY_PERSON_DETECT:
+		return func(c models.Category) bool { return c == models.CategoryPersonDetect }, nil
+	case modelhubv2.ModelCategory_MODEL_CATEGORY_HUMAN_PARSER:
+		return func(c models.Category) bool { return c == models.CategoryHumanParser }, nil
+	case modelhubv2.ModelCategory_MODEL_CATEGORY_SEGMENT:
+		return func(c models.Category) bool { return c == models.CategorySegment }, nil
 	default:
 		return nil, provider.New(provider.ErrorInvalidArgument, "unsupported model category")
 	}
@@ -75,6 +91,22 @@ func protoCategory(category models.Category) modelhubv2.ModelCategory {
 		return modelhubv2.ModelCategory_MODEL_CATEGORY_VIDEO_GENERATION
 	case models.CategorySpeech:
 		return modelhubv2.ModelCategory_MODEL_CATEGORY_SPEECH
+	case models.CategoryEmbedding:
+		return modelhubv2.ModelCategory_MODEL_CATEGORY_EMBEDDING
+	case models.CategoryRerank:
+		return modelhubv2.ModelCategory_MODEL_CATEGORY_RERANK
+	case models.CategoryFaceCompare:
+		return modelhubv2.ModelCategory_MODEL_CATEGORY_FACE_COMPARE
+	case models.CategoryFaceDetect:
+		return modelhubv2.ModelCategory_MODEL_CATEGORY_FACE_DETECT
+	case models.CategoryFaceLibrary:
+		return modelhubv2.ModelCategory_MODEL_CATEGORY_FACE_LIBRARY
+	case models.CategoryPersonDetect:
+		return modelhubv2.ModelCategory_MODEL_CATEGORY_PERSON_DETECT
+	case models.CategoryHumanParser:
+		return modelhubv2.ModelCategory_MODEL_CATEGORY_HUMAN_PARSER
+	case models.CategorySegment:
+		return modelhubv2.ModelCategory_MODEL_CATEGORY_SEGMENT
 	default:
 		return modelhubv2.ModelCategory_MODEL_CATEGORY_UNSPECIFIED
 	}

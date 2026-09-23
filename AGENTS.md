@@ -13,7 +13,10 @@
 - `photoroom` 承接官方 Remove Background（`POST /v1/segment`）；`photoroom-segment` 仅作路由常量、不下发上游。恰好一图入、透明 PNG 出；裁剪/填充/存储/业务重试留在调用方。
 - `segment_person` 承接国内自建抠图。`segment-person-bria` 走 `POST /api/segment`，`segment-subject-bria` 走 `POST /api/segment_subject`；`method` 与 Basic Auth 只在供应商配置，模型 ID 不下发上游。两个 ID 不能互相替代。恰好一图入、透明 PNG 出；`max_side` 裁剪、OSS 与业务重试留在衣橱。
 - `human_yolo` 承接自建人体检测 `POST /predict`，`human-parser` 承接自建人体解析。`rekognition_detect` 承接 DetectLabels 的 Person 框，模型 ID 是 `rekognition-detect-labels`。三者都返回文本 JSON；裁图和单件提取留在衣橱。
-- `facebody_compare` 承接阿里云 `CompareFace`，模型 ID 是 `facebody-compare-face`。`rekognition_compare` 承接 `CompareFaces`，模型 ID 是 `rekognition-compare-faces`。两者都是恰好两张内联图入、文本 JSON `{"similarity":0到1}` 出。人脸库检索、录脸、删脸和本地裁锚点留在 UserCenter。
+- `facebody_compare` 承接阿里云 `CompareFace`，模型 ID 是 `facebody-compare-face`。`rekognition_compare` 承接 `CompareFaces`，模型 ID 是 `rekognition-compare-faces`。两者都是恰好两张内联图入、文本 JSON `{"similarity":0到1}` 出。
+- `dashscope_embedding` / `cohere_embedding` / `bedrock_embedding` 承接 1024 维向量，模型 ID 分别是 `qwen3-vl-embedding`、`embed-v4.0`、`us.cohere.embed-v4:0`。一图或一段文本入，`{"embedding":[...]}` 出。换模型会换向量空间，调用方必须先重嵌再切读。
+- `dashscope_rerank` 承接 `qwen3.7-text-rerank` 与 `qwen3-vl-rerank`。`bedrock_rerank` 承接 `cohere.rerank-v3-5:0`，并丢弃 instruct。入参是 `{"query","documents","instruct"}`，出参是 `{"results":[{"index","relevance_score"}]}`。
+- `facebody_detect` / `rekognition_faces` 只回人脸框 `{"faces":[{"left","top","width","height"}]}`。扩框裁锚点和主体脸选择留在 UserCenter。`facebody_library` / `rekognition_library` 承接查重、录脸、删脸；库名在供应商配置，不在请求里。
 - `FLUX.2-klein-9B` 必须单独绑到 OpenAI Images 实例，不能与 `gpt-image-2` / 2.5 共用。当前 SeeTacloud 部署只开放 i2i edits：无参考图在发 HTTP 前拒绝；edits 必须带 `response_format=b64_json`，因为 worker 默认回 `127.0.0.1` 下载地址。GPT Image（含 2 / 2.5）当前接入沿标准请求且默认返回可解析结果，ModelHub 不下发该字段；`response_format=b64_json` 仅是 FLUX.2 私有兼容特例。
 - `zhipu_glm` 承接智谱 `glm-5.3-flash`（`https://open.bigmodel.cn/api/paas/v4`）。思考字段走 `thinking.type=enabled`，禁止下发 `disabled` 或 DashScope 的 `enable_thinking`；统一协议 `DISABLED` 只映射为 `reasoning_effort=low`。
 - 启动时建立「真实模型 ID → provider 实例」路由：单 provider 声明可隐式选定；多 provider 声明同一模型时必须在顶层 `model_routes` 显式选定其一，不能依赖 map 顺序。无 profile、alias 或自动 failover。同名同资源 provider 仅 `models` 列表和/或顶层 `model_routes` 变化可通过 Nacos ListenConfig 或海外 AppConfig Agent 轮询热更新原子切换；provider 实例增删、类型、凭据、BaseURL/Endpoint 等连接资源参数变化仍须滚动重启，不得部分应用。

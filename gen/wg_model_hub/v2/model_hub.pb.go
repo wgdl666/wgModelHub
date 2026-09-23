@@ -23,6 +23,7 @@ const (
 )
 
 // ModelCategory 是产品目录分类，不是 Generate 的 OutputSpec capability。
+// 同一分类里的模型可以互相替换。看图回文本、出图、抠图、向量、精排、人脸和人体工具用途不同，必须分开。
 type ModelCategory int32
 
 const (
@@ -32,17 +33,36 @@ const (
 	ModelCategory_MODEL_CATEGORY_IMAGE_GENERATION ModelCategory = 3
 	ModelCategory_MODEL_CATEGORY_VIDEO_GENERATION ModelCategory = 4
 	ModelCategory_MODEL_CATEGORY_SPEECH           ModelCategory = 5
+	ModelCategory_MODEL_CATEGORY_EMBEDDING        ModelCategory = 6
+	ModelCategory_MODEL_CATEGORY_RERANK           ModelCategory = 7
+	ModelCategory_MODEL_CATEGORY_FACE_COMPARE     ModelCategory = 8
+	ModelCategory_MODEL_CATEGORY_FACE_DETECT      ModelCategory = 9
+	ModelCategory_MODEL_CATEGORY_FACE_LIBRARY     ModelCategory = 10
+	// 人检返回人框。human-yolo 与 rekognition-detect-labels 同属这一类，调用方仍填具体模型 ID。
+	ModelCategory_MODEL_CATEGORY_PERSON_DETECT ModelCategory = 11
+	// 人体解析输出衣服和身体区域，不是检测框，也不和看图说话的多模态模型混放。
+	ModelCategory_MODEL_CATEGORY_HUMAN_PARSER ModelCategory = 12
+	// 抠图出透明图。和文生图、图生图不是同一类。
+	ModelCategory_MODEL_CATEGORY_SEGMENT ModelCategory = 13
 )
 
 // Enum value maps for ModelCategory.
 var (
 	ModelCategory_name = map[int32]string{
-		0: "MODEL_CATEGORY_UNSPECIFIED",
-		1: "MODEL_CATEGORY_LLM",
-		2: "MODEL_CATEGORY_MULTIMODAL",
-		3: "MODEL_CATEGORY_IMAGE_GENERATION",
-		4: "MODEL_CATEGORY_VIDEO_GENERATION",
-		5: "MODEL_CATEGORY_SPEECH",
+		0:  "MODEL_CATEGORY_UNSPECIFIED",
+		1:  "MODEL_CATEGORY_LLM",
+		2:  "MODEL_CATEGORY_MULTIMODAL",
+		3:  "MODEL_CATEGORY_IMAGE_GENERATION",
+		4:  "MODEL_CATEGORY_VIDEO_GENERATION",
+		5:  "MODEL_CATEGORY_SPEECH",
+		6:  "MODEL_CATEGORY_EMBEDDING",
+		7:  "MODEL_CATEGORY_RERANK",
+		8:  "MODEL_CATEGORY_FACE_COMPARE",
+		9:  "MODEL_CATEGORY_FACE_DETECT",
+		10: "MODEL_CATEGORY_FACE_LIBRARY",
+		11: "MODEL_CATEGORY_PERSON_DETECT",
+		12: "MODEL_CATEGORY_HUMAN_PARSER",
+		13: "MODEL_CATEGORY_SEGMENT",
 	}
 	ModelCategory_value = map[string]int32{
 		"MODEL_CATEGORY_UNSPECIFIED":      0,
@@ -51,6 +71,14 @@ var (
 		"MODEL_CATEGORY_IMAGE_GENERATION": 3,
 		"MODEL_CATEGORY_VIDEO_GENERATION": 4,
 		"MODEL_CATEGORY_SPEECH":           5,
+		"MODEL_CATEGORY_EMBEDDING":        6,
+		"MODEL_CATEGORY_RERANK":           7,
+		"MODEL_CATEGORY_FACE_COMPARE":     8,
+		"MODEL_CATEGORY_FACE_DETECT":      9,
+		"MODEL_CATEGORY_FACE_LIBRARY":     10,
+		"MODEL_CATEGORY_PERSON_DETECT":    11,
+		"MODEL_CATEGORY_HUMAN_PARSER":     12,
+		"MODEL_CATEGORY_SEGMENT":          13,
 	}
 )
 
@@ -452,6 +480,7 @@ func (GenerationTaskState) EnumDescriptor() ([]byte, []int) {
 type ListModelsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// UNSPECIFIED 返回全部对外分类（含 speech）；指定则只返回该类。
+	// llm 与 multimodal 互不包含，调用方要对话全量时分别查询再合并。
 	Category      ModelCategory `protobuf:"varint,1,opt,name=category,proto3,enum=wg_model_hub.v2.ModelCategory" json:"category,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2943,14 +2972,23 @@ const file_proto_wg_model_hub_v2_model_hub_proto_rawDesc = "" +
 	"\x04text\x18\x02 \x01(\tR\x04text\x12\x19\n" +
 	"\bvoice_id\x18\x03 \x01(\tR\avoiceId\"H\n" +
 	"\x18SynthesizeSpeechResponse\x12,\n" +
-	"\x05audio\x18\x01 \x01(\v2\x16.wg_model_hub.v2.MediaR\x05audio*\xcb\x01\n" +
+	"\x05audio\x18\x01 \x01(\v2\x16.wg_model_hub.v2.MediaR\x05audio*\xc5\x03\n" +
 	"\rModelCategory\x12\x1e\n" +
 	"\x1aMODEL_CATEGORY_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12MODEL_CATEGORY_LLM\x10\x01\x12\x1d\n" +
 	"\x19MODEL_CATEGORY_MULTIMODAL\x10\x02\x12#\n" +
 	"\x1fMODEL_CATEGORY_IMAGE_GENERATION\x10\x03\x12#\n" +
 	"\x1fMODEL_CATEGORY_VIDEO_GENERATION\x10\x04\x12\x19\n" +
-	"\x15MODEL_CATEGORY_SPEECH\x10\x05*P\n" +
+	"\x15MODEL_CATEGORY_SPEECH\x10\x05\x12\x1c\n" +
+	"\x18MODEL_CATEGORY_EMBEDDING\x10\x06\x12\x19\n" +
+	"\x15MODEL_CATEGORY_RERANK\x10\a\x12\x1f\n" +
+	"\x1bMODEL_CATEGORY_FACE_COMPARE\x10\b\x12\x1e\n" +
+	"\x1aMODEL_CATEGORY_FACE_DETECT\x10\t\x12\x1f\n" +
+	"\x1bMODEL_CATEGORY_FACE_LIBRARY\x10\n" +
+	"\x12 \n" +
+	"\x1cMODEL_CATEGORY_PERSON_DETECT\x10\v\x12\x1f\n" +
+	"\x1bMODEL_CATEGORY_HUMAN_PARSER\x10\f\x12\x1a\n" +
+	"\x16MODEL_CATEGORY_SEGMENT\x10\r*P\n" +
 	"\x04Role\x12\x14\n" +
 	"\x10ROLE_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vROLE_SYSTEM\x10\x01\x12\r\n" +

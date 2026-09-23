@@ -20,6 +20,30 @@ func MessageParts(input *modelhubv2.Input) []*modelhubv2.ContentPart {
 	return parts
 }
 
+// UserText 按输入顺序拼接文本 part。向量、精排和人脸库用这段 JSON/文本，不另开顶层字段。
+func UserText(input *modelhubv2.Input) string {
+	var b strings.Builder
+	for _, part := range MessageParts(input) {
+		text := part.GetText()
+		if text == "" {
+			continue
+		}
+		if b.Len() > 0 {
+			b.WriteByte('\n')
+		}
+		b.WriteString(text)
+	}
+	return b.String()
+}
+
+// InlineImageBytes 只接受内联图片。URI 留给调用方先下载，避免供应商回源私有桶。
+func InlineImageBytes(media *modelhubv2.Media) ([]byte, bool) {
+	if media == nil || len(media.GetData()) == 0 {
+		return nil, false
+	}
+	return media.GetData(), true
+}
+
 // FirstImageMedia 取 Input 中第一张图片，作为视频首帧或编辑参考图而不另开顶层字段。
 func FirstImageMedia(input *modelhubv2.Input) *modelhubv2.Media {
 	for _, part := range MessageParts(input) {

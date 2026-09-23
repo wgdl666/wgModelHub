@@ -61,6 +61,26 @@ const (
 	FacebodyCompareFace = "facebody-compare-face"
 	// RekognitionCompareFaces 是 Rekognition CompareFaces。空结果按相似度 0，不把无人脸当成供应商故障。
 	RekognitionCompareFaces = "rekognition-compare-faces"
+	// Qwen3VLEmbedding 是百炼多模态向量。图片和文本必须落在同一 1024 维空间。
+	Qwen3VLEmbedding = "qwen3-vl-embedding"
+	// CohereEmbedV4 是 Cohere 官方 HTTP 的 embed-v4.0。与 Bedrock 推理配置不能互相替代。
+	CohereEmbedV4 = "embed-v4.0"
+	// CohereEmbedV4Bedrock 是 Bedrock 上的 Cohere Embed v4 推理配置。换空间后旧向量不可复用。
+	CohereEmbedV4Bedrock = "us.cohere.embed-v4:0"
+	// Qwen37TextRerank 是百炼兼容 /reranks 文本精排。
+	Qwen37TextRerank = "qwen3.7-text-rerank"
+	// Qwen3VLRerank 只走百炼原生 text-rerank，不能发到兼容 /reranks。
+	Qwen3VLRerank = "qwen3-vl-rerank"
+	// CohereRerankV35 是 Bedrock Agent Runtime Rerank。该模型没有 instruct。
+	CohereRerankV35 = "cohere.rerank-v3-5:0"
+	// FacebodyDetectFace 是阿里云 DetectFace。返回人脸框，裁图由调用方本地完成。
+	FacebodyDetectFace = "facebody-detect-face"
+	// RekognitionDetectFaces 是 DetectFaces。与 DetectLabels 人检不能互相替代。
+	RekognitionDetectFaces = "rekognition-detect-faces"
+	// FacebodyFaceLibrary 是阿里云人脸库的查重、录脸、删脸。库名在供应商配置，不从请求带入。
+	FacebodyFaceLibrary = "facebody-face-library"
+	// RekognitionFaceLibrary 是 Rekognition Collection 的查重、录脸、删脸。
+	RekognitionFaceLibrary = "rekognition-face-library"
 	// HumanParser 是自建人体解析 POST /predict，输出分割图而不是检测框。
 	HumanParser = "human-parser"
 	LTX         = "ltx"
@@ -145,6 +165,16 @@ func All() []string {
 		RekognitionDetectLabels,
 		FacebodyCompareFace,
 		RekognitionCompareFaces,
+		Qwen3VLEmbedding,
+		CohereEmbedV4,
+		CohereEmbedV4Bedrock,
+		Qwen37TextRerank,
+		Qwen3VLRerank,
+		CohereRerankV35,
+		FacebodyDetectFace,
+		RekognitionDetectFaces,
+		FacebodyFaceLibrary,
+		RekognitionFaceLibrary,
 		HumanParser,
 		LTX,
 		Wan22I2VFlash,
