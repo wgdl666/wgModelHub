@@ -114,7 +114,12 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 	if err := validateGeminiGenerateInput(request); err != nil {
 		return nil, err
 	}
-	response, err := p.client.Models.GenerateContent(ctx, model, p.buildContents(request), p.buildConfig(model, request))
+	contents := p.buildContents(request)
+	// SYSTEM 已抽到 SystemInstruction；出站前按转换后 contents 校验，避免空 contents 被上游 400 冒充成供应商故障。
+	if err := requireGeminiContents(contents); err != nil {
+		return nil, err
+	}
+	response, err := p.client.Models.GenerateContent(ctx, model, contents, p.buildConfig(model, request))
 	if err != nil {
 		return nil, p.mapError(ctx, "generate content", err)
 	}
@@ -125,11 +130,16 @@ func (p *Provider) GenerateStream(ctx context.Context, model string, request *mo
 	if err := validateGeminiGenerateInput(request); err != nil {
 		return nil, err
 	}
+	contents := p.buildContents(request)
+	// 与非流式同一边界：空 contents 在进 SDK 前失败，流式也不会发起供应商连接。
+	if err := requireGeminiContents(contents); err != nil {
+		return nil, err
+	}
 	var finishReason string
 	var responseID string
 	var usage *modelhubv2.Usage
 
-	for response, err := range p.client.Models.GenerateContentStream(ctx, model, p.buildContents(request), p.buildConfig(model, request)) {
+	for response, err := range p.client.Models.GenerateContentStream(ctx, model, contents, p.buildConfig(model, request)) {
 		if err != nil {
 			return nil, p.mapError(ctx, "stream content", err)
 		}
@@ -188,6 +198,16 @@ func (p *Provider) buildContents(request *modelhubv2.GenerateRequest) []*genaisd
 		}
 	}
 	return contents
+}
+
+// requireGeminiContents 保证至少一条真正进入 Gemini contents 的内容。
+// 不能只数非 SYSTEM role：空文本 USER、无 parts 的消息转换后同样为空，上游会 400。
+// CachedContent 只是前缀资源，仍需要本轮非 system contents；本校验不改写角色或补占位。
+func requireGeminiContents(contents []*genaisdk.Content) error {
+	if len(contents) == 0 {
+		return provider.New(provider.ErrorInvalidArgument, "Gemini requires at least one non-system content message")
+	}
+	return nil
 }
 
 // convertToolOutputContents 把工具回执转成 function response，图片紧跟该项。
