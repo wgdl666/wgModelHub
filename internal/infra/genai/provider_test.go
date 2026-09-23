@@ -263,7 +263,7 @@ func TestBuildConfigLeavesGemini25EnabledBudgetUnset(t *testing.T) {
 	}
 }
 
-// TestBuildConfigForwardsGemini25ThinkingBudget 证明调用方预算原样下发，含显式 0，ModelHub 不改写。
+// TestBuildConfigForwardsGemini25ThinkingBudget 证明范围内的预算原样下发，含显式 0。
 func TestBuildConfigForwardsGemini25ThinkingBudget(t *testing.T) {
 	budget := int32(24576)
 	cfg := (&Provider{}).buildConfig(models.Gemini25Flash, &modelhubv2.GenerateRequest{
@@ -297,6 +297,62 @@ func TestBuildConfigIgnoresThinkingBudgetOnLevelModels(t *testing.T) {
 	})
 	if cfg.ThinkingConfig != nil {
 		t.Fatalf("thinking = %#v, want unset for gemini-3.7-flash", cfg.ThinkingConfig)
+	}
+}
+
+func TestBuildConfigGemini25UsesBudgetAheadOfLevel(t *testing.T) {
+	budget := int32(30000)
+	level := modelhubv2.ThinkingLevel_THINKING_LEVEL_LOW
+	cfg := (&Provider{}).buildConfig(models.Gemini25Flash, &modelhubv2.GenerateRequest{
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{
+			ThinkingLevel:  level,
+			ThinkingBudget: &budget,
+		}}},
+	})
+	if cfg.ThinkingConfig == nil || cfg.ThinkingConfig.ThinkingBudget == nil || *cfg.ThinkingConfig.ThinkingBudget != 24576 {
+		t.Fatalf("thinking = %#v, want clamped budget 24576", cfg.ThinkingConfig)
+	}
+	if cfg.ThinkingConfig.ThinkingLevel != "" && cfg.ThinkingConfig.ThinkingLevel != genaisdk.ThinkingLevelUnspecified {
+		t.Fatalf("thinking level = %q, want unset", cfg.ThinkingConfig.ThinkingLevel)
+	}
+
+	levelOnly := (&Provider{}).buildConfig(models.Gemini25Flash, &modelhubv2.GenerateRequest{
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{
+			ThinkingLevel: modelhubv2.ThinkingLevel_THINKING_LEVEL_MEDIUM,
+		}}},
+	})
+	if levelOnly.ThinkingConfig == nil || levelOnly.ThinkingConfig.ThinkingBudget == nil || *levelOnly.ThinkingConfig.ThinkingBudget != 8192 {
+		t.Fatalf("thinking = %#v, want mapped budget 8192", levelOnly.ThinkingConfig)
+	}
+}
+
+func TestBuildConfigGemini37MinimalBecomesLowAndDropsBudget(t *testing.T) {
+	budget := int32(10000)
+	cfg := (&Provider{}).buildConfig(models.Gemini37Flash, &modelhubv2.GenerateRequest{
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{
+			ThinkingLevel:  modelhubv2.ThinkingLevel_THINKING_LEVEL_MINIMAL,
+			ThinkingBudget: &budget,
+		}}},
+	})
+	if cfg.ThinkingConfig == nil || cfg.ThinkingConfig.ThinkingLevel != genaisdk.ThinkingLevelLow {
+		t.Fatalf("thinking = %#v, want LOW", cfg.ThinkingConfig)
+	}
+	if cfg.ThinkingConfig.ThinkingBudget != nil {
+		t.Fatalf("budget = %#v, want unset", cfg.ThinkingConfig.ThinkingBudget)
+	}
+}
+
+func TestBuildConfigOmitsThinkingForGemini20(t *testing.T) {
+	budget := int32(128)
+	cfg := (&Provider{}).buildConfig(models.Gemini20Flash001, &modelhubv2.GenerateRequest{
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{
+			Thinking:       modelhubv2.ThinkingMode_THINKING_MODE_DISABLED,
+			ThinkingLevel:  modelhubv2.ThinkingLevel_THINKING_LEVEL_HIGH,
+			ThinkingBudget: &budget,
+		}}},
+	})
+	if cfg.ThinkingConfig != nil {
+		t.Fatalf("thinking = %#v, want unset for gemini-2.0-flash-001", cfg.ThinkingConfig)
 	}
 }
 

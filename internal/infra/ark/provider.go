@@ -13,6 +13,8 @@ import (
 	"github.com/volcengine/volcengine-go-sdk/service/arkruntime/model/responses"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/provider"
+	"github.com/wgdl666/wgModelHub/internal/thinking"
+	"github.com/wgdl666/wgModelHub/models"
 )
 
 const DefaultBaseURL = "https://ark.cn-beijing.volces.com/api/v3"
@@ -158,12 +160,7 @@ func (p *Provider) buildRequest(model string, request *modelhubv2.GenerateReques
 		}
 	}
 	if text != nil {
-		switch text.Thinking {
-		case modelhubv2.ThinkingMode_THINKING_MODE_ENABLED:
-			arkReq.Thinking = &responses.ResponsesThinking{Type: responses.ThinkingType_enabled.Enum()}
-		case modelhubv2.ThinkingMode_THINKING_MODE_DISABLED:
-			arkReq.Thinking = &responses.ResponsesThinking{Type: responses.ThinkingType_disabled.Enum()}
-		}
+		applyArkThinking(arkReq, model, thinking.FromText(text))
 		if format := text.ResponseFormat; format != nil {
 			switch format.Type {
 			case modelhubv2.ResponseFormatType_RESPONSE_FORMAT_TYPE_JSON_OBJECT:
@@ -532,6 +529,74 @@ func (p *Provider) mapError(ctx context.Context, operation string, err error) er
 		return provider.FromHTTPDetail(p.name, requestError.HTTPStatusCode, detail)
 	}
 	return provider.Wrap(provider.ErrorUnavailable, p.name+" "+operation+" failed", err)
+}
+
+// applyArkThinking 开关和档位不同时发。2.0-lite 实测两个一起会被拒。
+// 预算没有对应字段，直接丢掉。doubao-seed-1.6 的参数表没有档位，只转发开关。
+func applyArkThinking(arkReq *responses.ResponsesRequest, model string, choice thinking.Choice) {
+	switch model {
+	case models.DoubaoSeed16:
+		applyArkSwitch(arkReq, choice)
+	case models.DoubaoSeed20Mini, models.DoubaoSeed20Lite, models.DoubaoSeed21Pro:
+		applyArkEffort(arkReq, choice, doubaoReasoningEffort)
+	case models.DeepSeekV4Flash, models.DeepSeekV41Flash:
+		applyArkEffort(arkReq, choice, deepseekReasoningEffort)
+	}
+}
+
+func applyArkSwitch(arkReq *responses.ResponsesRequest, choice thinking.Choice) {
+	switch {
+	case choice.Off:
+		arkReq.Thinking = &responses.ResponsesThinking{Type: responses.ThinkingType_disabled.Enum()}
+	case choice.On:
+		arkReq.Thinking = &responses.ResponsesThinking{Type: responses.ThinkingType_enabled.Enum()}
+	}
+}
+
+func applyArkEffort(arkReq *responses.ResponsesRequest, choice thinking.Choice, effort func(modelhubv2.ThinkingLevel) (responses.ReasoningEffort_Enum, bool)) {
+	if choice.Off {
+		arkReq.Thinking = &responses.ResponsesThinking{Type: responses.ThinkingType_disabled.Enum()}
+		return
+	}
+	if choice.Level != modelhubv2.ThinkingLevel_THINKING_LEVEL_UNSPECIFIED {
+		if value, ok := effort(choice.Level); ok {
+			arkReq.Reasoning = &responses.ResponsesReasoning{Effort: value}
+		}
+		return
+	}
+	if choice.On {
+		arkReq.Thinking = &responses.ResponsesThinking{Type: responses.ThinkingType_enabled.Enum()}
+	}
+}
+
+func doubaoReasoningEffort(level modelhubv2.ThinkingLevel) (responses.ReasoningEffort_Enum, bool) {
+	switch level {
+	case modelhubv2.ThinkingLevel_THINKING_LEVEL_MINIMAL:
+		return responses.ReasoningEffort_minimal, true
+	case modelhubv2.ThinkingLevel_THINKING_LEVEL_LOW:
+		return responses.ReasoningEffort_low, true
+	case modelhubv2.ThinkingLevel_THINKING_LEVEL_MEDIUM:
+		return responses.ReasoningEffort_medium, true
+	case modelhubv2.ThinkingLevel_THINKING_LEVEL_HIGH:
+		return responses.ReasoningEffort_high, true
+	default:
+		return responses.ReasoningEffort_unspecified, false
+	}
+}
+
+// deepseekReasoningEffort 把 MEDIUM 收成 high，因为 DeepSeek 没有 medium 这个原值。
+// 当前方舟 SDK 的 effort 枚举没有 max，HIGH 也只能发 high。
+func deepseekReasoningEffort(level modelhubv2.ThinkingLevel) (responses.ReasoningEffort_Enum, bool) {
+	switch level {
+	case modelhubv2.ThinkingLevel_THINKING_LEVEL_MINIMAL:
+		return responses.ReasoningEffort_minimal, true
+	case modelhubv2.ThinkingLevel_THINKING_LEVEL_LOW:
+		return responses.ReasoningEffort_low, true
+	case modelhubv2.ThinkingLevel_THINKING_LEVEL_MEDIUM, modelhubv2.ThinkingLevel_THINKING_LEVEL_HIGH:
+		return responses.ReasoningEffort_high, true
+	default:
+		return responses.ReasoningEffort_unspecified, false
+	}
 }
 
 // upstreamModel 把 ModelHub 真实模型 ID 转为上游 Responses model 字段；未配置 endpoint_id 时保持原样（如 doubao-seed-1.6 直连）。

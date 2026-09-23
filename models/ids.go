@@ -30,7 +30,8 @@ const (
 	Qwen38Flash = "qwen3.8-flash"
 	// ClaudeHaiku45 固定官方稳定快照 ID；request.model 禁止写成市场简称或自造 alias。
 	ClaudeHaiku45 = "claude-haiku-4-5-20251001"
-	// GLM53Flash 智谱开放平台真实模型名；上游走 OpenAI-compatible Chat Completions；Hub DISABLED→thinking.type=disabled。
+	// GLM53Flash 智谱开放平台真实模型名；上游走 OpenAI-compatible Chat Completions。
+	// thinking.type=disabled 会让请求失败，关思考改发 reasoning_effort=low。
 	GLM53Flash         = "glm-5.3-flash"
 	Gemini3ProImage    = "gemini-3-pro-image"
 	Gemini25FlashImage = "gemini-2.5-flash-image"

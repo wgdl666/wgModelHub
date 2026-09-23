@@ -335,3 +335,77 @@ func TestBuildRequestMapsToolChoice(t *testing.T) {
 		t.Fatalf("FUNCTION = %#v", arkReq.ToolChoice)
 	}
 }
+
+func TestBuildRequestDoubaoLevelOmitsThinkingSwitch(t *testing.T) {
+	p := &Provider{name: "ark"}
+	budget := int32(4096)
+	arkReq, err := p.buildRequest(models.DoubaoSeed21Pro, &modelhubv2.GenerateRequest{
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{
+			Thinking:       modelhubv2.ThinkingMode_THINKING_MODE_ENABLED,
+			ThinkingLevel:  modelhubv2.ThinkingLevel_THINKING_LEVEL_HIGH,
+			ThinkingBudget: &budget,
+		}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if arkReq.Thinking != nil {
+		t.Fatalf("thinking = %#v, want unset when level is set", arkReq.Thinking)
+	}
+	if arkReq.Reasoning == nil || arkReq.Reasoning.Effort != responses.ReasoningEffort_high {
+		t.Fatalf("reasoning = %#v, want high", arkReq.Reasoning)
+	}
+
+	off, err := p.buildRequest(models.DoubaoSeed20Lite, &modelhubv2.GenerateRequest{
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{
+			Thinking:      modelhubv2.ThinkingMode_THINKING_MODE_DISABLED,
+			ThinkingLevel: modelhubv2.ThinkingLevel_THINKING_LEVEL_HIGH,
+		}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if off.Thinking == nil || off.Thinking.GetType() != responses.ThinkingType_disabled {
+		t.Fatalf("thinking = %#v, want disabled", off.Thinking)
+	}
+	if off.Reasoning != nil {
+		t.Fatalf("reasoning = %#v, want unset when off", off.Reasoning)
+	}
+}
+
+func TestBuildRequestSeed16DropsLevel(t *testing.T) {
+	p := &Provider{name: "ark"}
+	arkReq, err := p.buildRequest(models.DoubaoSeed16, &modelhubv2.GenerateRequest{
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{
+			Thinking:      modelhubv2.ThinkingMode_THINKING_MODE_ENABLED,
+			ThinkingLevel: modelhubv2.ThinkingLevel_THINKING_LEVEL_LOW,
+		}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if arkReq.Thinking == nil || arkReq.Thinking.GetType() != responses.ThinkingType_enabled {
+		t.Fatalf("thinking = %#v, want enabled", arkReq.Thinking)
+	}
+	if arkReq.Reasoning != nil {
+		t.Fatalf("seed 1.6 must drop level: %#v", arkReq.Reasoning)
+	}
+}
+
+func TestBuildRequestDeepSeekMediumBecomesHigh(t *testing.T) {
+	p := &Provider{name: "ark"}
+	arkReq, err := p.buildRequest(models.DeepSeekV4Flash, &modelhubv2.GenerateRequest{
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{
+			ThinkingLevel: modelhubv2.ThinkingLevel_THINKING_LEVEL_MEDIUM,
+		}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if arkReq.Thinking != nil {
+		t.Fatalf("thinking = %#v, want unset", arkReq.Thinking)
+	}
+	if arkReq.Reasoning == nil || arkReq.Reasoning.Effort != responses.ReasoningEffort_high {
+		t.Fatalf("reasoning = %#v, want high", arkReq.Reasoning)
+	}
+}

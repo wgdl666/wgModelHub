@@ -99,7 +99,7 @@ providers:
       api_key: "${ANTHROPIC_API_KEY}"
       base_url: https://api.anthropic.com/v1
   # 智谱 GLM-5.3-flash：原生多模态文本，OpenAI-compatible Chat Completions。
-  # 统一协议 DISABLED 映射为 thinking.type=disabled（当前 endpoint 接受）；供应商仍可能返回 reasoning_content。
+  # 不发 thinking.type=disabled（智谱会拒绝）；关思考改为 reasoning_effort=low。
   zhipu_glm:
     models: [glm-5.3-flash]
     openai:

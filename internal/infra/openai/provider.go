@@ -16,6 +16,7 @@ import (
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
+	"github.com/wgdl666/wgModelHub/internal/thinking"
 	"github.com/wgdl666/wgModelHub/models"
 	"github.com/wgdl666/wgModelHub/protocol"
 )
@@ -251,34 +252,144 @@ func (p *Provider) buildRequestBody(model string, request *modelhubv2.GenerateRe
 			}
 		}
 	}
-	if text != nil && text.Thinking != modelhubv2.ThinkingMode_THINKING_MODE_UNSPECIFIED {
-		applyThinking(body, model, text.Thinking)
+	if text != nil {
+		applyTextThinking(body, model, text)
 	}
 	return body
 }
 
-// applyThinking 把统一协议 ThinkingMode 映射到供应商字段。
-// DashScope Qwen 走 enable_thinking。
-// GLM-5.3-flash：当前智谱 endpoint 接受 thinking.type=disabled（ToolChoice=required 探针通过）；
-// 但仍可能返回 reasoning_content，因此 DISABLED→disabled 不是保证 true-off，只是显式关闭请求。
-// Claude Haiku 走 Anthropic OpenAI-compat，不得下发 DashScope/GLM 私有思考字段；
-// DISABLED 对 Haiku 表示不启用任何额外思考字段。
-func applyThinking(body map[string]any, model string, thinking modelhubv2.ThinkingMode) {
-	if thinking == modelhubv2.ThinkingMode_THINKING_MODE_UNSPECIFIED {
-		return
+// applyTextThinking 只发这家认的一种强度。档位和预算不同时出现。
+func applyTextThinking(body map[string]any, model string, text *modelhubv2.TextOutput) {
+	choice := thinking.FromText(text)
+	switch model {
+	case models.ClaudeHaiku45:
+		applyClaudeThinking(body, choice)
+	case models.GLM53Flash:
+		applyGLMThinking(body, choice)
+	case models.Qwen38Flash:
+		applyQwen38Thinking(body, choice)
+	case models.Qwen35Flash, models.Qwen37Flash, models.Qwen3VLPlus:
+		// Chat Completions 只给这三款写了 enable_thinking 和 thinking_budget，没有 reasoning_effort 档位表。
+		applyQwenBudgetThinking(body, choice)
+	default:
+		// qwen-flash 等只转发开关。档位和预算不是这些端点的字段。
+		if choice.Off {
+			body["enable_thinking"] = false
+		} else if choice.On {
+			body["enable_thinking"] = true
+		}
 	}
-	if model == models.ClaudeHaiku45 {
-		return
-	}
-	if model == models.GLM53Flash {
-		if thinking == modelhubv2.ThinkingMode_THINKING_MODE_DISABLED {
-			body["thinking"] = map[string]any{"type": "disabled"}
+}
+
+// applyQwen38Thinking：qwen3.8 的合法档是 low / medium / xhigh。
+// 档位和 thinking_budget 一起发会报错，所以有档位就只发档位。
+func applyQwen38Thinking(body map[string]any, choice thinking.Choice) {
+	switch {
+	case choice.Off:
+		body["enable_thinking"] = false
+	case choice.Level != modelhubv2.ThinkingLevel_THINKING_LEVEL_UNSPECIFIED:
+		effort, ok := qwen38ReasoningEffort(choice.Level)
+		if !ok {
 			return
 		}
-		body["thinking"] = map[string]any{"type": "enabled"}
+		body["enable_thinking"] = true
+		body["reasoning_effort"] = effort
+	case choice.Budget != nil:
+		body["enable_thinking"] = true
+		body["thinking_budget"] = *choice.Budget
+	case choice.On:
+		body["enable_thinking"] = true
+	}
+}
+
+// applyQwenBudgetThinking 用于没有 reasoning_effort 档位表的 Qwen。
+// 有预算就发预算；只填了档位时不发明 token 数，只按开关处理。
+func applyQwenBudgetThinking(body map[string]any, choice thinking.Choice) {
+	switch {
+	case choice.Off:
+		body["enable_thinking"] = false
+	case choice.Budget != nil:
+		body["enable_thinking"] = true
+		body["thinking_budget"] = *choice.Budget
+	case choice.On || choice.Level != modelhubv2.ThinkingLevel_THINKING_LEVEL_UNSPECIFIED:
+		body["enable_thinking"] = true
+	}
+}
+
+func qwen38ReasoningEffort(level modelhubv2.ThinkingLevel) (string, bool) {
+	switch level {
+	case modelhubv2.ThinkingLevel_THINKING_LEVEL_MINIMAL, modelhubv2.ThinkingLevel_THINKING_LEVEL_LOW:
+		return "low", true
+	case modelhubv2.ThinkingLevel_THINKING_LEVEL_MEDIUM:
+		return "medium", true
+	case modelhubv2.ThinkingLevel_THINKING_LEVEL_HIGH:
+		return "xhigh", true
+	default:
+		return "", false
+	}
+}
+
+// applyGLMThinking 不发 thinking.type=disabled，智谱会直接拒绝。
+// 关和 MINIMAL/LOW 用 reasoning_effort=low；没填档位则不发，默认是 max。
+func applyGLMThinking(body map[string]any, choice thinking.Choice) {
+	effort, ok := glmReasoningEffort(choice)
+	if !ok {
 		return
 	}
-	body["enable_thinking"] = thinking == modelhubv2.ThinkingMode_THINKING_MODE_ENABLED
+	body["reasoning_effort"] = effort
+}
+
+func glmReasoningEffort(choice thinking.Choice) (string, bool) {
+	if choice.Off {
+		return "low", true
+	}
+	switch choice.Level {
+	case modelhubv2.ThinkingLevel_THINKING_LEVEL_MINIMAL, modelhubv2.ThinkingLevel_THINKING_LEVEL_LOW:
+		return "low", true
+	case modelhubv2.ThinkingLevel_THINKING_LEVEL_MEDIUM:
+		return "high", true
+	case modelhubv2.ThinkingLevel_THINKING_LEVEL_HIGH:
+		return "max", true
+	default:
+		return "", false
+	}
+}
+
+// claudeMinBudgetTokens 是 Haiku 4.5 扩展思考的下限。小于它会 400，所以抬到 1024。
+// 没写预算也没写档位时不发思考字段，Haiku 默认就是关。
+const claudeMinBudgetTokens int32 = 1024
+
+func applyClaudeThinking(body map[string]any, choice thinking.Choice) {
+	if choice.Off {
+		return
+	}
+	var budget int32
+	switch {
+	case choice.Budget != nil:
+		budget = *choice.Budget
+	case choice.Level != modelhubv2.ThinkingLevel_THINKING_LEVEL_UNSPECIFIED:
+		budget = claudeBudgetForLevel(choice.Level)
+	default:
+		return
+	}
+	if budget < claudeMinBudgetTokens {
+		budget = claudeMinBudgetTokens
+	}
+	body["thinking"] = map[string]any{
+		"type":          "enabled",
+		"budget_tokens": budget,
+	}
+}
+
+func claudeBudgetForLevel(level modelhubv2.ThinkingLevel) int32 {
+	switch level {
+	case modelhubv2.ThinkingLevel_THINKING_LEVEL_MEDIUM:
+		return 4096
+	case modelhubv2.ThinkingLevel_THINKING_LEVEL_HIGH:
+		return 16384
+	default:
+		return claudeMinBudgetTokens
+	}
 }
 
 // dashScopeExplicitCacheEligible 判定是否应向 DashScope 下发显式 cache_control。

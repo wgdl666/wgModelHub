@@ -207,11 +207,14 @@ message TextOutput {
   optional double top_p = 3;
   ResponseFormat response_format = 4;
   ThinkingMode thinking = 5;
-  // thinking_budget 由调用方指定，ModelHub 原样下发、不封顶。
-  // 只对 gemini-2.5 等 thinkingBudget 模型生效；未设置且需要思考时不写预算，交给供应商动态决定。
-  // 3.7/3.8/3.5-flash-lite 只接受 thinking level，此字段忽略。
-  // optional 保留显式 0，表示调用方要求关闭思考。
+  // thinking_budget 是调用方给出的思考 token 上限。
+  // 只认数字的模型在没有档位、或档位和数字同时出现时使用它；认档位的模型有档位时丢掉它。
+  // 两个字段可以同时填写，ModelHub 不会因此失败，也不会把档位和数字一起发给上游。
+  // optional 保留显式 0。
   optional int32 thinking_budget = 6;
+  // thinking_level 与生图共用枚举。
+  // 认档位的模型有档位就发档位并丢掉预算；只认数字的模型有预算就用预算，没预算才把档位换成数字。
+  ThinkingLevel thinking_level = 7;
 }
 
 enum ImageOutputModality {

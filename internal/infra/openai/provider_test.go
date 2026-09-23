@@ -273,50 +273,116 @@ func TestBuildRequestBodyClaudeOmitsVendorPrivateFields(t *testing.T) {
 	}
 }
 
-// TestBuildRequestBodyGLMThinkingDisabled 证明 DISABLED 下发 thinking.type=disabled；
-// ENABLED 下发 enabled；UNSPECIFIED 不改供应商默认。智谱可能仍返回 reasoning，属运行时事实。
-func TestBuildRequestBodyGLMThinkingDisabled(t *testing.T) {
+// TestBuildRequestBodyGLMThinkingUsesEffort 证明关思考不发 disabled，改发 low；没填档位不改默认 max。
+func TestBuildRequestBodyGLMThinkingUsesEffort(t *testing.T) {
 	p := &Provider{baseURL: "https://open.bigmodel.cn/api/paas/v4"}
 
-	enabled := p.buildRequestBody(models.GLM53Flash, &modelhubv2.GenerateRequest{
-		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{
-			Thinking: modelhubv2.ThinkingMode_THINKING_MODE_ENABLED,
-		}}},
-	}, false)
-	assertGLMThinkingType(t, enabled, "enabled")
+	enabled := p.buildRequestBody(models.GLM53Flash, textRequest(&modelhubv2.TextOutput{
+		Thinking: modelhubv2.ThinkingMode_THINKING_MODE_ENABLED,
+	}), false)
+	assertNoGLMThinkingType(t, enabled)
 	if _, ok := enabled["reasoning_effort"]; ok {
-		t.Fatalf("enabled thinking must not force reasoning_effort: %#v", enabled["reasoning_effort"])
+		t.Fatalf("enabled without level must keep GLM default max: %#v", enabled["reasoning_effort"])
 	}
 
-	disabled := p.buildRequestBody(models.GLM53Flash, &modelhubv2.GenerateRequest{
-		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{
-			Thinking: modelhubv2.ThinkingMode_THINKING_MODE_DISABLED,
-		}}},
-	}, false)
-	assertGLMThinkingType(t, disabled, "disabled")
-	if _, ok := disabled["reasoning_effort"]; ok {
-		t.Fatalf("disabled thinking must not set reasoning_effort: %#v", disabled["reasoning_effort"])
+	disabled := p.buildRequestBody(models.GLM53Flash, textRequest(&modelhubv2.TextOutput{
+		Thinking: modelhubv2.ThinkingMode_THINKING_MODE_DISABLED,
+	}), false)
+	assertNoGLMThinkingType(t, disabled)
+	if disabled["reasoning_effort"] != "low" {
+		t.Fatalf("reasoning_effort = %#v, want low", disabled["reasoning_effort"])
 	}
 
-	unspecified := p.buildRequestBody(models.GLM53Flash, &modelhubv2.GenerateRequest{
-		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{}}},
-	}, false)
-	if _, ok := unspecified["thinking"]; ok {
-		t.Fatalf("unspecified thinking must preserve GLM default: %#v", unspecified["thinking"])
+	high := p.buildRequestBody(models.GLM53Flash, textRequest(&modelhubv2.TextOutput{
+		ThinkingLevel: modelhubv2.ThinkingLevel_THINKING_LEVEL_HIGH,
+	}), false)
+	if high["reasoning_effort"] != "max" {
+		t.Fatalf("reasoning_effort = %#v, want max", high["reasoning_effort"])
 	}
-	if _, ok := unspecified["enable_thinking"]; ok {
-		t.Fatalf("GLM must not receive DashScope enable_thinking: %#v", unspecified["enable_thinking"])
+	if _, ok := high["thinking_budget"]; ok {
+		t.Fatalf("GLM must drop budget: %#v", high["thinking_budget"])
 	}
 }
 
-func assertGLMThinkingType(t *testing.T, body map[string]any, wantType string) {
+func assertNoGLMThinkingType(t *testing.T, body map[string]any) {
 	t.Helper()
 	if _, ok := body["enable_thinking"]; ok {
 		t.Fatalf("GLM must not receive DashScope enable_thinking: %#v", body["enable_thinking"])
 	}
+	if _, ok := body["thinking"]; ok {
+		t.Fatalf("GLM must not receive thinking.type: %#v", body["thinking"])
+	}
+}
+
+func TestBuildRequestBodyQwenPrefersLevelOverBudget(t *testing.T) {
+	p := dashScopeProvider()
+	budget := int32(1000)
+	body := p.buildRequestBody(models.Qwen38Flash, textRequest(&modelhubv2.TextOutput{
+		ThinkingLevel:  modelhubv2.ThinkingLevel_THINKING_LEVEL_HIGH,
+		ThinkingBudget: &budget,
+	}), false)
+	if body["enable_thinking"] != true || body["reasoning_effort"] != "xhigh" {
+		t.Fatalf("thinking = %#v effort=%#v", body["enable_thinking"], body["reasoning_effort"])
+	}
+	if _, ok := body["thinking_budget"]; ok {
+		t.Fatalf("level and budget must not both be sent: %#v", body["thinking_budget"])
+	}
+
+	onlyBudget := p.buildRequestBody(models.Qwen35Flash, textRequest(&modelhubv2.TextOutput{
+		ThinkingBudget: &budget,
+	}), false)
+	if onlyBudget["enable_thinking"] != true || onlyBudget["thinking_budget"] != int32(1000) {
+		t.Fatalf("budget-only = enable %#v budget %#v", onlyBudget["enable_thinking"], onlyBudget["thinking_budget"])
+	}
+	if _, ok := onlyBudget["reasoning_effort"]; ok {
+		t.Fatalf("budget-only must not send effort: %#v", onlyBudget["reasoning_effort"])
+	}
+
+	levelOnly := p.buildRequestBody(models.Qwen37Flash, textRequest(&modelhubv2.TextOutput{
+		ThinkingLevel: modelhubv2.ThinkingLevel_THINKING_LEVEL_HIGH,
+	}), false)
+	if levelOnly["enable_thinking"] != true {
+		t.Fatalf("enable_thinking = %#v", levelOnly["enable_thinking"])
+	}
+	if _, ok := levelOnly["reasoning_effort"]; ok {
+		t.Fatalf("qwen3.7 must not receive reasoning_effort: %#v", levelOnly["reasoning_effort"])
+	}
+	if _, ok := levelOnly["thinking_budget"]; ok {
+		t.Fatalf("level-only must not invent thinking_budget: %#v", levelOnly["thinking_budget"])
+	}
+}
+
+func TestBuildRequestBodyClaudeUsesBudgetWhenPresent(t *testing.T) {
+	p := &Provider{baseURL: "https://api.anthropic.com/v1"}
+	budget := int32(100)
+	body := p.buildRequestBody(models.ClaudeHaiku45, textRequest(&modelhubv2.TextOutput{
+		ThinkingLevel:  modelhubv2.ThinkingLevel_THINKING_LEVEL_HIGH,
+		ThinkingBudget: &budget,
+	}), false)
 	thinking, ok := body["thinking"].(map[string]any)
-	if !ok || thinking["type"] != wantType {
-		t.Fatalf("thinking = %#v, want type=%q", body["thinking"], wantType)
+	if !ok || thinking["type"] != "enabled" || thinking["budget_tokens"] != int32(1024) {
+		t.Fatalf("thinking = %#v, want budget_tokens 1024", body["thinking"])
+	}
+
+	levelOnly := p.buildRequestBody(models.ClaudeHaiku45, textRequest(&modelhubv2.TextOutput{
+		ThinkingLevel: modelhubv2.ThinkingLevel_THINKING_LEVEL_MEDIUM,
+	}), false)
+	thinking, ok = levelOnly["thinking"].(map[string]any)
+	if !ok || thinking["budget_tokens"] != int32(4096) {
+		t.Fatalf("thinking = %#v, want budget_tokens 4096", levelOnly["thinking"])
+	}
+
+	off := p.buildRequestBody(models.ClaudeHaiku45, textRequest(&modelhubv2.TextOutput{
+		Thinking: modelhubv2.ThinkingMode_THINKING_MODE_DISABLED,
+	}), false)
+	if _, ok := off["thinking"]; ok {
+		t.Fatalf("disabled Claude must omit thinking: %#v", off["thinking"])
+	}
+}
+
+func textRequest(text *modelhubv2.TextOutput) *modelhubv2.GenerateRequest {
+	return &modelhubv2.GenerateRequest{
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: text}},
 	}
 }
 

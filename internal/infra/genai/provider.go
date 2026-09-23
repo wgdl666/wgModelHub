@@ -12,6 +12,7 @@ import (
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
+	"github.com/wgdl666/wgModelHub/internal/thinking"
 	"github.com/wgdl666/wgModelHub/models"
 	genaisdk "google.golang.org/genai"
 )
@@ -375,35 +376,89 @@ func (p *Provider) buildConfig(model string, request *modelhubv2.GenerateRequest
 	return cfg
 }
 
-// applyTextThinking 映射文本思考参数。
-// gemini-2.5 等 thinkingBudget 模型：调用方 thinking_budget 原样下发（含 0），ModelHub 不封顶。
-// 未设置预算时，只有 DISABLED 发 0 以关掉默认思考；ENABLED 不写预算，由 Gemini 动态决定。
-// 3.7/3.8/3.5-flash-lite 只接受 thinking level，忽略 thinking_budget，DISABLED 仍落到最低合法档。
+// gemini25BudgetMin / gemini25BudgetMax 是官方 thinkingBudget 范围。超出范围夹紧，避免非法数字让请求失败。
+const (
+	gemini25BudgetMin int32 = 0
+	gemini25BudgetMax int32 = 24576
+)
+
+// applyTextThinking 按模型只发一种思考参数。
+// 3.7/3.8 与 3.5-flash-lite 认档位，预算丢掉；2.5 只认数字，有预算用预算，否则把档位换成数字。
+// 2.0 没有思考参数，三个字段都不发。
 func applyTextThinking(cfg *genaisdk.GenerateContentConfig, model string, textSpec *modelhubv2.TextOutput) {
 	if cfg == nil || textSpec == nil {
 		return
 	}
+	choice := thinking.FromText(textSpec)
 	switch model {
 	case models.Gemini37Flash, models.Gemini38Flash:
-		if textSpec.Thinking == modelhubv2.ThinkingMode_THINKING_MODE_DISABLED {
-			// 3.7/3.8 仅 LOW/MEDIUM/HIGH，ThinkingBudget=0 仍会产出 thoughts。DISABLED → LOW。
+		// 3.7/3.8 只有 LOW/MEDIUM/HIGH，MINIMAL 和关都会 400 或关不掉，统一落到 LOW。
+		if choice.Off {
 			cfg.ThinkingConfig = &genaisdk.ThinkingConfig{ThinkingLevel: genaisdk.ThinkingLevelLow}
-		}
-	case models.Gemini35FlashLite:
-		if textSpec.Thinking == modelhubv2.ThinkingMode_THINKING_MODE_DISABLED {
-			// 3.5 Flash-Lite 支持 MINIMAL；Hub DISABLED 一律 MINIMAL，不按环境抬到 LOW。
-			cfg.ThinkingConfig = &genaisdk.ThinkingConfig{ThinkingLevel: genaisdk.ThinkingLevelMinimal}
-		}
-	default:
-		if textSpec.ThinkingBudget != nil {
-			budget := *textSpec.ThinkingBudget
-			cfg.ThinkingConfig = &genaisdk.ThinkingConfig{ThinkingBudget: &budget}
 			return
 		}
-		if textSpec.Thinking == modelhubv2.ThinkingMode_THINKING_MODE_DISABLED {
-			cfg.ThinkingConfig = &genaisdk.ThinkingConfig{ThinkingBudget: genaisdk.Ptr(int32(0))}
+		if choice.Level != modelhubv2.ThinkingLevel_THINKING_LEVEL_UNSPECIFIED {
+			cfg.ThinkingConfig = &genaisdk.ThinkingConfig{ThinkingLevel: geminiTextLevel(choice.Level, false)}
 		}
+	case models.Gemini35FlashLite:
+		if choice.Off {
+			cfg.ThinkingConfig = &genaisdk.ThinkingConfig{ThinkingLevel: genaisdk.ThinkingLevelMinimal}
+			return
+		}
+		if choice.Level != modelhubv2.ThinkingLevel_THINKING_LEVEL_UNSPECIFIED {
+			cfg.ThinkingConfig = &genaisdk.ThinkingConfig{ThinkingLevel: geminiTextLevel(choice.Level, true)}
+		}
+	case models.Gemini25Flash:
+		applyGemini25Budget(cfg, choice)
+	case models.Gemini20Flash001:
+		// 2.0 的思考文档没有开关、档位或预算，原样转发会变成未文档化字段。
 	}
+}
+
+func applyGemini25Budget(cfg *genaisdk.GenerateContentConfig, choice thinking.Choice) {
+	switch {
+	case choice.Off:
+		cfg.ThinkingConfig = &genaisdk.ThinkingConfig{ThinkingBudget: genaisdk.Ptr(int32(0))}
+	case choice.Budget != nil:
+		budget := clampGemini25Budget(*choice.Budget)
+		cfg.ThinkingConfig = &genaisdk.ThinkingConfig{ThinkingBudget: &budget}
+	case choice.Level != modelhubv2.ThinkingLevel_THINKING_LEVEL_UNSPECIFIED:
+		budget := gemini25BudgetForLevel(choice.Level)
+		cfg.ThinkingConfig = &genaisdk.ThinkingConfig{ThinkingBudget: &budget}
+	}
+}
+
+func clampGemini25Budget(budget int32) int32 {
+	if budget < gemini25BudgetMin {
+		return gemini25BudgetMin
+	}
+	if budget > gemini25BudgetMax {
+		return gemini25BudgetMax
+	}
+	return budget
+}
+
+// gemini25BudgetForLevel 里的 1024 不是官方档位表，只是合法范围内的偏低数字。
+// 0、8192、24576 分别对应文档里的关闭、默认上限和最大预算。
+func gemini25BudgetForLevel(level modelhubv2.ThinkingLevel) int32 {
+	switch level {
+	case modelhubv2.ThinkingLevel_THINKING_LEVEL_LOW:
+		return 1024
+	case modelhubv2.ThinkingLevel_THINKING_LEVEL_MEDIUM:
+		return 8192
+	case modelhubv2.ThinkingLevel_THINKING_LEVEL_HIGH:
+		return gemini25BudgetMax
+	default:
+		return 0
+	}
+}
+
+func geminiTextLevel(level modelhubv2.ThinkingLevel, minimalOK bool) genaisdk.ThinkingLevel {
+	converted := convertImageThinkingLevel(level)
+	if !minimalOK && converted == genaisdk.ThinkingLevelMinimal {
+		return genaisdk.ThinkingLevelLow
+	}
+	return converted
 }
 
 func buildTools(tools []*modelhubv2.Tool) []*genaisdk.Tool {
