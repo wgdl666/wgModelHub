@@ -55,6 +55,11 @@ const (
 	HumanYOLO = "human-yolo"
 	// RekognitionDetectLabels 是 DetectLabels 的 Person 实例框，和 HumanYOLO 不能互相替代。
 	RekognitionDetectLabels = "rekognition-detect-labels"
+	// FacebodyCompareFace 是阿里云 Facebody 的 1:1 比对。两张图进，0 到 1 的相似度出。
+	// 与 RekognitionCompareFaces 不能互相替代，调用方按地区填写真实模型 ID。
+	FacebodyCompareFace = "facebody-compare-face"
+	// RekognitionCompareFaces 是 Rekognition CompareFaces。空结果按相似度 0，不把无人脸当成供应商故障。
+	RekognitionCompareFaces = "rekognition-compare-faces"
 	// HumanParser 是自建人体解析 POST /predict，输出分割图而不是检测框。
 	HumanParser = "human-parser"
 	LTX         = "ltx"
@@ -137,6 +142,8 @@ func All() []string {
 		SegmentSubjectBria,
 		HumanYOLO,
 		RekognitionDetectLabels,
+		FacebodyCompareFace,
+		RekognitionCompareFaces,
 		HumanParser,
 		LTX,
 		Wan22I2VFlash,

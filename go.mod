@@ -5,10 +5,15 @@ go 1.26.0
 require (
 	entgo.io/ent v0.14.5
 	github.com/DATA-DOG/go-sqlmock v1.5.2
+	github.com/alibabacloud-go/darabonba-openapi/v2 v2.0.11
+	github.com/alibabacloud-go/facebody-20191230/v4 v4.0.0
+	github.com/alibabacloud-go/tea v1.4.0
+	github.com/alibabacloud-go/tea-utils/v2 v2.0.7
 	github.com/aws/aws-sdk-go-v2 v1.39.2
 	github.com/aws/aws-sdk-go-v2/config v1.31.12
 	github.com/aws/aws-sdk-go-v2/credentials v1.18.16
 	github.com/aws/aws-sdk-go-v2/service/rekognition v1.50.2
+	github.com/aws/smithy-go v1.23.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/improbable-eng/grpc-web v0.15.0
@@ -44,15 +49,18 @@ require (
 	github.com/alibabacloud-go/darabonba-array v0.1.0 // indirect
 	github.com/alibabacloud-go/darabonba-encode-util v0.0.2 // indirect
 	github.com/alibabacloud-go/darabonba-map v0.0.2 // indirect
-	github.com/alibabacloud-go/darabonba-openapi/v2 v2.0.11 // indirect
+	github.com/alibabacloud-go/darabonba-number v1.0.4 // indirect
 	github.com/alibabacloud-go/darabonba-signature-util v0.0.7 // indirect
 	github.com/alibabacloud-go/darabonba-string v1.0.2 // indirect
 	github.com/alibabacloud-go/debug v1.0.1 // indirect
 	github.com/alibabacloud-go/endpoint-util v1.1.0 // indirect
 	github.com/alibabacloud-go/kms-20160120/v3 v3.2.3 // indirect
 	github.com/alibabacloud-go/openapi-util v0.1.1 // indirect
-	github.com/alibabacloud-go/tea v1.4.0 // indirect
-	github.com/alibabacloud-go/tea-utils/v2 v2.0.7 // indirect
+	github.com/alibabacloud-go/openplatform-20191219/v2 v2.0.1 // indirect
+	github.com/alibabacloud-go/tea-fileform v1.1.1 // indirect
+	github.com/alibabacloud-go/tea-oss-sdk v1.1.3 // indirect
+	github.com/alibabacloud-go/tea-oss-utils v1.1.0 // indirect
+	github.com/alibabacloud-go/tea-utils v1.4.4 // indirect
 	github.com/alibabacloud-go/tea-xml v1.1.3 // indirect
 	github.com/aliyun/alibaba-cloud-sdk-go v1.61.1800 // indirect
 	github.com/aliyun/alibabacloud-dkms-gcs-go-sdk v0.5.1 // indirect
@@ -69,7 +77,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sso v1.29.6 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.38.6 // indirect
-	github.com/aws/smithy-go v1.23.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bmatcuk/doublestar v1.3.4 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect

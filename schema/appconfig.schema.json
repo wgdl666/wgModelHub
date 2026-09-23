@@ -66,7 +66,9 @@
         "segment_person": { "$ref": "#/definitions/segmentPerson" },
         "human_yolo": { "$ref": "#/definitions/humanYolo" },
         "human_parser": { "$ref": "#/definitions/humanParser" },
-        "rekognition_detect": { "$ref": "#/definitions/rekognitionDetect" }
+        "rekognition_detect": { "$ref": "#/definitions/rekognitionDetect" },
+        "facebody_compare": { "$ref": "#/definitions/facebodyCompare" },
+        "rekognition_compare": { "$ref": "#/definitions/rekognitionCompare" }
       },
       "oneOf": [
         { "required": ["gemini"] },
@@ -84,7 +86,9 @@
         { "required": ["segment_person"] },
         { "required": ["human_yolo"] },
         { "required": ["human_parser"] },
-        { "required": ["rekognition_detect"] }
+        { "required": ["rekognition_detect"] },
+        { "required": ["facebody_compare"] },
+        { "required": ["rekognition_compare"] }
       ]
     },
     "gemini": {
@@ -234,6 +238,25 @@
       }
     },
     "rekognitionDetect": {
+      "type": "object",
+      "required": ["region"],
+      "properties": {
+        "region": { "type": "string", "minLength": 1 },
+        "access_key_id": { "type": "string" },
+        "access_key_secret": { "type": "string" },
+        "session_token": { "type": "string" }
+      }
+    },
+    "facebodyCompare": {
+      "type": "object",
+      "required": ["endpoint", "access_key_id", "access_key_secret"],
+      "properties": {
+        "endpoint": { "type": "string", "minLength": 1 },
+        "access_key_id": { "type": "string", "minLength": 1 },
+        "access_key_secret": { "type": "string", "minLength": 1 }
+      }
+    },
+    "rekognitionCompare": {
       "type": "object",
       "required": ["region"],
       "properties": {

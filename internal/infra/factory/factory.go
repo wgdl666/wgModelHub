@@ -9,6 +9,7 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/infra/arkvideo"
 	"github.com/wgdl666/wgModelHub/internal/infra/dashscopevideo"
 	"github.com/wgdl666/wgModelHub/internal/infra/elevenlabstts"
+	"github.com/wgdl666/wgModelHub/internal/infra/facebodycompare"
 	"github.com/wgdl666/wgModelHub/internal/infra/geminivideo"
 	"github.com/wgdl666/wgModelHub/internal/infra/genai"
 	"github.com/wgdl666/wgModelHub/internal/infra/humanparser"
@@ -18,6 +19,7 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/infra/ominilinkvideo"
 	"github.com/wgdl666/wgModelHub/internal/infra/openai"
 	"github.com/wgdl666/wgModelHub/internal/infra/photoroom"
+	"github.com/wgdl666/wgModelHub/internal/infra/rekognitioncompare"
 	"github.com/wgdl666/wgModelHub/internal/infra/rekognitiondetect"
 	"github.com/wgdl666/wgModelHub/internal/infra/segmentperson"
 	"github.com/wgdl666/wgModelHub/internal/provider"
@@ -165,6 +167,20 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 	case providerCfg.RekognitionDetect != nil:
 		cfg := providerCfg.RekognitionDetect
 		client, err := rekognitiondetect.New(ctx, name, cfg.Region, cfg.AccessKeyID, cfg.AccessKeySecret, cfg.SessionToken)
+		if err != nil {
+			return provider.Set{}, err
+		}
+		return provider.Set{Text: client}, nil
+	case providerCfg.FacebodyCompare != nil:
+		cfg := providerCfg.FacebodyCompare
+		client, err := facebodycompare.New(name, cfg.Endpoint, cfg.AccessKeyID, cfg.AccessKeySecret)
+		if err != nil {
+			return provider.Set{}, err
+		}
+		return provider.Set{Text: client}, nil
+	case providerCfg.RekognitionCompare != nil:
+		cfg := providerCfg.RekognitionCompare
+		client, err := rekognitioncompare.New(ctx, name, cfg.Region, cfg.AccessKeyID, cfg.AccessKeySecret, cfg.SessionToken)
 		if err != nil {
 			return provider.Set{}, err
 		}

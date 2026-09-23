@@ -61,6 +61,10 @@ type ProviderConfig struct {
 	HumanParser *HumanParserProviderConfig `yaml:"human_parser"`
 	// RekognitionDetect 承接 DetectLabels 人检。Region 不能是 cn-*。
 	RekognitionDetect *RekognitionDetectProviderConfig `yaml:"rekognition_detect"`
+	// FacebodyCompare 承接阿里云 1:1 人脸比对。与 Rekognition 比对分实例，调用方用模型 ID 选择。
+	FacebodyCompare *FacebodyCompareProviderConfig `yaml:"facebody_compare"`
+	// RekognitionCompare 承接 CompareFaces。与 DetectLabels 人检分实例，Region 不能是 cn-*。
+	RekognitionCompare *RekognitionCompareProviderConfig `yaml:"rekognition_compare"`
 }
 
 type GeminiProviderConfig struct {
@@ -182,6 +186,21 @@ type HumanParserProviderConfig struct {
 
 // RekognitionDetectProviderConfig 是 DetectLabels 的区域和可选静态钥。空钥走任务角色。
 type RekognitionDetectProviderConfig struct {
+	Region          string `yaml:"region"`
+	AccessKeyID     string `yaml:"access_key_id"`
+	AccessKeySecret string `yaml:"access_key_secret"`
+	SessionToken    string `yaml:"session_token"`
+}
+
+// FacebodyCompareProviderConfig 是 CompareFace 的上海端点和成对密钥。比对不走任务角色。
+type FacebodyCompareProviderConfig struct {
+	Endpoint        string `yaml:"endpoint"`
+	AccessKeyID     string `yaml:"access_key_id"`
+	AccessKeySecret string `yaml:"access_key_secret"`
+}
+
+// RekognitionCompareProviderConfig 是 CompareFaces 的区域和可选静态钥。空钥走任务角色。
+type RekognitionCompareProviderConfig struct {
 	Region          string `yaml:"region"`
 	AccessKeyID     string `yaml:"access_key_id"`
 	AccessKeySecret string `yaml:"access_key_secret"`
@@ -593,6 +612,21 @@ func validateProvider(name string, provider ProviderConfig) error {
 		if (key == "") != (secret == "") || (strings.TrimSpace(detect.SessionToken) != "" && key == "") {
 			return fmt.Errorf("provider %s rekognition access key and secret must be configured together", name)
 		}
+	case provider.FacebodyCompare != nil:
+		compare := provider.FacebodyCompare
+		if strings.TrimSpace(compare.Endpoint) == "" || strings.TrimSpace(compare.AccessKeyID) == "" || strings.TrimSpace(compare.AccessKeySecret) == "" {
+			return fmt.Errorf("provider %s facebody endpoint, access_key_id and access_key_secret are required", name)
+		}
+	case provider.RekognitionCompare != nil:
+		compare := provider.RekognitionCompare
+		region := strings.TrimSpace(compare.Region)
+		if region == "" || strings.HasPrefix(strings.ToLower(region), "cn-") {
+			return fmt.Errorf("provider %s rekognition region is required and cannot be cn-*", name)
+		}
+		key, secret := strings.TrimSpace(compare.AccessKeyID), strings.TrimSpace(compare.AccessKeySecret)
+		if (key == "") != (secret == "") || (strings.TrimSpace(compare.SessionToken) != "" && key == "") {
+			return fmt.Errorf("provider %s rekognition access key and secret must be configured together", name)
+		}
 	}
 	return nil
 }
@@ -647,6 +681,12 @@ func countConcreteProviders(provider ProviderConfig) int {
 	if provider.RekognitionDetect != nil {
 		n++
 	}
+	if provider.FacebodyCompare != nil {
+		n++
+	}
+	if provider.RekognitionCompare != nil {
+		n++
+	}
 	return n
 }
 
@@ -657,7 +697,7 @@ func ProviderSupports(provider ProviderConfig, capability string) bool {
 		return capability == CapabilityText || capability == CapabilityImage
 	case provider.Photoroom != nil, provider.SegmentPerson != nil:
 		return capability == CapabilityImage
-	case provider.HumanYOLO != nil, provider.HumanParser != nil, provider.RekognitionDetect != nil:
+	case provider.HumanYOLO != nil, provider.HumanParser != nil, provider.RekognitionDetect != nil, provider.FacebodyCompare != nil, provider.RekognitionCompare != nil:
 		return capability == CapabilityText
 	case provider.VertexAI != nil, provider.Ark != nil:
 		return capability == CapabilityText

@@ -45,6 +45,8 @@ var categories = map[string]Category{
 	SegmentSubjectBria:      CategoryImageGeneration,
 	HumanYOLO:               CategoryMultimodal,
 	RekognitionDetectLabels: CategoryMultimodal,
+	FacebodyCompareFace:     CategoryMultimodal,
+	RekognitionCompareFaces: CategoryMultimodal,
 	HumanParser:             CategoryMultimodal,
 
 	LTX:                        CategoryVideoGeneration,
