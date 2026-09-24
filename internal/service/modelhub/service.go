@@ -2,9 +2,12 @@ package modelhub
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/wgdl666/kangaroo/logs"
 
 	"github.com/wgdl666/wgModelHub/config"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
@@ -129,8 +132,40 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 			return sendErr
 		}
 		// 流式：provider 执行内同步 emit 的 Send 背压无法从模型耗时拆开，见 receipt。
+		// 限流和 5xx 在还没往外吐字时重试；已经发出增量就不能再打，否则客户端会看到两段。
+		var emitted bool
+		rawEmit := emit
+		emit = func(event *modelhubv2.GenerateEvent) error {
+			if event != nil && !event.GetFinal() {
+				emitted = true
+			}
+			return rawEmit(event)
+		}
 		callStarted := time.Now()
-		final, err := binding.set.Text.GenerateStream(ctx, binding.model, request, emit)
+		var final *modelhubv2.GenerateEvent
+		var err error
+		for attempt := 0; attempt <= textTransientRetries; attempt++ {
+			if attempt > 0 {
+				if waitErr := waitTextTransientRetry(ctx, attempt); waitErr != nil {
+					err = waitErr
+					break
+				}
+				sequence = 0
+				ttftRecorded = false
+				acc = callledger.NewTextAccumulator()
+				sendErr = nil
+			}
+			final, err = binding.set.Text.GenerateStream(ctx, binding.model, request, emit)
+			if err == nil || sendErr != nil || emitted || !retryableTextProviderError(err) || attempt == textTransientRetries {
+				break
+			}
+			logs.Default().WarnContext(ctx, "modelhub_text_retry",
+				"model", binding.model,
+				"provider", binding.provider,
+				"attempt", attempt+1,
+				"error", err.Error(),
+			)
+		}
 		callFinished := time.Now()
 		stampCallTiming(&rec, callStarted, callFinished)
 		if final == nil {
@@ -174,7 +209,26 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 	}
 
 	callStarted := time.Now()
-	event, err := binding.set.Text.Generate(ctx, binding.model, request)
+	var event *modelhubv2.GenerateEvent
+	var err error
+	for attempt := 0; attempt <= textTransientRetries; attempt++ {
+		if attempt > 0 {
+			if waitErr := waitTextTransientRetry(ctx, attempt); waitErr != nil {
+				err = waitErr
+				break
+			}
+		}
+		event, err = binding.set.Text.Generate(ctx, binding.model, request)
+		if err == nil || !retryableTextProviderError(err) || attempt == textTransientRetries {
+			break
+		}
+		logs.Default().WarnContext(ctx, "modelhub_text_retry",
+			"model", binding.model,
+			"provider", binding.provider,
+			"attempt", attempt+1,
+			"error", err.Error(),
+		)
+	}
 	callFinished := time.Now()
 	stampCallTiming(&rec, callStarted, callFinished)
 	if event == nil {
@@ -203,6 +257,39 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 	s.finishRecord(&rec, nil, sendErr)
 	callledger.BestEffort(ctx, s.ledger, rec)
 	return sendErr
+}
+
+// textTransientRetries 与视频状态查询同一口径：503/429/超时再打三次，仍失败才交回调用方。
+// 只覆盖同步文本。视频提交可能已经受理，不走这里。
+const textTransientRetries = 3
+
+var textTransientRetryDelay = 300 * time.Millisecond
+
+func retryableTextProviderError(err error) bool {
+	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	var providerError *provider.Error
+	if !errors.As(err, &providerError) {
+		return false
+	}
+	switch providerError.Kind {
+	case provider.ErrorRateLimited, provider.ErrorUnavailable, provider.ErrorTimeout:
+		return true
+	default:
+		return false
+	}
+}
+
+func waitTextTransientRetry(ctx context.Context, attempt int) error {
+	timer := time.NewTimer(time.Duration(attempt) * textTransientRetryDelay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 // CreateCachedContent 将 system+tools 前缀落到支持显式缓存的 TextProvider（当前为 Gemini）。
