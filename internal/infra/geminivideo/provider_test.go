@@ -325,6 +325,85 @@ func TestGetVideoStatusMapping(t *testing.T) {
 	}
 }
 
+func TestGetVideoRetriesTransientPollStatuses(t *testing.T) {
+	var hits atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := hits.Add(1)
+		if n < 3 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"error":{"code":503,"message":"unavailable","status":"UNAVAILABLE"}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"id":"int-1","status":"running"}`))
+	}))
+	defer server.Close()
+	p := newTestProvider(server.URL+"/v1beta", server.Client())
+	job, err := p.GetVideo(context.Background(), models.GeminiOmniFlashPreview, "int-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.State != provider.VideoJobRunning {
+		t.Fatalf("state=%v", job.State)
+	}
+	if hits.Load() != 3 {
+		t.Fatalf("hits=%d", hits.Load())
+	}
+}
+
+func TestGetVideoDoesNotRetryContentBlocked(t *testing.T) {
+	var hits atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":{"code":"content_blocked","message":"likeness"}}`))
+	}))
+	defer server.Close()
+	p := newTestProvider(server.URL+"/v1beta", server.Client())
+	_, err := p.GetVideo(context.Background(), models.GeminiOmniFlashPreview, "int-1")
+	if err == nil || !strings.Contains(err.Error(), "content_blocked") {
+		t.Fatalf("err=%v", err)
+	}
+	if hits.Load() != 1 {
+		t.Fatalf("hits=%d", hits.Load())
+	}
+}
+
+func TestGetVideoDoesNotRetryGatewayTimeout(t *testing.T) {
+	var hits atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusGatewayTimeout)
+		_, _ = w.Write([]byte(`{"error":{"code":504,"message":"timeout"}}`))
+	}))
+	defer server.Close()
+	p := newTestProvider(server.URL+"/v1beta", server.Client())
+	_, err := p.GetVideo(context.Background(), models.GeminiOmniFlashPreview, "int-1")
+	if err == nil || !strings.Contains(err.Error(), "HTTP 504") {
+		t.Fatalf("err=%v", err)
+	}
+	if hits.Load() != 1 {
+		t.Fatalf("hits=%d", hits.Load())
+	}
+}
+
+func TestGetVideoExposesTransientPollAfterRetries(t *testing.T) {
+	var hits atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"error":{"code":429,"message":"rate limit"}}`))
+	}))
+	defer server.Close()
+	p := newTestProvider(server.URL+"/v1beta", server.Client())
+	_, err := p.GetVideo(context.Background(), models.GeminiOmniFlashPreview, "int-1")
+	if err == nil || !strings.Contains(err.Error(), "HTTP 429") {
+		t.Fatalf("err=%v", err)
+	}
+	if hits.Load() != transientPollRetries+1 {
+		t.Fatalf("hits=%d", hits.Load())
+	}
+}
+
 func TestLoadMediaBytesEnforcesCallerMaxBytes(t *testing.T) {
 	p, err := New("gemini", "sk", "https://example.com/v1beta", "", "", 1)
 	if err != nil {

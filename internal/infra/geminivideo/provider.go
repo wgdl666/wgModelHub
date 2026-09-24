@@ -29,6 +29,8 @@ const (
 	defaultHTTPTimeout  = 10 * time.Minute
 	videoMIMEType       = "video/mp4"
 	silentVideoSuffix   = " Silent video. No audio, no music, no dialogue, no sound effects."
+	// transientPollRetries 只覆盖同一次状态查询：503 和 429 再问这么多次，仍失败才交回衣橱。
+	transientPollRetries = 3
 )
 
 type Provider struct {
@@ -133,9 +135,10 @@ func (p *Provider) SubmitVideo(ctx context.Context, model string, request *model
 	return p.createInteraction(ctx, body)
 }
 
-// GetVideo 单次 GET interaction；completed/succeeded 视为成功，失败态映射 Failed。
+// GetVideo 查询一次 interaction。503 和 429 先按轮询间隔再问，不把瞬时失败交回衣橱。
+// 其他 HTTP 错误立即返回。completed/succeeded 视为成功，失败态映射 Failed。
 func (p *Provider) GetVideo(ctx context.Context, _ string, providerTaskID string) (provider.VideoJob, error) {
-	interaction, err := p.fetchInteraction(ctx, providerTaskID)
+	interaction, err := p.pollInteraction(ctx, providerTaskID)
 	if err != nil {
 		return provider.VideoJob{}, err
 	}
@@ -318,6 +321,49 @@ func (p *Provider) createInteraction(ctx context.Context, body []byte) (string, 
 	return interactionID, nil
 }
 
+// pollInteraction 对 503 和 429 最多再查 transientPollRetries 次。内容拒绝和超时不重试。
+func (p *Provider) pollInteraction(ctx context.Context, interactionID string) (interactionResponse, error) {
+	var last error
+	for attempt := 0; attempt <= transientPollRetries; attempt++ {
+		if attempt > 0 {
+			timer := time.NewTimer(p.pollInterval)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return interactionResponse{}, ctx.Err()
+			case <-timer.C:
+			}
+		}
+		interaction, err := p.fetchInteraction(ctx, interactionID)
+		if err == nil || !transientPollStatus(err) {
+			return interaction, err
+		}
+		last = err
+	}
+	return interactionResponse{}, last
+}
+
+func transientPollStatus(err error) bool {
+	var httpErr *pollHTTPError
+	if !errors.As(err, &httpErr) {
+		return false
+	}
+	switch httpErr.status {
+	case http.StatusTooManyRequests, http.StatusServiceUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+type pollHTTPError struct {
+	status int
+	err    error
+}
+
+func (e *pollHTTPError) Error() string { return e.err.Error() }
+func (e *pollHTTPError) Unwrap() error { return e.err }
+
 func (p *Provider) fetchInteraction(ctx context.Context, interactionID string) (interactionResponse, error) {
 	// interaction 已创建后的轮询；构造失败不得标整次生成为 NotAttempted。
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, p.interactionURL(interactionID), nil)
@@ -338,7 +384,10 @@ func (p *Provider) fetchInteraction(ctx context.Context, interactionID string) (
 		return interactionResponse{}, provider.Wrap(provider.ErrorUnavailable, p.name+" read interaction poll response", err)
 	}
 	if resp.StatusCode >= 400 {
-		return interactionResponse{}, provider.FromHTTPDetail(p.name, resp.StatusCode, string(raw))
+		return interactionResponse{}, &pollHTTPError{
+			status: resp.StatusCode,
+			err:    provider.FromHTTPDetail(p.name, resp.StatusCode, string(raw)),
+		}
 	}
 	var interaction interactionResponse
 	if err := json.Unmarshal(raw, &interaction); err != nil {
