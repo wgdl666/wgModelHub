@@ -259,8 +259,8 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 	return sendErr
 }
 
-// textTransientRetries 与视频状态查询同一口径：503/429/超时再打三次，仍失败才交回调用方。
-// 只覆盖同步文本。视频提交可能已经受理，不走这里。
+// textTransientRetries 与视频状态查询同一口径：限流和内部错误再打三次，仍失败才交回调用方。
+// 超时先不重试。只覆盖同步文本。视频提交可能已经受理，不走这里。
 const textTransientRetries = 3
 
 var textTransientRetryDelay = 300 * time.Millisecond
@@ -274,7 +274,7 @@ func retryableTextProviderError(err error) bool {
 		return false
 	}
 	switch providerError.Kind {
-	case provider.ErrorRateLimited, provider.ErrorUnavailable, provider.ErrorTimeout:
+	case provider.ErrorRateLimited, provider.ErrorUnavailable:
 		return true
 	default:
 		return false

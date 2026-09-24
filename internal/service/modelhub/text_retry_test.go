@@ -31,6 +31,23 @@ func TestGenerateTextRetriesRateLimitAndUnavailable(t *testing.T) {
 	}
 }
 
+func TestGenerateTextDoesNotRetryTimeout(t *testing.T) {
+	restore := shortenTextRetry(t)
+	defer restore()
+
+	text := &scriptedText{failures: []error{
+		provider.New(provider.ErrorTimeout, "HTTP 504"),
+	}}
+	service := textRetryService(text)
+	err := service.Generate(textRequest("chat-model", "do"), &generateRecorder{ctx: context.Background()})
+	if err == nil {
+		t.Fatal("timeout must surface")
+	}
+	if text.calls != 1 {
+		t.Fatalf("calls=%d want 1", text.calls)
+	}
+}
+
 func TestGenerateTextDoesNotRetryInvalidArgument(t *testing.T) {
 	restore := shortenTextRetry(t)
 	defer restore()
