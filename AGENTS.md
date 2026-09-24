@@ -15,7 +15,7 @@
 - `human_yolo` 承接自建人体检测 `POST /predict`，`human-parser` 承接自建人体解析。`rekognition_detect` 承接 DetectLabels 的 Person 框，模型 ID 是 `rekognition-detect-labels`。三者都返回文本 JSON；裁图和单件提取留在衣橱。
 - `facebody_compare` 承接阿里云 `CompareFace`，模型 ID 是 `facebody-compare-face`。`rekognition_compare` 承接 `CompareFaces`，模型 ID 是 `rekognition-compare-faces`。两者都是恰好两张内联图入、文本 JSON `{"similarity":0到1}` 出。
 - `dashscope_embedding` / `cohere_embedding` / `bedrock_embedding` 承接 1024 维向量，模型 ID 分别是 `qwen3-vl-embedding`、`embed-v4.0`、`us.cohere.embed-v4:0`。一图或一段文本入，`{"embedding":[...]}` 出。换模型会换向量空间，调用方必须先重嵌再切读。
-- `dashscope_rerank` 承接 `qwen3.7-text-rerank` 与 `qwen3-vl-rerank`。`bedrock_rerank` 承接 `cohere.rerank-v3-5:0`，并丢弃 instruct。入参是 `{"query","documents","instruct"}`，出参是 `{"results":[{"index","relevance_score"}]}`。
+- `dashscope_rerank` 承接 `qwen3.7-text-rerank` 与 `qwen3-vl-rerank`。`bedrock_rerank` 承接 `cohere.rerank-v3-5:0`，`cohere_rerank` 承接官网 `rerank-v3.5`。两条都丢掉 instruct，不拼进 query。入参是 `{"query","documents","instruct"}`，出参是 `{"results":[{"index","relevance_score"}]}`。
 - `facebody_detect` / `rekognition_faces` 只回人脸框 `{"faces":[{"left","top","width","height"}]}`。扩框裁锚点和主体脸选择留在 UserCenter。`facebody_library` / `rekognition_library` 承接查重、录脸、删脸；库名在供应商配置，不在请求里。
 - `FLUX.2-klein-9B` 必须单独绑到 OpenAI Images 实例，不能与 `gpt-image-2` / 2.5 共用。当前 SeeTacloud 部署只开放 i2i edits：无参考图在发 HTTP 前拒绝；edits 必须带 `response_format=b64_json`，因为 worker 默认回 `127.0.0.1` 下载地址。GPT Image（含 2 / 2.5）当前接入沿标准请求且默认返回可解析结果，ModelHub 不下发该字段；`response_format=b64_json` 仅是 FLUX.2 私有兼容特例。
 - `zhipu_glm` 承接智谱 `glm-5.3-flash`（`https://open.bigmodel.cn/api/paas/v4`）。思考字段走 `thinking.type=enabled`，禁止下发 `disabled` 或 DashScope 的 `enable_thinking`；统一协议 `DISABLED` 只映射为 `reasoning_effort=low`。

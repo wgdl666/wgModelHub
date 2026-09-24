@@ -52,7 +52,8 @@ var categories = map[string]Category{
 
 	Qwen37TextRerank: CategoryRerank,
 	Qwen3VLRerank:    CategoryRerank,
-	CohereRerankV35:  CategoryRerank,
+	CohereRerankV35:         CategoryRerank,
+	CohereRerankV35Official: CategoryRerank,
 
 	FacebodyCompareFace:     CategoryFaceCompare,
 	RekognitionCompareFaces: CategoryFaceCompare,

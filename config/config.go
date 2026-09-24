@@ -75,6 +75,8 @@ type ProviderConfig struct {
 	DashScopeRerank *DashScopeRerankProviderConfig `yaml:"dashscope_rerank"`
 	// BedrockRerank 承接 cohere.rerank-v3-5:0。instruct 不会发给该模型。
 	BedrockRerank *BedrockRerankProviderConfig `yaml:"bedrock_rerank"`
+	// CohereRerank 承接官网 rerank-v3.5。请求不带 instruct。
+	CohereRerank *CohereRerankProviderConfig `yaml:"cohere_rerank"`
 	// FacebodyDetect 承接 DetectFace，只返回脸框。
 	FacebodyDetect *FacebodyDetectProviderConfig `yaml:"facebody_detect"`
 	// FacebodyLibrary 承接人脸库查重、录脸、删脸。database 是 Facebody 库名。
@@ -248,6 +250,11 @@ type DashScopeRerankProviderConfig struct {
 type BedrockRerankProviderConfig struct {
 	Region  string `yaml:"region"`
 	RoleARN string `yaml:"role_arn"`
+}
+
+type CohereRerankProviderConfig struct {
+	BaseURL string `yaml:"base_url"`
+	APIKey  string `yaml:"api_key"`
 }
 
 type FacebodyDetectProviderConfig struct {
@@ -721,6 +728,11 @@ func validateProvider(name string, provider ProviderConfig) error {
 		if strings.TrimSpace(provider.BedrockRerank.Region) == "" || strings.HasPrefix(strings.ToLower(strings.TrimSpace(provider.BedrockRerank.Region)), "cn-") {
 			return fmt.Errorf("provider %s bedrock rerank region is required and cannot be cn-*", name)
 		}
+	case provider.CohereRerank != nil:
+		item := provider.CohereRerank
+		if strings.TrimSpace(item.BaseURL) == "" || strings.TrimSpace(item.APIKey) == "" {
+			return fmt.Errorf("provider %s cohere rerank base_url and api_key are required", name)
+		}
 	case provider.FacebodyDetect != nil:
 		item := provider.FacebodyDetect
 		if strings.TrimSpace(item.Endpoint) == "" || strings.TrimSpace(item.AccessKeyID) == "" || strings.TrimSpace(item.AccessKeySecret) == "" {
@@ -817,6 +829,9 @@ func countConcreteProviders(provider ProviderConfig) int {
 	if provider.BedrockRerank != nil {
 		n++
 	}
+	if provider.CohereRerank != nil {
+		n++
+	}
 	if provider.FacebodyDetect != nil {
 		n++
 	}
@@ -851,7 +866,7 @@ func ProviderSupports(provider ProviderConfig, capability string) bool {
 		return capability == CapabilityText || capability == CapabilityImage
 	case provider.Photoroom != nil, provider.SegmentPerson != nil:
 		return capability == CapabilityImage
-	case provider.HumanYOLO != nil, provider.HumanParser != nil, provider.RekognitionDetect != nil, provider.FacebodyCompare != nil, provider.RekognitionCompare != nil, provider.DashScopeEmbedding != nil, provider.CohereEmbedding != nil, provider.BedrockEmbedding != nil, provider.DashScopeRerank != nil, provider.BedrockRerank != nil, provider.FacebodyDetect != nil, provider.FacebodyLibrary != nil, provider.RekognitionFaces != nil, provider.RekognitionLibrary != nil:
+	case provider.HumanYOLO != nil, provider.HumanParser != nil, provider.RekognitionDetect != nil, provider.FacebodyCompare != nil, provider.RekognitionCompare != nil, provider.DashScopeEmbedding != nil, provider.CohereEmbedding != nil, provider.BedrockEmbedding != nil, provider.DashScopeRerank != nil, provider.BedrockRerank != nil, provider.CohereRerank != nil, provider.FacebodyDetect != nil, provider.FacebodyLibrary != nil, provider.RekognitionFaces != nil, provider.RekognitionLibrary != nil:
 		return capability == CapabilityText
 	case provider.VertexAI != nil, provider.Ark != nil:
 		return capability == CapabilityText

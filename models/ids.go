@@ -73,6 +73,8 @@ const (
 	Qwen3VLRerank = "qwen3-vl-rerank"
 	// CohereRerankV35 是 Bedrock Agent Runtime Rerank。该模型没有 instruct。
 	CohereRerankV35 = "cohere.rerank-v3-5:0"
+	// CohereRerankV35Official 是 Cohere 官网 /v2/rerank 的 rerank-v3.5。和 Bedrock ID 不能互相替代。
+	CohereRerankV35Official = "rerank-v3.5"
 	// FacebodyDetectFace 是阿里云 DetectFace。返回人脸框，裁图由调用方本地完成。
 	FacebodyDetectFace = "facebody-detect-face"
 	// RekognitionDetectFaces 是 DetectFaces。与 DetectLabels 人检不能互相替代。
@@ -171,6 +173,7 @@ func All() []string {
 		Qwen37TextRerank,
 		Qwen3VLRerank,
 		CohereRerankV35,
+		CohereRerankV35Official,
 		FacebodyDetectFace,
 		RekognitionDetectFaces,
 		FacebodyFaceLibrary,

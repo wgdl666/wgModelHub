@@ -10,6 +10,7 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/infra/bedrockembed"
 	"github.com/wgdl666/wgModelHub/internal/infra/bedrockrerank"
 	"github.com/wgdl666/wgModelHub/internal/infra/cohereembed"
+	"github.com/wgdl666/wgModelHub/internal/infra/coherererank"
 	"github.com/wgdl666/wgModelHub/internal/infra/dashscopeembed"
 	"github.com/wgdl666/wgModelHub/internal/infra/dashscopererank"
 	"github.com/wgdl666/wgModelHub/internal/infra/dashscopevideo"
@@ -224,6 +225,13 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 	case providerCfg.BedrockRerank != nil:
 		cfg := providerCfg.BedrockRerank
 		client, err := bedrockrerank.New(ctx, name, cfg.Region, cfg.RoleARN)
+		if err != nil {
+			return provider.Set{}, err
+		}
+		return provider.Set{Text: client}, nil
+	case providerCfg.CohereRerank != nil:
+		cfg := providerCfg.CohereRerank
+		client, err := coherererank.New(name, cfg.BaseURL, cfg.APIKey)
 		if err != nil {
 			return provider.Set{}, err
 		}

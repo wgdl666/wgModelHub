@@ -227,6 +227,11 @@ providers:
     models: [cohere.rerank-v3-5:0]
     bedrock_rerank:
       region: us-east-1
+  cohere_rerank_us:
+    models: [rerank-v3.5]
+    cohere_rerank:
+      base_url: https://api.cohere.com
+      api_key: "${COHERE_API_KEY}"
   facebody_detect_cn:
     models: [facebody-detect-face]
     facebody_detect:
