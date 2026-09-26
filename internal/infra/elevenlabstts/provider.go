@@ -21,9 +21,9 @@ import (
 
 const (
 	defaultBaseURL = "https://api.elevenlabs.io"
-	// mp3_22050_32 是 ElevenLabs 可公开拿到的最低延迟 MP3 档；无 mp3_16000。
-	// Hub 侧解码后会重采样到 Mirror 的 16kHz PCM，故在此固定该封装，避免调用方再绕一层供应商参数。
-	defaultOutputFormat = "mp3_22050_32"
+	// 没有 mp3_16000。mp3_22050_32 会在编码时切掉 3.4 kHz 以上，降到 16 kHz 后辅音没了。
+	// mp3_44100_128 保住这段，Hub 再重采样到 Mirror 的 16 kHz PCM。格式仍固定在本厂商，不进请求。
+	defaultOutputFormat = "mp3_44100_128"
 	mimeMP3             = "audio/mpeg"
 	httpTimeout         = 30 * time.Second
 )
