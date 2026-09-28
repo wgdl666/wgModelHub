@@ -49,7 +49,7 @@ type ProviderConfig struct {
 	ArkVideo       *ArkVideoProviderConfig       `yaml:"ark_video"`
 	// MinimaxTTS 承接同步一次性 TTS；与 chat/completions OpenAI 实例分绑，避免误用文本能力。
 	MinimaxTTS *MinimaxTTSProviderConfig `yaml:"minimax_tts"`
-	// ElevenLabsTTS 承接同步一次性 TTS；与 Minimax 分绑，未配置时不影响现有 speech 路由。
+	// ElevenLabsTTS 承接整段和流式 TTS；与 Minimax 分绑，未配置时不影响现有 speech 路由。
 	ElevenLabsTTS *ElevenLabsTTSProviderConfig `yaml:"elevenlabs_tts"`
 	// Photoroom 承接官方 Remove Background（POST /v1/segment）；与 OpenAI/Gemini 生图实例分绑，禁止共用。
 	Photoroom *PhotoroomProviderConfig `yaml:"photoroom"`

@@ -172,3 +172,27 @@ type fakeServerStream struct {
 func (s *fakeServerStream) Context() context.Context {
 	return s.ctx
 }
+
+// 新流式 RPC 必须沿用公网认证，不能因为更换 RPC 类型绕过调用方身份。
+func TestStreamInterceptorCoversSynthesizeSpeechStream(t *testing.T) {
+	store, mat := openAuthTestStore(t)
+	interceptor := StreamServerInterceptor(store)
+	info := &grpc.StreamServerInfo{FullMethod: "/wg_model_hub.v2.ModelHubService/SynthesizeSpeechStream", IsServerStream: true}
+	called := false
+	handler := func(_ any, stream grpc.ServerStream) error {
+		called = true
+		caller, ok := PublicCaller(stream.Context())
+		if !ok || caller != "public:"+mat.PrincipalID {
+			t.Fatalf("caller=%q ok=%v", caller, ok)
+		}
+		return nil
+	}
+	err := interceptor(nil, &fakeServerStream{ctx: context.Background()}, info, handler)
+	if status.Code(err) != codes.Unauthenticated || called {
+		t.Fatalf("unauthenticated stream reached handler: %v", err)
+	}
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", mat.Bearer))
+	if err := interceptor(nil, &fakeServerStream{ctx: ctx}, info, handler); err != nil || !called {
+		t.Fatalf("authorized stream failed: %v", err)
+	}
+}

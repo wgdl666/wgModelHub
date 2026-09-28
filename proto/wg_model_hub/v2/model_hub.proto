@@ -20,6 +20,9 @@ service ModelHubService {
   rpc GetGeneration(GetGenerationRequest) returns (stream GenerationTaskEvent);
   // SynthesizeSpeech：同步一次性 TTS。成功只表示供应商合成且完整音频已收集，不表示 Mirror 播放。
   rpc SynthesizeSpeech(SynthesizeSpeechRequest) returns (SynthesizeSpeechResponse);
+  // 每条响应的 audio.data 是增量 MP3 字节，可跨编码帧；仅正常 EOF 表示合成完成。
+  // 收到首包不代表成功，后续 status error 表示不完整音频；取消立即传播供应商。
+  rpc SynthesizeSpeechStream(SynthesizeSpeechRequest) returns (stream SynthesizeSpeechResponse);
   // ListModels 返回当前进程已路由的真实模型 ID，可按产品主用途过滤；不暴露 provider / 密钥。
   rpc ListModels(ListModelsRequest) returns (ListModelsResponse);
 }

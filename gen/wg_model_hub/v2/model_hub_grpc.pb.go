@@ -19,12 +19,13 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ModelHubService_Generate_FullMethodName            = "/wg_model_hub.v2.ModelHubService/Generate"
-	ModelHubService_CreateCachedContent_FullMethodName = "/wg_model_hub.v2.ModelHubService/CreateCachedContent"
-	ModelHubService_SubmitGeneration_FullMethodName    = "/wg_model_hub.v2.ModelHubService/SubmitGeneration"
-	ModelHubService_GetGeneration_FullMethodName       = "/wg_model_hub.v2.ModelHubService/GetGeneration"
-	ModelHubService_SynthesizeSpeech_FullMethodName    = "/wg_model_hub.v2.ModelHubService/SynthesizeSpeech"
-	ModelHubService_ListModels_FullMethodName          = "/wg_model_hub.v2.ModelHubService/ListModels"
+	ModelHubService_Generate_FullMethodName               = "/wg_model_hub.v2.ModelHubService/Generate"
+	ModelHubService_CreateCachedContent_FullMethodName    = "/wg_model_hub.v2.ModelHubService/CreateCachedContent"
+	ModelHubService_SubmitGeneration_FullMethodName       = "/wg_model_hub.v2.ModelHubService/SubmitGeneration"
+	ModelHubService_GetGeneration_FullMethodName          = "/wg_model_hub.v2.ModelHubService/GetGeneration"
+	ModelHubService_SynthesizeSpeech_FullMethodName       = "/wg_model_hub.v2.ModelHubService/SynthesizeSpeech"
+	ModelHubService_SynthesizeSpeechStream_FullMethodName = "/wg_model_hub.v2.ModelHubService/SynthesizeSpeechStream"
+	ModelHubService_ListModels_FullMethodName             = "/wg_model_hub.v2.ModelHubService/ListModels"
 )
 
 // ModelHubServiceClient is the client API for ModelHubService service.
@@ -45,6 +46,9 @@ type ModelHubServiceClient interface {
 	GetGeneration(ctx context.Context, in *GetGenerationRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GenerationTaskEvent], error)
 	// SynthesizeSpeech：同步一次性 TTS。成功只表示供应商合成且完整音频已收集，不表示 Mirror 播放。
 	SynthesizeSpeech(ctx context.Context, in *SynthesizeSpeechRequest, opts ...grpc.CallOption) (*SynthesizeSpeechResponse, error)
+	// 每条响应的 audio.data 是增量 MP3 字节，可跨编码帧；仅正常 EOF 表示合成完成。
+	// 收到首包不代表成功，后续 status error 表示不完整音频；取消立即传播供应商。
+	SynthesizeSpeechStream(ctx context.Context, in *SynthesizeSpeechRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[SynthesizeSpeechResponse], error)
 	// ListModels 返回当前进程已路由的真实模型 ID，可按产品主用途过滤；不暴露 provider / 密钥。
 	ListModels(ctx context.Context, in *ListModelsRequest, opts ...grpc.CallOption) (*ListModelsResponse, error)
 }
@@ -125,6 +129,25 @@ func (c *modelHubServiceClient) SynthesizeSpeech(ctx context.Context, in *Synthe
 	return out, nil
 }
 
+func (c *modelHubServiceClient) SynthesizeSpeechStream(ctx context.Context, in *SynthesizeSpeechRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[SynthesizeSpeechResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &ModelHubService_ServiceDesc.Streams[2], ModelHubService_SynthesizeSpeechStream_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[SynthesizeSpeechRequest, SynthesizeSpeechResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ModelHubService_SynthesizeSpeechStreamClient = grpc.ServerStreamingClient[SynthesizeSpeechResponse]
+
 func (c *modelHubServiceClient) ListModels(ctx context.Context, in *ListModelsRequest, opts ...grpc.CallOption) (*ListModelsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListModelsResponse)
@@ -153,6 +176,9 @@ type ModelHubServiceServer interface {
 	GetGeneration(*GetGenerationRequest, grpc.ServerStreamingServer[GenerationTaskEvent]) error
 	// SynthesizeSpeech：同步一次性 TTS。成功只表示供应商合成且完整音频已收集，不表示 Mirror 播放。
 	SynthesizeSpeech(context.Context, *SynthesizeSpeechRequest) (*SynthesizeSpeechResponse, error)
+	// 每条响应的 audio.data 是增量 MP3 字节，可跨编码帧；仅正常 EOF 表示合成完成。
+	// 收到首包不代表成功，后续 status error 表示不完整音频；取消立即传播供应商。
+	SynthesizeSpeechStream(*SynthesizeSpeechRequest, grpc.ServerStreamingServer[SynthesizeSpeechResponse]) error
 	// ListModels 返回当前进程已路由的真实模型 ID，可按产品主用途过滤；不暴露 provider / 密钥。
 	ListModels(context.Context, *ListModelsRequest) (*ListModelsResponse, error)
 	mustEmbedUnimplementedModelHubServiceServer()
@@ -179,6 +205,9 @@ func (UnimplementedModelHubServiceServer) GetGeneration(*GetGenerationRequest, g
 }
 func (UnimplementedModelHubServiceServer) SynthesizeSpeech(context.Context, *SynthesizeSpeechRequest) (*SynthesizeSpeechResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SynthesizeSpeech not implemented")
+}
+func (UnimplementedModelHubServiceServer) SynthesizeSpeechStream(*SynthesizeSpeechRequest, grpc.ServerStreamingServer[SynthesizeSpeechResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method SynthesizeSpeechStream not implemented")
 }
 func (UnimplementedModelHubServiceServer) ListModels(context.Context, *ListModelsRequest) (*ListModelsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListModels not implemented")
@@ -280,6 +309,17 @@ func _ModelHubService_SynthesizeSpeech_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModelHubService_SynthesizeSpeechStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(SynthesizeSpeechRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ModelHubServiceServer).SynthesizeSpeechStream(m, &grpc.GenericServerStream[SynthesizeSpeechRequest, SynthesizeSpeechResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ModelHubService_SynthesizeSpeechStreamServer = grpc.ServerStreamingServer[SynthesizeSpeechResponse]
+
 func _ModelHubService_ListModels_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListModelsRequest)
 	if err := dec(in); err != nil {
@@ -331,6 +371,11 @@ var ModelHubService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "GetGeneration",
 			Handler:       _ModelHubService_GetGeneration_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "SynthesizeSpeechStream",
+			Handler:       _ModelHubService_SynthesizeSpeechStream_Handler,
 			ServerStreams: true,
 		},
 	},

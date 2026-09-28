@@ -1,5 +1,5 @@
-// Package elevenlabstts 实现 ElevenLabs HTTP 同步 TTS。
-// 在一次 unary 生命周期内拉取完整 MP3；失败不得返回半截音频。
+// Package elevenlabstts 实现 ElevenLabs 整段和流式 HTTP TTS。
+// 流式首包立即转发，只有正常 EOF 才代表完整音频。
 package elevenlabstts
 
 import (
@@ -64,7 +64,8 @@ func New(cfg Config) (*Provider, error) {
 	}, nil
 }
 
-func (p *Provider) SynthesizeSpeech(ctx context.Context, model string, request *modelhubv2.SynthesizeSpeechRequest) (*modelhubv2.SynthesizeSpeechResponse, error) {
+// openSpeech 统一供应商请求与状态码映射；成功响应体由调用方关闭。
+func (p *Provider) openSpeech(ctx context.Context, model string, request *modelhubv2.SynthesizeSpeechRequest, streaming bool) (*http.Response, error) {
 	if request == nil {
 		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "synthesize speech request is required")
 	}
@@ -97,7 +98,11 @@ func (p *Provider) SynthesizeSpeech(ctx context.Context, model string, request *
 		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, "elevenlabs tts marshal request failed", err)
 	}
 
-	url := fmt.Sprintf("%s/v1/text-to-speech/%s?output_format=%s", p.cfg.BaseURL, voiceID, defaultOutputFormat)
+	suffix := ""
+	if streaming {
+		suffix = "/stream"
+	}
+	url := fmt.Sprintf("%s/v1/text-to-speech/%s%s?output_format=%s", p.cfg.BaseURL, voiceID, suffix, defaultOutputFormat)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorUnavailable, "elevenlabs tts build request failed", err)
@@ -113,6 +118,22 @@ func (p *Provider) SynthesizeSpeech(ctx context.Context, model string, request *
 		}
 		return nil, provider.Wrap(provider.ErrorUnavailable, "elevenlabs tts request failed", err)
 	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		defer resp.Body.Close()
+		detail, err := io.ReadAll(io.LimitReader(resp.Body, 8192))
+		if err != nil {
+			return nil, provider.Wrap(provider.ErrorUnavailable, "elevenlabs error body read failed", err)
+		}
+		return nil, provider.FromHTTPDetail(p.cfg.Name, resp.StatusCode, string(detail))
+	}
+	return resp, nil
+}
+
+func (p *Provider) SynthesizeSpeech(ctx context.Context, model string, request *modelhubv2.SynthesizeSpeechRequest) (*modelhubv2.SynthesizeSpeechResponse, error) {
+	resp, err := p.openSpeech(ctx, model, request, false)
+	if err != nil {
+		return nil, err
+	}
 	defer resp.Body.Close()
 
 	payload, err := io.ReadAll(io.LimitReader(resp.Body, int64(protocol.MaxMediaBytes)+1))
@@ -124,10 +145,6 @@ func (p *Provider) SynthesizeSpeech(ctx context.Context, model string, request *
 	}
 	if len(payload) > protocol.MaxMediaBytes {
 		return nil, provider.Errorf(provider.ErrorInvalidResponse, "speech audio exceeds %d bytes", protocol.MaxMediaBytes)
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		// ElevenLabs 拒因在 JSON detail，截断后进入 status；这里不是音频正文。
-		return nil, provider.FromHTTPDetail(p.cfg.Name, resp.StatusCode, string(payload))
 	}
 	if len(payload) == 0 {
 		return nil, provider.New(provider.ErrorInvalidResponse, "speech provider returned empty audio")
@@ -141,4 +158,42 @@ func (p *Provider) SynthesizeSpeech(ctx context.Context, model string, request *
 			Source:   &modelhubv2.Media_Data{Data: payload},
 		},
 	}, nil
+}
+
+// SynthesizeSpeechStream 直接消费 /stream 响应体，不等整句结束，也不自动重试已交付的声音。
+func (p *Provider) SynthesizeSpeechStream(ctx context.Context, model string, request *modelhubv2.SynthesizeSpeechRequest, emit func([]byte) error) error {
+	resp, err := p.openSpeech(ctx, model, request, true)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	buf := make([]byte, 4096)
+	total := 0
+	for {
+		n, readErr := resp.Body.Read(buf)
+		if n > 0 {
+			total += n
+			if total > protocol.MaxMediaBytes {
+				return provider.New(provider.ErrorInvalidResponse, "speech audio exceeds byte limit")
+			}
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if err := emit(buf[:n]); err != nil {
+				return err
+			}
+		}
+		if readErr != nil {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if readErr != io.EOF {
+				return provider.Wrap(provider.ErrorUnavailable, "elevenlabs stream read failed", readErr)
+			}
+			if total == 0 {
+				return provider.New(provider.ErrorInvalidResponse, "speech provider returned empty audio")
+			}
+			return nil
+		}
+	}
 }

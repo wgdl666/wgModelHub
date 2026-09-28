@@ -76,11 +76,12 @@ const (
 	ErrorCategoryCancelled     = "cancelled"
 	ErrorCategoryUnknown       = "unknown"
 
-	OperationGenerateText     = "generate_text"
-	OperationGenerateImage    = "generate_image"
-	OperationGenerateVideo    = "generate_video"
-	OperationSubmitGeneration = "submit_generation"
-	OperationSynthesizeSpeech = "synthesize_speech"
+	OperationGenerateText           = "generate_text"
+	OperationGenerateImage          = "generate_image"
+	OperationGenerateVideo          = "generate_video"
+	OperationSubmitGeneration       = "submit_generation"
+	OperationSynthesizeSpeech       = "synthesize_speech"
+	OperationSynthesizeSpeechStream = "synthesize_speech_stream"
 
 	CapabilityText   = "text"
 	CapabilityImage  = "image"

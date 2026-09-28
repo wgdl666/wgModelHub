@@ -3,7 +3,7 @@
 `wgModelHub` 是 WG 服务内部统一的大模型协议适配层。它只负责：
 
 - 依据 `request.model`（真实供应商模型 ID，含版本）路由到唯一 provider 实例；
-- 托管供应商凭据并完成文本、多模态、图片、视频和同步 TTS 协议转换；
+- 托管供应商凭据并完成文本、多模态、图片、视频和 TTS 协议转换；
 - 把供应商错误统一映射为带 `ErrorInfo.reason` 的 gRPC status；
 - 传播 OpenTelemetry TraceContext，但不记录 Prompt、媒体正文或密钥。
 
@@ -13,6 +13,7 @@ Prompt 编排、业务重试、质量验收、任务状态、OSS、数据库和 
 ```text
 rpc Generate(GenerateRequest) returns (stream GenerateEvent);
 rpc SynthesizeSpeech(SynthesizeSpeechRequest) returns (SynthesizeSpeechResponse);
+rpc SynthesizeSpeechStream(SynthesizeSpeechRequest) returns (stream SynthesizeSpeechResponse);
 ```
 
 ## 配置源与 AWS dev 部署
@@ -60,8 +61,20 @@ AWS 新加坡 dev 仅通过 VPC 内的 `modelhub.internal.dev:50053` 提供 gRPC
 ```
 
 `SynthesizeSpeech` 是独立 unary TTS：一次请求完整成功或 gRPC error。成功只表示供应商
-合成且完整音频已收集完成，不表示 Mirror 已播放。第一版输出固定为 `audio/mpeg`
-（MP3 / 16kHz / mono）。
+合成且完整音频已收集完成，不表示 Mirror 已播放。输出为 `audio/mpeg`，采样率由供应商适配器确定。
+
+`SynthesizeSpeechStream` 接收同样的请求，逐块返回 `audio.data` 中的增量 MP3 字节。
+分块可以跨越 MP3 编码帧，调用方应按顺序交给同一个解码器。只有正常 EOF 表示合成完成；
+收到音频后仍可能返回 gRPC error，此时不能把半截音频记为成功或自动重放。
+取消 RPC 会关闭供应商 HTTP 请求。
+
+当前流式能力由 ElevenLabs 的 `/v1/text-to-speech/{voice_id}/stream` 提供，使用
+`mp3_22050_32`。模型和音色继续由原有路由与配置决定。没有流式能力的 provider 返回
+`FailedPrecondition`，不会悄悄退回整段合成。原有 unary 接口保留。
+
+调用账本的 operation 为 `synthesize_speech_stream`，输出只记总字节数、分块数和
+首块耗时，不记录音频正文。总耗时包括 gRPC 发送背压，不能当作纯供应商生成耗时。
+部署时先升级 ModelHub，再升级调用新 RPC 的 Hub；旧 ModelHub 不认识新 RPC。
 
 ## 公网 API Key（可选）
 
@@ -109,7 +122,7 @@ grpcurl -d '{"model":"speech-2.8-turbo","text":"你好镜子"}' \
 `GenerateRequest` 顶层恰好三个业务字段：`model` / `input` / `output`。
 system 指令、用户任务、对话历史、媒体与 tool 回执一律按序放入 `Input.items`；
 capability 由 `OutputSpec` oneof（text / image / video）决定；TTS 走独立
-`SynthesizeSpeech`，不进入 `OutputSpec`。供应商地址与密钥不会进入 RPC。
+`SynthesizeSpeech` 或 `SynthesizeSpeechStream`，不进入 `OutputSpec`。供应商地址与密钥不会进入 RPC。
 
 配置中每个 provider 实例声明 `models: [...]`；启动时建立「真实模型 ID →
 provider」路由。同一模型仅被一个实例声明时可隐式选定；被多个实例声明时必须在
