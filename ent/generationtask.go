@@ -3,6 +3,7 @@
 package ent
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -31,6 +32,8 @@ type GenerationTask struct {
 	ProviderTaskID string `json:"provider_task_id,omitempty"`
 	// State holds the value of the "state" field.
 	State string `json:"state,omitempty"`
+	// Metadata holds the value of the "metadata" field.
+	Metadata map[string]string `json:"metadata,omitempty"`
 	// ErrorCode holds the value of the "error_code" field.
 	ErrorCode int32 `json:"error_code,omitempty"`
 	// ErrorMessage holds the value of the "error_message" field.
@@ -49,6 +52,8 @@ func (*GenerationTask) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case generationtask.FieldMetadata:
+			values[i] = new([]byte)
 		case generationtask.FieldErrorCode:
 			values[i] = new(sql.NullInt64)
 		case generationtask.FieldID, generationtask.FieldCaller, generationtask.FieldRequestID, generationtask.FieldRequestHash, generationtask.FieldModel, generationtask.FieldProvider, generationtask.FieldProviderTaskID, generationtask.FieldState, generationtask.FieldErrorMessage, generationtask.FieldErrorReason:
@@ -117,6 +122,14 @@ func (_m *GenerationTask) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field state", values[i])
 			} else if value.Valid {
 				_m.State = value.String
+			}
+		case generationtask.FieldMetadata:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field metadata", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.Metadata); err != nil {
+					return fmt.Errorf("unmarshal field metadata: %w", err)
+				}
 			}
 		case generationtask.FieldErrorCode:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -204,6 +217,9 @@ func (_m *GenerationTask) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("state=")
 	builder.WriteString(_m.State)
+	builder.WriteString(", ")
+	builder.WriteString("metadata=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Metadata))
 	builder.WriteString(", ")
 	builder.WriteString("error_code=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ErrorCode))

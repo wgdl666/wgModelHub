@@ -37,6 +37,8 @@ func (GenerationTask) Fields() []ent.Field {
 		field.String("provider"),
 		field.String("provider_task_id").Default(""),
 		field.String("state"),
+		// 仅保存跨 Pod 恢复需要的调用 metadata，不保存 Prompt 或媒体。
+		field.JSON("metadata", map[string]string{}).Optional(),
 		field.Int32("error_code").Default(0),
 		field.String("error_message").Default(""),
 		field.String("error_reason").Default(""),

@@ -261,3 +261,23 @@ func TestInsertPending_TaskIDCollisionNotIdempotent(t *testing.T) {
 		t.Fatalf("should surface raw constraint error, got %v", err)
 	}
 }
+
+func TestTaskMetadataPersistsAndIdempotencyKeepsOriginal(t *testing.T) {
+	store := openTestStore(t)
+	first := sampleTask("meta-task", "caller", "request", "hash")
+	first.Metadata = map[string]string{"business_key": "prompt_debug", "business_id": "original"}
+	if _, _, err := store.InsertPending(context.Background(), first); err != nil {
+		t.Fatal(err)
+	}
+	first.Metadata["business_id"] = "later-request"
+	if _, created, err := store.InsertPending(context.Background(), first); err != nil || created {
+		t.Fatalf("duplicate created=%v err=%v", created, err)
+	}
+	recovered, err := store.GetByTaskID(context.Background(), first.TaskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recovered.Metadata["business_id"] != "original" {
+		t.Fatalf("metadata overwritten: %v", recovered.Metadata)
+	}
+}

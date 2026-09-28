@@ -11,3 +11,8 @@ var GenerationTaskSQL string
 //
 //go:embed 004_model_call.sql
 var ModelCallSQL string
+
+// GenerationTaskMetadataSQL 为持久任务补充统一传播上下文。
+//
+//go:embed 005_generation_task_metadata.sql
+var GenerationTaskMetadataSQL string

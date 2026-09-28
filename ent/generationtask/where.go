@@ -579,6 +579,16 @@ func StateContainsFold(v string) predicate.GenerationTask {
 	return predicate.GenerationTask(sql.FieldContainsFold(FieldState, v))
 }
 
+// MetadataIsNil applies the IsNil predicate on the "metadata" field.
+func MetadataIsNil() predicate.GenerationTask {
+	return predicate.GenerationTask(sql.FieldIsNull(FieldMetadata))
+}
+
+// MetadataNotNil applies the NotNil predicate on the "metadata" field.
+func MetadataNotNil() predicate.GenerationTask {
+	return predicate.GenerationTask(sql.FieldNotNull(FieldMetadata))
+}
+
 // ErrorCodeEQ applies the EQ predicate on the "error_code" field.
 func ErrorCodeEQ(v int32) predicate.GenerationTask {
 	return predicate.GenerationTask(sql.FieldEQ(FieldErrorCode, v))

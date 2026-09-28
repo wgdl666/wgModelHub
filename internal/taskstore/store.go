@@ -30,6 +30,7 @@ var (
 
 // Task 是跨 Pod 可查询的最小技术事实；不保存 prompt、媒体或最终视频。
 type Task struct {
+	Metadata       map[string]string
 	TaskID         string
 	Caller         string
 	RequestID      string
@@ -88,6 +89,7 @@ func (p *Postgres) InsertPending(ctx context.Context, task Task) (Task, bool, er
 	// 并发安全依赖库唯一键；冲突后只按 (caller, request_id) 回查，避免 task_id 等其它冲突被当成幂等成功。
 	created, err := p.client.GenerationTask.Create().
 		SetID(task.TaskID).
+		SetMetadata(task.Metadata).
 		SetCaller(task.Caller).
 		SetRequestID(task.RequestID).
 		SetRequestHash(task.RequestHash).
@@ -212,6 +214,7 @@ func (p *Postgres) MarkSucceeded(ctx context.Context, taskID string) error {
 // fromEnt 只做 Ent 实体到稳定 Store DTO 的边界映射，避免上层依赖生成代码字段形状。
 func fromEnt(row *ent.GenerationTask) Task {
 	return Task{
+		Metadata:       row.Metadata,
 		TaskID:         row.ID,
 		Caller:         row.Caller,
 		RequestID:      row.RequestID,

@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/wgdl666/kangaroo/callmeta"
 	"github.com/wgdl666/kangaroo/logs"
 	"github.com/wgdl666/wgModelHub/config"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
@@ -25,7 +26,6 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/service/modelhub"
 	"github.com/wgdl666/wgModelHub/internal/taskstore"
 	"github.com/wgdl666/wgModelHub/protocol"
-	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -101,7 +101,7 @@ func main() {
 		base := []grpc.ServerOption{
 			grpc.MaxRecvMsgSize(protocol.MaxRPCMessageBytes),
 			grpc.MaxSendMsgSize(protocol.MaxRPCMessageBytes),
-			grpc.StatsHandler(otelgrpc.NewServerHandler()),
+			grpc.StatsHandler(callmeta.GRPCServerHandler()),
 		}
 		grpcServer := grpc.NewServer(append(base, opts...)...)
 		grpcServers = append(grpcServers, grpcServer)
