@@ -45,7 +45,8 @@ func TestPostgresUpsertFreezesTerminalLatencyAndStatus(t *testing.T) {
 	rec := Record{
 		GenerationTaskID: "task-1",
 		CallerService:    "wgHub",
-		BusinessScene:    "ootd",
+		BusinessScene:    "photo",
+		BusinessLine:     "mirror",
 		Operation:        OperationSubmitGeneration,
 		Capability:       CapabilityVideo,
 		Model:            "seedance",
@@ -79,6 +80,7 @@ func TestPostgresUpsertFreezesTerminalLatencyAndStatus(t *testing.T) {
 		VideoCount:       intPtr(0),
 		OutputPayload:    map[string]any{},
 		BusinessScene:    "should-not-override",
+		BusinessLine:     "fitpop",
 	}
 	if err := store.UpsertByGenerationTask(ctx, failDownload); err != nil {
 		t.Fatal(err)
@@ -97,7 +99,10 @@ func TestPostgresUpsertFreezesTerminalLatencyAndStatus(t *testing.T) {
 	if row.FinishedAt == nil || row.FinishedAt.UnixMilli() != finished1.UnixMilli() {
 		t.Fatalf("finished_at=%v want %v", row.FinishedAt, finished1)
 	}
-	if row.BusinessScene != "ootd" {
+	if row.BusinessLine != "mirror" {
+		t.Fatalf("business line overridden: %s", row.BusinessLine)
+	}
+	if row.BusinessScene != "photo" {
 		t.Fatalf("scene=%q", row.BusinessScene)
 	}
 	if row.DeliveryStatus != DeliveryClientSendFailed {

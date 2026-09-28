@@ -16,3 +16,8 @@ var ModelCallSQL string
 //
 //go:embed 005_generation_task_metadata.sql
 var GenerationTaskMetadataSQL string
+
+// ModelCallBusinessLineSQL 独立业务线字段，显式执行而非启动 DDL。
+//
+//go:embed 006_model_call_business_line.sql
+var ModelCallBusinessLineSQL string

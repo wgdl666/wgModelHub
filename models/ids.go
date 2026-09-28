@@ -3,7 +3,20 @@
 package models
 
 const (
-	Gemini25Flash = "gemini-2.5-flash"
+	Gemini35Flash      = "gemini-3.5-flash"
+	Gemini31ProPreview = "gemini-3.1-pro-preview"
+	Qwen37Plus         = "qwen3.7-plus"
+	Qwen38Max          = "qwen3.8-max"
+	GPT54              = "gpt-5.4"
+	KimiK3             = "kimi/kimi-k3"
+	// Muse 迁移保留原算法模型，避免改变衣橱向量空间或抠图结果。
+	FashionEmbedding       = "fashion-embedding"
+	FashionReranker        = "fashion-reranker"
+	AliyunSegmentBody      = "aliyun-segment-body"
+	AliyunSegmentHDBody    = "aliyun-segment-hd-body"
+	AliyunSegmentCommodity = "aliyun-segment-commodity"
+	AliyunSegmentCommon    = "aliyun-segment-common"
+	Gemini25Flash          = "gemini-2.5-flash"
 	// Gemini37Flash 是 Google GA 的 gemini-3.7-flash；不支持关闭 thinking，Hub DISABLED 须在 Gemini provider 映射为 LOW。
 	Gemini37Flash = "gemini-3.7-flash"
 	// Gemini38Flash 只支持 LOW/MEDIUM/HIGH thinking；Hub DISABLED 统一映射为 LOW，不能发 ThinkingBudget=0。
@@ -135,6 +148,8 @@ const (
 // All 返回当前仓库承认的全部真实模型 ID，顺序稳定便于对照。
 func All() []string {
 	return []string{
+		Gemini35Flash, Gemini31ProPreview, Qwen37Plus, Qwen38Max, GPT54, KimiK3,
+		FashionEmbedding, FashionReranker, AliyunSegmentBody, AliyunSegmentHDBody, AliyunSegmentCommodity, AliyunSegmentCommon,
 		Gemini25Flash,
 		Gemini37Flash,
 		Gemini38Flash,

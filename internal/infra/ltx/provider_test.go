@@ -37,7 +37,7 @@ func TestProviderRetriesSubmitOn404(t *testing.T) {
 	}
 	provider.client = server.Client()
 
-	jobID, err := provider.submit(context.Background(), "ltx", []byte("png"), "prompt", "720p")
+	jobID, err := provider.submit(context.Background(), "ltx", []byte("png"), "prompt", "720p", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestProviderDoesNotRetrySubmitOn5xx(t *testing.T) {
 		t.Fatal(err)
 	}
 	p.client = server.Client()
-	_, err = p.submit(context.Background(), "ltx", []byte("png"), "prompt", "720p")
+	_, err = p.submit(context.Background(), "ltx", []byte("png"), "prompt", "720p", nil)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -319,7 +319,7 @@ func TestSubmitReadsRequestBodyOnEachRetry(t *testing.T) {
 	}
 	p.client = server.Client()
 
-	if _, err := p.submit(context.Background(), "ltx", []byte("frame"), "prompt", "720p"); err != nil {
+	if _, err := p.submit(context.Background(), "ltx", []byte("frame"), "prompt", "720p", nil); err != nil {
 		t.Fatal(err)
 	}
 	if len(bodies) != 2 || bodies[0] == 0 || bodies[0] != bodies[1] {
@@ -374,5 +374,27 @@ func TestReadVideoResultStreamsMultipleChunks(t *testing.T) {
 	}
 	if chunks != 2 {
 		t.Fatalf("chunks=%d", chunks)
+	}
+}
+
+func TestSubmitKeepsPerRequestTimingAndZeroSeed(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			t.Fatal(err)
+		}
+		if r.FormValue("duration") != "6" || r.FormValue("fps") != "30" || r.FormValue("seed") != "0" {
+			t.Errorf("lost video parameters: %v", r.MultipartForm.Value)
+		}
+		w.Write([]byte(`{"job_id":"timing"}`))
+	}))
+	defer server.Close()
+	p, err := New("ltx", server.URL, "", 4, 24, 42, 1, 120)
+	if err != nil {
+		t.Fatal(err)
+	}
+	duration, fps, seed := int32(6), int32(30), int32(0)
+	_, err = p.submit(context.Background(), "ltx", []byte("image"), "prompt", "720p", &modelhubv2.VideoOutput{DurationSeconds: &duration, Fps: &fps, Seed: &seed})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

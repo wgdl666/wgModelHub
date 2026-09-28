@@ -9,10 +9,34 @@ database:
 providers:
   gemini_main:
     # 3.8 与 3.5-flash-lite 与既有 Gemini 文本共用同一官方 Gemini provider 实例。
-    models: [gemini-2.5-flash, gemini-3.7-flash, gemini-3.8-flash, gemini-3.5-flash-lite]
+    models: [gemini-3.5-flash, gemini-3.1-pro-preview, gemini-2.5-flash, gemini-3.7-flash, gemini-3.8-flash, gemini-3.5-flash-lite]
     gemini:
       api_key: "${GEMINI_API_KEY}"
       proxy_url: ""
+  muse_gpt:
+    models: [gpt-5.4]
+    openai:
+      api_key: "${OMINILINK_API_KEY}"
+      base_url: https://api.example.com/v1
+  fashion_embedding:
+    models: [fashion-embedding]
+    fashion:
+      base_url: https://fashion-embedding.model.wgdl.tech
+      username: "${FASHION_USERNAME}"
+      password: "${FASHION_PASSWORD}"
+  fashion_reranker:
+    models: [fashion-reranker]
+    fashion:
+      base_url: https://fashion-reranker.model.wgdl.tech
+      username: "${FASHION_USERNAME}"
+      password: "${FASHION_PASSWORD}"
+  aliyun_image_seg:
+    models: [aliyun-segment-body, aliyun-segment-hd-body, aliyun-segment-commodity, aliyun-segment-common]
+    image_seg:
+      endpoint: imageseg.cn-shanghai.aliyuncs.com
+      access_key_id: "${ALIYUN_ACCESS_KEY_ID}"
+      access_key_secret: "${ALIYUN_ACCESS_KEY_SECRET}"
+
   vertex_chat:
     models: [gemini-2.0-flash-001]
     vertexai:
@@ -68,7 +92,7 @@ providers:
       max_poll_time: 600
   # Quick Speech：DashScope OpenAI-compatible，模型 ID 与线上一致。
   quick_speech:
-    models: [qwen-flash]
+    models: [qwen-flash, qwen3.7-plus, qwen3.8-max, kimi/kimi-k3]
     openai:
       api_key: "${DASHSCOPE_API_KEY}"
       base_url: https://dashscope.aliyuncs.com/compatible-mode/v1

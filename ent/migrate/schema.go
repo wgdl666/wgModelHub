@@ -44,6 +44,7 @@ var (
 		{Name: "call_id", Type: field.TypeString},
 		{Name: "generation_task_id", Type: field.TypeString, Unique: true, Nullable: true},
 		{Name: "caller_service", Type: field.TypeString, Default: "unknown"},
+		{Name: "business_line", Type: field.TypeString, Default: "unknown"},
 		{Name: "business_scene", Type: field.TypeString, Default: "unknown"},
 		{Name: "operation", Type: field.TypeString},
 		{Name: "capability", Type: field.TypeString},
@@ -85,27 +86,32 @@ var (
 			{
 				Name:    "modelcall_started_at",
 				Unique:  false,
-				Columns: []*schema.Column{ModelCallColumns[27]},
+				Columns: []*schema.Column{ModelCallColumns[28]},
 			},
 			{
 				Name:    "modelcall_caller_service_started_at",
 				Unique:  false,
-				Columns: []*schema.Column{ModelCallColumns[2], ModelCallColumns[27]},
+				Columns: []*schema.Column{ModelCallColumns[2], ModelCallColumns[28]},
 			},
 			{
 				Name:    "modelcall_business_scene_started_at",
 				Unique:  false,
-				Columns: []*schema.Column{ModelCallColumns[3], ModelCallColumns[27]},
+				Columns: []*schema.Column{ModelCallColumns[4], ModelCallColumns[28]},
+			},
+			{
+				Name:    "modelcall_business_line_business_scene_started_at",
+				Unique:  false,
+				Columns: []*schema.Column{ModelCallColumns[3], ModelCallColumns[4], ModelCallColumns[28]},
 			},
 			{
 				Name:    "modelcall_model_started_at",
 				Unique:  false,
-				Columns: []*schema.Column{ModelCallColumns[6], ModelCallColumns[27]},
+				Columns: []*schema.Column{ModelCallColumns[7], ModelCallColumns[28]},
 			},
 			{
 				Name:    "modelcall_status_started_at",
 				Unique:  false,
-				Columns: []*schema.Column{ModelCallColumns[8], ModelCallColumns[27]},
+				Columns: []*schema.Column{ModelCallColumns[9], ModelCallColumns[28]},
 			},
 		},
 	}

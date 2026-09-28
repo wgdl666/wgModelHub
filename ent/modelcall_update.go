@@ -63,6 +63,20 @@ func (_u *ModelCallUpdate) SetNillableCallerService(v *string) *ModelCallUpdate 
 	return _u
 }
 
+// SetBusinessLine sets the "business_line" field.
+func (_u *ModelCallUpdate) SetBusinessLine(v string) *ModelCallUpdate {
+	_u.mutation.SetBusinessLine(v)
+	return _u
+}
+
+// SetNillableBusinessLine sets the "business_line" field if the given value is not nil.
+func (_u *ModelCallUpdate) SetNillableBusinessLine(v *string) *ModelCallUpdate {
+	if v != nil {
+		_u.SetBusinessLine(*v)
+	}
+	return _u
+}
+
 // SetBusinessScene sets the "business_scene" field.
 func (_u *ModelCallUpdate) SetBusinessScene(v string) *ModelCallUpdate {
 	_u.mutation.SetBusinessScene(v)
@@ -613,6 +627,9 @@ func (_u *ModelCallUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.CallerService(); ok {
 		_spec.SetField(modelcall.FieldCallerService, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.BusinessLine(); ok {
+		_spec.SetField(modelcall.FieldBusinessLine, field.TypeString, value)
+	}
 	if value, ok := _u.mutation.BusinessScene(); ok {
 		_spec.SetField(modelcall.FieldBusinessScene, field.TypeString, value)
 	}
@@ -806,6 +823,20 @@ func (_u *ModelCallUpdateOne) SetCallerService(v string) *ModelCallUpdateOne {
 func (_u *ModelCallUpdateOne) SetNillableCallerService(v *string) *ModelCallUpdateOne {
 	if v != nil {
 		_u.SetCallerService(*v)
+	}
+	return _u
+}
+
+// SetBusinessLine sets the "business_line" field.
+func (_u *ModelCallUpdateOne) SetBusinessLine(v string) *ModelCallUpdateOne {
+	_u.mutation.SetBusinessLine(v)
+	return _u
+}
+
+// SetNillableBusinessLine sets the "business_line" field if the given value is not nil.
+func (_u *ModelCallUpdateOne) SetNillableBusinessLine(v *string) *ModelCallUpdateOne {
+	if v != nil {
+		_u.SetBusinessLine(*v)
 	}
 	return _u
 }
@@ -1389,6 +1420,9 @@ func (_u *ModelCallUpdateOne) sqlSave(ctx context.Context) (_node *ModelCall, er
 	}
 	if value, ok := _u.mutation.CallerService(); ok {
 		_spec.SetField(modelcall.FieldCallerService, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.BusinessLine(); ok {
+		_spec.SetField(modelcall.FieldBusinessLine, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.BusinessScene(); ok {
 		_spec.SetField(modelcall.FieldBusinessScene, field.TypeString, value)

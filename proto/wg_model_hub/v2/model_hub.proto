@@ -260,6 +260,9 @@ message VideoOutput {
   // duration_seconds 与 aspect_ratio 供 DashScope/OminiLink/Gemini 视频生成保留原业务参数语义。
   optional int32 duration_seconds = 2;
   optional string aspect_ratio = 3;
+  // LTX 逐次生成参数；显式 seed=0 不能被供应商默认值覆盖。
+  optional int32 fps = 4;
+  optional int32 seed = 5;
 }
 
 // OutputSpec.stream 控制文本是否增量；kind oneof 决定 text/image/video 能力路由。

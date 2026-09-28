@@ -25,6 +25,19 @@ const (
 )
 
 var categories = map[string]Category{
+	Gemini35Flash:          CategoryMultimodal,
+	Gemini31ProPreview:     CategoryMultimodal,
+	Qwen37Plus:             CategoryMultimodal,
+	Qwen38Max:              CategoryMultimodal,
+	GPT54:                  CategoryMultimodal,
+	KimiK3:                 CategoryMultimodal,
+	FashionEmbedding:       CategoryEmbedding,
+	FashionReranker:        CategoryRerank,
+	AliyunSegmentBody:      CategorySegment,
+	AliyunSegmentHDBody:    CategorySegment,
+	AliyunSegmentCommodity: CategorySegment,
+	AliyunSegmentCommon:    CategorySegment,
+
 	// 纯文本对话。DeepSeek 视觉是另一个未接入的 ID；qwen-flash 不收图。
 	DeepSeekV4Flash:  CategoryLLM,
 	DeepSeekV41Flash: CategoryLLM,
@@ -50,8 +63,8 @@ var categories = map[string]Category{
 	CohereEmbedV4:        CategoryEmbedding,
 	CohereEmbedV4Bedrock: CategoryEmbedding,
 
-	Qwen37TextRerank: CategoryRerank,
-	Qwen3VLRerank:    CategoryRerank,
+	Qwen37TextRerank:        CategoryRerank,
+	Qwen3VLRerank:           CategoryRerank,
 	CohereRerankV35:         CategoryRerank,
 	CohereRerankV35Official: CategoryRerank,
 

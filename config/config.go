@@ -29,6 +29,12 @@ const (
 )
 
 // Bootstrap 只保存 Nacos 定位信息；供应商凭据只能存在于受保护的配置正文中。
+type FashionProviderConfig struct {
+	BaseURL  string `yaml:"base_url"`
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
+}
+
 type Bootstrap struct {
 	ServerAddress string `json:"server_address"`
 	NamespaceID   string `json:"namespace_id"`
@@ -37,6 +43,12 @@ type Bootstrap struct {
 // ProviderConfig 用互斥嵌套字段表达具体供应商；每个实例必须且只能配置一种，
 // 并显式声明该实例承载的真实模型 ID 列表（含版本）。
 type ProviderConfig struct {
+	// ImageSeg 保留 Muse 的阿里云抠图，不以 BRIA 替换算法。
+	ImageSeg *FacebodyCompareProviderConfig `yaml:"image_seg"`
+
+	// Fashion 保留现有衣橱向量空间和多模态精排协议。
+	Fashion *FashionProviderConfig `yaml:"fashion"`
+
 	Models         []string                      `yaml:"models"`
 	Gemini         *GeminiProviderConfig         `yaml:"gemini"`
 	VertexAI       *VertexAIProviderConfig       `yaml:"vertexai"`
@@ -619,6 +631,15 @@ func validateProvider(name string, provider ProviderConfig) error {
 		if strings.TrimSpace(provider.OpenAI.APIKey) == "" {
 			return fmt.Errorf("provider %s api_key is required", name)
 		}
+	case provider.ImageSeg != nil:
+		cfg := provider.ImageSeg
+		if cfg.Endpoint == "" || cfg.AccessKeyID == "" || cfg.AccessKeySecret == "" {
+			return fmt.Errorf("provider %s image_seg endpoint and key pair required", name)
+		}
+	case provider.Fashion != nil:
+		if strings.TrimSpace(provider.Fashion.BaseURL) == "" {
+			return fmt.Errorf("provider %s fashion base_url is required", name)
+		}
 	case provider.LTX != nil:
 		ltx := provider.LTX
 		if strings.TrimSpace(ltx.BaseURL) == "" ||
@@ -760,6 +781,12 @@ func validateProvider(name string, provider ProviderConfig) error {
 
 func countConcreteProviders(provider ProviderConfig) int {
 	n := 0
+	if provider.ImageSeg != nil {
+		n++
+	}
+	if provider.Fashion != nil {
+		n++
+	}
 	if provider.Gemini != nil {
 		n++
 	}
@@ -864,9 +891,9 @@ func ProviderSupports(provider ProviderConfig, capability string) bool {
 	switch {
 	case provider.Gemini != nil, provider.OpenAI != nil:
 		return capability == CapabilityText || capability == CapabilityImage
-	case provider.Photoroom != nil, provider.SegmentPerson != nil:
+	case provider.ImageSeg != nil, provider.Photoroom != nil, provider.SegmentPerson != nil:
 		return capability == CapabilityImage
-	case provider.HumanYOLO != nil, provider.HumanParser != nil, provider.RekognitionDetect != nil, provider.FacebodyCompare != nil, provider.RekognitionCompare != nil, provider.DashScopeEmbedding != nil, provider.CohereEmbedding != nil, provider.BedrockEmbedding != nil, provider.DashScopeRerank != nil, provider.BedrockRerank != nil, provider.CohereRerank != nil, provider.FacebodyDetect != nil, provider.FacebodyLibrary != nil, provider.RekognitionFaces != nil, provider.RekognitionLibrary != nil:
+	case provider.Fashion != nil, provider.HumanYOLO != nil, provider.HumanParser != nil, provider.RekognitionDetect != nil, provider.FacebodyCompare != nil, provider.RekognitionCompare != nil, provider.DashScopeEmbedding != nil, provider.CohereEmbedding != nil, provider.BedrockEmbedding != nil, provider.DashScopeRerank != nil, provider.BedrockRerank != nil, provider.CohereRerank != nil, provider.FacebodyDetect != nil, provider.FacebodyLibrary != nil, provider.RekognitionFaces != nil, provider.RekognitionLibrary != nil:
 		return capability == CapabilityText
 	case provider.VertexAI != nil, provider.Ark != nil:
 		return capability == CapabilityText

@@ -35,6 +35,8 @@ func (ModelCall) Fields() []ent.Field {
 			Unique(),
 		field.String("caller_service").
 			Default("unknown"),
+		// 业务线由调用方明确上报；caller_service 保留技术身份及视频幂等语义。
+		field.String("business_line").Default("unknown"),
 		field.String("business_scene").
 			Default("unknown"),
 		field.String("operation"),
@@ -118,6 +120,7 @@ func (ModelCall) Indexes() []ent.Index {
 		index.Fields("started_at"),
 		index.Fields("caller_service", "started_at"),
 		index.Fields("business_scene", "started_at"),
+		index.Fields("business_line", "business_scene", "started_at"),
 		index.Fields("model", "started_at"),
 		index.Fields("status", "started_at"),
 	}

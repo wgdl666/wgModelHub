@@ -388,7 +388,9 @@ func (s *Service) recordAsyncVideoModelTerminal(ctx context.Context, task taskst
 	rec := callledger.Record{
 		GenerationTaskID: task.TaskID,
 		CallerService:    callledger.NormalizeOrUnknown(task.Caller),
-		// 故意不写 BusinessScene：merge 保留 Submit 场景，避免 Get 侧 metadata 覆盖。
+		// 从持久化 Submit metadata 恢复；账本首次写入丢失时也能补齐，禁止用 Get 请求覆盖。
+		BusinessLine:   callledger.BusinessLineFromContext(callmeta.Restore(context.Background(), task.Metadata)),
+		BusinessScene:  callledger.BusinessSceneFromContext(callmeta.Restore(context.Background(), task.Metadata)),
 		Operation:      callledger.OperationSubmitGeneration,
 		Capability:     callledger.CapabilityVideo,
 		Model:          task.Model,

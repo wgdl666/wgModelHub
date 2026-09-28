@@ -22,6 +22,8 @@ type ModelCall struct {
 	GenerationTaskID *string `json:"generation_task_id,omitempty"`
 	// CallerService holds the value of the "caller_service" field.
 	CallerService string `json:"caller_service,omitempty"`
+	// BusinessLine holds the value of the "business_line" field.
+	BusinessLine string `json:"business_line,omitempty"`
 	// BusinessScene holds the value of the "business_scene" field.
 	BusinessScene string `json:"business_scene,omitempty"`
 	// Operation holds the value of the "operation" field.
@@ -96,7 +98,7 @@ func (*ModelCall) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case modelcall.FieldInputTokens, modelcall.FieldOutputTokens, modelcall.FieldTotalTokens, modelcall.FieldCachedTokens, modelcall.FieldReasoningTokens, modelcall.FieldImageCount, modelcall.FieldVideoCount, modelcall.FieldVideoDurationSeconds, modelcall.FieldLatencyMs:
 			values[i] = new(sql.NullInt64)
-		case modelcall.FieldID, modelcall.FieldGenerationTaskID, modelcall.FieldCallerService, modelcall.FieldBusinessScene, modelcall.FieldOperation, modelcall.FieldCapability, modelcall.FieldModel, modelcall.FieldProvider, modelcall.FieldStatus, modelcall.FieldDeliveryStatus, modelcall.FieldErrorCategory, modelcall.FieldErrorCode, modelcall.FieldErrorReason, modelcall.FieldErrorMessage, modelcall.FieldImageSize, modelcall.FieldImageAspectRatio, modelcall.FieldVideoResolution, modelcall.FieldVideoAspectRatio:
+		case modelcall.FieldID, modelcall.FieldGenerationTaskID, modelcall.FieldCallerService, modelcall.FieldBusinessLine, modelcall.FieldBusinessScene, modelcall.FieldOperation, modelcall.FieldCapability, modelcall.FieldModel, modelcall.FieldProvider, modelcall.FieldStatus, modelcall.FieldDeliveryStatus, modelcall.FieldErrorCategory, modelcall.FieldErrorCode, modelcall.FieldErrorReason, modelcall.FieldErrorMessage, modelcall.FieldImageSize, modelcall.FieldImageAspectRatio, modelcall.FieldVideoResolution, modelcall.FieldVideoAspectRatio:
 			values[i] = new(sql.NullString)
 		case modelcall.FieldStartedAt, modelcall.FieldFinishedAt, modelcall.FieldCreatedAt, modelcall.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -133,6 +135,12 @@ func (_m *ModelCall) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field caller_service", values[i])
 			} else if value.Valid {
 				_m.CallerService = value.String
+			}
+		case modelcall.FieldBusinessLine:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field business_line", values[i])
+			} else if value.Valid {
+				_m.BusinessLine = value.String
 			}
 		case modelcall.FieldBusinessScene:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -378,6 +386,9 @@ func (_m *ModelCall) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("caller_service=")
 	builder.WriteString(_m.CallerService)
+	builder.WriteString(", ")
+	builder.WriteString("business_line=")
+	builder.WriteString(_m.BusinessLine)
 	builder.WriteString(", ")
 	builder.WriteString("business_scene=")
 	builder.WriteString(_m.BusinessScene)

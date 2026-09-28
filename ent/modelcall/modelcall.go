@@ -17,6 +17,8 @@ const (
 	FieldGenerationTaskID = "generation_task_id"
 	// FieldCallerService holds the string denoting the caller_service field in the database.
 	FieldCallerService = "caller_service"
+	// FieldBusinessLine holds the string denoting the business_line field in the database.
+	FieldBusinessLine = "business_line"
 	// FieldBusinessScene holds the string denoting the business_scene field in the database.
 	FieldBusinessScene = "business_scene"
 	// FieldOperation holds the string denoting the operation field in the database.
@@ -88,6 +90,7 @@ var Columns = []string{
 	FieldID,
 	FieldGenerationTaskID,
 	FieldCallerService,
+	FieldBusinessLine,
 	FieldBusinessScene,
 	FieldOperation,
 	FieldCapability,
@@ -134,6 +137,8 @@ func ValidColumn(column string) bool {
 var (
 	// DefaultCallerService holds the default value on creation for the "caller_service" field.
 	DefaultCallerService string
+	// DefaultBusinessLine holds the default value on creation for the "business_line" field.
+	DefaultBusinessLine string
 	// DefaultBusinessScene holds the default value on creation for the "business_scene" field.
 	DefaultBusinessScene string
 	// DefaultDeliveryStatus holds the default value on creation for the "delivery_status" field.
@@ -186,6 +191,11 @@ func ByGenerationTaskID(opts ...sql.OrderTermOption) OrderOption {
 // ByCallerService orders the results by the caller_service field.
 func ByCallerService(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCallerService, opts...).ToFunc()
+}
+
+// ByBusinessLine orders the results by the business_line field.
+func ByBusinessLine(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBusinessLine, opts...).ToFunc()
 }
 
 // ByBusinessScene orders the results by the business_scene field.

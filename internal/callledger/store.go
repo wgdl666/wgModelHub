@@ -25,6 +25,7 @@ type Record struct {
 	CallID           string
 	GenerationTaskID string
 	CallerService    string
+	BusinessLine     string
 	BusinessScene    string
 	Operation        string
 	Capability       string
@@ -150,6 +151,7 @@ func (p *Postgres) Record(ctx context.Context, rec Record) error {
 	builder := p.client.ModelCall.Create().
 		SetID(rec.CallID).
 		SetCallerService(normalizeLabel(rec.CallerService)).
+		SetBusinessLine(normalizeLabel(rec.BusinessLine)).
 		SetBusinessScene(normalizeLabel(rec.BusinessScene)).
 		SetOperation(rec.Operation).
 		SetCapability(rec.Capability).
@@ -267,6 +269,9 @@ func (p *Postgres) updateMergedOptimistic(ctx context.Context, existing *ent.Mod
 	if existing.CallerService == UnknownLabel && merged.CallerService != "" && merged.CallerService != UnknownLabel {
 		upd.SetCallerService(normalizeLabel(merged.CallerService))
 	}
+	if existing.BusinessLine == UnknownLabel && merged.BusinessLine != "" && merged.BusinessLine != UnknownLabel {
+		upd.SetBusinessLine(normalizeLabel(merged.BusinessLine))
+	}
 	if existing.BusinessScene == UnknownLabel && merged.BusinessScene != "" && merged.BusinessScene != UnknownLabel {
 		upd.SetBusinessScene(normalizeLabel(merged.BusinessScene))
 	}
@@ -383,6 +388,7 @@ func fromEnt(row *ent.ModelCall) Record {
 	rec := Record{
 		CallID:           row.ID,
 		CallerService:    row.CallerService,
+		BusinessLine:     row.BusinessLine,
 		BusinessScene:    row.BusinessScene,
 		Operation:        row.Operation,
 		Capability:       row.Capability,
@@ -443,6 +449,7 @@ func mergeVideoRecord(prev, next Record) Record {
 	out.GenerationTaskID = firstNonEmpty(out.GenerationTaskID, next.GenerationTaskID)
 	out.CallerService = firstNonEmptyPreferKnown(out.CallerService, next.CallerService)
 	// 业务场景以 Submit 写入为准，后续 Get 的 metadata 不得覆盖。
+	out.BusinessLine = firstNonEmptyPreferKnown(out.BusinessLine, next.BusinessLine)
 	out.BusinessScene = firstNonEmptyPreferKnown(out.BusinessScene, next.BusinessScene)
 	out.Operation = firstNonEmpty(out.Operation, next.Operation)
 	out.Capability = firstNonEmpty(out.Capability, next.Capability)

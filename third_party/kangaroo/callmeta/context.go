@@ -8,11 +8,25 @@ import (
 )
 
 const (
-	BusinessKey = "business_key"
-	BusinessID  = "business_id"
-	PromptDebug = "prompt_debug"
-	MetadataKey = "metadata"
+	BusinessKey   = "business_key"
+	BusinessID    = "business_id"
+	PromptDebug   = "prompt_debug"
+	MetadataKey   = "metadata"
+	BusinessLine  = "x-wg-business-line"
+	BusinessScene = "x-wg-business-scene"
 )
+
+type attribution struct{ line, scene string }
+type attributionContextKey struct{}
+
+// WithAttribution 标记用户触发的业务线与功能；与技术 caller 和调试业务关联分开。
+func WithAttribution(ctx context.Context, line, scene string) context.Context {
+	return context.WithValue(ctx, attributionContextKey{}, attribution{line, scene})
+}
+func Attribution(ctx context.Context) (line, scene string) {
+	value, _ := ctx.Value(attributionContextKey{}).(attribution)
+	return value.line, value.scene
+}
 
 type business struct{ key, id string }
 type businessContextKey struct{}
@@ -33,6 +47,10 @@ type Propagator struct{}
 
 func (Propagator) Inject(ctx context.Context, carrier propagation.TextMapCarrier) {
 	propagation.TraceContext{}.Inject(ctx, carrier)
+	if line, scene := Attribution(ctx); line != "" {
+		carrier.Set(BusinessLine, line)
+		carrier.Set(BusinessScene, scene)
+	}
 	if key, id := Business(ctx); key != "" && id != "" {
 		carrier.Set(BusinessKey, key)
 		carrier.Set(BusinessID, id)
@@ -44,10 +62,10 @@ func (Propagator) Extract(ctx context.Context, carrier propagation.TextMapCarrie
 	if key == "" || id == "" {
 		key, id = "", ""
 	}
-	return WithBusiness(ctx, key, id)
+	return WithAttribution(WithBusiness(ctx, key, id), carrier.Get(BusinessLine), carrier.Get(BusinessScene))
 }
 func (Propagator) Fields() []string {
-	return []string{"traceparent", "tracestate", BusinessKey, BusinessID}
+	return []string{"traceparent", "tracestate", BusinessKey, BusinessID, BusinessLine, BusinessScene}
 }
 
 // Capture 用同一协议持久化上下文；不保存 deadline 或取消状态。

@@ -1077,6 +1077,7 @@ type ModelCallMutation struct {
 	id                        *string
 	generation_task_id        *string
 	caller_service            *string
+	business_line             *string
 	business_scene            *string
 	operation                 *string
 	capability                *string
@@ -1310,6 +1311,42 @@ func (m *ModelCallMutation) OldCallerService(ctx context.Context) (v string, err
 // ResetCallerService resets all changes to the "caller_service" field.
 func (m *ModelCallMutation) ResetCallerService() {
 	m.caller_service = nil
+}
+
+// SetBusinessLine sets the "business_line" field.
+func (m *ModelCallMutation) SetBusinessLine(s string) {
+	m.business_line = &s
+}
+
+// BusinessLine returns the value of the "business_line" field in the mutation.
+func (m *ModelCallMutation) BusinessLine() (r string, exists bool) {
+	v := m.business_line
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBusinessLine returns the old "business_line" field's value of the ModelCall entity.
+// If the ModelCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelCallMutation) OldBusinessLine(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBusinessLine is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBusinessLine requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBusinessLine: %w", err)
+	}
+	return oldValue.BusinessLine, nil
+}
+
+// ResetBusinessLine resets all changes to the "business_line" field.
+func (m *ModelCallMutation) ResetBusinessLine() {
+	m.business_line = nil
 }
 
 // SetBusinessScene sets the "business_scene" field.
@@ -2767,12 +2804,15 @@ func (m *ModelCallMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ModelCallMutation) Fields() []string {
-	fields := make([]string, 0, 33)
+	fields := make([]string, 0, 34)
 	if m.generation_task_id != nil {
 		fields = append(fields, modelcall.FieldGenerationTaskID)
 	}
 	if m.caller_service != nil {
 		fields = append(fields, modelcall.FieldCallerService)
+	}
+	if m.business_line != nil {
+		fields = append(fields, modelcall.FieldBusinessLine)
 	}
 	if m.business_scene != nil {
 		fields = append(fields, modelcall.FieldBusinessScene)
@@ -2879,6 +2919,8 @@ func (m *ModelCallMutation) Field(name string) (ent.Value, bool) {
 		return m.GenerationTaskID()
 	case modelcall.FieldCallerService:
 		return m.CallerService()
+	case modelcall.FieldBusinessLine:
+		return m.BusinessLine()
 	case modelcall.FieldBusinessScene:
 		return m.BusinessScene()
 	case modelcall.FieldOperation:
@@ -2954,6 +2996,8 @@ func (m *ModelCallMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldGenerationTaskID(ctx)
 	case modelcall.FieldCallerService:
 		return m.OldCallerService(ctx)
+	case modelcall.FieldBusinessLine:
+		return m.OldBusinessLine(ctx)
 	case modelcall.FieldBusinessScene:
 		return m.OldBusinessScene(ctx)
 	case modelcall.FieldOperation:
@@ -3038,6 +3082,13 @@ func (m *ModelCallMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCallerService(v)
+		return nil
+	case modelcall.FieldBusinessLine:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBusinessLine(v)
 		return nil
 	case modelcall.FieldBusinessScene:
 		v, ok := value.(string)
@@ -3484,6 +3535,9 @@ func (m *ModelCallMutation) ResetField(name string) error {
 		return nil
 	case modelcall.FieldCallerService:
 		m.ResetCallerService()
+		return nil
+	case modelcall.FieldBusinessLine:
+		m.ResetBusinessLine()
 		return nil
 	case modelcall.FieldBusinessScene:
 		m.ResetBusinessScene()

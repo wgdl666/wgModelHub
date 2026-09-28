@@ -49,68 +49,72 @@ func init() {
 	modelcallDescCallerService := modelcallFields[2].Descriptor()
 	// modelcall.DefaultCallerService holds the default value on creation for the caller_service field.
 	modelcall.DefaultCallerService = modelcallDescCallerService.Default.(string)
+	// modelcallDescBusinessLine is the schema descriptor for business_line field.
+	modelcallDescBusinessLine := modelcallFields[3].Descriptor()
+	// modelcall.DefaultBusinessLine holds the default value on creation for the business_line field.
+	modelcall.DefaultBusinessLine = modelcallDescBusinessLine.Default.(string)
 	// modelcallDescBusinessScene is the schema descriptor for business_scene field.
-	modelcallDescBusinessScene := modelcallFields[3].Descriptor()
+	modelcallDescBusinessScene := modelcallFields[4].Descriptor()
 	// modelcall.DefaultBusinessScene holds the default value on creation for the business_scene field.
 	modelcall.DefaultBusinessScene = modelcallDescBusinessScene.Default.(string)
 	// modelcallDescDeliveryStatus is the schema descriptor for delivery_status field.
-	modelcallDescDeliveryStatus := modelcallFields[9].Descriptor()
+	modelcallDescDeliveryStatus := modelcallFields[10].Descriptor()
 	// modelcall.DefaultDeliveryStatus holds the default value on creation for the delivery_status field.
 	modelcall.DefaultDeliveryStatus = modelcallDescDeliveryStatus.Default.(string)
 	// modelcallDescErrorCategory is the schema descriptor for error_category field.
-	modelcallDescErrorCategory := modelcallFields[10].Descriptor()
+	modelcallDescErrorCategory := modelcallFields[11].Descriptor()
 	// modelcall.DefaultErrorCategory holds the default value on creation for the error_category field.
 	modelcall.DefaultErrorCategory = modelcallDescErrorCategory.Default.(string)
 	// modelcallDescErrorCode is the schema descriptor for error_code field.
-	modelcallDescErrorCode := modelcallFields[11].Descriptor()
+	modelcallDescErrorCode := modelcallFields[12].Descriptor()
 	// modelcall.DefaultErrorCode holds the default value on creation for the error_code field.
 	modelcall.DefaultErrorCode = modelcallDescErrorCode.Default.(string)
 	// modelcallDescErrorReason is the schema descriptor for error_reason field.
-	modelcallDescErrorReason := modelcallFields[12].Descriptor()
+	modelcallDescErrorReason := modelcallFields[13].Descriptor()
 	// modelcall.DefaultErrorReason holds the default value on creation for the error_reason field.
 	modelcall.DefaultErrorReason = modelcallDescErrorReason.Default.(string)
 	// modelcallDescErrorMessage is the schema descriptor for error_message field.
-	modelcallDescErrorMessage := modelcallFields[13].Descriptor()
+	modelcallDescErrorMessage := modelcallFields[14].Descriptor()
 	// modelcall.DefaultErrorMessage holds the default value on creation for the error_message field.
 	modelcall.DefaultErrorMessage = modelcallDescErrorMessage.Default.(string)
 	// modelcallDescImageSize is the schema descriptor for image_size field.
-	modelcallDescImageSize := modelcallFields[20].Descriptor()
+	modelcallDescImageSize := modelcallFields[21].Descriptor()
 	// modelcall.DefaultImageSize holds the default value on creation for the image_size field.
 	modelcall.DefaultImageSize = modelcallDescImageSize.Default.(string)
 	// modelcallDescImageAspectRatio is the schema descriptor for image_aspect_ratio field.
-	modelcallDescImageAspectRatio := modelcallFields[21].Descriptor()
+	modelcallDescImageAspectRatio := modelcallFields[22].Descriptor()
 	// modelcall.DefaultImageAspectRatio holds the default value on creation for the image_aspect_ratio field.
 	modelcall.DefaultImageAspectRatio = modelcallDescImageAspectRatio.Default.(string)
 	// modelcallDescVideoResolution is the schema descriptor for video_resolution field.
-	modelcallDescVideoResolution := modelcallFields[23].Descriptor()
+	modelcallDescVideoResolution := modelcallFields[24].Descriptor()
 	// modelcall.DefaultVideoResolution holds the default value on creation for the video_resolution field.
 	modelcall.DefaultVideoResolution = modelcallDescVideoResolution.Default.(string)
 	// modelcallDescVideoAspectRatio is the schema descriptor for video_aspect_ratio field.
-	modelcallDescVideoAspectRatio := modelcallFields[25].Descriptor()
+	modelcallDescVideoAspectRatio := modelcallFields[26].Descriptor()
 	// modelcall.DefaultVideoAspectRatio holds the default value on creation for the video_aspect_ratio field.
 	modelcall.DefaultVideoAspectRatio = modelcallDescVideoAspectRatio.Default.(string)
 	// modelcallDescLatencyMs is the schema descriptor for latency_ms field.
-	modelcallDescLatencyMs := modelcallFields[26].Descriptor()
+	modelcallDescLatencyMs := modelcallFields[27].Descriptor()
 	// modelcall.DefaultLatencyMs holds the default value on creation for the latency_ms field.
 	modelcall.DefaultLatencyMs = modelcallDescLatencyMs.Default.(int64)
 	// modelcallDescInputPayload is the schema descriptor for input_payload field.
-	modelcallDescInputPayload := modelcallFields[29].Descriptor()
+	modelcallDescInputPayload := modelcallFields[30].Descriptor()
 	// modelcall.DefaultInputPayload holds the default value on creation for the input_payload field.
 	modelcall.DefaultInputPayload = modelcallDescInputPayload.Default.(map[string]interface{})
 	// modelcallDescOutputPayload is the schema descriptor for output_payload field.
-	modelcallDescOutputPayload := modelcallFields[30].Descriptor()
+	modelcallDescOutputPayload := modelcallFields[31].Descriptor()
 	// modelcall.DefaultOutputPayload holds the default value on creation for the output_payload field.
 	modelcall.DefaultOutputPayload = modelcallDescOutputPayload.Default.(map[string]interface{})
 	// modelcallDescUsageDetail is the schema descriptor for usage_detail field.
-	modelcallDescUsageDetail := modelcallFields[31].Descriptor()
+	modelcallDescUsageDetail := modelcallFields[32].Descriptor()
 	// modelcall.DefaultUsageDetail holds the default value on creation for the usage_detail field.
 	modelcall.DefaultUsageDetail = modelcallDescUsageDetail.Default.(map[string]interface{})
 	// modelcallDescCreatedAt is the schema descriptor for created_at field.
-	modelcallDescCreatedAt := modelcallFields[32].Descriptor()
+	modelcallDescCreatedAt := modelcallFields[33].Descriptor()
 	// modelcall.DefaultCreatedAt holds the default value on creation for the created_at field.
 	modelcall.DefaultCreatedAt = modelcallDescCreatedAt.Default.(func() time.Time)
 	// modelcallDescUpdatedAt is the schema descriptor for updated_at field.
-	modelcallDescUpdatedAt := modelcallFields[33].Descriptor()
+	modelcallDescUpdatedAt := modelcallFields[34].Descriptor()
 	// modelcall.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	modelcall.DefaultUpdatedAt = modelcallDescUpdatedAt.Default.(func() time.Time)
 	// modelcall.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

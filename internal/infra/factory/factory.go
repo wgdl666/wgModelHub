@@ -18,18 +18,20 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/infra/facebodycompare"
 	"github.com/wgdl666/wgModelHub/internal/infra/facebodydetect"
 	"github.com/wgdl666/wgModelHub/internal/infra/facebodylibrary"
+	"github.com/wgdl666/wgModelHub/internal/infra/fashion"
 	"github.com/wgdl666/wgModelHub/internal/infra/geminivideo"
 	"github.com/wgdl666/wgModelHub/internal/infra/genai"
 	"github.com/wgdl666/wgModelHub/internal/infra/humanparser"
 	"github.com/wgdl666/wgModelHub/internal/infra/humanyolo"
+	"github.com/wgdl666/wgModelHub/internal/infra/imageseg"
 	"github.com/wgdl666/wgModelHub/internal/infra/ltx"
 	"github.com/wgdl666/wgModelHub/internal/infra/minimaxtts"
 	"github.com/wgdl666/wgModelHub/internal/infra/ominilinkvideo"
 	"github.com/wgdl666/wgModelHub/internal/infra/openai"
 	"github.com/wgdl666/wgModelHub/internal/infra/photoroom"
 	"github.com/wgdl666/wgModelHub/internal/infra/rekognitioncompare"
-	"github.com/wgdl666/wgModelHub/internal/infra/rekognitionfaces"
 	"github.com/wgdl666/wgModelHub/internal/infra/rekognitiondetect"
+	"github.com/wgdl666/wgModelHub/internal/infra/rekognitionfaces"
 	"github.com/wgdl666/wgModelHub/internal/infra/segmentperson"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 )
@@ -49,6 +51,20 @@ func Build(ctx context.Context, cfg config.Config) (map[string]provider.Set, err
 
 func buildProvider(ctx context.Context, name string, providerCfg config.ProviderConfig) (provider.Set, error) {
 	switch {
+	case providerCfg.ImageSeg != nil:
+		cfg := providerCfg.ImageSeg
+		client, err := imageseg.New(cfg.Endpoint, cfg.AccessKeyID, cfg.AccessKeySecret)
+		if err != nil {
+			return provider.Set{}, err
+		}
+		return provider.Set{Image: client}, nil
+	case providerCfg.Fashion != nil:
+		cfg := providerCfg.Fashion
+		client, err := fashion.New(name, cfg.BaseURL, cfg.Username, cfg.Password)
+		if err != nil {
+			return provider.Set{}, err
+		}
+		return provider.Set{Text: client}, nil
 	case providerCfg.Gemini != nil:
 		cfg := providerCfg.Gemini
 		client, err := genai.NewGemini(ctx, name, cfg.APIKey, cfg.BaseURL, cfg.ProxyURL)

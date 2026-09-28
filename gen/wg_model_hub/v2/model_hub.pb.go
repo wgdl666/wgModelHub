@@ -1876,8 +1876,11 @@ type VideoOutput struct {
 	// duration_seconds 与 aspect_ratio 供 DashScope/OminiLink/Gemini 视频生成保留原业务参数语义。
 	DurationSeconds *int32  `protobuf:"varint,2,opt,name=duration_seconds,json=durationSeconds,proto3,oneof" json:"duration_seconds,omitempty"`
 	AspectRatio     *string `protobuf:"bytes,3,opt,name=aspect_ratio,json=aspectRatio,proto3,oneof" json:"aspect_ratio,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// LTX 逐次生成参数；显式 seed=0 不能被供应商默认值覆盖。
+	Fps           *int32 `protobuf:"varint,4,opt,name=fps,proto3,oneof" json:"fps,omitempty"`
+	Seed          *int32 `protobuf:"varint,5,opt,name=seed,proto3,oneof" json:"seed,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *VideoOutput) Reset() {
@@ -1929,6 +1932,20 @@ func (x *VideoOutput) GetAspectRatio() string {
 		return *x.AspectRatio
 	}
 	return ""
+}
+
+func (x *VideoOutput) GetFps() int32 {
+	if x != nil && x.Fps != nil {
+		return *x.Fps
+	}
+	return 0
+}
+
+func (x *VideoOutput) GetSeed() int32 {
+	if x != nil && x.Seed != nil {
+		return *x.Seed
+	}
+	return 0
 }
 
 // OutputSpec.stream 控制文本是否增量；kind oneof 决定 text/image/video 能力路由。
@@ -2907,15 +2924,19 @@ const file_proto_wg_model_hub_v2_model_hub_proto_rawDesc = "" +
 	"\x0ethinking_level\x18\x05 \x01(\x0e2\x1e.wg_model_hub.v2.ThinkingLevelR\rthinkingLevelB\x0f\n" +
 	"\r_aspect_ratioB\r\n" +
 	"\v_image_sizeB\x0e\n" +
-	"\f_temperature\"\xab\x01\n" +
+	"\f_temperature\"\xec\x01\n" +
 	"\vVideoOutput\x12\x1e\n" +
 	"\n" +
 	"resolution\x18\x01 \x01(\tR\n" +
 	"resolution\x12.\n" +
 	"\x10duration_seconds\x18\x02 \x01(\x05H\x00R\x0fdurationSeconds\x88\x01\x01\x12&\n" +
-	"\faspect_ratio\x18\x03 \x01(\tH\x01R\vaspectRatio\x88\x01\x01B\x13\n" +
+	"\faspect_ratio\x18\x03 \x01(\tH\x01R\vaspectRatio\x88\x01\x01\x12\x15\n" +
+	"\x03fps\x18\x04 \x01(\x05H\x02R\x03fps\x88\x01\x01\x12\x17\n" +
+	"\x04seed\x18\x05 \x01(\x05H\x03R\x04seed\x88\x01\x01B\x13\n" +
 	"\x11_duration_secondsB\x0f\n" +
-	"\r_aspect_ratio\"\xcb\x01\n" +
+	"\r_aspect_ratioB\x06\n" +
+	"\x04_fpsB\a\n" +
+	"\x05_seed\"\xcb\x01\n" +
 	"\n" +
 	"OutputSpec\x12\x16\n" +
 	"\x06stream\x18\x01 \x01(\bR\x06stream\x121\n" +

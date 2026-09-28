@@ -48,6 +48,20 @@ func (_c *ModelCallCreate) SetNillableCallerService(v *string) *ModelCallCreate 
 	return _c
 }
 
+// SetBusinessLine sets the "business_line" field.
+func (_c *ModelCallCreate) SetBusinessLine(v string) *ModelCallCreate {
+	_c.mutation.SetBusinessLine(v)
+	return _c
+}
+
+// SetNillableBusinessLine sets the "business_line" field if the given value is not nil.
+func (_c *ModelCallCreate) SetNillableBusinessLine(v *string) *ModelCallCreate {
+	if v != nil {
+		_c.SetBusinessLine(*v)
+	}
+	return _c
+}
+
 // SetBusinessScene sets the "business_scene" field.
 func (_c *ModelCallCreate) SetBusinessScene(v string) *ModelCallCreate {
 	_c.mutation.SetBusinessScene(v)
@@ -455,6 +469,10 @@ func (_c *ModelCallCreate) defaults() {
 		v := modelcall.DefaultCallerService
 		_c.mutation.SetCallerService(v)
 	}
+	if _, ok := _c.mutation.BusinessLine(); !ok {
+		v := modelcall.DefaultBusinessLine
+		_c.mutation.SetBusinessLine(v)
+	}
 	if _, ok := _c.mutation.BusinessScene(); !ok {
 		v := modelcall.DefaultBusinessScene
 		_c.mutation.SetBusinessScene(v)
@@ -525,6 +543,9 @@ func (_c *ModelCallCreate) defaults() {
 func (_c *ModelCallCreate) check() error {
 	if _, ok := _c.mutation.CallerService(); !ok {
 		return &ValidationError{Name: "caller_service", err: errors.New(`ent: missing required field "ModelCall.caller_service"`)}
+	}
+	if _, ok := _c.mutation.BusinessLine(); !ok {
+		return &ValidationError{Name: "business_line", err: errors.New(`ent: missing required field "ModelCall.business_line"`)}
 	}
 	if _, ok := _c.mutation.BusinessScene(); !ok {
 		return &ValidationError{Name: "business_scene", err: errors.New(`ent: missing required field "ModelCall.business_scene"`)}
@@ -635,6 +656,10 @@ func (_c *ModelCallCreate) createSpec() (*ModelCall, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.CallerService(); ok {
 		_spec.SetField(modelcall.FieldCallerService, field.TypeString, value)
 		_node.CallerService = value
+	}
+	if value, ok := _c.mutation.BusinessLine(); ok {
+		_spec.SetField(modelcall.FieldBusinessLine, field.TypeString, value)
+		_node.BusinessLine = value
 	}
 	if value, ok := _c.mutation.BusinessScene(); ok {
 		_spec.SetField(modelcall.FieldBusinessScene, field.TypeString, value)

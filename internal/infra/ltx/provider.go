@@ -82,7 +82,7 @@ func (p *Provider) SubmitVideo(ctx context.Context, model string, request *model
 	if video := request.GetOutput().GetVideo(); video != nil {
 		resolution = video.GetResolution()
 	}
-	return p.submit(ctx, model, imageBytes, provider.JoinedText(request.GetInput()), resolution)
+	return p.submit(ctx, model, imageBytes, provider.JoinedText(request.GetInput()), resolution, request.GetOutput().GetVideo())
 }
 
 // GetVideo 单次查询 /jobs/{id}；done/error/进行中分别映射为 Succeeded/Failed/Running。
@@ -183,7 +183,7 @@ func (p *Provider) loadFirstFrame(ctx context.Context, media *modelhubv2.Media) 
 	}
 }
 
-func (p *Provider) submit(ctx context.Context, model string, imageBytes []byte, prompt, resolution string) (string, error) {
+func (p *Provider) submit(ctx context.Context, model string, imageBytes []byte, prompt, resolution string, video *modelhubv2.VideoOutput) (string, error) {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	imagePart, err := writer.CreateFormFile("image", "first_frame.png")
@@ -193,12 +193,24 @@ func (p *Provider) submit(ctx context.Context, model string, imageBytes []byte, 
 	if _, err := imagePart.Write(imageBytes); err != nil {
 		return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "write multipart image", err)
 	}
+	duration, fps, seed := p.duration, p.fps, p.seed
+	if video != nil {
+		if video.DurationSeconds != nil {
+			duration = float64(video.GetDurationSeconds())
+		}
+		if video.Fps != nil {
+			fps = int(video.GetFps())
+		}
+		if video.Seed != nil {
+			seed = int(video.GetSeed())
+		}
+	}
 	fields := map[string]string{
 		"prompt":     prompt,
 		"resolution": normalizeResolution(resolution),
-		"duration":   fmt.Sprintf("%g", p.duration),
-		"fps":        fmt.Sprintf("%d", p.fps),
-		"seed":       fmt.Sprintf("%d", p.seed),
+		"duration":   fmt.Sprintf("%g", duration),
+		"fps":        fmt.Sprintf("%d", fps),
+		"seed":       fmt.Sprintf("%d", seed),
 		"model":      model,
 	}
 	for name, value := range fields {

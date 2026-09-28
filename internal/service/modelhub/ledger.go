@@ -23,6 +23,7 @@ func (s *Service) baseRecord(ctx context.Context, operation, capability, model, 
 	return callledger.Record{
 		CallID:         uuid.NewString(),
 		CallerService:  callledger.CallerFromContext(ctx),
+		BusinessLine:   callledger.BusinessLineFromContext(ctx),
 		BusinessScene:  callledger.BusinessSceneFromContext(ctx),
 		Operation:      operation,
 		Capability:     capability,
