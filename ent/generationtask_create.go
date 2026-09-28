@@ -70,6 +70,12 @@ func (_c *GenerationTaskCreate) SetState(v string) *GenerationTaskCreate {
 	return _c
 }
 
+// SetMetadata sets the "metadata" field.
+func (_c *GenerationTaskCreate) SetMetadata(v map[string]string) *GenerationTaskCreate {
+	_c.mutation.SetMetadata(v)
+	return _c
+}
+
 // SetErrorCode sets the "error_code" field.
 func (_c *GenerationTaskCreate) SetErrorCode(v int32) *GenerationTaskCreate {
 	_c.mutation.SetErrorCode(v)
@@ -308,6 +314,10 @@ func (_c *GenerationTaskCreate) createSpec() (*GenerationTask, *sqlgraph.CreateS
 	if value, ok := _c.mutation.State(); ok {
 		_spec.SetField(generationtask.FieldState, field.TypeString, value)
 		_node.State = value
+	}
+	if value, ok := _c.mutation.Metadata(); ok {
+		_spec.SetField(generationtask.FieldMetadata, field.TypeJSON, value)
+		_node.Metadata = value
 	}
 	if value, ok := _c.mutation.ErrorCode(); ok {
 		_spec.SetField(generationtask.FieldErrorCode, field.TypeInt32, value)

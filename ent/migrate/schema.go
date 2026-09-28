@@ -19,6 +19,7 @@ var (
 		{Name: "provider", Type: field.TypeString},
 		{Name: "provider_task_id", Type: field.TypeString, Default: ""},
 		{Name: "state", Type: field.TypeString},
+		{Name: "metadata", Type: field.TypeJSON, Nullable: true},
 		{Name: "error_code", Type: field.TypeInt32, Default: 0},
 		{Name: "error_message", Type: field.TypeString, Default: ""},
 		{Name: "error_reason", Type: field.TypeString, Default: ""},

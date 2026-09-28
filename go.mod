@@ -74,13 +74,10 @@ require (
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.8.3 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/ini v1.8.3 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/v4a v1.5.3 // indirect
-	github.com/aws/aws-sdk-go-v2/service/bedrockagentruntime v1.63.1 // indirect
-	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.63.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.19 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.14.3 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.38.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.43.0 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sts v1.51.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bmatcuk/doublestar v1.3.4 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
@@ -155,3 +152,12 @@ require (
 	modernc.org/memory v1.11.0 // indirect
 	nhooyr.io/websocket v1.8.6 // indirect
 )
+
+require (
+	github.com/aws/aws-sdk-go-v2/service/bedrockagentruntime v1.63.1
+	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.63.0
+	github.com/aws/aws-sdk-go-v2/service/sts v1.51.0
+	github.com/wgdl666/kangaroo/callmeta v0.0.0
+)
+
+replace github.com/wgdl666/kangaroo/callmeta => ./third_party/kangaroo/callmeta

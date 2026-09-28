@@ -18,7 +18,10 @@ func Run(ctx context.Context, db *sql.DB) error {
 	if err := runSQL(ctx, db, migrations.GenerationTaskSQL); err != nil {
 		return err
 	}
-	return runSQL(ctx, db, migrations.ModelCallSQL)
+	if err := runSQL(ctx, db, migrations.ModelCallSQL); err != nil {
+		return err
+	}
+	return runSQL(ctx, db, migrations.GenerationTaskMetadataSQL)
 }
 
 func runSQL(ctx context.Context, db *sql.DB, statement string) (returnErr error) {

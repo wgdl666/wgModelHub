@@ -127,6 +127,18 @@ func (_u *GenerationTaskUpdate) SetNillableState(v *string) *GenerationTaskUpdat
 	return _u
 }
 
+// SetMetadata sets the "metadata" field.
+func (_u *GenerationTaskUpdate) SetMetadata(v map[string]string) *GenerationTaskUpdate {
+	_u.mutation.SetMetadata(v)
+	return _u
+}
+
+// ClearMetadata clears the value of the "metadata" field.
+func (_u *GenerationTaskUpdate) ClearMetadata() *GenerationTaskUpdate {
+	_u.mutation.ClearMetadata()
+	return _u
+}
+
 // SetErrorCode sets the "error_code" field.
 func (_u *GenerationTaskUpdate) SetErrorCode(v int32) *GenerationTaskUpdate {
 	_u.mutation.ResetErrorCode()
@@ -252,6 +264,12 @@ func (_u *GenerationTaskUpdate) sqlSave(ctx context.Context) (_node int, err err
 	}
 	if value, ok := _u.mutation.State(); ok {
 		_spec.SetField(generationtask.FieldState, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Metadata(); ok {
+		_spec.SetField(generationtask.FieldMetadata, field.TypeJSON, value)
+	}
+	if _u.mutation.MetadataCleared() {
+		_spec.ClearField(generationtask.FieldMetadata, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.ErrorCode(); ok {
 		_spec.SetField(generationtask.FieldErrorCode, field.TypeInt32, value)
@@ -385,6 +403,18 @@ func (_u *GenerationTaskUpdateOne) SetNillableState(v *string) *GenerationTaskUp
 	if v != nil {
 		_u.SetState(*v)
 	}
+	return _u
+}
+
+// SetMetadata sets the "metadata" field.
+func (_u *GenerationTaskUpdateOne) SetMetadata(v map[string]string) *GenerationTaskUpdateOne {
+	_u.mutation.SetMetadata(v)
+	return _u
+}
+
+// ClearMetadata clears the value of the "metadata" field.
+func (_u *GenerationTaskUpdateOne) ClearMetadata() *GenerationTaskUpdateOne {
+	_u.mutation.ClearMetadata()
 	return _u
 }
 
@@ -543,6 +573,12 @@ func (_u *GenerationTaskUpdateOne) sqlSave(ctx context.Context) (_node *Generati
 	}
 	if value, ok := _u.mutation.State(); ok {
 		_spec.SetField(generationtask.FieldState, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Metadata(); ok {
+		_spec.SetField(generationtask.FieldMetadata, field.TypeJSON, value)
+	}
+	if _u.mutation.MetadataCleared() {
+		_spec.ClearField(generationtask.FieldMetadata, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.ErrorCode(); ok {
 		_spec.SetField(generationtask.FieldErrorCode, field.TypeInt32, value)

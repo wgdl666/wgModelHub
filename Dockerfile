@@ -17,6 +17,8 @@ RUN if [ -n "$ALPINE_MIRROR" ]; then \
     && apk add --no-cache git bash
 
 COPY go.mod go.sum ./
+# 本地共享模块须在下载依赖前进入构建上下文。
+COPY third_party/kangaroo/callmeta/ ./third_party/kangaroo/callmeta/
 RUN --mount=type=cache,target=/go/pkg/mod \
     GOPROXY="$GOPROXY" go mod download
 

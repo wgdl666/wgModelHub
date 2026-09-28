@@ -44,6 +44,7 @@ type GenerationTaskMutation struct {
 	provider         *string
 	provider_task_id *string
 	state            *string
+	metadata         *map[string]string
 	error_code       *int32
 	adderror_code    *int32
 	error_message    *string
@@ -412,6 +413,55 @@ func (m *GenerationTaskMutation) ResetState() {
 	m.state = nil
 }
 
+// SetMetadata sets the "metadata" field.
+func (m *GenerationTaskMutation) SetMetadata(value map[string]string) {
+	m.metadata = &value
+}
+
+// Metadata returns the value of the "metadata" field in the mutation.
+func (m *GenerationTaskMutation) Metadata() (r map[string]string, exists bool) {
+	v := m.metadata
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMetadata returns the old "metadata" field's value of the GenerationTask entity.
+// If the GenerationTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GenerationTaskMutation) OldMetadata(ctx context.Context) (v map[string]string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMetadata is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMetadata requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMetadata: %w", err)
+	}
+	return oldValue.Metadata, nil
+}
+
+// ClearMetadata clears the value of the "metadata" field.
+func (m *GenerationTaskMutation) ClearMetadata() {
+	m.metadata = nil
+	m.clearedFields[generationtask.FieldMetadata] = struct{}{}
+}
+
+// MetadataCleared returns if the "metadata" field was cleared in this mutation.
+func (m *GenerationTaskMutation) MetadataCleared() bool {
+	_, ok := m.clearedFields[generationtask.FieldMetadata]
+	return ok
+}
+
+// ResetMetadata resets all changes to the "metadata" field.
+func (m *GenerationTaskMutation) ResetMetadata() {
+	m.metadata = nil
+	delete(m.clearedFields, generationtask.FieldMetadata)
+}
+
 // SetErrorCode sets the "error_code" field.
 func (m *GenerationTaskMutation) SetErrorCode(i int32) {
 	m.error_code = &i
@@ -646,7 +696,7 @@ func (m *GenerationTaskMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GenerationTaskMutation) Fields() []string {
-	fields := make([]string, 0, 12)
+	fields := make([]string, 0, 13)
 	if m.caller != nil {
 		fields = append(fields, generationtask.FieldCaller)
 	}
@@ -667,6 +717,9 @@ func (m *GenerationTaskMutation) Fields() []string {
 	}
 	if m.state != nil {
 		fields = append(fields, generationtask.FieldState)
+	}
+	if m.metadata != nil {
+		fields = append(fields, generationtask.FieldMetadata)
 	}
 	if m.error_code != nil {
 		fields = append(fields, generationtask.FieldErrorCode)
@@ -705,6 +758,8 @@ func (m *GenerationTaskMutation) Field(name string) (ent.Value, bool) {
 		return m.ProviderTaskID()
 	case generationtask.FieldState:
 		return m.State()
+	case generationtask.FieldMetadata:
+		return m.Metadata()
 	case generationtask.FieldErrorCode:
 		return m.ErrorCode()
 	case generationtask.FieldErrorMessage:
@@ -738,6 +793,8 @@ func (m *GenerationTaskMutation) OldField(ctx context.Context, name string) (ent
 		return m.OldProviderTaskID(ctx)
 	case generationtask.FieldState:
 		return m.OldState(ctx)
+	case generationtask.FieldMetadata:
+		return m.OldMetadata(ctx)
 	case generationtask.FieldErrorCode:
 		return m.OldErrorCode(ctx)
 	case generationtask.FieldErrorMessage:
@@ -805,6 +862,13 @@ func (m *GenerationTaskMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetState(v)
+		return nil
+	case generationtask.FieldMetadata:
+		v, ok := value.(map[string]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMetadata(v)
 		return nil
 	case generationtask.FieldErrorCode:
 		v, ok := value.(int32)
@@ -885,7 +949,11 @@ func (m *GenerationTaskMutation) AddField(name string, value ent.Value) error {
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
 func (m *GenerationTaskMutation) ClearedFields() []string {
-	return nil
+	var fields []string
+	if m.FieldCleared(generationtask.FieldMetadata) {
+		fields = append(fields, generationtask.FieldMetadata)
+	}
+	return fields
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
@@ -898,6 +966,11 @@ func (m *GenerationTaskMutation) FieldCleared(name string) bool {
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
 func (m *GenerationTaskMutation) ClearField(name string) error {
+	switch name {
+	case generationtask.FieldMetadata:
+		m.ClearMetadata()
+		return nil
+	}
 	return fmt.Errorf("unknown GenerationTask nullable field %s", name)
 }
 
@@ -925,6 +998,9 @@ func (m *GenerationTaskMutation) ResetField(name string) error {
 		return nil
 	case generationtask.FieldState:
 		m.ResetState()
+		return nil
+	case generationtask.FieldMetadata:
+		m.ResetMetadata()
 		return nil
 	case generationtask.FieldErrorCode:
 		m.ResetErrorCode()

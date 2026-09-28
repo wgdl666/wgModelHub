@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/wgdl666/kangaroo/callmeta"
 	"github.com/wgdl666/wgModelHub/config"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/auth"
@@ -100,6 +101,7 @@ func (s *Service) SubmitGeneration(ctx context.Context, req *modelhubv2.SubmitGe
 	}
 
 	pending := taskstore.Task{
+		Metadata:    callmeta.Capture(ctx),
 		TaskID:      uuid.NewString(),
 		Caller:      callerFromContext(ctx),
 		RequestID:   strings.TrimSpace(req.GetRequestId()),
@@ -217,6 +219,10 @@ func (s *Service) GetGeneration(req *modelhubv2.GetGenerationRequest, stream mod
 		return statusErr
 	}
 
+	// 供应商续查恢复原任务 metadata，执行 Span 仍保留本次调用独立的取消期限。
+	ctx = callmeta.Restore(ctx, task.Metadata)
+	ctx, taskSpan := telemetry.StartSpan(ctx, "generation_task_resume")
+	defer taskSpan.End()
 	switch task.State {
 	case taskstore.StatePending:
 		return s.handlePendingTask(ctx, task, stream)

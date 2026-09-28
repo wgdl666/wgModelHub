@@ -22,23 +22,23 @@ func init() {
 	// generationtask.DefaultProviderTaskID holds the default value on creation for the provider_task_id field.
 	generationtask.DefaultProviderTaskID = generationtaskDescProviderTaskID.Default.(string)
 	// generationtaskDescErrorCode is the schema descriptor for error_code field.
-	generationtaskDescErrorCode := generationtaskFields[8].Descriptor()
+	generationtaskDescErrorCode := generationtaskFields[9].Descriptor()
 	// generationtask.DefaultErrorCode holds the default value on creation for the error_code field.
 	generationtask.DefaultErrorCode = generationtaskDescErrorCode.Default.(int32)
 	// generationtaskDescErrorMessage is the schema descriptor for error_message field.
-	generationtaskDescErrorMessage := generationtaskFields[9].Descriptor()
+	generationtaskDescErrorMessage := generationtaskFields[10].Descriptor()
 	// generationtask.DefaultErrorMessage holds the default value on creation for the error_message field.
 	generationtask.DefaultErrorMessage = generationtaskDescErrorMessage.Default.(string)
 	// generationtaskDescErrorReason is the schema descriptor for error_reason field.
-	generationtaskDescErrorReason := generationtaskFields[10].Descriptor()
+	generationtaskDescErrorReason := generationtaskFields[11].Descriptor()
 	// generationtask.DefaultErrorReason holds the default value on creation for the error_reason field.
 	generationtask.DefaultErrorReason = generationtaskDescErrorReason.Default.(string)
 	// generationtaskDescCreatedAt is the schema descriptor for created_at field.
-	generationtaskDescCreatedAt := generationtaskFields[11].Descriptor()
+	generationtaskDescCreatedAt := generationtaskFields[12].Descriptor()
 	// generationtask.DefaultCreatedAt holds the default value on creation for the created_at field.
 	generationtask.DefaultCreatedAt = generationtaskDescCreatedAt.Default.(func() time.Time)
 	// generationtaskDescUpdatedAt is the schema descriptor for updated_at field.
-	generationtaskDescUpdatedAt := generationtaskFields[12].Descriptor()
+	generationtaskDescUpdatedAt := generationtaskFields[13].Descriptor()
 	// generationtask.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	generationtask.DefaultUpdatedAt = generationtaskDescUpdatedAt.Default.(func() time.Time)
 	// generationtask.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
