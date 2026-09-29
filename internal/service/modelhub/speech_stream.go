@@ -26,7 +26,7 @@ func (s *Service) SynthesizeSpeechStream(request *modelhubv2.SynthesizeSpeechReq
 	if !ok {
 		return provider.ToStatus(provider.Errorf(provider.ErrorConfiguration, "model %s does not support streaming speech", request.GetModel()))
 	}
-	rec := s.baseRecord(ctx, callledger.OperationSynthesizeSpeechStream, callledger.CapabilitySpeech, binding.model, binding.provider, time.Time{})
+	rec := s.baseRecord(ctx, request.GetBusinessMetadata(), callledger.OperationSynthesizeSpeechStream, callledger.CapabilitySpeech, binding.model, binding.provider, time.Time{})
 	rec.InputPayload = callledger.BuildSpeechInput(request)
 	started := time.Now()
 	total, chunks := 0, 0

@@ -84,6 +84,11 @@ func BusinessScene(v string) predicate.ModelCall {
 	return predicate.ModelCall(sql.FieldEQ(FieldBusinessScene, v))
 }
 
+// BusinessSubscene applies equality check predicate on the "business_subscene" field. It's identical to BusinessSubsceneEQ.
+func BusinessSubscene(v string) predicate.ModelCall {
+	return predicate.ModelCall(sql.FieldEQ(FieldBusinessSubscene, v))
+}
+
 // Operation applies equality check predicate on the "operation" field. It's identical to OperationEQ.
 func Operation(v string) predicate.ModelCall {
 	return predicate.ModelCall(sql.FieldEQ(FieldOperation, v))
@@ -487,6 +492,71 @@ func BusinessSceneEqualFold(v string) predicate.ModelCall {
 // BusinessSceneContainsFold applies the ContainsFold predicate on the "business_scene" field.
 func BusinessSceneContainsFold(v string) predicate.ModelCall {
 	return predicate.ModelCall(sql.FieldContainsFold(FieldBusinessScene, v))
+}
+
+// BusinessSubsceneEQ applies the EQ predicate on the "business_subscene" field.
+func BusinessSubsceneEQ(v string) predicate.ModelCall {
+	return predicate.ModelCall(sql.FieldEQ(FieldBusinessSubscene, v))
+}
+
+// BusinessSubsceneNEQ applies the NEQ predicate on the "business_subscene" field.
+func BusinessSubsceneNEQ(v string) predicate.ModelCall {
+	return predicate.ModelCall(sql.FieldNEQ(FieldBusinessSubscene, v))
+}
+
+// BusinessSubsceneIn applies the In predicate on the "business_subscene" field.
+func BusinessSubsceneIn(vs ...string) predicate.ModelCall {
+	return predicate.ModelCall(sql.FieldIn(FieldBusinessSubscene, vs...))
+}
+
+// BusinessSubsceneNotIn applies the NotIn predicate on the "business_subscene" field.
+func BusinessSubsceneNotIn(vs ...string) predicate.ModelCall {
+	return predicate.ModelCall(sql.FieldNotIn(FieldBusinessSubscene, vs...))
+}
+
+// BusinessSubsceneGT applies the GT predicate on the "business_subscene" field.
+func BusinessSubsceneGT(v string) predicate.ModelCall {
+	return predicate.ModelCall(sql.FieldGT(FieldBusinessSubscene, v))
+}
+
+// BusinessSubsceneGTE applies the GTE predicate on the "business_subscene" field.
+func BusinessSubsceneGTE(v string) predicate.ModelCall {
+	return predicate.ModelCall(sql.FieldGTE(FieldBusinessSubscene, v))
+}
+
+// BusinessSubsceneLT applies the LT predicate on the "business_subscene" field.
+func BusinessSubsceneLT(v string) predicate.ModelCall {
+	return predicate.ModelCall(sql.FieldLT(FieldBusinessSubscene, v))
+}
+
+// BusinessSubsceneLTE applies the LTE predicate on the "business_subscene" field.
+func BusinessSubsceneLTE(v string) predicate.ModelCall {
+	return predicate.ModelCall(sql.FieldLTE(FieldBusinessSubscene, v))
+}
+
+// BusinessSubsceneContains applies the Contains predicate on the "business_subscene" field.
+func BusinessSubsceneContains(v string) predicate.ModelCall {
+	return predicate.ModelCall(sql.FieldContains(FieldBusinessSubscene, v))
+}
+
+// BusinessSubsceneHasPrefix applies the HasPrefix predicate on the "business_subscene" field.
+func BusinessSubsceneHasPrefix(v string) predicate.ModelCall {
+	return predicate.ModelCall(sql.FieldHasPrefix(FieldBusinessSubscene, v))
+}
+
+// BusinessSubsceneHasSuffix applies the HasSuffix predicate on the "business_subscene" field.
+func BusinessSubsceneHasSuffix(v string) predicate.ModelCall {
+	return predicate.ModelCall(sql.FieldHasSuffix(FieldBusinessSubscene, v))
+}
+
+// BusinessSubsceneEqualFold applies the EqualFold predicate on the "business_subscene" field.
+func BusinessSubsceneEqualFold(v string) predicate.ModelCall {
+	return predicate.ModelCall(sql.FieldEqualFold(FieldBusinessSubscene, v))
+}
+
+// BusinessSubsceneContainsFold applies the ContainsFold predicate on the "business_subscene" field.
+func BusinessSubsceneContainsFold(v string) predicate.ModelCall {
+	return predicate.ModelCall(sql.FieldContainsFold(FieldBusinessSubscene, v))
 }
 
 // OperationEQ applies the EQ predicate on the "operation" field.

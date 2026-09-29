@@ -76,6 +76,20 @@ func (_c *ModelCallCreate) SetNillableBusinessScene(v *string) *ModelCallCreate 
 	return _c
 }
 
+// SetBusinessSubscene sets the "business_subscene" field.
+func (_c *ModelCallCreate) SetBusinessSubscene(v string) *ModelCallCreate {
+	_c.mutation.SetBusinessSubscene(v)
+	return _c
+}
+
+// SetNillableBusinessSubscene sets the "business_subscene" field if the given value is not nil.
+func (_c *ModelCallCreate) SetNillableBusinessSubscene(v *string) *ModelCallCreate {
+	if v != nil {
+		_c.SetBusinessSubscene(*v)
+	}
+	return _c
+}
+
 // SetOperation sets the "operation" field.
 func (_c *ModelCallCreate) SetOperation(v string) *ModelCallCreate {
 	_c.mutation.SetOperation(v)
@@ -477,6 +491,10 @@ func (_c *ModelCallCreate) defaults() {
 		v := modelcall.DefaultBusinessScene
 		_c.mutation.SetBusinessScene(v)
 	}
+	if _, ok := _c.mutation.BusinessSubscene(); !ok {
+		v := modelcall.DefaultBusinessSubscene
+		_c.mutation.SetBusinessSubscene(v)
+	}
 	if _, ok := _c.mutation.DeliveryStatus(); !ok {
 		v := modelcall.DefaultDeliveryStatus
 		_c.mutation.SetDeliveryStatus(v)
@@ -549,6 +567,9 @@ func (_c *ModelCallCreate) check() error {
 	}
 	if _, ok := _c.mutation.BusinessScene(); !ok {
 		return &ValidationError{Name: "business_scene", err: errors.New(`ent: missing required field "ModelCall.business_scene"`)}
+	}
+	if _, ok := _c.mutation.BusinessSubscene(); !ok {
+		return &ValidationError{Name: "business_subscene", err: errors.New(`ent: missing required field "ModelCall.business_subscene"`)}
 	}
 	if _, ok := _c.mutation.Operation(); !ok {
 		return &ValidationError{Name: "operation", err: errors.New(`ent: missing required field "ModelCall.operation"`)}
@@ -664,6 +685,10 @@ func (_c *ModelCallCreate) createSpec() (*ModelCall, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.BusinessScene(); ok {
 		_spec.SetField(modelcall.FieldBusinessScene, field.TypeString, value)
 		_node.BusinessScene = value
+	}
+	if value, ok := _c.mutation.BusinessSubscene(); ok {
+		_spec.SetField(modelcall.FieldBusinessSubscene, field.TypeString, value)
+		_node.BusinessSubscene = value
 	}
 	if value, ok := _c.mutation.Operation(); ok {
 		_spec.SetField(modelcall.FieldOperation, field.TypeString, value)

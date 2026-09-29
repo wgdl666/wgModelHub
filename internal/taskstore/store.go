@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"time"
 
 	"entgo.io/ent/dialect"
@@ -30,20 +31,21 @@ var (
 
 // Task 是跨 Pod 可查询的最小技术事实；不保存 prompt、媒体或最终视频。
 type Task struct {
-	Metadata       map[string]string
-	TaskID         string
-	Caller         string
-	RequestID      string
-	RequestHash    string
-	Model          string
-	Provider       string
-	ProviderTaskID string
-	State          string
-	ErrorCode      int32
-	ErrorMessage   string
-	ErrorReason    string
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	BusinessMetadata *modelhubv2.BusinessMetadata
+	Metadata         map[string]string
+	TaskID           string
+	Caller           string
+	RequestID        string
+	RequestHash      string
+	Model            string
+	Provider         string
+	ProviderTaskID   string
+	State            string
+	ErrorCode        int32
+	ErrorMessage     string
+	ErrorReason      string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 // Store 只服务视频长任务 Submit/Get；前台 Generate 不得经过本接口。
@@ -90,6 +92,7 @@ func (p *Postgres) InsertPending(ctx context.Context, task Task) (Task, bool, er
 	created, err := p.client.GenerationTask.Create().
 		SetID(task.TaskID).
 		SetMetadata(task.Metadata).
+		SetBusinessMetadata(task.BusinessMetadata).
 		SetCaller(task.Caller).
 		SetRequestID(task.RequestID).
 		SetRequestHash(task.RequestHash).
@@ -214,19 +217,20 @@ func (p *Postgres) MarkSucceeded(ctx context.Context, taskID string) error {
 // fromEnt 只做 Ent 实体到稳定 Store DTO 的边界映射，避免上层依赖生成代码字段形状。
 func fromEnt(row *ent.GenerationTask) Task {
 	return Task{
-		Metadata:       row.Metadata,
-		TaskID:         row.ID,
-		Caller:         row.Caller,
-		RequestID:      row.RequestID,
-		RequestHash:    row.RequestHash,
-		Model:          row.Model,
-		Provider:       row.Provider,
-		ProviderTaskID: row.ProviderTaskID,
-		State:          row.State,
-		ErrorCode:      row.ErrorCode,
-		ErrorMessage:   row.ErrorMessage,
-		ErrorReason:    row.ErrorReason,
-		CreatedAt:      row.CreatedAt,
-		UpdatedAt:      row.UpdatedAt,
+		Metadata:         row.Metadata,
+		BusinessMetadata: row.BusinessMetadata,
+		TaskID:           row.ID,
+		Caller:           row.Caller,
+		RequestID:        row.RequestID,
+		RequestHash:      row.RequestHash,
+		Model:            row.Model,
+		Provider:         row.Provider,
+		ProviderTaskID:   row.ProviderTaskID,
+		State:            row.State,
+		ErrorCode:        row.ErrorCode,
+		ErrorMessage:     row.ErrorMessage,
+		ErrorReason:      row.ErrorReason,
+		CreatedAt:        row.CreatedAt,
+		UpdatedAt:        row.UpdatedAt,
 	}
 }

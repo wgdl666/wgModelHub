@@ -21,6 +21,8 @@ const (
 	FieldBusinessLine = "business_line"
 	// FieldBusinessScene holds the string denoting the business_scene field in the database.
 	FieldBusinessScene = "business_scene"
+	// FieldBusinessSubscene holds the string denoting the business_subscene field in the database.
+	FieldBusinessSubscene = "business_subscene"
 	// FieldOperation holds the string denoting the operation field in the database.
 	FieldOperation = "operation"
 	// FieldCapability holds the string denoting the capability field in the database.
@@ -92,6 +94,7 @@ var Columns = []string{
 	FieldCallerService,
 	FieldBusinessLine,
 	FieldBusinessScene,
+	FieldBusinessSubscene,
 	FieldOperation,
 	FieldCapability,
 	FieldModel,
@@ -141,6 +144,8 @@ var (
 	DefaultBusinessLine string
 	// DefaultBusinessScene holds the default value on creation for the "business_scene" field.
 	DefaultBusinessScene string
+	// DefaultBusinessSubscene holds the default value on creation for the "business_subscene" field.
+	DefaultBusinessSubscene string
 	// DefaultDeliveryStatus holds the default value on creation for the "delivery_status" field.
 	DefaultDeliveryStatus string
 	// DefaultErrorCategory holds the default value on creation for the "error_category" field.
@@ -201,6 +206,11 @@ func ByBusinessLine(opts ...sql.OrderTermOption) OrderOption {
 // ByBusinessScene orders the results by the business_scene field.
 func ByBusinessScene(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldBusinessScene, opts...).ToFunc()
+}
+
+// ByBusinessSubscene orders the results by the business_subscene field.
+func ByBusinessSubscene(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBusinessSubscene, opts...).ToFunc()
 }
 
 // ByOperation orders the results by the operation field.

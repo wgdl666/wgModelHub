@@ -132,10 +132,11 @@ func TestLedgerRecordsStreamSuccessCancelAndProviderFailure(t *testing.T) {
 		event: &modelhubv2.GenerateEvent{Usage: &modelhubv2.Usage{InputTokens: 3, OutputTokens: 2, TotalTokens: 5}},
 	}
 	svc := newLedgerService(textLedgerCFG("m"), map[string]provider.Set{"p": {Text: text}}, nil, mem)
-	md := metadata.Pairs(protocol.CallerMetadataKey, "wgHub", protocol.BusinessSceneMetadataKey, "agent_chat")
+	md := metadata.Pairs(protocol.CallerMetadataKey, "wgHub", "x-wg-business-scene", "wrong_header_scene")
 	ctx := metadata.NewIncomingContext(context.Background(), md)
 	req := &modelhubv2.GenerateRequest{
-		Model: "m",
+		BusinessMetadata: &modelhubv2.BusinessMetadata{BusinessLine: "mirror", BusinessScene: "agent_chat", BusinessSubscene: "intent_recognition"},
+		Model:            "m",
 		Input: &modelhubv2.Input{Items: []*modelhubv2.InputItem{{Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
 			Role:  modelhubv2.Role_ROLE_USER,
 			Parts: []*modelhubv2.ContentPart{{Content: &modelhubv2.ContentPart_Text{Text: "hi"}}},
@@ -149,7 +150,7 @@ func TestLedgerRecordsStreamSuccessCancelAndProviderFailure(t *testing.T) {
 		t.Fatalf("records=%d", len(mem.Records))
 	}
 	rec := mem.Records[0]
-	if rec.CallerService != "wgHub" || rec.BusinessScene != "agent_chat" {
+	if rec.CallerService != "wgHub" || rec.BusinessScene != "agent_chat" || rec.BusinessSubscene != "intent_recognition" || rec.BusinessLine != "mirror" {
 		t.Fatalf("caller/scene=%q/%q", rec.CallerService, rec.BusinessScene)
 	}
 	if rec.Status != callledger.StatusSucceeded || rec.Usage == nil || rec.Usage.TotalTokens != 5 {

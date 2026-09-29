@@ -101,14 +101,15 @@ func (s *Service) SubmitGeneration(ctx context.Context, req *modelhubv2.SubmitGe
 	}
 
 	pending := taskstore.Task{
-		Metadata:    callmeta.Capture(ctx),
-		TaskID:      uuid.NewString(),
-		Caller:      callerFromContext(ctx),
-		RequestID:   strings.TrimSpace(req.GetRequestId()),
-		RequestHash: requestHash,
-		Model:       bound.model,
-		Provider:    providerName,
-		State:       taskstore.StatePending,
+		Metadata:         callmeta.Capture(ctx),
+		BusinessMetadata: generateReq.GetBusinessMetadata(),
+		TaskID:           uuid.NewString(),
+		Caller:           callerFromContext(ctx),
+		RequestID:        strings.TrimSpace(req.GetRequestId()),
+		RequestHash:      requestHash,
+		Model:            bound.model,
+		Provider:         providerName,
+		State:            taskstore.StatePending,
 	}
 	stored, created, err := s.tasks.InsertPending(ctx, pending)
 	if err != nil {
@@ -132,7 +133,7 @@ func (s *Service) SubmitGeneration(ctx context.Context, req *modelhubv2.SubmitGe
 	defer persistCancel()
 
 	// 真实 Submit 已发出：按 task_id 写入/更新账本；幂等命中不会走到这里。
-	rec := s.baseRecord(ctx, callledger.OperationSubmitGeneration, callledger.CapabilityVideo, bound.model, providerName, stored.CreatedAt)
+	rec := s.baseRecord(ctx, generateReq.GetBusinessMetadata(), callledger.OperationSubmitGeneration, callledger.CapabilityVideo, bound.model, providerName, stored.CreatedAt)
 	if rec.StartedAt.IsZero() {
 		rec.StartedAt = time.Now()
 	}
@@ -388,17 +389,18 @@ func (s *Service) recordAsyncVideoModelTerminal(ctx context.Context, task taskst
 	rec := callledger.Record{
 		GenerationTaskID: task.TaskID,
 		CallerService:    callledger.NormalizeOrUnknown(task.Caller),
-		// 从持久化 Submit metadata 恢复；账本首次写入丢失时也能补齐，禁止用 Get 请求覆盖。
-		BusinessLine:   callledger.BusinessLineFromContext(callmeta.Restore(context.Background(), task.Metadata)),
-		BusinessScene:  callledger.BusinessSceneFromContext(callmeta.Restore(context.Background(), task.Metadata)),
-		Operation:      callledger.OperationSubmitGeneration,
-		Capability:     callledger.CapabilityVideo,
-		Model:          task.Model,
-		Provider:       task.Provider,
-		Status:         status,
-		DeliveryStatus: callledger.DeliveryOK,
-		StartedAt:      task.CreatedAt,
-		FinishedAt:     &finished,
+		// 从持久化 Submit 请求的 BusinessMetadata 恢复；账本首次写入丢失时也能补齐，禁止用 Get 请求覆盖。
+		BusinessLine:     task.BusinessMetadata.GetBusinessLine(),
+		BusinessScene:    task.BusinessMetadata.GetBusinessScene(),
+		BusinessSubscene: task.BusinessMetadata.GetBusinessSubscene(),
+		Operation:        callledger.OperationSubmitGeneration,
+		Capability:       callledger.CapabilityVideo,
+		Model:            task.Model,
+		Provider:         task.Provider,
+		Status:           status,
+		DeliveryStatus:   callledger.DeliveryOK,
+		StartedAt:        task.CreatedAt,
+		FinishedAt:       &finished,
 	}
 	if !task.CreatedAt.IsZero() {
 		rec.LatencyMS = finished.Sub(task.CreatedAt).Milliseconds()

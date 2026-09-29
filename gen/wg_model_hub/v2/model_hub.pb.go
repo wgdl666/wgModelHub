@@ -620,22 +620,84 @@ func (x *ListModelsResponse) GetModels() []*ModelInfo {
 	return nil
 }
 
-// GenerateRequest 顶层恰好三字段：业务调用方不得再塞供应商私有配置，
+// 业务归属是请求的固定结构，由调用方明确填写，不从传输 metadata 推断。
+type BusinessMetadata struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	BusinessLine     string                 `protobuf:"bytes,1,opt,name=business_line,json=businessLine,proto3" json:"business_line,omitempty"`
+	BusinessScene    string                 `protobuf:"bytes,2,opt,name=business_scene,json=businessScene,proto3" json:"business_scene,omitempty"`
+	BusinessSubscene string                 `protobuf:"bytes,3,opt,name=business_subscene,json=businessSubscene,proto3" json:"business_subscene,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *BusinessMetadata) Reset() {
+	*x = BusinessMetadata{}
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BusinessMetadata) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BusinessMetadata) ProtoMessage() {}
+
+func (x *BusinessMetadata) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BusinessMetadata.ProtoReflect.Descriptor instead.
+func (*BusinessMetadata) Descriptor() ([]byte, []int) {
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *BusinessMetadata) GetBusinessLine() string {
+	if x != nil {
+		return x.BusinessLine
+	}
+	return ""
+}
+
+func (x *BusinessMetadata) GetBusinessScene() string {
+	if x != nil {
+		return x.BusinessScene
+	}
+	return ""
+}
+
+func (x *BusinessMetadata) GetBusinessSubscene() string {
+	if x != nil {
+		return x.BusinessSubscene
+	}
+	return ""
+}
+
+// GenerateRequest 固定业务归属与模型输入：业务调用方不得再塞供应商私有配置，
 // 也不得把任务指令抽成独立 prompt 字段。
 type GenerateRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// model 是真实供应商模型 ID（含版本），例如 gemini-2.5-flash。
 	Model string `protobuf:"bytes,1,opt,name=model,proto3" json:"model,omitempty"`
 	// system/用户任务/历史/媒体/tool_calls/tool output 一律按序放入 Input.items。
-	Input         *Input      `protobuf:"bytes,2,opt,name=input,proto3" json:"input,omitempty"`
-	Output        *OutputSpec `protobuf:"bytes,3,opt,name=output,proto3" json:"output,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Input            *Input            `protobuf:"bytes,2,opt,name=input,proto3" json:"input,omitempty"`
+	Output           *OutputSpec       `protobuf:"bytes,3,opt,name=output,proto3" json:"output,omitempty"`
+	BusinessMetadata *BusinessMetadata `protobuf:"bytes,4,opt,name=business_metadata,json=businessMetadata,proto3" json:"business_metadata,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *GenerateRequest) Reset() {
 	*x = GenerateRequest{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[3]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -647,7 +709,7 @@ func (x *GenerateRequest) String() string {
 func (*GenerateRequest) ProtoMessage() {}
 
 func (x *GenerateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[3]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -660,7 +722,7 @@ func (x *GenerateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GenerateRequest.ProtoReflect.Descriptor instead.
 func (*GenerateRequest) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{3}
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *GenerateRequest) GetModel() string {
@@ -684,6 +746,13 @@ func (x *GenerateRequest) GetOutput() *OutputSpec {
 	return nil
 }
 
+func (x *GenerateRequest) GetBusinessMetadata() *BusinessMetadata {
+	if x != nil {
+		return x.BusinessMetadata
+	}
+	return nil
+}
+
 // Media 同时支持内联字节和供应商可访问 URI。
 // 内联 data 必须带 mime_type；URI 的 mime_type 为可选提示，具体 provider 自行决定是否必需。
 type Media struct {
@@ -700,7 +769,7 @@ type Media struct {
 
 func (x *Media) Reset() {
 	*x = Media{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[4]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -712,7 +781,7 @@ func (x *Media) String() string {
 func (*Media) ProtoMessage() {}
 
 func (x *Media) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[4]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -725,7 +794,7 @@ func (x *Media) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Media.ProtoReflect.Descriptor instead.
 func (*Media) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{4}
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Media) GetMimeType() string {
@@ -792,7 +861,7 @@ type ContentPart struct {
 
 func (x *ContentPart) Reset() {
 	*x = ContentPart{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[5]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -804,7 +873,7 @@ func (x *ContentPart) String() string {
 func (*ContentPart) ProtoMessage() {}
 
 func (x *ContentPart) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[5]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -817,7 +886,7 @@ func (x *ContentPart) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ContentPart.ProtoReflect.Descriptor instead.
 func (*ContentPart) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{5}
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ContentPart) GetContent() isContentPart_Content {
@@ -918,7 +987,7 @@ type Message struct {
 
 func (x *Message) Reset() {
 	*x = Message{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[6]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -930,7 +999,7 @@ func (x *Message) String() string {
 func (*Message) ProtoMessage() {}
 
 func (x *Message) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[6]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -943,7 +1012,7 @@ func (x *Message) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Message.ProtoReflect.Descriptor instead.
 func (*Message) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{6}
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *Message) GetRole() Role {
@@ -978,7 +1047,7 @@ type FunctionDefinition struct {
 
 func (x *FunctionDefinition) Reset() {
 	*x = FunctionDefinition{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[7]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -990,7 +1059,7 @@ func (x *FunctionDefinition) String() string {
 func (*FunctionDefinition) ProtoMessage() {}
 
 func (x *FunctionDefinition) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[7]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1003,7 +1072,7 @@ func (x *FunctionDefinition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FunctionDefinition.ProtoReflect.Descriptor instead.
 func (*FunctionDefinition) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{7}
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *FunctionDefinition) GetName() string {
@@ -1036,7 +1105,7 @@ type Tool struct {
 
 func (x *Tool) Reset() {
 	*x = Tool{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[8]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1048,7 +1117,7 @@ func (x *Tool) String() string {
 func (*Tool) ProtoMessage() {}
 
 func (x *Tool) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[8]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1061,7 +1130,7 @@ func (x *Tool) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Tool.ProtoReflect.Descriptor instead.
 func (*Tool) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{8}
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *Tool) GetFunction() *FunctionDefinition {
@@ -1086,7 +1155,7 @@ type ToolCall struct {
 
 func (x *ToolCall) Reset() {
 	*x = ToolCall{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[9]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1098,7 +1167,7 @@ func (x *ToolCall) String() string {
 func (*ToolCall) ProtoMessage() {}
 
 func (x *ToolCall) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[9]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1111,7 +1180,7 @@ func (x *ToolCall) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ToolCall.ProtoReflect.Descriptor instead.
 func (*ToolCall) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{9}
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ToolCall) GetId() string {
@@ -1163,7 +1232,7 @@ type ToolOutput struct {
 
 func (x *ToolOutput) Reset() {
 	*x = ToolOutput{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[10]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1175,7 +1244,7 @@ func (x *ToolOutput) String() string {
 func (*ToolOutput) ProtoMessage() {}
 
 func (x *ToolOutput) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[10]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1188,7 +1257,7 @@ func (x *ToolOutput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ToolOutput.ProtoReflect.Descriptor instead.
 func (*ToolOutput) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{10}
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ToolOutput) GetToolCallId() string {
@@ -1239,7 +1308,7 @@ type InputItem struct {
 
 func (x *InputItem) Reset() {
 	*x = InputItem{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[11]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1251,7 +1320,7 @@ func (x *InputItem) String() string {
 func (*InputItem) ProtoMessage() {}
 
 func (x *InputItem) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[11]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1264,7 +1333,7 @@ func (x *InputItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InputItem.ProtoReflect.Descriptor instead.
 func (*InputItem) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{11}
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *InputItem) GetItem() isInputItem_Item {
@@ -1327,7 +1396,7 @@ type Input struct {
 
 func (x *Input) Reset() {
 	*x = Input{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[12]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1339,7 +1408,7 @@ func (x *Input) String() string {
 func (*Input) ProtoMessage() {}
 
 func (x *Input) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[12]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1352,7 +1421,7 @@ func (x *Input) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Input.ProtoReflect.Descriptor instead.
 func (*Input) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{12}
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *Input) GetItems() []*InputItem {
@@ -1404,15 +1473,16 @@ type CreateCachedContentRequest struct {
 	SystemInstruction string                 `protobuf:"bytes,2,opt,name=system_instruction,json=systemInstruction,proto3" json:"system_instruction,omitempty"`
 	Tools             []*Tool                `protobuf:"bytes,3,rep,name=tools,proto3" json:"tools,omitempty"`
 	// TTL 秒数；0 表示由供应商/实现默认（常见 1h）。
-	TtlSeconds    int64  `protobuf:"varint,4,opt,name=ttl_seconds,json=ttlSeconds,proto3" json:"ttl_seconds,omitempty"`
-	DisplayName   string `protobuf:"bytes,5,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	TtlSeconds       int64             `protobuf:"varint,4,opt,name=ttl_seconds,json=ttlSeconds,proto3" json:"ttl_seconds,omitempty"`
+	DisplayName      string            `protobuf:"bytes,5,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	BusinessMetadata *BusinessMetadata `protobuf:"bytes,6,opt,name=business_metadata,json=businessMetadata,proto3" json:"business_metadata,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *CreateCachedContentRequest) Reset() {
 	*x = CreateCachedContentRequest{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[13]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1424,7 +1494,7 @@ func (x *CreateCachedContentRequest) String() string {
 func (*CreateCachedContentRequest) ProtoMessage() {}
 
 func (x *CreateCachedContentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[13]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1437,7 +1507,7 @@ func (x *CreateCachedContentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateCachedContentRequest.ProtoReflect.Descriptor instead.
 func (*CreateCachedContentRequest) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{13}
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *CreateCachedContentRequest) GetModel() string {
@@ -1475,6 +1545,13 @@ func (x *CreateCachedContentRequest) GetDisplayName() string {
 	return ""
 }
 
+func (x *CreateCachedContentRequest) GetBusinessMetadata() *BusinessMetadata {
+	if x != nil {
+		return x.BusinessMetadata
+	}
+	return nil
+}
+
 type CreateCachedContentResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 供应商返回的资源名，原样填回后续 GenerateRequest.input.cached_content。
@@ -1486,7 +1563,7 @@ type CreateCachedContentResponse struct {
 
 func (x *CreateCachedContentResponse) Reset() {
 	*x = CreateCachedContentResponse{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[14]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1498,7 +1575,7 @@ func (x *CreateCachedContentResponse) String() string {
 func (*CreateCachedContentResponse) ProtoMessage() {}
 
 func (x *CreateCachedContentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[14]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1511,7 +1588,7 @@ func (x *CreateCachedContentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateCachedContentResponse.ProtoReflect.Descriptor instead.
 func (*CreateCachedContentResponse) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{14}
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *CreateCachedContentResponse) GetCachedContent() string {
@@ -1539,7 +1616,7 @@ type ResponseFormat struct {
 
 func (x *ResponseFormat) Reset() {
 	*x = ResponseFormat{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[15]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1551,7 +1628,7 @@ func (x *ResponseFormat) String() string {
 func (*ResponseFormat) ProtoMessage() {}
 
 func (x *ResponseFormat) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[15]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1564,7 +1641,7 @@ func (x *ResponseFormat) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResponseFormat.ProtoReflect.Descriptor instead.
 func (*ResponseFormat) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{15}
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *ResponseFormat) GetType() ResponseFormatType {
@@ -1598,7 +1675,7 @@ type ToolChoice struct {
 
 func (x *ToolChoice) Reset() {
 	*x = ToolChoice{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[16]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1610,7 +1687,7 @@ func (x *ToolChoice) String() string {
 func (*ToolChoice) ProtoMessage() {}
 
 func (x *ToolChoice) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[16]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1623,7 +1700,7 @@ func (x *ToolChoice) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ToolChoice.ProtoReflect.Descriptor instead.
 func (*ToolChoice) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{16}
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *ToolChoice) GetMode() ToolChoiceMode {
@@ -1653,7 +1730,7 @@ type CachingConfig struct {
 
 func (x *CachingConfig) Reset() {
 	*x = CachingConfig{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[17]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1665,7 +1742,7 @@ func (x *CachingConfig) String() string {
 func (*CachingConfig) ProtoMessage() {}
 
 func (x *CachingConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[17]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1678,7 +1755,7 @@ func (x *CachingConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CachingConfig.ProtoReflect.Descriptor instead.
 func (*CachingConfig) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{17}
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *CachingConfig) GetEnabled() bool {
@@ -1717,7 +1794,7 @@ type TextOutput struct {
 
 func (x *TextOutput) Reset() {
 	*x = TextOutput{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[18]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1729,7 +1806,7 @@ func (x *TextOutput) String() string {
 func (*TextOutput) ProtoMessage() {}
 
 func (x *TextOutput) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[18]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1742,7 +1819,7 @@ func (x *TextOutput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TextOutput.ProtoReflect.Descriptor instead.
 func (*TextOutput) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{18}
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *TextOutput) GetMaxOutputTokens() int32 {
@@ -1807,7 +1884,7 @@ type ImageOutput struct {
 
 func (x *ImageOutput) Reset() {
 	*x = ImageOutput{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[19]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1819,7 +1896,7 @@ func (x *ImageOutput) String() string {
 func (*ImageOutput) ProtoMessage() {}
 
 func (x *ImageOutput) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[19]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1832,7 +1909,7 @@ func (x *ImageOutput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImageOutput.ProtoReflect.Descriptor instead.
 func (*ImageOutput) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{19}
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ImageOutput) GetOutputModalities() []ImageOutputModality {
@@ -1885,7 +1962,7 @@ type VideoOutput struct {
 
 func (x *VideoOutput) Reset() {
 	*x = VideoOutput{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[20]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1897,7 +1974,7 @@ func (x *VideoOutput) String() string {
 func (*VideoOutput) ProtoMessage() {}
 
 func (x *VideoOutput) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[20]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1910,7 +1987,7 @@ func (x *VideoOutput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VideoOutput.ProtoReflect.Descriptor instead.
 func (*VideoOutput) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{20}
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *VideoOutput) GetResolution() string {
@@ -1964,7 +2041,7 @@ type OutputSpec struct {
 
 func (x *OutputSpec) Reset() {
 	*x = OutputSpec{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[21]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1976,7 +2053,7 @@ func (x *OutputSpec) String() string {
 func (*OutputSpec) ProtoMessage() {}
 
 func (x *OutputSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[21]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1989,7 +2066,7 @@ func (x *OutputSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OutputSpec.ProtoReflect.Descriptor instead.
 func (*OutputSpec) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{21}
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *OutputSpec) GetStream() bool {
@@ -2068,7 +2145,7 @@ type Usage struct {
 
 func (x *Usage) Reset() {
 	*x = Usage{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[22]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2080,7 +2157,7 @@ func (x *Usage) String() string {
 func (*Usage) ProtoMessage() {}
 
 func (x *Usage) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[22]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2093,7 +2170,7 @@ func (x *Usage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Usage.ProtoReflect.Descriptor instead.
 func (*Usage) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{22}
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *Usage) GetInputTokens() int64 {
@@ -2142,7 +2219,7 @@ type SafetyFeedback struct {
 
 func (x *SafetyFeedback) Reset() {
 	*x = SafetyFeedback{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[23]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2154,7 +2231,7 @@ func (x *SafetyFeedback) String() string {
 func (*SafetyFeedback) ProtoMessage() {}
 
 func (x *SafetyFeedback) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[23]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2167,7 +2244,7 @@ func (x *SafetyFeedback) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SafetyFeedback.ProtoReflect.Descriptor instead.
 func (*SafetyFeedback) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{23}
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *SafetyFeedback) GetBlocked() bool {
@@ -2207,7 +2284,7 @@ type OutputItem struct {
 
 func (x *OutputItem) Reset() {
 	*x = OutputItem{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[24]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2219,7 +2296,7 @@ func (x *OutputItem) String() string {
 func (*OutputItem) ProtoMessage() {}
 
 func (x *OutputItem) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[24]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2232,7 +2309,7 @@ func (x *OutputItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OutputItem.ProtoReflect.Descriptor instead.
 func (*OutputItem) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{24}
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *OutputItem) GetItem() isOutputItem_Item {
@@ -2324,7 +2401,7 @@ type GenerateEvent struct {
 
 func (x *GenerateEvent) Reset() {
 	*x = GenerateEvent{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[25]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2336,7 +2413,7 @@ func (x *GenerateEvent) String() string {
 func (*GenerateEvent) ProtoMessage() {}
 
 func (x *GenerateEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[25]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2349,7 +2426,7 @@ func (x *GenerateEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GenerateEvent.ProtoReflect.Descriptor instead.
 func (*GenerateEvent) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{25}
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *GenerateEvent) GetSequence() uint32 {
@@ -2419,7 +2496,7 @@ type SubmitGenerationRequest struct {
 
 func (x *SubmitGenerationRequest) Reset() {
 	*x = SubmitGenerationRequest{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[26]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2431,7 +2508,7 @@ func (x *SubmitGenerationRequest) String() string {
 func (*SubmitGenerationRequest) ProtoMessage() {}
 
 func (x *SubmitGenerationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[26]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2444,7 +2521,7 @@ func (x *SubmitGenerationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitGenerationRequest.ProtoReflect.Descriptor instead.
 func (*SubmitGenerationRequest) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{26}
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *SubmitGenerationRequest) GetRequestId() string {
@@ -2470,7 +2547,7 @@ type GetGenerationRequest struct {
 
 func (x *GetGenerationRequest) Reset() {
 	*x = GetGenerationRequest{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[27]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2482,7 +2559,7 @@ func (x *GetGenerationRequest) String() string {
 func (*GetGenerationRequest) ProtoMessage() {}
 
 func (x *GetGenerationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[27]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2495,7 +2572,7 @@ func (x *GetGenerationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetGenerationRequest.ProtoReflect.Descriptor instead.
 func (*GetGenerationRequest) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{27}
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *GetGenerationRequest) GetTaskId() string {
@@ -2516,7 +2593,7 @@ type GenerationTask struct {
 
 func (x *GenerationTask) Reset() {
 	*x = GenerationTask{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[28]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2528,7 +2605,7 @@ func (x *GenerationTask) String() string {
 func (*GenerationTask) ProtoMessage() {}
 
 func (x *GenerationTask) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[28]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2541,7 +2618,7 @@ func (x *GenerationTask) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GenerationTask.ProtoReflect.Descriptor instead.
 func (*GenerationTask) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{28}
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *GenerationTask) GetTaskId() string {
@@ -2571,7 +2648,7 @@ type GenerationTaskStatus struct {
 
 func (x *GenerationTaskStatus) Reset() {
 	*x = GenerationTaskStatus{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[29]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2583,7 +2660,7 @@ func (x *GenerationTaskStatus) String() string {
 func (*GenerationTaskStatus) ProtoMessage() {}
 
 func (x *GenerationTaskStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[29]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2596,7 +2673,7 @@ func (x *GenerationTaskStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GenerationTaskStatus.ProtoReflect.Descriptor instead.
 func (*GenerationTaskStatus) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{29}
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *GenerationTaskStatus) GetState() GenerationTaskState {
@@ -2634,7 +2711,7 @@ type GenerationTaskEvent struct {
 
 func (x *GenerationTaskEvent) Reset() {
 	*x = GenerationTaskEvent{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[30]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2646,7 +2723,7 @@ func (x *GenerationTaskEvent) String() string {
 func (*GenerationTaskEvent) ProtoMessage() {}
 
 func (x *GenerationTaskEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[30]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2659,7 +2736,7 @@ func (x *GenerationTaskEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GenerationTaskEvent.ProtoReflect.Descriptor instead.
 func (*GenerationTaskEvent) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{30}
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *GenerationTaskEvent) GetEvent() isGenerationTaskEvent_Event {
@@ -2712,14 +2789,15 @@ type SynthesizeSpeechRequest struct {
 	// text 为待合成全文；空文本拒绝。长度受供应商同步上限约束（当前 Minimax < 10000 字符）。
 	Text string `protobuf:"bytes,2,opt,name=text,proto3" json:"text,omitempty"`
 	// voice_id 为空时使用 provider 配置默认音色；不开放任意供应商私有扩展字段。
-	VoiceId       string `protobuf:"bytes,3,opt,name=voice_id,json=voiceId,proto3" json:"voice_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	VoiceId          string            `protobuf:"bytes,3,opt,name=voice_id,json=voiceId,proto3" json:"voice_id,omitempty"`
+	BusinessMetadata *BusinessMetadata `protobuf:"bytes,4,opt,name=business_metadata,json=businessMetadata,proto3" json:"business_metadata,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *SynthesizeSpeechRequest) Reset() {
 	*x = SynthesizeSpeechRequest{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[31]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2731,7 +2809,7 @@ func (x *SynthesizeSpeechRequest) String() string {
 func (*SynthesizeSpeechRequest) ProtoMessage() {}
 
 func (x *SynthesizeSpeechRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[31]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2744,7 +2822,7 @@ func (x *SynthesizeSpeechRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SynthesizeSpeechRequest.ProtoReflect.Descriptor instead.
 func (*SynthesizeSpeechRequest) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{31}
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *SynthesizeSpeechRequest) GetModel() string {
@@ -2768,6 +2846,13 @@ func (x *SynthesizeSpeechRequest) GetVoiceId() string {
 	return ""
 }
 
+func (x *SynthesizeSpeechRequest) GetBusinessMetadata() *BusinessMetadata {
+	if x != nil {
+		return x.BusinessMetadata
+	}
+	return nil
+}
+
 // SynthesizeSpeechResponse 必须携带完整可解码音频；半截收集只能映射为 gRPC error。
 type SynthesizeSpeechResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -2778,7 +2863,7 @@ type SynthesizeSpeechResponse struct {
 
 func (x *SynthesizeSpeechResponse) Reset() {
 	*x = SynthesizeSpeechResponse{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[32]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2790,7 +2875,7 @@ func (x *SynthesizeSpeechResponse) String() string {
 func (*SynthesizeSpeechResponse) ProtoMessage() {}
 
 func (x *SynthesizeSpeechResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[32]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2803,7 +2888,7 @@ func (x *SynthesizeSpeechResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SynthesizeSpeechResponse.ProtoReflect.Descriptor instead.
 func (*SynthesizeSpeechResponse) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{32}
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *SynthesizeSpeechResponse) GetAudio() *Media {
@@ -2824,11 +2909,16 @@ const file_proto_wg_model_hub_v2_model_hub_proto_rawDesc = "" +
 	"\x05model\x18\x01 \x01(\tR\x05model\x12:\n" +
 	"\bcategory\x18\x02 \x01(\x0e2\x1e.wg_model_hub.v2.ModelCategoryR\bcategory\"H\n" +
 	"\x12ListModelsResponse\x122\n" +
-	"\x06models\x18\x01 \x03(\v2\x1a.wg_model_hub.v2.ModelInfoR\x06models\"\x8a\x01\n" +
+	"\x06models\x18\x01 \x03(\v2\x1a.wg_model_hub.v2.ModelInfoR\x06models\"\x8b\x01\n" +
+	"\x10BusinessMetadata\x12#\n" +
+	"\rbusiness_line\x18\x01 \x01(\tR\fbusinessLine\x12%\n" +
+	"\x0ebusiness_scene\x18\x02 \x01(\tR\rbusinessScene\x12+\n" +
+	"\x11business_subscene\x18\x03 \x01(\tR\x10businessSubscene\"\xda\x01\n" +
 	"\x0fGenerateRequest\x12\x14\n" +
 	"\x05model\x18\x01 \x01(\tR\x05model\x12,\n" +
 	"\x05input\x18\x02 \x01(\v2\x16.wg_model_hub.v2.InputR\x05input\x123\n" +
-	"\x06output\x18\x03 \x01(\v2\x1b.wg_model_hub.v2.OutputSpecR\x06output\"X\n" +
+	"\x06output\x18\x03 \x01(\v2\x1b.wg_model_hub.v2.OutputSpecR\x06output\x12N\n" +
+	"\x11business_metadata\x18\x04 \x01(\v2!.wg_model_hub.v2.BusinessMetadataR\x10businessMetadata\"X\n" +
 	"\x05Media\x12\x1b\n" +
 	"\tmime_type\x18\x01 \x01(\tR\bmimeType\x12\x14\n" +
 	"\x04data\x18\x02 \x01(\fH\x00R\x04data\x12\x12\n" +
@@ -2879,14 +2969,15 @@ const file_proto_wg_model_hub_v2_model_hub_proto_rawDesc = "" +
 	"toolChoice\x120\n" +
 	"\x14previous_response_id\x18\x04 \x01(\tR\x12previousResponseId\x128\n" +
 	"\acaching\x18\x05 \x01(\v2\x1e.wg_model_hub.v2.CachingConfigR\acaching\x12%\n" +
-	"\x0ecached_content\x18\x06 \x01(\tR\rcachedContent\"\xd2\x01\n" +
+	"\x0ecached_content\x18\x06 \x01(\tR\rcachedContent\"\xa2\x02\n" +
 	"\x1aCreateCachedContentRequest\x12\x14\n" +
 	"\x05model\x18\x01 \x01(\tR\x05model\x12-\n" +
 	"\x12system_instruction\x18\x02 \x01(\tR\x11systemInstruction\x12+\n" +
 	"\x05tools\x18\x03 \x03(\v2\x15.wg_model_hub.v2.ToolR\x05tools\x12\x1f\n" +
 	"\vttl_seconds\x18\x04 \x01(\x03R\n" +
 	"ttlSeconds\x12!\n" +
-	"\fdisplay_name\x18\x05 \x01(\tR\vdisplayName\"j\n" +
+	"\fdisplay_name\x18\x05 \x01(\tR\vdisplayName\x12N\n" +
+	"\x11business_metadata\x18\x06 \x01(\v2!.wg_model_hub.v2.BusinessMetadataR\x10businessMetadata\"j\n" +
 	"\x1bCreateCachedContentResponse\x12%\n" +
 	"\x0ecached_content\x18\x01 \x01(\tR\rcachedContent\x12$\n" +
 	"\x0eexpire_at_unix\x18\x02 \x01(\x03R\fexpireAtUnix\"~\n" +
@@ -2987,11 +3078,12 @@ const file_proto_wg_model_hub_v2_model_hub_proto_rawDesc = "" +
 	"\x13GenerationTaskEvent\x12?\n" +
 	"\x06status\x18\x01 \x01(\v2%.wg_model_hub.v2.GenerationTaskStatusH\x00R\x06status\x128\n" +
 	"\x06output\x18\x02 \x01(\v2\x1e.wg_model_hub.v2.GenerateEventH\x00R\x06outputB\a\n" +
-	"\x05event\"^\n" +
+	"\x05event\"\xae\x01\n" +
 	"\x17SynthesizeSpeechRequest\x12\x14\n" +
 	"\x05model\x18\x01 \x01(\tR\x05model\x12\x12\n" +
 	"\x04text\x18\x02 \x01(\tR\x04text\x12\x19\n" +
-	"\bvoice_id\x18\x03 \x01(\tR\avoiceId\"H\n" +
+	"\bvoice_id\x18\x03 \x01(\tR\avoiceId\x12N\n" +
+	"\x11business_metadata\x18\x04 \x01(\v2!.wg_model_hub.v2.BusinessMetadataR\x10businessMetadata\"H\n" +
 	"\x18SynthesizeSpeechResponse\x12,\n" +
 	"\x05audio\x18\x01 \x01(\v2\x16.wg_model_hub.v2.MediaR\x05audio*\xc5\x03\n" +
 	"\rModelCategory\x12\x1e\n" +
@@ -3069,7 +3161,7 @@ func file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP() []byte {
 }
 
 var file_proto_wg_model_hub_v2_model_hub_proto_enumTypes = make([]protoimpl.EnumInfo, 8)
-var file_proto_wg_model_hub_v2_model_hub_proto_msgTypes = make([]protoimpl.MessageInfo, 33)
+var file_proto_wg_model_hub_v2_model_hub_proto_msgTypes = make([]protoimpl.MessageInfo, 34)
 var file_proto_wg_model_hub_v2_model_hub_proto_goTypes = []any{
 	(ModelCategory)(0),                  // 0: wg_model_hub.v2.ModelCategory
 	(Role)(0),                           // 1: wg_model_hub.v2.Role
@@ -3082,102 +3174,106 @@ var file_proto_wg_model_hub_v2_model_hub_proto_goTypes = []any{
 	(*ListModelsRequest)(nil),           // 8: wg_model_hub.v2.ListModelsRequest
 	(*ModelInfo)(nil),                   // 9: wg_model_hub.v2.ModelInfo
 	(*ListModelsResponse)(nil),          // 10: wg_model_hub.v2.ListModelsResponse
-	(*GenerateRequest)(nil),             // 11: wg_model_hub.v2.GenerateRequest
-	(*Media)(nil),                       // 12: wg_model_hub.v2.Media
-	(*ContentPart)(nil),                 // 13: wg_model_hub.v2.ContentPart
-	(*Message)(nil),                     // 14: wg_model_hub.v2.Message
-	(*FunctionDefinition)(nil),          // 15: wg_model_hub.v2.FunctionDefinition
-	(*Tool)(nil),                        // 16: wg_model_hub.v2.Tool
-	(*ToolCall)(nil),                    // 17: wg_model_hub.v2.ToolCall
-	(*ToolOutput)(nil),                  // 18: wg_model_hub.v2.ToolOutput
-	(*InputItem)(nil),                   // 19: wg_model_hub.v2.InputItem
-	(*Input)(nil),                       // 20: wg_model_hub.v2.Input
-	(*CreateCachedContentRequest)(nil),  // 21: wg_model_hub.v2.CreateCachedContentRequest
-	(*CreateCachedContentResponse)(nil), // 22: wg_model_hub.v2.CreateCachedContentResponse
-	(*ResponseFormat)(nil),              // 23: wg_model_hub.v2.ResponseFormat
-	(*ToolChoice)(nil),                  // 24: wg_model_hub.v2.ToolChoice
-	(*CachingConfig)(nil),               // 25: wg_model_hub.v2.CachingConfig
-	(*TextOutput)(nil),                  // 26: wg_model_hub.v2.TextOutput
-	(*ImageOutput)(nil),                 // 27: wg_model_hub.v2.ImageOutput
-	(*VideoOutput)(nil),                 // 28: wg_model_hub.v2.VideoOutput
-	(*OutputSpec)(nil),                  // 29: wg_model_hub.v2.OutputSpec
-	(*Usage)(nil),                       // 30: wg_model_hub.v2.Usage
-	(*SafetyFeedback)(nil),              // 31: wg_model_hub.v2.SafetyFeedback
-	(*OutputItem)(nil),                  // 32: wg_model_hub.v2.OutputItem
-	(*GenerateEvent)(nil),               // 33: wg_model_hub.v2.GenerateEvent
-	(*SubmitGenerationRequest)(nil),     // 34: wg_model_hub.v2.SubmitGenerationRequest
-	(*GetGenerationRequest)(nil),        // 35: wg_model_hub.v2.GetGenerationRequest
-	(*GenerationTask)(nil),              // 36: wg_model_hub.v2.GenerationTask
-	(*GenerationTaskStatus)(nil),        // 37: wg_model_hub.v2.GenerationTaskStatus
-	(*GenerationTaskEvent)(nil),         // 38: wg_model_hub.v2.GenerationTaskEvent
-	(*SynthesizeSpeechRequest)(nil),     // 39: wg_model_hub.v2.SynthesizeSpeechRequest
-	(*SynthesizeSpeechResponse)(nil),    // 40: wg_model_hub.v2.SynthesizeSpeechResponse
-	(*status.Status)(nil),               // 41: google.rpc.Status
+	(*BusinessMetadata)(nil),            // 11: wg_model_hub.v2.BusinessMetadata
+	(*GenerateRequest)(nil),             // 12: wg_model_hub.v2.GenerateRequest
+	(*Media)(nil),                       // 13: wg_model_hub.v2.Media
+	(*ContentPart)(nil),                 // 14: wg_model_hub.v2.ContentPart
+	(*Message)(nil),                     // 15: wg_model_hub.v2.Message
+	(*FunctionDefinition)(nil),          // 16: wg_model_hub.v2.FunctionDefinition
+	(*Tool)(nil),                        // 17: wg_model_hub.v2.Tool
+	(*ToolCall)(nil),                    // 18: wg_model_hub.v2.ToolCall
+	(*ToolOutput)(nil),                  // 19: wg_model_hub.v2.ToolOutput
+	(*InputItem)(nil),                   // 20: wg_model_hub.v2.InputItem
+	(*Input)(nil),                       // 21: wg_model_hub.v2.Input
+	(*CreateCachedContentRequest)(nil),  // 22: wg_model_hub.v2.CreateCachedContentRequest
+	(*CreateCachedContentResponse)(nil), // 23: wg_model_hub.v2.CreateCachedContentResponse
+	(*ResponseFormat)(nil),              // 24: wg_model_hub.v2.ResponseFormat
+	(*ToolChoice)(nil),                  // 25: wg_model_hub.v2.ToolChoice
+	(*CachingConfig)(nil),               // 26: wg_model_hub.v2.CachingConfig
+	(*TextOutput)(nil),                  // 27: wg_model_hub.v2.TextOutput
+	(*ImageOutput)(nil),                 // 28: wg_model_hub.v2.ImageOutput
+	(*VideoOutput)(nil),                 // 29: wg_model_hub.v2.VideoOutput
+	(*OutputSpec)(nil),                  // 30: wg_model_hub.v2.OutputSpec
+	(*Usage)(nil),                       // 31: wg_model_hub.v2.Usage
+	(*SafetyFeedback)(nil),              // 32: wg_model_hub.v2.SafetyFeedback
+	(*OutputItem)(nil),                  // 33: wg_model_hub.v2.OutputItem
+	(*GenerateEvent)(nil),               // 34: wg_model_hub.v2.GenerateEvent
+	(*SubmitGenerationRequest)(nil),     // 35: wg_model_hub.v2.SubmitGenerationRequest
+	(*GetGenerationRequest)(nil),        // 36: wg_model_hub.v2.GetGenerationRequest
+	(*GenerationTask)(nil),              // 37: wg_model_hub.v2.GenerationTask
+	(*GenerationTaskStatus)(nil),        // 38: wg_model_hub.v2.GenerationTaskStatus
+	(*GenerationTaskEvent)(nil),         // 39: wg_model_hub.v2.GenerationTaskEvent
+	(*SynthesizeSpeechRequest)(nil),     // 40: wg_model_hub.v2.SynthesizeSpeechRequest
+	(*SynthesizeSpeechResponse)(nil),    // 41: wg_model_hub.v2.SynthesizeSpeechResponse
+	(*status.Status)(nil),               // 42: google.rpc.Status
 }
 var file_proto_wg_model_hub_v2_model_hub_proto_depIdxs = []int32{
 	0,  // 0: wg_model_hub.v2.ListModelsRequest.category:type_name -> wg_model_hub.v2.ModelCategory
 	0,  // 1: wg_model_hub.v2.ModelInfo.category:type_name -> wg_model_hub.v2.ModelCategory
 	9,  // 2: wg_model_hub.v2.ListModelsResponse.models:type_name -> wg_model_hub.v2.ModelInfo
-	20, // 3: wg_model_hub.v2.GenerateRequest.input:type_name -> wg_model_hub.v2.Input
-	29, // 4: wg_model_hub.v2.GenerateRequest.output:type_name -> wg_model_hub.v2.OutputSpec
-	12, // 5: wg_model_hub.v2.ContentPart.image:type_name -> wg_model_hub.v2.Media
-	12, // 6: wg_model_hub.v2.ContentPart.video:type_name -> wg_model_hub.v2.Media
-	12, // 7: wg_model_hub.v2.ContentPart.audio:type_name -> wg_model_hub.v2.Media
-	12, // 8: wg_model_hub.v2.ContentPart.file:type_name -> wg_model_hub.v2.Media
-	1,  // 9: wg_model_hub.v2.Message.role:type_name -> wg_model_hub.v2.Role
-	13, // 10: wg_model_hub.v2.Message.parts:type_name -> wg_model_hub.v2.ContentPart
-	17, // 11: wg_model_hub.v2.Message.tool_calls:type_name -> wg_model_hub.v2.ToolCall
-	15, // 12: wg_model_hub.v2.Tool.function:type_name -> wg_model_hub.v2.FunctionDefinition
-	12, // 13: wg_model_hub.v2.ToolOutput.images:type_name -> wg_model_hub.v2.Media
-	14, // 14: wg_model_hub.v2.InputItem.message:type_name -> wg_model_hub.v2.Message
-	18, // 15: wg_model_hub.v2.InputItem.tool_output:type_name -> wg_model_hub.v2.ToolOutput
-	19, // 16: wg_model_hub.v2.Input.items:type_name -> wg_model_hub.v2.InputItem
-	16, // 17: wg_model_hub.v2.Input.tools:type_name -> wg_model_hub.v2.Tool
-	24, // 18: wg_model_hub.v2.Input.tool_choice:type_name -> wg_model_hub.v2.ToolChoice
-	25, // 19: wg_model_hub.v2.Input.caching:type_name -> wg_model_hub.v2.CachingConfig
-	16, // 20: wg_model_hub.v2.CreateCachedContentRequest.tools:type_name -> wg_model_hub.v2.Tool
-	3,  // 21: wg_model_hub.v2.ResponseFormat.type:type_name -> wg_model_hub.v2.ResponseFormatType
-	4,  // 22: wg_model_hub.v2.ToolChoice.mode:type_name -> wg_model_hub.v2.ToolChoiceMode
-	23, // 23: wg_model_hub.v2.TextOutput.response_format:type_name -> wg_model_hub.v2.ResponseFormat
-	2,  // 24: wg_model_hub.v2.TextOutput.thinking:type_name -> wg_model_hub.v2.ThinkingMode
-	6,  // 25: wg_model_hub.v2.TextOutput.thinking_level:type_name -> wg_model_hub.v2.ThinkingLevel
-	5,  // 26: wg_model_hub.v2.ImageOutput.output_modalities:type_name -> wg_model_hub.v2.ImageOutputModality
-	6,  // 27: wg_model_hub.v2.ImageOutput.thinking_level:type_name -> wg_model_hub.v2.ThinkingLevel
-	26, // 28: wg_model_hub.v2.OutputSpec.text:type_name -> wg_model_hub.v2.TextOutput
-	27, // 29: wg_model_hub.v2.OutputSpec.image:type_name -> wg_model_hub.v2.ImageOutput
-	28, // 30: wg_model_hub.v2.OutputSpec.video:type_name -> wg_model_hub.v2.VideoOutput
-	12, // 31: wg_model_hub.v2.OutputItem.image:type_name -> wg_model_hub.v2.Media
-	12, // 32: wg_model_hub.v2.OutputItem.video:type_name -> wg_model_hub.v2.Media
-	17, // 33: wg_model_hub.v2.OutputItem.tool_call:type_name -> wg_model_hub.v2.ToolCall
-	32, // 34: wg_model_hub.v2.GenerateEvent.items:type_name -> wg_model_hub.v2.OutputItem
-	30, // 35: wg_model_hub.v2.GenerateEvent.usage:type_name -> wg_model_hub.v2.Usage
-	31, // 36: wg_model_hub.v2.GenerateEvent.safety:type_name -> wg_model_hub.v2.SafetyFeedback
-	11, // 37: wg_model_hub.v2.SubmitGenerationRequest.request:type_name -> wg_model_hub.v2.GenerateRequest
-	7,  // 38: wg_model_hub.v2.GenerationTask.state:type_name -> wg_model_hub.v2.GenerationTaskState
-	7,  // 39: wg_model_hub.v2.GenerationTaskStatus.state:type_name -> wg_model_hub.v2.GenerationTaskState
-	41, // 40: wg_model_hub.v2.GenerationTaskStatus.error:type_name -> google.rpc.Status
-	37, // 41: wg_model_hub.v2.GenerationTaskEvent.status:type_name -> wg_model_hub.v2.GenerationTaskStatus
-	33, // 42: wg_model_hub.v2.GenerationTaskEvent.output:type_name -> wg_model_hub.v2.GenerateEvent
-	12, // 43: wg_model_hub.v2.SynthesizeSpeechResponse.audio:type_name -> wg_model_hub.v2.Media
-	11, // 44: wg_model_hub.v2.ModelHubService.Generate:input_type -> wg_model_hub.v2.GenerateRequest
-	21, // 45: wg_model_hub.v2.ModelHubService.CreateCachedContent:input_type -> wg_model_hub.v2.CreateCachedContentRequest
-	34, // 46: wg_model_hub.v2.ModelHubService.SubmitGeneration:input_type -> wg_model_hub.v2.SubmitGenerationRequest
-	35, // 47: wg_model_hub.v2.ModelHubService.GetGeneration:input_type -> wg_model_hub.v2.GetGenerationRequest
-	39, // 48: wg_model_hub.v2.ModelHubService.SynthesizeSpeech:input_type -> wg_model_hub.v2.SynthesizeSpeechRequest
-	39, // 49: wg_model_hub.v2.ModelHubService.SynthesizeSpeechStream:input_type -> wg_model_hub.v2.SynthesizeSpeechRequest
-	8,  // 50: wg_model_hub.v2.ModelHubService.ListModels:input_type -> wg_model_hub.v2.ListModelsRequest
-	33, // 51: wg_model_hub.v2.ModelHubService.Generate:output_type -> wg_model_hub.v2.GenerateEvent
-	22, // 52: wg_model_hub.v2.ModelHubService.CreateCachedContent:output_type -> wg_model_hub.v2.CreateCachedContentResponse
-	36, // 53: wg_model_hub.v2.ModelHubService.SubmitGeneration:output_type -> wg_model_hub.v2.GenerationTask
-	38, // 54: wg_model_hub.v2.ModelHubService.GetGeneration:output_type -> wg_model_hub.v2.GenerationTaskEvent
-	40, // 55: wg_model_hub.v2.ModelHubService.SynthesizeSpeech:output_type -> wg_model_hub.v2.SynthesizeSpeechResponse
-	40, // 56: wg_model_hub.v2.ModelHubService.SynthesizeSpeechStream:output_type -> wg_model_hub.v2.SynthesizeSpeechResponse
-	10, // 57: wg_model_hub.v2.ModelHubService.ListModels:output_type -> wg_model_hub.v2.ListModelsResponse
-	51, // [51:58] is the sub-list for method output_type
-	44, // [44:51] is the sub-list for method input_type
-	44, // [44:44] is the sub-list for extension type_name
-	44, // [44:44] is the sub-list for extension extendee
-	0,  // [0:44] is the sub-list for field type_name
+	21, // 3: wg_model_hub.v2.GenerateRequest.input:type_name -> wg_model_hub.v2.Input
+	30, // 4: wg_model_hub.v2.GenerateRequest.output:type_name -> wg_model_hub.v2.OutputSpec
+	11, // 5: wg_model_hub.v2.GenerateRequest.business_metadata:type_name -> wg_model_hub.v2.BusinessMetadata
+	13, // 6: wg_model_hub.v2.ContentPart.image:type_name -> wg_model_hub.v2.Media
+	13, // 7: wg_model_hub.v2.ContentPart.video:type_name -> wg_model_hub.v2.Media
+	13, // 8: wg_model_hub.v2.ContentPart.audio:type_name -> wg_model_hub.v2.Media
+	13, // 9: wg_model_hub.v2.ContentPart.file:type_name -> wg_model_hub.v2.Media
+	1,  // 10: wg_model_hub.v2.Message.role:type_name -> wg_model_hub.v2.Role
+	14, // 11: wg_model_hub.v2.Message.parts:type_name -> wg_model_hub.v2.ContentPart
+	18, // 12: wg_model_hub.v2.Message.tool_calls:type_name -> wg_model_hub.v2.ToolCall
+	16, // 13: wg_model_hub.v2.Tool.function:type_name -> wg_model_hub.v2.FunctionDefinition
+	13, // 14: wg_model_hub.v2.ToolOutput.images:type_name -> wg_model_hub.v2.Media
+	15, // 15: wg_model_hub.v2.InputItem.message:type_name -> wg_model_hub.v2.Message
+	19, // 16: wg_model_hub.v2.InputItem.tool_output:type_name -> wg_model_hub.v2.ToolOutput
+	20, // 17: wg_model_hub.v2.Input.items:type_name -> wg_model_hub.v2.InputItem
+	17, // 18: wg_model_hub.v2.Input.tools:type_name -> wg_model_hub.v2.Tool
+	25, // 19: wg_model_hub.v2.Input.tool_choice:type_name -> wg_model_hub.v2.ToolChoice
+	26, // 20: wg_model_hub.v2.Input.caching:type_name -> wg_model_hub.v2.CachingConfig
+	17, // 21: wg_model_hub.v2.CreateCachedContentRequest.tools:type_name -> wg_model_hub.v2.Tool
+	11, // 22: wg_model_hub.v2.CreateCachedContentRequest.business_metadata:type_name -> wg_model_hub.v2.BusinessMetadata
+	3,  // 23: wg_model_hub.v2.ResponseFormat.type:type_name -> wg_model_hub.v2.ResponseFormatType
+	4,  // 24: wg_model_hub.v2.ToolChoice.mode:type_name -> wg_model_hub.v2.ToolChoiceMode
+	24, // 25: wg_model_hub.v2.TextOutput.response_format:type_name -> wg_model_hub.v2.ResponseFormat
+	2,  // 26: wg_model_hub.v2.TextOutput.thinking:type_name -> wg_model_hub.v2.ThinkingMode
+	6,  // 27: wg_model_hub.v2.TextOutput.thinking_level:type_name -> wg_model_hub.v2.ThinkingLevel
+	5,  // 28: wg_model_hub.v2.ImageOutput.output_modalities:type_name -> wg_model_hub.v2.ImageOutputModality
+	6,  // 29: wg_model_hub.v2.ImageOutput.thinking_level:type_name -> wg_model_hub.v2.ThinkingLevel
+	27, // 30: wg_model_hub.v2.OutputSpec.text:type_name -> wg_model_hub.v2.TextOutput
+	28, // 31: wg_model_hub.v2.OutputSpec.image:type_name -> wg_model_hub.v2.ImageOutput
+	29, // 32: wg_model_hub.v2.OutputSpec.video:type_name -> wg_model_hub.v2.VideoOutput
+	13, // 33: wg_model_hub.v2.OutputItem.image:type_name -> wg_model_hub.v2.Media
+	13, // 34: wg_model_hub.v2.OutputItem.video:type_name -> wg_model_hub.v2.Media
+	18, // 35: wg_model_hub.v2.OutputItem.tool_call:type_name -> wg_model_hub.v2.ToolCall
+	33, // 36: wg_model_hub.v2.GenerateEvent.items:type_name -> wg_model_hub.v2.OutputItem
+	31, // 37: wg_model_hub.v2.GenerateEvent.usage:type_name -> wg_model_hub.v2.Usage
+	32, // 38: wg_model_hub.v2.GenerateEvent.safety:type_name -> wg_model_hub.v2.SafetyFeedback
+	12, // 39: wg_model_hub.v2.SubmitGenerationRequest.request:type_name -> wg_model_hub.v2.GenerateRequest
+	7,  // 40: wg_model_hub.v2.GenerationTask.state:type_name -> wg_model_hub.v2.GenerationTaskState
+	7,  // 41: wg_model_hub.v2.GenerationTaskStatus.state:type_name -> wg_model_hub.v2.GenerationTaskState
+	42, // 42: wg_model_hub.v2.GenerationTaskStatus.error:type_name -> google.rpc.Status
+	38, // 43: wg_model_hub.v2.GenerationTaskEvent.status:type_name -> wg_model_hub.v2.GenerationTaskStatus
+	34, // 44: wg_model_hub.v2.GenerationTaskEvent.output:type_name -> wg_model_hub.v2.GenerateEvent
+	11, // 45: wg_model_hub.v2.SynthesizeSpeechRequest.business_metadata:type_name -> wg_model_hub.v2.BusinessMetadata
+	13, // 46: wg_model_hub.v2.SynthesizeSpeechResponse.audio:type_name -> wg_model_hub.v2.Media
+	12, // 47: wg_model_hub.v2.ModelHubService.Generate:input_type -> wg_model_hub.v2.GenerateRequest
+	22, // 48: wg_model_hub.v2.ModelHubService.CreateCachedContent:input_type -> wg_model_hub.v2.CreateCachedContentRequest
+	35, // 49: wg_model_hub.v2.ModelHubService.SubmitGeneration:input_type -> wg_model_hub.v2.SubmitGenerationRequest
+	36, // 50: wg_model_hub.v2.ModelHubService.GetGeneration:input_type -> wg_model_hub.v2.GetGenerationRequest
+	40, // 51: wg_model_hub.v2.ModelHubService.SynthesizeSpeech:input_type -> wg_model_hub.v2.SynthesizeSpeechRequest
+	40, // 52: wg_model_hub.v2.ModelHubService.SynthesizeSpeechStream:input_type -> wg_model_hub.v2.SynthesizeSpeechRequest
+	8,  // 53: wg_model_hub.v2.ModelHubService.ListModels:input_type -> wg_model_hub.v2.ListModelsRequest
+	34, // 54: wg_model_hub.v2.ModelHubService.Generate:output_type -> wg_model_hub.v2.GenerateEvent
+	23, // 55: wg_model_hub.v2.ModelHubService.CreateCachedContent:output_type -> wg_model_hub.v2.CreateCachedContentResponse
+	37, // 56: wg_model_hub.v2.ModelHubService.SubmitGeneration:output_type -> wg_model_hub.v2.GenerationTask
+	39, // 57: wg_model_hub.v2.ModelHubService.GetGeneration:output_type -> wg_model_hub.v2.GenerationTaskEvent
+	41, // 58: wg_model_hub.v2.ModelHubService.SynthesizeSpeech:output_type -> wg_model_hub.v2.SynthesizeSpeechResponse
+	41, // 59: wg_model_hub.v2.ModelHubService.SynthesizeSpeechStream:output_type -> wg_model_hub.v2.SynthesizeSpeechResponse
+	10, // 60: wg_model_hub.v2.ModelHubService.ListModels:output_type -> wg_model_hub.v2.ListModelsResponse
+	54, // [54:61] is the sub-list for method output_type
+	47, // [47:54] is the sub-list for method input_type
+	47, // [47:47] is the sub-list for extension type_name
+	47, // [47:47] is the sub-list for extension extendee
+	0,  // [0:47] is the sub-list for field type_name
 }
 
 func init() { file_proto_wg_model_hub_v2_model_hub_proto_init() }
@@ -3185,37 +3281,37 @@ func file_proto_wg_model_hub_v2_model_hub_proto_init() {
 	if File_proto_wg_model_hub_v2_model_hub_proto != nil {
 		return
 	}
-	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[4].OneofWrappers = []any{
+	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[5].OneofWrappers = []any{
 		(*Media_Data)(nil),
 		(*Media_Uri)(nil),
 	}
-	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[5].OneofWrappers = []any{
+	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[6].OneofWrappers = []any{
 		(*ContentPart_Text)(nil),
 		(*ContentPart_Image)(nil),
 		(*ContentPart_Video)(nil),
 		(*ContentPart_Audio)(nil),
 		(*ContentPart_File)(nil),
 	}
-	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[9].OneofWrappers = []any{}
-	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[11].OneofWrappers = []any{
+	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[10].OneofWrappers = []any{}
+	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[12].OneofWrappers = []any{
 		(*InputItem_Message)(nil),
 		(*InputItem_ToolOutput)(nil),
 	}
-	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[18].OneofWrappers = []any{}
 	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[19].OneofWrappers = []any{}
 	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[20].OneofWrappers = []any{}
-	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[21].OneofWrappers = []any{
+	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[21].OneofWrappers = []any{}
+	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[22].OneofWrappers = []any{
 		(*OutputSpec_Text)(nil),
 		(*OutputSpec_Image)(nil),
 		(*OutputSpec_Video)(nil),
 	}
-	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[24].OneofWrappers = []any{
+	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[25].OneofWrappers = []any{
 		(*OutputItem_Text)(nil),
 		(*OutputItem_Image)(nil),
 		(*OutputItem_Video)(nil),
 		(*OutputItem_ToolCall)(nil),
 	}
-	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[30].OneofWrappers = []any{
+	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[31].OneofWrappers = []any{
 		(*GenerationTaskEvent_Status)(nil),
 		(*GenerationTaskEvent_Output)(nil),
 	}
@@ -3225,7 +3321,7 @@ func file_proto_wg_model_hub_v2_model_hub_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_wg_model_hub_v2_model_hub_proto_rawDesc), len(file_proto_wg_model_hub_v2_model_hub_proto_rawDesc)),
 			NumEnums:      8,
-			NumMessages:   33,
+			NumMessages:   34,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

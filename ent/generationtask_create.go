@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/wgdl666/wgModelHub/ent/generationtask"
+	wg_model_hubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 )
 
 // GenerationTaskCreate is the builder for creating a GenerationTask entity.
@@ -73,6 +74,12 @@ func (_c *GenerationTaskCreate) SetState(v string) *GenerationTaskCreate {
 // SetMetadata sets the "metadata" field.
 func (_c *GenerationTaskCreate) SetMetadata(v map[string]string) *GenerationTaskCreate {
 	_c.mutation.SetMetadata(v)
+	return _c
+}
+
+// SetBusinessMetadata sets the "business_metadata" field.
+func (_c *GenerationTaskCreate) SetBusinessMetadata(v *wg_model_hubv2.BusinessMetadata) *GenerationTaskCreate {
+	_c.mutation.SetBusinessMetadata(v)
 	return _c
 }
 
@@ -318,6 +325,10 @@ func (_c *GenerationTaskCreate) createSpec() (*GenerationTask, *sqlgraph.CreateS
 	if value, ok := _c.mutation.Metadata(); ok {
 		_spec.SetField(generationtask.FieldMetadata, field.TypeJSON, value)
 		_node.Metadata = value
+	}
+	if value, ok := _c.mutation.BusinessMetadata(); ok {
+		_spec.SetField(generationtask.FieldBusinessMetadata, field.TypeJSON, value)
+		_node.BusinessMetadata = value
 	}
 	if value, ok := _c.mutation.ErrorCode(); ok {
 		_spec.SetField(generationtask.FieldErrorCode, field.TypeInt32, value)

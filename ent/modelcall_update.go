@@ -91,6 +91,20 @@ func (_u *ModelCallUpdate) SetNillableBusinessScene(v *string) *ModelCallUpdate 
 	return _u
 }
 
+// SetBusinessSubscene sets the "business_subscene" field.
+func (_u *ModelCallUpdate) SetBusinessSubscene(v string) *ModelCallUpdate {
+	_u.mutation.SetBusinessSubscene(v)
+	return _u
+}
+
+// SetNillableBusinessSubscene sets the "business_subscene" field if the given value is not nil.
+func (_u *ModelCallUpdate) SetNillableBusinessSubscene(v *string) *ModelCallUpdate {
+	if v != nil {
+		_u.SetBusinessSubscene(*v)
+	}
+	return _u
+}
+
 // SetOperation sets the "operation" field.
 func (_u *ModelCallUpdate) SetOperation(v string) *ModelCallUpdate {
 	_u.mutation.SetOperation(v)
@@ -633,6 +647,9 @@ func (_u *ModelCallUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.BusinessScene(); ok {
 		_spec.SetField(modelcall.FieldBusinessScene, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.BusinessSubscene(); ok {
+		_spec.SetField(modelcall.FieldBusinessSubscene, field.TypeString, value)
+	}
 	if value, ok := _u.mutation.Operation(); ok {
 		_spec.SetField(modelcall.FieldOperation, field.TypeString, value)
 	}
@@ -851,6 +868,20 @@ func (_u *ModelCallUpdateOne) SetBusinessScene(v string) *ModelCallUpdateOne {
 func (_u *ModelCallUpdateOne) SetNillableBusinessScene(v *string) *ModelCallUpdateOne {
 	if v != nil {
 		_u.SetBusinessScene(*v)
+	}
+	return _u
+}
+
+// SetBusinessSubscene sets the "business_subscene" field.
+func (_u *ModelCallUpdateOne) SetBusinessSubscene(v string) *ModelCallUpdateOne {
+	_u.mutation.SetBusinessSubscene(v)
+	return _u
+}
+
+// SetNillableBusinessSubscene sets the "business_subscene" field if the given value is not nil.
+func (_u *ModelCallUpdateOne) SetNillableBusinessSubscene(v *string) *ModelCallUpdateOne {
+	if v != nil {
+		_u.SetBusinessSubscene(*v)
 	}
 	return _u
 }
@@ -1426,6 +1457,9 @@ func (_u *ModelCallUpdateOne) sqlSave(ctx context.Context) (_node *ModelCall, er
 	}
 	if value, ok := _u.mutation.BusinessScene(); ok {
 		_spec.SetField(modelcall.FieldBusinessScene, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.BusinessSubscene(); ok {
+		_spec.SetField(modelcall.FieldBusinessSubscene, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Operation(); ok {
 		_spec.SetField(modelcall.FieldOperation, field.TypeString, value)

@@ -27,6 +27,7 @@ type Record struct {
 	CallerService    string
 	BusinessLine     string
 	BusinessScene    string
+	BusinessSubscene string
 	Operation        string
 	Capability       string
 	Model            string
@@ -153,6 +154,7 @@ func (p *Postgres) Record(ctx context.Context, rec Record) error {
 		SetCallerService(normalizeLabel(rec.CallerService)).
 		SetBusinessLine(normalizeLabel(rec.BusinessLine)).
 		SetBusinessScene(normalizeLabel(rec.BusinessScene)).
+		SetBusinessSubscene(normalizeLabel(rec.BusinessSubscene)).
 		SetOperation(rec.Operation).
 		SetCapability(rec.Capability).
 		SetModel(rec.Model).
@@ -275,6 +277,9 @@ func (p *Postgres) updateMergedOptimistic(ctx context.Context, existing *ent.Mod
 	if existing.BusinessScene == UnknownLabel && merged.BusinessScene != "" && merged.BusinessScene != UnknownLabel {
 		upd.SetBusinessScene(normalizeLabel(merged.BusinessScene))
 	}
+	if existing.BusinessSubscene == UnknownLabel && merged.BusinessSubscene != "" && merged.BusinessSubscene != UnknownLabel {
+		upd.SetBusinessSubscene(normalizeLabel(merged.BusinessSubscene))
+	}
 	if existing.ImageSize == "" && merged.ImageSize != "" {
 		upd.SetImageSize(merged.ImageSize)
 	}
@@ -390,6 +395,7 @@ func fromEnt(row *ent.ModelCall) Record {
 		CallerService:    row.CallerService,
 		BusinessLine:     row.BusinessLine,
 		BusinessScene:    row.BusinessScene,
+		BusinessSubscene: row.BusinessSubscene,
 		Operation:        row.Operation,
 		Capability:       row.Capability,
 		Model:            row.Model,
@@ -451,6 +457,7 @@ func mergeVideoRecord(prev, next Record) Record {
 	// 业务场景以 Submit 写入为准，后续 Get 的 metadata 不得覆盖。
 	out.BusinessLine = firstNonEmptyPreferKnown(out.BusinessLine, next.BusinessLine)
 	out.BusinessScene = firstNonEmptyPreferKnown(out.BusinessScene, next.BusinessScene)
+	out.BusinessSubscene = firstNonEmptyPreferKnown(out.BusinessSubscene, next.BusinessSubscene)
 	out.Operation = firstNonEmpty(out.Operation, next.Operation)
 	out.Capability = firstNonEmpty(out.Capability, next.Capability)
 	out.Model = firstNonEmpty(out.Model, next.Model)

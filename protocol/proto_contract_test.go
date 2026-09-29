@@ -66,7 +66,8 @@ func TestSynthesizeSpeechProtoContract(t *testing.T) {
 	assertField(t, req, 1, "model", protoreflect.StringKind)
 	assertField(t, req, 2, "text", protoreflect.StringKind)
 	assertField(t, req, 3, "voice_id", protoreflect.StringKind)
-	if req.Fields().Len() != 3 {
+	assertField(t, req, 4, "business_metadata", protoreflect.MessageKind)
+	if req.Fields().Len() != 4 {
 		t.Fatalf("request fields=%d", req.Fields().Len())
 	}
 

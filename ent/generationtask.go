@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/wgdl666/wgModelHub/ent/generationtask"
+	wg_model_hubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 )
 
 // GenerationTask is the model entity for the GenerationTask schema.
@@ -34,6 +35,8 @@ type GenerationTask struct {
 	State string `json:"state,omitempty"`
 	// Metadata holds the value of the "metadata" field.
 	Metadata map[string]string `json:"metadata,omitempty"`
+	// BusinessMetadata holds the value of the "business_metadata" field.
+	BusinessMetadata *wg_model_hubv2.BusinessMetadata `json:"business_metadata,omitempty"`
 	// ErrorCode holds the value of the "error_code" field.
 	ErrorCode int32 `json:"error_code,omitempty"`
 	// ErrorMessage holds the value of the "error_message" field.
@@ -52,7 +55,7 @@ func (*GenerationTask) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case generationtask.FieldMetadata:
+		case generationtask.FieldMetadata, generationtask.FieldBusinessMetadata:
 			values[i] = new([]byte)
 		case generationtask.FieldErrorCode:
 			values[i] = new(sql.NullInt64)
@@ -129,6 +132,14 @@ func (_m *GenerationTask) assignValues(columns []string, values []any) error {
 			} else if value != nil && len(*value) > 0 {
 				if err := json.Unmarshal(*value, &_m.Metadata); err != nil {
 					return fmt.Errorf("unmarshal field metadata: %w", err)
+				}
+			}
+		case generationtask.FieldBusinessMetadata:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field business_metadata", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.BusinessMetadata); err != nil {
+					return fmt.Errorf("unmarshal field business_metadata: %w", err)
 				}
 			}
 		case generationtask.FieldErrorCode:
@@ -220,6 +231,9 @@ func (_m *GenerationTask) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("metadata=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Metadata))
+	builder.WriteString(", ")
+	builder.WriteString("business_metadata=")
+	builder.WriteString(fmt.Sprintf("%v", _m.BusinessMetadata))
 	builder.WriteString(", ")
 	builder.WriteString("error_code=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ErrorCode))

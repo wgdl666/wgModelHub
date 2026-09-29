@@ -25,7 +25,7 @@
 
 # 协议不变量
 
-- `GenerateRequest` 顶层恰好 `model` / `input` / `output`；system/任务/历史/媒体/tool 一律按序进 `Input.items`，不得另设顶层 prompt。
+- `GenerateRequest` 顶层固定 `model` / `input` / `output` / `business_metadata`；system/任务/历史/媒体/tool 一律按序进 `Input.items`，不得另设顶层 prompt。
 - capability 由 `OutputSpec` oneof 决定；`stream` 位于 `OutputSpec`。
 - `Media` 使用 `mime_type` + `oneof bytes/uri`；ModelHub 不通过额外 HEAD 猜测类型。
 - 图片输出用有序 `OutputItem` 展开图片与诊断文字，不能只返回首张图；完全空响应为 `INVALID_RESPONSE`，仅诊断文本或 blocked 仍合法。

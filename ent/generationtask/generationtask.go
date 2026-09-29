@@ -29,6 +29,8 @@ const (
 	FieldState = "state"
 	// FieldMetadata holds the string denoting the metadata field in the database.
 	FieldMetadata = "metadata"
+	// FieldBusinessMetadata holds the string denoting the business_metadata field in the database.
+	FieldBusinessMetadata = "business_metadata"
 	// FieldErrorCode holds the string denoting the error_code field in the database.
 	FieldErrorCode = "error_code"
 	// FieldErrorMessage holds the string denoting the error_message field in the database.
@@ -54,6 +56,7 @@ var Columns = []string{
 	FieldProviderTaskID,
 	FieldState,
 	FieldMetadata,
+	FieldBusinessMetadata,
 	FieldErrorCode,
 	FieldErrorMessage,
 	FieldErrorReason,

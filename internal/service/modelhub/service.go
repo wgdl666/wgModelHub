@@ -95,7 +95,7 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 		return statusErr
 	}
 	// StartedAt 在 provider 调用前由 stampCallTiming 写入；此处占位。
-	rec := s.baseRecord(ctx, callledger.OperationGenerateText, callledger.CapabilityText, binding.model, binding.provider, time.Time{})
+	rec := s.baseRecord(ctx, request.GetBusinessMetadata(), callledger.OperationGenerateText, callledger.CapabilityText, binding.model, binding.provider, time.Time{})
 	// 输入快照必须在缓存策略改写请求之前，保留调用方原始参数。
 	rec.InputPayload = callledger.BuildGenerateInput(request)
 	// 应用文本缓存策略（普通缺省开启 / endpoint-bound Ark 隐式自动）；返回实际生效遥测模式。
@@ -345,7 +345,7 @@ func (s *Service) SynthesizeSpeech(ctx context.Context, request *modelhubv2.Synt
 		telemetry.RecordError(ctx, statusErr)
 		return nil, statusErr
 	}
-	rec := s.baseRecord(ctx, callledger.OperationSynthesizeSpeech, callledger.CapabilitySpeech, binding.model, binding.provider, time.Time{})
+	rec := s.baseRecord(ctx, request.GetBusinessMetadata(), callledger.OperationSynthesizeSpeech, callledger.CapabilitySpeech, binding.model, binding.provider, time.Time{})
 	rec.InputPayload = callledger.BuildSpeechInput(request)
 	callStarted := time.Now()
 	resp, err := binding.set.Speech.SynthesizeSpeech(ctx, binding.model, request)
@@ -382,7 +382,7 @@ func (s *Service) generateImage(ctx context.Context, binding binding, request *m
 		telemetry.RecordError(ctx, statusErr)
 		return statusErr
 	}
-	rec := s.baseRecord(ctx, callledger.OperationGenerateImage, callledger.CapabilityImage, binding.model, binding.provider, time.Time{})
+	rec := s.baseRecord(ctx, request.GetBusinessMetadata(), callledger.OperationGenerateImage, callledger.CapabilityImage, binding.model, binding.provider, time.Time{})
 	rec.InputPayload = callledger.BuildGenerateInput(request)
 	rec.ImageSize, rec.ImageAspectRatio = callledger.RequestImageSpec(request)
 	callStarted := time.Now()
@@ -436,7 +436,7 @@ func (s *Service) generateVideo(ctx context.Context, binding binding, request *m
 		telemetry.RecordError(ctx, statusErr)
 		return statusErr
 	}
-	rec := s.baseRecord(ctx, callledger.OperationGenerateVideo, callledger.CapabilityVideo, binding.model, binding.provider, time.Time{})
+	rec := s.baseRecord(ctx, request.GetBusinessMetadata(), callledger.OperationGenerateVideo, callledger.CapabilityVideo, binding.model, binding.provider, time.Time{})
 	rec.InputPayload = callledger.BuildGenerateInput(request)
 	resolution, durationSec, aspect := callledger.RequestVideoSpec(request)
 	rec.VideoResolution, rec.VideoDurationSec, rec.VideoAspectRatio = resolution, durationSec, aspect

@@ -19,18 +19,19 @@ func (s *Service) shouldRecord(err error) bool {
 	return !provider.IsNotAttempted(err)
 }
 
-func (s *Service) baseRecord(ctx context.Context, operation, capability, model, providerName string, startedAt time.Time) callledger.Record {
+func (s *Service) baseRecord(ctx context.Context, business *modelhubv2.BusinessMetadata, operation, capability, model, providerName string, startedAt time.Time) callledger.Record {
 	return callledger.Record{
-		CallID:         uuid.NewString(),
-		CallerService:  callledger.CallerFromContext(ctx),
-		BusinessLine:   callledger.BusinessLineFromContext(ctx),
-		BusinessScene:  callledger.BusinessSceneFromContext(ctx),
-		Operation:      operation,
-		Capability:     capability,
-		Model:          model,
-		Provider:       providerName,
-		DeliveryStatus: callledger.DeliveryOK,
-		StartedAt:      startedAt,
+		CallID:           uuid.NewString(),
+		CallerService:    callledger.CallerFromContext(ctx),
+		BusinessLine:     business.GetBusinessLine(),
+		BusinessScene:    business.GetBusinessScene(),
+		BusinessSubscene: business.GetBusinessSubscene(),
+		Operation:        operation,
+		Capability:       capability,
+		Model:            model,
+		Provider:         providerName,
+		DeliveryStatus:   callledger.DeliveryOK,
+		StartedAt:        startedAt,
 	}
 }
 

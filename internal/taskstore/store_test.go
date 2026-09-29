@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"strings"
 	"testing"
 	"time"
@@ -265,17 +266,22 @@ func TestInsertPending_TaskIDCollisionNotIdempotent(t *testing.T) {
 func TestTaskMetadataPersistsAndIdempotencyKeepsOriginal(t *testing.T) {
 	store := openTestStore(t)
 	first := sampleTask("meta-task", "caller", "request", "hash")
+	first.BusinessMetadata = &modelhubv2.BusinessMetadata{BusinessLine: "mirror", BusinessScene: "recommend", BusinessSubscene: "video_generation"}
 	first.Metadata = map[string]string{"business_key": "prompt_debug", "business_id": "original"}
 	if _, _, err := store.InsertPending(context.Background(), first); err != nil {
 		t.Fatal(err)
 	}
 	first.Metadata["business_id"] = "later-request"
+	first.BusinessMetadata.BusinessSubscene = "wrong-poll-scene"
 	if _, created, err := store.InsertPending(context.Background(), first); err != nil || created {
 		t.Fatalf("duplicate created=%v err=%v", created, err)
 	}
 	recovered, err := store.GetByTaskID(context.Background(), first.TaskID)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if recovered.BusinessMetadata.GetBusinessSubscene() != "video_generation" {
+		t.Fatal("submit attribution overwritten", recovered.BusinessMetadata)
 	}
 	if recovered.Metadata["business_id"] != "original" {
 		t.Fatalf("metadata overwritten: %v", recovered.Metadata)

@@ -14,6 +14,7 @@ import (
 	"github.com/wgdl666/wgModelHub/ent/generationtask"
 	"github.com/wgdl666/wgModelHub/ent/internal"
 	"github.com/wgdl666/wgModelHub/ent/predicate"
+	wg_model_hubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 )
 
 // GenerationTaskUpdate is the builder for updating GenerationTask entities.
@@ -136,6 +137,18 @@ func (_u *GenerationTaskUpdate) SetMetadata(v map[string]string) *GenerationTask
 // ClearMetadata clears the value of the "metadata" field.
 func (_u *GenerationTaskUpdate) ClearMetadata() *GenerationTaskUpdate {
 	_u.mutation.ClearMetadata()
+	return _u
+}
+
+// SetBusinessMetadata sets the "business_metadata" field.
+func (_u *GenerationTaskUpdate) SetBusinessMetadata(v *wg_model_hubv2.BusinessMetadata) *GenerationTaskUpdate {
+	_u.mutation.SetBusinessMetadata(v)
+	return _u
+}
+
+// ClearBusinessMetadata clears the value of the "business_metadata" field.
+func (_u *GenerationTaskUpdate) ClearBusinessMetadata() *GenerationTaskUpdate {
+	_u.mutation.ClearBusinessMetadata()
 	return _u
 }
 
@@ -270,6 +283,12 @@ func (_u *GenerationTaskUpdate) sqlSave(ctx context.Context) (_node int, err err
 	}
 	if _u.mutation.MetadataCleared() {
 		_spec.ClearField(generationtask.FieldMetadata, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.BusinessMetadata(); ok {
+		_spec.SetField(generationtask.FieldBusinessMetadata, field.TypeJSON, value)
+	}
+	if _u.mutation.BusinessMetadataCleared() {
+		_spec.ClearField(generationtask.FieldBusinessMetadata, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.ErrorCode(); ok {
 		_spec.SetField(generationtask.FieldErrorCode, field.TypeInt32, value)
@@ -415,6 +434,18 @@ func (_u *GenerationTaskUpdateOne) SetMetadata(v map[string]string) *GenerationT
 // ClearMetadata clears the value of the "metadata" field.
 func (_u *GenerationTaskUpdateOne) ClearMetadata() *GenerationTaskUpdateOne {
 	_u.mutation.ClearMetadata()
+	return _u
+}
+
+// SetBusinessMetadata sets the "business_metadata" field.
+func (_u *GenerationTaskUpdateOne) SetBusinessMetadata(v *wg_model_hubv2.BusinessMetadata) *GenerationTaskUpdateOne {
+	_u.mutation.SetBusinessMetadata(v)
+	return _u
+}
+
+// ClearBusinessMetadata clears the value of the "business_metadata" field.
+func (_u *GenerationTaskUpdateOne) ClearBusinessMetadata() *GenerationTaskUpdateOne {
+	_u.mutation.ClearBusinessMetadata()
 	return _u
 }
 
@@ -579,6 +610,12 @@ func (_u *GenerationTaskUpdateOne) sqlSave(ctx context.Context) (_node *Generati
 	}
 	if _u.mutation.MetadataCleared() {
 		_spec.ClearField(generationtask.FieldMetadata, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.BusinessMetadata(); ok {
+		_spec.SetField(generationtask.FieldBusinessMetadata, field.TypeJSON, value)
+	}
+	if _u.mutation.BusinessMetadataCleared() {
+		_spec.ClearField(generationtask.FieldBusinessMetadata, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.ErrorCode(); ok {
 		_spec.SetField(generationtask.FieldErrorCode, field.TypeInt32, value)

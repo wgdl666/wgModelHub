@@ -589,6 +589,16 @@ func MetadataNotNil() predicate.GenerationTask {
 	return predicate.GenerationTask(sql.FieldNotNull(FieldMetadata))
 }
 
+// BusinessMetadataIsNil applies the IsNil predicate on the "business_metadata" field.
+func BusinessMetadataIsNil() predicate.GenerationTask {
+	return predicate.GenerationTask(sql.FieldIsNull(FieldBusinessMetadata))
+}
+
+// BusinessMetadataNotNil applies the NotNil predicate on the "business_metadata" field.
+func BusinessMetadataNotNil() predicate.GenerationTask {
+	return predicate.GenerationTask(sql.FieldNotNull(FieldBusinessMetadata))
+}
+
 // ErrorCodeEQ applies the EQ predicate on the "error_code" field.
 func ErrorCodeEQ(v int32) predicate.GenerationTask {
 	return predicate.GenerationTask(sql.FieldEQ(FieldErrorCode, v))

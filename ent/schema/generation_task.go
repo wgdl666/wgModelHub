@@ -1,6 +1,7 @@
 package schema
 
 import (
+	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"time"
 
 	"entgo.io/ent"
@@ -39,6 +40,8 @@ func (GenerationTask) Fields() []ent.Field {
 		field.String("state"),
 		// 仅保存跨 Pod 恢复需要的调用 metadata，不保存 Prompt 或媒体。
 		field.JSON("metadata", map[string]string{}).Optional(),
+		// 提交请求的业务归属独立持久化，查询任务时不能被查询者覆盖。
+		field.JSON("business_metadata", &modelhubv2.BusinessMetadata{}).Optional(),
 		field.Int32("error_code").Default(0),
 		field.String("error_message").Default(""),
 		field.String("error_reason").Default(""),

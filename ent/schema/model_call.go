@@ -39,6 +39,8 @@ func (ModelCall) Fields() []ent.Field {
 		field.String("business_line").Default("unknown"),
 		field.String("business_scene").
 			Default("unknown"),
+		// 子场景由业务调用位置明确上报，未上报不猜测。
+		field.String("business_subscene").Default("unknown"),
 		field.String("operation"),
 		field.String("capability"),
 		field.String("model"),

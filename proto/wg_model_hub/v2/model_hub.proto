@@ -65,7 +65,14 @@ message ListModelsResponse {
   repeated ModelInfo models = 1;
 }
 
-// GenerateRequest 顶层恰好三字段：业务调用方不得再塞供应商私有配置，
+// 业务归属是请求的固定结构，由调用方明确填写，不从传输 metadata 推断。
+message BusinessMetadata {
+  string business_line = 1;
+  string business_scene = 2;
+  string business_subscene = 3;
+}
+
+// GenerateRequest 固定业务归属与模型输入：业务调用方不得再塞供应商私有配置，
 // 也不得把任务指令抽成独立 prompt 字段。
 message GenerateRequest {
   // model 是真实供应商模型 ID（含版本），例如 gemini-2.5-flash。
@@ -73,6 +80,7 @@ message GenerateRequest {
   // system/用户任务/历史/媒体/tool_calls/tool output 一律按序放入 Input.items。
   Input input = 2;
   OutputSpec output = 3;
+  BusinessMetadata business_metadata = 4;
 }
 
 enum Role {
@@ -168,6 +176,7 @@ message CreateCachedContentRequest {
   // TTL 秒数；0 表示由供应商/实现默认（常见 1h）。
   int64 ttl_seconds = 4;
   string display_name = 5;
+  BusinessMetadata business_metadata = 6;
 }
 
 message CreateCachedContentResponse {
@@ -362,6 +371,7 @@ message SynthesizeSpeechRequest {
   string text = 2;
   // voice_id 为空时使用 provider 配置默认音色；不开放任意供应商私有扩展字段。
   string voice_id = 3;
+  BusinessMetadata business_metadata = 4;
 }
 
 // SynthesizeSpeechResponse 必须携带完整可解码音频；半截收集只能映射为 gRPC error。

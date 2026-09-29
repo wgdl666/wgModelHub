@@ -5,7 +5,6 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/wgdl666/kangaroo/callmeta"
 	"github.com/wgdl666/wgModelHub/internal/auth"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/protocol"
@@ -24,41 +23,6 @@ func CallerFromContext(ctx context.Context) string {
 		return UnknownLabel
 	}
 	values := md.Get(protocol.CallerMetadataKey)
-	if len(values) == 0 {
-		return UnknownLabel
-	}
-	if v := strings.TrimSpace(values[0]); v != "" {
-		return v
-	}
-	return UnknownLabel
-}
-
-// BusinessLineFromContext 只读明确业务标签，不根据服务或模型猜业务线。
-func BusinessLineFromContext(ctx context.Context) string {
-	line, _ := callmeta.Attribution(ctx)
-	if line == "" {
-		md, _ := metadata.FromIncomingContext(ctx)
-		values := md.Get(callmeta.BusinessLine)
-		if len(values) > 0 {
-			line = values[0]
-		}
-	}
-	if line == "mirror" || line == "fitpop" {
-		return line
-	}
-	return UnknownLabel
-}
-
-// BusinessSceneFromContext 读取可选业务场景 metadata；未打标签为 unknown，不猜。
-func BusinessSceneFromContext(ctx context.Context) string {
-	if _, scene := callmeta.Attribution(ctx); strings.TrimSpace(scene) != "" {
-		return strings.TrimSpace(scene)
-	}
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		return UnknownLabel
-	}
-	values := md.Get(protocol.BusinessSceneMetadataKey)
 	if len(values) == 0 {
 		return UnknownLabel
 	}

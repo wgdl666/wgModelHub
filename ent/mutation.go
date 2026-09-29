@@ -15,6 +15,7 @@ import (
 	"github.com/wgdl666/wgModelHub/ent/modelcall"
 	"github.com/wgdl666/wgModelHub/ent/modelhubapikey"
 	"github.com/wgdl666/wgModelHub/ent/predicate"
+	wg_model_hubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 )
 
 const (
@@ -34,27 +35,28 @@ const (
 // GenerationTaskMutation represents an operation that mutates the GenerationTask nodes in the graph.
 type GenerationTaskMutation struct {
 	config
-	op               Op
-	typ              string
-	id               *string
-	caller           *string
-	request_id       *string
-	request_hash     *string
-	model            *string
-	provider         *string
-	provider_task_id *string
-	state            *string
-	metadata         *map[string]string
-	error_code       *int32
-	adderror_code    *int32
-	error_message    *string
-	error_reason     *string
-	created_at       *time.Time
-	updated_at       *time.Time
-	clearedFields    map[string]struct{}
-	done             bool
-	oldValue         func(context.Context) (*GenerationTask, error)
-	predicates       []predicate.GenerationTask
+	op                Op
+	typ               string
+	id                *string
+	caller            *string
+	request_id        *string
+	request_hash      *string
+	model             *string
+	provider          *string
+	provider_task_id  *string
+	state             *string
+	metadata          *map[string]string
+	business_metadata **wg_model_hubv2.BusinessMetadata
+	error_code        *int32
+	adderror_code     *int32
+	error_message     *string
+	error_reason      *string
+	created_at        *time.Time
+	updated_at        *time.Time
+	clearedFields     map[string]struct{}
+	done              bool
+	oldValue          func(context.Context) (*GenerationTask, error)
+	predicates        []predicate.GenerationTask
 }
 
 var _ ent.Mutation = (*GenerationTaskMutation)(nil)
@@ -462,6 +464,55 @@ func (m *GenerationTaskMutation) ResetMetadata() {
 	delete(m.clearedFields, generationtask.FieldMetadata)
 }
 
+// SetBusinessMetadata sets the "business_metadata" field.
+func (m *GenerationTaskMutation) SetBusinessMetadata(wmhm *wg_model_hubv2.BusinessMetadata) {
+	m.business_metadata = &wmhm
+}
+
+// BusinessMetadata returns the value of the "business_metadata" field in the mutation.
+func (m *GenerationTaskMutation) BusinessMetadata() (r *wg_model_hubv2.BusinessMetadata, exists bool) {
+	v := m.business_metadata
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBusinessMetadata returns the old "business_metadata" field's value of the GenerationTask entity.
+// If the GenerationTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GenerationTaskMutation) OldBusinessMetadata(ctx context.Context) (v *wg_model_hubv2.BusinessMetadata, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBusinessMetadata is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBusinessMetadata requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBusinessMetadata: %w", err)
+	}
+	return oldValue.BusinessMetadata, nil
+}
+
+// ClearBusinessMetadata clears the value of the "business_metadata" field.
+func (m *GenerationTaskMutation) ClearBusinessMetadata() {
+	m.business_metadata = nil
+	m.clearedFields[generationtask.FieldBusinessMetadata] = struct{}{}
+}
+
+// BusinessMetadataCleared returns if the "business_metadata" field was cleared in this mutation.
+func (m *GenerationTaskMutation) BusinessMetadataCleared() bool {
+	_, ok := m.clearedFields[generationtask.FieldBusinessMetadata]
+	return ok
+}
+
+// ResetBusinessMetadata resets all changes to the "business_metadata" field.
+func (m *GenerationTaskMutation) ResetBusinessMetadata() {
+	m.business_metadata = nil
+	delete(m.clearedFields, generationtask.FieldBusinessMetadata)
+}
+
 // SetErrorCode sets the "error_code" field.
 func (m *GenerationTaskMutation) SetErrorCode(i int32) {
 	m.error_code = &i
@@ -696,7 +747,7 @@ func (m *GenerationTaskMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GenerationTaskMutation) Fields() []string {
-	fields := make([]string, 0, 13)
+	fields := make([]string, 0, 14)
 	if m.caller != nil {
 		fields = append(fields, generationtask.FieldCaller)
 	}
@@ -720,6 +771,9 @@ func (m *GenerationTaskMutation) Fields() []string {
 	}
 	if m.metadata != nil {
 		fields = append(fields, generationtask.FieldMetadata)
+	}
+	if m.business_metadata != nil {
+		fields = append(fields, generationtask.FieldBusinessMetadata)
 	}
 	if m.error_code != nil {
 		fields = append(fields, generationtask.FieldErrorCode)
@@ -760,6 +814,8 @@ func (m *GenerationTaskMutation) Field(name string) (ent.Value, bool) {
 		return m.State()
 	case generationtask.FieldMetadata:
 		return m.Metadata()
+	case generationtask.FieldBusinessMetadata:
+		return m.BusinessMetadata()
 	case generationtask.FieldErrorCode:
 		return m.ErrorCode()
 	case generationtask.FieldErrorMessage:
@@ -795,6 +851,8 @@ func (m *GenerationTaskMutation) OldField(ctx context.Context, name string) (ent
 		return m.OldState(ctx)
 	case generationtask.FieldMetadata:
 		return m.OldMetadata(ctx)
+	case generationtask.FieldBusinessMetadata:
+		return m.OldBusinessMetadata(ctx)
 	case generationtask.FieldErrorCode:
 		return m.OldErrorCode(ctx)
 	case generationtask.FieldErrorMessage:
@@ -869,6 +927,13 @@ func (m *GenerationTaskMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetMetadata(v)
+		return nil
+	case generationtask.FieldBusinessMetadata:
+		v, ok := value.(*wg_model_hubv2.BusinessMetadata)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBusinessMetadata(v)
 		return nil
 	case generationtask.FieldErrorCode:
 		v, ok := value.(int32)
@@ -953,6 +1018,9 @@ func (m *GenerationTaskMutation) ClearedFields() []string {
 	if m.FieldCleared(generationtask.FieldMetadata) {
 		fields = append(fields, generationtask.FieldMetadata)
 	}
+	if m.FieldCleared(generationtask.FieldBusinessMetadata) {
+		fields = append(fields, generationtask.FieldBusinessMetadata)
+	}
 	return fields
 }
 
@@ -969,6 +1037,9 @@ func (m *GenerationTaskMutation) ClearField(name string) error {
 	switch name {
 	case generationtask.FieldMetadata:
 		m.ClearMetadata()
+		return nil
+	case generationtask.FieldBusinessMetadata:
+		m.ClearBusinessMetadata()
 		return nil
 	}
 	return fmt.Errorf("unknown GenerationTask nullable field %s", name)
@@ -1001,6 +1072,9 @@ func (m *GenerationTaskMutation) ResetField(name string) error {
 		return nil
 	case generationtask.FieldMetadata:
 		m.ResetMetadata()
+		return nil
+	case generationtask.FieldBusinessMetadata:
+		m.ResetBusinessMetadata()
 		return nil
 	case generationtask.FieldErrorCode:
 		m.ResetErrorCode()
@@ -1079,6 +1153,7 @@ type ModelCallMutation struct {
 	caller_service            *string
 	business_line             *string
 	business_scene            *string
+	business_subscene         *string
 	operation                 *string
 	capability                *string
 	model                     *string
@@ -1383,6 +1458,42 @@ func (m *ModelCallMutation) OldBusinessScene(ctx context.Context) (v string, err
 // ResetBusinessScene resets all changes to the "business_scene" field.
 func (m *ModelCallMutation) ResetBusinessScene() {
 	m.business_scene = nil
+}
+
+// SetBusinessSubscene sets the "business_subscene" field.
+func (m *ModelCallMutation) SetBusinessSubscene(s string) {
+	m.business_subscene = &s
+}
+
+// BusinessSubscene returns the value of the "business_subscene" field in the mutation.
+func (m *ModelCallMutation) BusinessSubscene() (r string, exists bool) {
+	v := m.business_subscene
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBusinessSubscene returns the old "business_subscene" field's value of the ModelCall entity.
+// If the ModelCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelCallMutation) OldBusinessSubscene(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBusinessSubscene is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBusinessSubscene requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBusinessSubscene: %w", err)
+	}
+	return oldValue.BusinessSubscene, nil
+}
+
+// ResetBusinessSubscene resets all changes to the "business_subscene" field.
+func (m *ModelCallMutation) ResetBusinessSubscene() {
+	m.business_subscene = nil
 }
 
 // SetOperation sets the "operation" field.
@@ -2804,7 +2915,7 @@ func (m *ModelCallMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ModelCallMutation) Fields() []string {
-	fields := make([]string, 0, 34)
+	fields := make([]string, 0, 35)
 	if m.generation_task_id != nil {
 		fields = append(fields, modelcall.FieldGenerationTaskID)
 	}
@@ -2816,6 +2927,9 @@ func (m *ModelCallMutation) Fields() []string {
 	}
 	if m.business_scene != nil {
 		fields = append(fields, modelcall.FieldBusinessScene)
+	}
+	if m.business_subscene != nil {
+		fields = append(fields, modelcall.FieldBusinessSubscene)
 	}
 	if m.operation != nil {
 		fields = append(fields, modelcall.FieldOperation)
@@ -2923,6 +3037,8 @@ func (m *ModelCallMutation) Field(name string) (ent.Value, bool) {
 		return m.BusinessLine()
 	case modelcall.FieldBusinessScene:
 		return m.BusinessScene()
+	case modelcall.FieldBusinessSubscene:
+		return m.BusinessSubscene()
 	case modelcall.FieldOperation:
 		return m.Operation()
 	case modelcall.FieldCapability:
@@ -3000,6 +3116,8 @@ func (m *ModelCallMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldBusinessLine(ctx)
 	case modelcall.FieldBusinessScene:
 		return m.OldBusinessScene(ctx)
+	case modelcall.FieldBusinessSubscene:
+		return m.OldBusinessSubscene(ctx)
 	case modelcall.FieldOperation:
 		return m.OldOperation(ctx)
 	case modelcall.FieldCapability:
@@ -3096,6 +3214,13 @@ func (m *ModelCallMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetBusinessScene(v)
+		return nil
+	case modelcall.FieldBusinessSubscene:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBusinessSubscene(v)
 		return nil
 	case modelcall.FieldOperation:
 		v, ok := value.(string)
@@ -3541,6 +3666,9 @@ func (m *ModelCallMutation) ResetField(name string) error {
 		return nil
 	case modelcall.FieldBusinessScene:
 		m.ResetBusinessScene()
+		return nil
+	case modelcall.FieldBusinessSubscene:
+		m.ResetBusinessSubscene()
 		return nil
 	case modelcall.FieldOperation:
 		m.ResetOperation()
