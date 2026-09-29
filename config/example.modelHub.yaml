@@ -256,6 +256,11 @@ providers:
     cohere_rerank:
       base_url: https://api.cohere.com
       api_key: "${COHERE_API_KEY}"
+  mixedbread_rerank:
+    models: [mixedbread-ai/mxbai-rerank-v3.1-listwise]
+    mixedbread_rerank:
+      base_url: https://api.mixedbread.com
+      api_key: "${MIXEDBREAD_API_KEY}"
   facebody_detect_cn:
     models: [facebody-detect-face]
     facebody_detect:
