@@ -21,3 +21,8 @@ var GenerationTaskMetadataSQL string
 //
 //go:embed 006_model_call_business_line.sql
 var ModelCallBusinessLineSQL string
+
+// ModelCallBusinessSubsceneSQL 将子场景及异步请求归属纳入正式发布迁移。
+//
+//go:embed 007_model_call_business_subscene.sql
+var ModelCallBusinessSubsceneSQL string
