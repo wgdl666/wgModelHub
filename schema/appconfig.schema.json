@@ -51,6 +51,8 @@
           "uniqueItems": true,
           "items": { "type": "string", "minLength": 1 }
         },
+        "fashion": { "$ref": "#/definitions/fashion" },
+        "image_seg": { "$ref": "#/definitions/facebodyCompare" },
         "gemini": { "$ref": "#/definitions/gemini" },
         "vertexai": { "$ref": "#/definitions/vertexai" },
         "ark": { "$ref": "#/definitions/ark" },
@@ -81,6 +83,8 @@
         "rekognition_library": { "$ref": "#/definitions/rekognitionLibrary" }
       },
       "oneOf": [
+        { "required": ["fashion"] },
+        { "required": ["image_seg"] },
         { "required": ["gemini"] },
         { "required": ["vertexai"] },
         { "required": ["ark"] },
@@ -110,6 +114,15 @@
         { "required": ["rekognition_faces"] },
         { "required": ["rekognition_library"] }
       ]
+    },
+    "fashion": {
+      "type": "object",
+      "required": ["base_url"],
+      "properties": {
+        "base_url": { "type": "string", "minLength": 1 },
+        "username": { "type": "string" },
+        "password": { "type": "string" }
+      }
     },
     "gemini": {
       "type": "object",

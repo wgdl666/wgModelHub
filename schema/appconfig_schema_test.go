@@ -62,6 +62,7 @@ func TestAppConfigSchemaContract(t *testing.T) {
 	assertStringSet(t, provider["required"], "models")
 	oneOf := mustSlice(t, provider["oneOf"])
 	wantKinds := map[string]bool{
+		"fashion": false, "image_seg": false,
 		"gemini": false, "vertexai": false, "ark": false, "openai": false,
 		"ltx": false, "dashscope_video": false, "ominilink_video": false,
 		"gemini_video": false, "ark_video": false, "minimax_tts": false,
