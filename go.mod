@@ -158,6 +158,5 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/bedrockagentruntime v1.63.1
 	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.63.0
 	github.com/aws/aws-sdk-go-v2/service/sts v1.51.0
-	// v0.0.0 是待发布版本绑定。本任务实现尚未提交，不能改成本机路径或虚构版本。
-	github.com/wgdl666/kangaroo/callmeta v0.0.0
+	github.com/wgdl666/kangaroo/callmeta v0.1.0
 )

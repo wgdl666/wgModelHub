@@ -607,6 +607,8 @@ github.com/volcengine/volc-sdk-golang v1.0.23 h1:anOslb2Qp6ywnsbyq9jqR0ljuO63kg9
 github.com/volcengine/volc-sdk-golang v1.0.23/go.mod h1:AfG/PZRUkHJ9inETvbjNifTDgut25Wbkm2QoYBTbvyU=
 github.com/volcengine/volcengine-go-sdk v1.2.6 h1:NWUf73Zb10CCPurRp9EVvYQ8Z38DZECNdHq6zbpJZmk=
 github.com/volcengine/volcengine-go-sdk v1.2.6/go.mod h1:oxoVo+A17kvkwPkIeIHPVLjSw7EQAm+l/Vau1YGHN+A=
+github.com/wgdl666/kangaroo/callmeta v0.1.0 h1:s5J2xVOWEb2moumpI1mgV7hSr1N9TmC0oQfUb7yDE98=
+github.com/wgdl666/kangaroo/callmeta v0.1.0/go.mod h1:uEMGzwmJB66N0t0XfenkxfOwrGVfJziwIvY4OqZD2To=
 github.com/wgdl666/kangaroo/logs v0.0.0-20260730111800-d175a47582e4 h1:5E92Sxi/4c9FQZhY3pH3UrxTpV24iCZB0B9ygqhf8Co=
 github.com/wgdl666/kangaroo/logs v0.0.0-20260730111800-d175a47582e4/go.mod h1:G7pJ/bToFJ587yhQK4tlFLrHzKf+xggYNqoFSmoqWn4=
 github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2/go.mod h1:UETIi67q53MR2AWcXfiuqkDkRtnGDLqkBTpCHuJHxtU=

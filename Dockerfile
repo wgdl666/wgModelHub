@@ -17,7 +17,7 @@ RUN if [ -n "$ALPINE_MIRROR" ]; then \
     && apk add --no-cache git bash
 
 COPY go.mod go.sum ./
-# callmeta 不再从 third_party 复制。go.mod 的 v0.0.0 是待发布版本绑定，发布前 go mod download 解析不到这次实现。
+# callmeta 按 go.mod 锁定的共享版本下载，不再复制服务内的协议副本。
 RUN --mount=type=cache,target=/go/pkg/mod \
     GOPROXY="$GOPROXY" go mod download
 
