@@ -89,6 +89,8 @@ type ProviderConfig struct {
 	BedrockRerank *BedrockRerankProviderConfig `yaml:"bedrock_rerank"`
 	// CohereRerank 承接官网 rerank-v3.5。请求不带 instruct。
 	CohereRerank *CohereRerankProviderConfig `yaml:"cohere_rerank"`
+	// MixedbreadRerank 承接 mixedbread-ai/mxbai-rerank-v3.1-listwise。没有 instruct 字段，query 里的颜色词在供应商内收成主色检索句。
+	MixedbreadRerank *MixedbreadRerankProviderConfig `yaml:"mixedbread_rerank"`
 	// FacebodyDetect 承接 DetectFace，只返回脸框。
 	FacebodyDetect *FacebodyDetectProviderConfig `yaml:"facebody_detect"`
 	// FacebodyLibrary 承接人脸库查重、录脸、删脸。database 是 Facebody 库名。
@@ -265,6 +267,11 @@ type BedrockRerankProviderConfig struct {
 }
 
 type CohereRerankProviderConfig struct {
+	BaseURL string `yaml:"base_url"`
+	APIKey  string `yaml:"api_key"`
+}
+
+type MixedbreadRerankProviderConfig struct {
 	BaseURL string `yaml:"base_url"`
 	APIKey  string `yaml:"api_key"`
 }
@@ -754,6 +761,11 @@ func validateProvider(name string, provider ProviderConfig) error {
 		if strings.TrimSpace(item.BaseURL) == "" || strings.TrimSpace(item.APIKey) == "" {
 			return fmt.Errorf("provider %s cohere rerank base_url and api_key are required", name)
 		}
+	case provider.MixedbreadRerank != nil:
+		item := provider.MixedbreadRerank
+		if strings.TrimSpace(item.BaseURL) == "" || strings.TrimSpace(item.APIKey) == "" {
+			return fmt.Errorf("provider %s mixedbread rerank base_url and api_key are required", name)
+		}
 	case provider.FacebodyDetect != nil:
 		item := provider.FacebodyDetect
 		if strings.TrimSpace(item.Endpoint) == "" || strings.TrimSpace(item.AccessKeyID) == "" || strings.TrimSpace(item.AccessKeySecret) == "" {
@@ -859,6 +871,9 @@ func countConcreteProviders(provider ProviderConfig) int {
 	if provider.CohereRerank != nil {
 		n++
 	}
+	if provider.MixedbreadRerank != nil {
+		n++
+	}
 	if provider.FacebodyDetect != nil {
 		n++
 	}
@@ -893,7 +908,7 @@ func ProviderSupports(provider ProviderConfig, capability string) bool {
 		return capability == CapabilityText || capability == CapabilityImage
 	case provider.ImageSeg != nil, provider.Photoroom != nil, provider.SegmentPerson != nil:
 		return capability == CapabilityImage
-	case provider.Fashion != nil, provider.HumanYOLO != nil, provider.HumanParser != nil, provider.RekognitionDetect != nil, provider.FacebodyCompare != nil, provider.RekognitionCompare != nil, provider.DashScopeEmbedding != nil, provider.CohereEmbedding != nil, provider.BedrockEmbedding != nil, provider.DashScopeRerank != nil, provider.BedrockRerank != nil, provider.CohereRerank != nil, provider.FacebodyDetect != nil, provider.FacebodyLibrary != nil, provider.RekognitionFaces != nil, provider.RekognitionLibrary != nil:
+	case provider.Fashion != nil, provider.HumanYOLO != nil, provider.HumanParser != nil, provider.RekognitionDetect != nil, provider.FacebodyCompare != nil, provider.RekognitionCompare != nil, provider.DashScopeEmbedding != nil, provider.CohereEmbedding != nil, provider.BedrockEmbedding != nil, provider.DashScopeRerank != nil, provider.BedrockRerank != nil, provider.CohereRerank != nil, provider.MixedbreadRerank != nil, provider.FacebodyDetect != nil, provider.FacebodyLibrary != nil, provider.RekognitionFaces != nil, provider.RekognitionLibrary != nil:
 		return capability == CapabilityText
 	case provider.VertexAI != nil, provider.Ark != nil:
 		return capability == CapabilityText

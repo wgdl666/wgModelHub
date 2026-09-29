@@ -77,6 +77,7 @@
         "dashscope_rerank": { "$ref": "#/definitions/dashscopeRerank" },
         "bedrock_rerank": { "$ref": "#/definitions/bedrockRerank" },
         "cohere_rerank": { "$ref": "#/definitions/cohereRerank" },
+        "mixedbread_rerank": { "$ref": "#/definitions/mixedbreadRerank" },
         "facebody_detect": { "$ref": "#/definitions/facebodyDetect" },
         "facebody_library": { "$ref": "#/definitions/facebodyLibrary" },
         "rekognition_faces": { "$ref": "#/definitions/rekognitionFaces" },
@@ -109,6 +110,7 @@
         { "required": ["dashscope_rerank"] },
         { "required": ["bedrock_rerank"] },
         { "required": ["cohere_rerank"] },
+        { "required": ["mixedbread_rerank"] },
         { "required": ["facebody_detect"] },
         { "required": ["facebody_library"] },
         { "required": ["rekognition_faces"] },
@@ -332,6 +334,14 @@
       }
     },
     "cohereRerank": {
+      "type": "object",
+      "required": ["base_url", "api_key"],
+      "properties": {
+        "base_url": { "type": "string", "minLength": 1 },
+        "api_key": { "type": "string", "minLength": 1 }
+      }
+    },
+    "mixedbreadRerank": {
       "type": "object",
       "required": ["base_url", "api_key"],
       "properties": {

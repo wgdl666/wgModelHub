@@ -88,6 +88,8 @@ const (
 	CohereRerankV35 = "cohere.rerank-v3-5:0"
 	// CohereRerankV35Official 是 Cohere 官网 /v2/rerank 的 rerank-v3.5。和 Bedrock ID 不能互相替代。
 	CohereRerankV35Official = "rerank-v3.5"
+	// MixedbreadRerankV31Listwise 是 Mixedbread 官网 /v1/reranking 的 listwise 精排。没有 instruct 字段，query 里的颜色词在供应商内收成主色检索句。
+	MixedbreadRerankV31Listwise = "mixedbread-ai/mxbai-rerank-v3.1-listwise"
 	// FacebodyDetectFace 是阿里云 DetectFace。返回人脸框，裁图由调用方本地完成。
 	FacebodyDetectFace = "facebody-detect-face"
 	// RekognitionDetectFaces 是 DetectFaces。与 DetectLabels 人检不能互相替代。
@@ -189,6 +191,7 @@ func All() []string {
 		Qwen3VLRerank,
 		CohereRerankV35,
 		CohereRerankV35Official,
+		MixedbreadRerankV31Listwise,
 		FacebodyDetectFace,
 		RekognitionDetectFaces,
 		FacebodyFaceLibrary,

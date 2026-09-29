@@ -26,6 +26,7 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/infra/imageseg"
 	"github.com/wgdl666/wgModelHub/internal/infra/ltx"
 	"github.com/wgdl666/wgModelHub/internal/infra/minimaxtts"
+	"github.com/wgdl666/wgModelHub/internal/infra/mixedbreadrerank"
 	"github.com/wgdl666/wgModelHub/internal/infra/ominilinkvideo"
 	"github.com/wgdl666/wgModelHub/internal/infra/openai"
 	"github.com/wgdl666/wgModelHub/internal/infra/photoroom"
@@ -248,6 +249,13 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 	case providerCfg.CohereRerank != nil:
 		cfg := providerCfg.CohereRerank
 		client, err := coherererank.New(name, cfg.BaseURL, cfg.APIKey)
+		if err != nil {
+			return provider.Set{}, err
+		}
+		return provider.Set{Text: client}, nil
+	case providerCfg.MixedbreadRerank != nil:
+		cfg := providerCfg.MixedbreadRerank
+		client, err := mixedbreadrerank.New(name, cfg.BaseURL, cfg.APIKey)
 		if err != nil {
 			return provider.Set{}, err
 		}
