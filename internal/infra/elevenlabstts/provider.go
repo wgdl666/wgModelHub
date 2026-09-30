@@ -21,10 +21,10 @@ import (
 
 const (
 	defaultBaseURL = "https://api.elevenlabs.io"
-	// 路演对照原来的低比特率。mp3_22050_32 是 ElevenLabs 公开的最低延迟 MP3 档，没有 mp3_16000。
-	// 格式仍固定在本厂商，不进请求。
-	defaultOutputFormat = "mp3_22050_32"
-	mimeMP3             = "audio/mpeg"
+	// pcm_16000 是 16 kHz、16-bit、单声道裸 PCM，没有文件头，和镜子播放格式一致。
+	// ElevenLabs 没有 16 kHz 的 MP3；这条不再让 Hub 解码后再重采样。
+	defaultOutputFormat = "pcm_16000"
+	mimePCM16k          = "audio/pcm;rate=16000"
 	httpTimeout         = 30 * time.Second
 )
 
@@ -154,11 +154,13 @@ func (p *Provider) SynthesizeSpeech(ctx context.Context, model string, request *
 	}
 	return &modelhubv2.SynthesizeSpeechResponse{
 		Audio: &modelhubv2.Media{
-			MimeType: mimeMP3,
+			MimeType: mimePCM16k,
 			Source:   &modelhubv2.Media_Data{Data: payload},
 		},
 	}, nil
 }
+
+func (p *Provider) SpeechMIME() string { return mimePCM16k }
 
 // SynthesizeSpeechStream 直接消费 /stream 响应体，不等整句结束，也不自动重试已交付的声音。
 func (p *Provider) SynthesizeSpeechStream(ctx context.Context, model string, request *modelhubv2.SynthesizeSpeechRequest, emit func([]byte) error) error {

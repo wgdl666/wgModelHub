@@ -52,6 +52,9 @@ func TestSpeechStreamDeliversBeforeUpstreamEOF(t *testing.T) {
 			w.WriteHeader(404)
 			return
 		}
+		if got := r.URL.Query().Get("output_format"); got != "pcm_16000" {
+			t.Errorf("output_format=%s", got)
+		}
 		w.Header().Set("Content-Type", "audio/mpeg")
 		w.Write([]byte("first"))
 		w.(http.Flusher).Flush()
@@ -72,7 +75,7 @@ func TestSpeechStreamDeliversBeforeUpstreamEOF(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(first.GetAudio().GetData()) != "first" {
+	if string(first.GetAudio().GetData()) != "first" || first.GetAudio().GetMimeType() != "audio/pcm;rate=16000" {
 		t.Fatal(first)
 	}
 	close(release)

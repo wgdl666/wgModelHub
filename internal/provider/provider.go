@@ -47,6 +47,8 @@ type SpeechProvider interface {
 
 // StreamingSpeechProvider 只由支持真实增量音频的供应商实现，不回退到整段合成再分包。
 // emit 返回错误后必须停止读取；音频切片仅在回调期间有效。
+// SpeechMIME 标明这些切片的编码。Hub 靠它决定要不要再解码。
 type StreamingSpeechProvider interface {
 	SynthesizeSpeechStream(context.Context, string, *modelhubv2.SynthesizeSpeechRequest, func([]byte) error) error
+	SpeechMIME() string
 }
