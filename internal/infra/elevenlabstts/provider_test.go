@@ -48,8 +48,8 @@ func TestSynthesizeSpeechSuccessReturnsFullAudio(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(resp.GetAudio().GetData()) != "ID3fake-mp3" {
-		t.Fatalf("audio=%q", resp.GetAudio().GetData())
+	if string(resp.GetAudio().GetData()) != "ID3fake-mp3" || resp.GetAudio().GetMimeType() != "audio/pcm;rate=16000" {
+		t.Fatalf("audio=%q mime=%q", resp.GetAudio().GetData(), resp.GetAudio().GetMimeType())
 	}
 	if gotKey != "k" || gotVoice != "req-voice" || gotModel != models.ElevenFlashV25 || gotFormat != defaultOutputFormat {
 		t.Fatalf("upstream key=%q voice=%q model=%q format=%q", gotKey, gotVoice, gotModel, gotFormat)

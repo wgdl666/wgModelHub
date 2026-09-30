@@ -1,6 +1,7 @@
 package modelhub
 
 import (
+	"strings"
 	"time"
 
 	"github.com/wgdl666/wgModelHub/config"
@@ -26,6 +27,10 @@ func (s *Service) SynthesizeSpeechStream(request *modelhubv2.SynthesizeSpeechReq
 	if !ok {
 		return provider.ToStatus(provider.Errorf(provider.ErrorConfiguration, "model %s does not support streaming speech", request.GetModel()))
 	}
+	mime := strings.TrimSpace(speech.SpeechMIME())
+	if mime == "" {
+		return provider.ToStatus(provider.New(provider.ErrorConfiguration, "streaming speech mime is required"))
+	}
 	rec := s.baseRecord(ctx, request.GetBusinessMetadata(), callledger.OperationSynthesizeSpeechStream, callledger.CapabilitySpeech, binding.model, binding.provider, time.Time{})
 	rec.InputPayload = callledger.BuildSpeechInput(request)
 	var providerErr error
@@ -47,7 +52,7 @@ func (s *Service) SynthesizeSpeechStream(request *modelhubv2.SynthesizeSpeechReq
 			firstChunkMs = time.Since(started).Milliseconds()
 		}
 		sendErr = stream.Send(&modelhubv2.SynthesizeSpeechResponse{Audio: &modelhubv2.Media{
-			MimeType: "audio/mpeg", Source: &modelhubv2.Media_Data{Data: data},
+			MimeType: mime, Source: &modelhubv2.Media_Data{Data: data},
 		}})
 		if sendErr != nil {
 			return sendErr
@@ -61,7 +66,7 @@ func (s *Service) SynthesizeSpeechStream(request *modelhubv2.SynthesizeSpeechReq
 	}
 	stampCallTiming(&rec, started, time.Now())
 	providerErr = err
-	rec.OutputPayload = map[string]any{"mime_type": "audio/mpeg", "audio_bytes": total, "chunks": chunks, "first_chunk_ms": firstChunkMs}
+	rec.OutputPayload = map[string]any{"mime_type": mime, "audio_bytes": total, "chunks": chunks, "first_chunk_ms": firstChunkMs}
 	if err == nil || s.shouldRecord(err) {
 		s.finishRecord(&rec, err, sendErr)
 	}
