@@ -85,6 +85,8 @@ var categories = map[string]Category{
 	GPTImage25Flare:         CategoryImageGeneration,
 	GPTImage25Sunburst:      CategoryImageGeneration,
 	Flux2Klein9B:            CategoryImageGeneration,
+	VWorldWardrobe10:        CategoryImageGeneration,
+	VWorldOutfit10:          CategoryImageGeneration,
 	PhotoroomSegment:        CategorySegment,
 	SegmentPersonBria:       CategorySegment,
 	SegmentSubjectBria:      CategorySegment,

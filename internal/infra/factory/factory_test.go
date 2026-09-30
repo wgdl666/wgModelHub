@@ -170,6 +170,31 @@ func TestBuildSegmentPersonExposesImageOnly(t *testing.T) {
 	}
 }
 
+func TestBuildVWorldImageExposesImageOnly(t *testing.T) {
+	sets, err := Build(context.Background(), config.Config{
+		Providers: map[string]config.ProviderConfig{
+			"vworld_flux_image": {
+				Models: []string{models.VWorldWardrobe10, models.VWorldOutfit10},
+				VWorldImage: &config.VWorldImageProviderConfig{
+					BaseURL:  "https://vmind-image.model.wgdl.tech",
+					Username: "wgdl",
+					Password: "secret",
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	set := sets["vworld_flux_image"]
+	if set.Image == nil {
+		t.Fatal("missing image capability")
+	}
+	if set.Text != nil || set.Video != nil || set.Speech != nil {
+		t.Fatalf("vworld-image should only expose image: %#v", set)
+	}
+}
+
 func TestBuildVideoProvidersAcceptZeroPollConfig(t *testing.T) {
 	_, err := Build(context.Background(), config.Config{
 		Providers: map[string]config.ProviderConfig{

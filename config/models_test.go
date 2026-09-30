@@ -55,6 +55,11 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 			OpenAI *struct {
 				BaseURL string `yaml:"base_url"`
 			} `yaml:"openai"`
+			VWorldImage *struct {
+				BaseURL  string `yaml:"base_url"`
+				Username string `yaml:"username"`
+				Password string `yaml:"password"`
+			} `yaml:"vworld_image"`
 		} `yaml:"providers"`
 		ModelRoutes map[string]string `yaml:"model_routes"`
 	}
@@ -168,6 +173,24 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 	}
 	if flux2.OpenAI == nil || flux2.OpenAI.BaseURL != "https://uu847021-9507-702f766a.bjb2.seetacloud.com:8443/flux2/v1" {
 		t.Fatalf("flux2_klein_image openai.base_url=%v, want SeeTacloud flux2/v1", flux2.OpenAI)
+	}
+
+	// 薇光点亮公网 FLUX 必须独立实例；密码只允许环境变量占位，禁止写内网调试口。
+	vworld, ok := parsed.Providers["vworld_flux_image"]
+	if !ok {
+		t.Fatal("missing provider vworld_flux_image")
+	}
+	if len(vworld.Models) != 2 || vworld.Models[0] != models.VWorldWardrobe10 || vworld.Models[1] != models.VWorldOutfit10 {
+		t.Fatalf("vworld_flux_image models=%v", vworld.Models)
+	}
+	if vworld.VWorldImage == nil ||
+		vworld.VWorldImage.BaseURL != "https://vmind-image.model.wgdl.tech" ||
+		vworld.VWorldImage.Username != "wgdl" ||
+		vworld.VWorldImage.Password != "${VWORLD_IMAGE_PASSWORD}" {
+		t.Fatalf("vworld_flux_image config=%#v", vworld.VWorldImage)
+	}
+	if strings.Contains(vworld.VWorldImage.BaseURL, "10.200.") || strings.Contains(vworld.VWorldImage.BaseURL, "127.0.0.1") {
+		t.Fatal("vworld_flux_image must not use intranet/localhost upstream")
 	}
 
 	// GPT Image 2 / 2.5 复用现网已实测的 AIG OpenAI-compatible Images 实例；不能并入 Gemini 生图。

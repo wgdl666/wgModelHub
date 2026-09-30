@@ -212,6 +212,27 @@ func TestProviderSupportsSegmentPersonImageOnly(t *testing.T) {
 	}
 }
 
+func TestProviderSupportsVWorldImageOnly(t *testing.T) {
+	vworld := ProviderConfig{VWorldImage: &VWorldImageProviderConfig{BaseURL: "https://vmind-image.model.wgdl.tech", Username: "wgdl", Password: "secret"}}
+	if !ProviderSupports(vworld, CapabilityImage) {
+		t.Fatal("vworld_image should support image")
+	}
+	if ProviderSupports(vworld, CapabilityText) || ProviderSupports(vworld, CapabilityVideo) || ProviderSupports(vworld, CapabilitySpeech) {
+		t.Fatal("vworld_image should only support image")
+	}
+}
+
+func TestValidateRejectsVWorldImageWithoutPassword(t *testing.T) {
+	cfg := validConfig()
+	cfg.Providers["vworld_flux_image"] = ProviderConfig{
+		Models:      []string{models.VWorldWardrobe10},
+		VWorldImage: &VWorldImageProviderConfig{BaseURL: "https://vmind-image.model.wgdl.tech", Username: "wgdl"},
+	}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "password") {
+		t.Fatalf("expected password error, got %v", err)
+	}
+}
+
 func TestValidateRejectsSegmentPersonWithoutMethod(t *testing.T) {
 	cfg := validConfig()
 	cfg.Providers["segment_person_bria"] = ProviderConfig{

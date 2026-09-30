@@ -66,6 +66,7 @@
         "elevenlabs_tts": { "$ref": "#/definitions/elevenlabsTts" },
         "photoroom": { "$ref": "#/definitions/photoroom" },
         "segment_person": { "$ref": "#/definitions/segmentPerson" },
+        "vworld_image": { "$ref": "#/definitions/vworldImage" },
         "human_yolo": { "$ref": "#/definitions/humanYolo" },
         "human_parser": { "$ref": "#/definitions/humanParser" },
         "rekognition_detect": { "$ref": "#/definitions/rekognitionDetect" },
@@ -99,6 +100,7 @@
         { "required": ["elevenlabs_tts"] },
         { "required": ["photoroom"] },
         { "required": ["segment_person"] },
+        { "required": ["vworld_image"] },
         { "required": ["human_yolo"] },
         { "required": ["human_parser"] },
         { "required": ["rekognition_detect"] },
@@ -252,6 +254,15 @@
         "username": { "type": "string" },
         "password": { "type": "string" },
         "method": { "type": "string", "minLength": 1 }
+      }
+    },
+    "vworldImage": {
+      "type": "object",
+      "required": ["base_url", "username", "password"],
+      "properties": {
+        "base_url": { "type": "string", "minLength": 1 },
+        "username": { "type": "string", "minLength": 1 },
+        "password": { "type": "string", "minLength": 1 }
       }
     },
     "humanYolo": {

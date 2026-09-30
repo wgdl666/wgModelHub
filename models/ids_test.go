@@ -58,6 +58,16 @@ func TestFlux2Klein9BModelID(t *testing.T) {
 	}
 }
 
+// TestVWorldImageModelIDs 锁定薇光点亮拆衣服/虚拟换衣真实 ID，禁止与 SeeTacloud FLUX.2 混用同一字符串。
+func TestVWorldImageModelIDs(t *testing.T) {
+	if VWorldWardrobe10 != "VWorld_wardrobe-1.0" || VWorldOutfit10 != "VWorld_outfit_1.0" {
+		t.Fatalf("VWorld IDs drifted: %q %q", VWorldWardrobe10, VWorldOutfit10)
+	}
+	if !slices.Contains(All(), VWorldWardrobe10) || !slices.Contains(All(), VWorldOutfit10) {
+		t.Fatal("All() missing VWorld image model IDs")
+	}
+}
+
 // TestGPTImage25ModelIDs 锁定 GPT Image 2.5 真实模型 ID，禁止写成 flare/sunburst 业务简称或塞进 gpt-image-2。
 func TestGPTImage25ModelIDs(t *testing.T) {
 	cases := []struct {

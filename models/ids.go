@@ -56,6 +56,11 @@ const (
 	GPTImage25Sunburst = "gpt-image-2.5-sunburst"
 	// Flux2Klein9B 当前 SeeTacloud 部署只开放 image edit / 多图 i2i，不能当文生图用。
 	Flux2Klein9B = "FLUX.2-klein-9B"
+	// VWorldWardrobe10 是薇光点亮拆衣服（garment_extraction + cloth_gen）。
+	// 与 SeeTacloud 的 Flux2Klein9B 分实例；上游兼容 model 字段仍写 FLUX.2-klein-9B，不能把本 ID 原样下发。
+	VWorldWardrobe10 = "VWorld_wardrobe-1.0"
+	// VWorldOutfit10 是薇光点亮虚拟换衣（edits + vton）。尺寸固定 768x1024，禁止走 OpenAI 3:4 换算。
+	VWorldOutfit10 = "VWorld_outfit_1.0"
 	// PhotoroomSegment 标识官方 Remove Background 产品端点 POST /v1/segment（operationId=remove-background）。
 	// 该 API 没有 request-level model 参数；本常量只用于 ModelHub 路由与 ListModels，禁止下发上游，也不是业务别名。
 	PhotoroomSegment = "photoroom-segment"
@@ -177,6 +182,8 @@ func All() []string {
 		GPTImage25Flare,
 		GPTImage25Sunburst,
 		Flux2Klein9B,
+		VWorldWardrobe10,
+		VWorldOutfit10,
 		PhotoroomSegment,
 		SegmentPersonBria,
 		SegmentSubjectBria,

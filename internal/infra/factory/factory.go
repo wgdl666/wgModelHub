@@ -34,6 +34,7 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/infra/rekognitiondetect"
 	"github.com/wgdl666/wgModelHub/internal/infra/rekognitionfaces"
 	"github.com/wgdl666/wgModelHub/internal/infra/segmentperson"
+	"github.com/wgdl666/wgModelHub/internal/infra/vworldimage"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 )
 
@@ -291,6 +292,13 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 	case providerCfg.SegmentPerson != nil:
 		cfg := providerCfg.SegmentPerson
 		client, err := segmentperson.New(name, cfg.BaseURL, cfg.Username, cfg.Password, cfg.Method)
+		if err != nil {
+			return provider.Set{}, err
+		}
+		return provider.Set{Image: client}, nil
+	case providerCfg.VWorldImage != nil:
+		cfg := providerCfg.VWorldImage
+		client, err := vworldimage.New(name, cfg.BaseURL, cfg.Username, cfg.Password)
 		if err != nil {
 			return provider.Set{}, err
 		}
