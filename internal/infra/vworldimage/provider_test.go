@@ -10,6 +10,7 @@ import (
 	"image/color"
 	"image/png"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -97,6 +98,75 @@ func TestGarmentExtractionContract(t *testing.T) {
 	}
 	if got := event.GetItems()[0].GetImage().GetData(); !bytes.Equal(got, out) {
 		t.Fatalf("output len=%d", len(got))
+	}
+}
+
+func TestGarmentExtractionForwardsParserMask(t *testing.T) {
+	person := pngBytes(t)
+	mask := []byte{1, 2, 3, 4}
+	out := pngBytes(t)
+	var gotImage, gotMask []byte
+	var gotImageName, gotMaskName string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseMultipartForm(8 << 20); err != nil {
+			t.Fatal(err)
+		}
+		if r.Form.Has("prompt") {
+			t.Fatal("prompt must not be sent")
+		}
+		if r.FormValue("garment_name") != "白色衬衫" || r.FormValue("garment_role") != "clothing::top/full" {
+			t.Fatalf("garment fields name=%q role=%q", r.FormValue("garment_name"), r.FormValue("garment_role"))
+		}
+		if r.FormValue("parse_labels") != `{"1":"top","4":"left shoe"}` {
+			t.Fatalf("parse_labels = %q", r.FormValue("parse_labels"))
+		}
+		images := r.MultipartForm.File["image"]
+		masks := r.MultipartForm.File["parse_mask"]
+		if len(images) != 1 || len(masks) != 1 {
+			t.Fatalf("files image=%d mask=%d", len(images), len(masks))
+		}
+		gotImageName = images[0].Filename
+		gotMaskName = masks[0].Filename
+		read := func(file *multipart.FileHeader) []byte {
+			t.Helper()
+			f, err := file.Open()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer f.Close()
+			data, err := io.ReadAll(f)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return data
+		}
+		gotImage = read(images[0])
+		gotMask = read(masks[0])
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]string{{"b64_json": base64.StdEncoding.EncodeToString(out)}},
+			"crop": map[string]any{"applied": true},
+		})
+	}))
+	defer server.Close()
+
+	p := newTestProvider(t, server.URL)
+	_, err := p.GenerateImage(context.Background(), models.VWorldWardrobe10, wardrobeRequest(person, `{"garment_name":"白色衬衫","garment_category":"tops.shirts","parse_labels":{"4":"left shoe","1":"top"}}`, mask))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotImageName != "source.png" || gotMaskName != "human_parse_labels.png" {
+		t.Fatalf("filenames image=%q mask=%q", gotImageName, gotMaskName)
+	}
+	if !bytes.Equal(gotImage, person) || !bytes.Equal(gotMask, mask) {
+		t.Fatal("person image or parse mask was not forwarded")
+	}
+}
+
+func TestGarmentExtractionRejectsMaskWithoutLabels(t *testing.T) {
+	p := newTestProvider(t, "http://127.0.0.1:1")
+	_, err := p.GenerateImage(context.Background(), models.VWorldWardrobe10, wardrobeRequest(pngBytes(t), `{"garment_name":"白色衬衫"}`, []byte("mask")))
+	if err == nil || !strings.Contains(err.Error(), "parse mask and parse_labels") {
+		t.Fatalf("err = %v", err)
 	}
 }
 
@@ -217,7 +287,7 @@ func TestVTONEditsContract(t *testing.T) {
 func TestRejectsWrongImageCountsAndUnknownModel(t *testing.T) {
 	pngData := pngBytes(t)
 	p := newTestProvider(t, "https://vmind-image.example")
-	if _, err := p.GenerateImage(context.Background(), models.VWorldWardrobe10, wardrobeRequest(pngData, `{"garment_name":"x"}`, pngData)); err == nil {
+	if _, err := p.GenerateImage(context.Background(), models.VWorldWardrobe10, wardrobeRequest(pngData, `{"garment_name":"x"}`, pngData, pngData)); err == nil {
 		t.Fatal("expected extra image error")
 	}
 	if _, err := p.GenerateImage(context.Background(), models.VWorldOutfit10, wardrobeRequest(pngData, "prompt")); err == nil {

@@ -58,6 +58,7 @@ const (
 	Flux2Klein9B = "FLUX.2-klein-9B"
 	// VWorldWardrobe10 是薇光点亮拆衣服（garment_extraction + cloth_gen）。
 	// 与 SeeTacloud 的 Flux2Klein9B 分实例；上游兼容 model 字段仍写 FLUX.2-klein-9B，不能把本 ID 原样下发。
+	// OOTD 可再带一张与人物图同尺寸的人体解析标签图；录衣只有一张原图，不能补一张空标签图。
 	VWorldWardrobe10 = "VWorld_wardrobe-1.0"
 	// VWorldOutfit10 是薇光点亮虚拟换衣（edits + vton）。尺寸固定 768x1024，禁止走 OpenAI 3:4 换算。
 	VWorldOutfit10 = "VWorld_outfit_1.0"

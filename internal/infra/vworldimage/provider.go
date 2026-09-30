@@ -94,8 +94,9 @@ func (p *Provider) GenerateImage(ctx context.Context, model string, request *mod
 
 func (p *Provider) generateGarmentExtraction(ctx context.Context, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
 	images := provider.ImageMedias(request.GetInput())
-	if len(images) != 1 {
-		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "VWorld_wardrobe-1.0 requires exactly one outfit image")
+	// 一张图是录衣原图。两张图是 OOTD：人物裁图在前，整张人体解析标签图在后。不能把单件遮罩当成第二张图。
+	if len(images) < 1 || len(images) > 2 {
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "VWorld_wardrobe-1.0 requires the source image and optionally the human-parser mask")
 	}
 	imageBytes, mimeType, err := inlineImage(images[0])
 	if err != nil {
@@ -104,6 +105,11 @@ func (p *Provider) generateGarmentExtraction(ctx context.Context, request *model
 	meta, err := parseGarmentMeta(provider.JoinedText(request.GetInput()))
 	if err != nil {
 		return nil, err
+	}
+	hasMask := len(images) == 2
+	hasLabels := len(meta.ParseLabels) > 0
+	if hasMask != hasLabels {
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "VWorld_wardrobe-1.0 parse mask and parse_labels must be provided together")
 	}
 	fields := map[string]string{
 		"model":           upstreamCompatibleModel,
@@ -119,7 +125,27 @@ func (p *Provider) generateGarmentExtraction(ctx context.Context, request *model
 	if role := garmentRoleFromCategory(meta.Category); role != "" {
 		fields["garment_role"] = role
 	}
-	raw, err := p.doMultipart(ctx, garmentExtractionPath, fields, []imageUpload{{data: imageBytes, mimeType: mimeType}})
+	uploads := []imageUpload{{data: imageBytes, mimeType: mimeType}}
+	if hasMask {
+		maskBytes, maskMIME, err := inlineImage(images[1])
+		if err != nil {
+			return nil, err
+		}
+		// 字段名和文件名对齐 Muse：人物图走 image，标签图走 parse_mask，类别表走 parse_labels。
+		uploads[0].filename = "source.png"
+		labels, err := json.Marshal(meta.ParseLabels)
+		if err != nil {
+			return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" encode parse_labels failed", err)
+		}
+		fields["parse_labels"] = string(labels)
+		uploads = append(uploads, imageUpload{
+			field:    "parse_mask",
+			filename: "human_parse_labels.png",
+			data:     maskBytes,
+			mimeType: maskMIME,
+		})
+	}
+	raw, err := p.doMultipart(ctx, garmentExtractionPath, fields, uploads)
 	if err != nil {
 		return nil, err
 	}
@@ -173,6 +199,8 @@ func (p *Provider) generateVTON(ctx context.Context, request *modelhubv2.Generat
 }
 
 type imageUpload struct {
+	field    string
+	filename string
 	data     []byte
 	mimeType string
 }
@@ -187,8 +215,17 @@ func (p *Provider) doMultipart(ctx context.Context, path string, fields map[stri
 		}
 	}
 	for i, image := range images {
+		// 换衣两张图都叫 image。拆衣服的第二张是人体解析标签图，上游只认 parse_mask 这个字段名。
+		name := image.field
+		if name == "" {
+			name = "image"
+		}
+		filename := image.filename
+		if filename == "" {
+			filename = referenceFilename(image.mimeType, i)
+		}
 		partHeader := make(textproto.MIMEHeader)
-		partHeader.Set("Content-Disposition", fmt.Sprintf(`form-data; name="image"; filename="%s"`, referenceFilename(image.mimeType, i)))
+		partHeader.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, name, filename))
 		partHeader.Set("Content-Type", image.mimeType)
 		part, err := writer.CreatePart(partHeader)
 		if err != nil {
@@ -234,19 +271,22 @@ func (p *Provider) doMultipart(ctx context.Context, path string, fields map[stri
 }
 
 type garmentMeta struct {
-	Name     string
-	Category string
+	Name        string
+	Category    string
+	ParseLabels map[string]string
 }
 
 // parseGarmentMeta 只认衣橱为拆衣服模型准备的 JSON；白底中文文案不能进 garment_extraction。
+// parse_labels 是类别编号到名称，和标签图一起交给上游裁区域。没有这张图时不能自己补。
 func parseGarmentMeta(text string) (garmentMeta, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return garmentMeta{}, provider.NotAttempted(provider.ErrorInvalidArgument, "VWorld_wardrobe-1.0 requires garment_name in text part")
 	}
 	var payload struct {
-		GarmentName     string `json:"garment_name"`
-		GarmentCategory string `json:"garment_category"`
+		GarmentName     string            `json:"garment_name"`
+		GarmentCategory string            `json:"garment_category"`
+		ParseLabels     map[string]string `json:"parse_labels"`
 	}
 	if err := json.Unmarshal([]byte(text), &payload); err != nil {
 		return garmentMeta{}, provider.NotAttempted(provider.ErrorInvalidArgument, "VWorld_wardrobe-1.0 text part must be JSON with garment_name")
@@ -255,7 +295,7 @@ func parseGarmentMeta(text string) (garmentMeta, error) {
 	if name == "" {
 		return garmentMeta{}, provider.NotAttempted(provider.ErrorInvalidArgument, "VWorld_wardrobe-1.0 garment_name is required")
 	}
-	return garmentMeta{Name: name, Category: strings.TrimSpace(payload.GarmentCategory)}, nil
+	return garmentMeta{Name: name, Category: strings.TrimSpace(payload.GarmentCategory), ParseLabels: payload.ParseLabels}, nil
 }
 
 // garmentRoleFromCategory 只映射有把握的衣橱品类根/关键词；其余省略以免错误裁剪。
