@@ -93,6 +93,7 @@ var categories = map[string]Category{
 	HumanYOLO:               CategoryPersonDetect,
 	RekognitionDetectLabels: CategoryPersonDetect,
 	HumanParser:             CategoryHumanParser,
+	HumanParse:              CategoryHumanParser,
 
 	LTX:                        CategoryVideoGeneration,
 	Wan22I2VFlash:              CategoryVideoGeneration,

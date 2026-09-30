@@ -103,9 +103,12 @@ const (
 	FacebodyFaceLibrary = "facebody-face-library"
 	// RekognitionFaceLibrary 是 Rekognition Collection 的查重、录脸、删脸。
 	RekognitionFaceLibrary = "rekognition-face-library"
-	// HumanParser 是自建人体解析 POST /predict，输出分割图而不是检测框。
+	// HumanParser 是旧自建人体解析 POST /predict。国内和新加坡仍用这个 ID。
 	HumanParser = "human-parser"
-	LTX         = "ltx"
+	// HumanParse 是薇光点亮 G7 人体解析 POST /human_parser/predict。
+	// 与 human-parser 不能互换：路径、鉴权和部署面都不同，路演单独切这个 ID。
+	HumanParse = "human_parse"
+	LTX        = "ltx"
 
 	// DashScope Wan / HappyHorse / Kling 图生视频。
 	Wan22I2VFlash              = "wan2.2-i2v-flash"
@@ -204,6 +207,7 @@ func All() []string {
 		FacebodyFaceLibrary,
 		RekognitionFaceLibrary,
 		HumanParser,
+		HumanParse,
 		LTX,
 		Wan22I2VFlash,
 		Wan22I2VPlus,

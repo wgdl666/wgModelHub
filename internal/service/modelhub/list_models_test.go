@@ -64,7 +64,7 @@ func listModelsTestService() *Service {
 				HumanYOLO: &config.HumanYOLOProviderConfig{BaseURL: "https://example.invalid", Username: "u", Password: "p"},
 			},
 			"human_parser": {
-				Models:      []string{models.HumanParser},
+				Models:      []string{models.HumanParser, models.HumanParse},
 				HumanParser: &config.HumanParserProviderConfig{BaseURL: "https://example.invalid"},
 			},
 			"extra": {
@@ -81,7 +81,7 @@ func TestListModelsReturnsRoutedPublicCategories(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := listModelIDs(resp)
-	want := []string{models.Gemini37Flash, models.DeepSeekV41Flash, models.Qwen3VLPlus, models.Qwen37Flash, models.GPTImage2, models.LTX, models.Speech28Turbo, models.Qwen3VLEmbedding, models.Qwen37TextRerank, models.FacebodyCompareFace, models.FacebodyDetectFace, models.FacebodyFaceLibrary, models.HumanYOLO, models.HumanParser}
+	want := []string{models.Gemini37Flash, models.DeepSeekV41Flash, models.Qwen3VLPlus, models.Qwen37Flash, models.GPTImage2, models.LTX, models.Speech28Turbo, models.Qwen3VLEmbedding, models.Qwen37TextRerank, models.FacebodyCompareFace, models.FacebodyDetectFace, models.FacebodyFaceLibrary, models.HumanYOLO, models.HumanParser, models.HumanParse}
 	if !sameStrings(got, want) {
 		t.Fatalf("models=%v want=%v", got, want)
 	}
@@ -162,7 +162,7 @@ func TestListModelsFiltersEmbeddingApartFromMultimodal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !sameStrings(listModelIDs(parser), []string{models.HumanParser}) {
+	if !sameStrings(listModelIDs(parser), []string{models.HumanParser, models.HumanParse}) {
 		t.Fatalf("human_parser=%v", listModelIDs(parser))
 	}
 }

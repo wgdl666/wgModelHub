@@ -208,13 +208,18 @@ providers:
       base_url: https://human-yolo.model.wgdl.tech
       username: "${HUMAN_YOLO_USERNAME}"
       password: "${HUMAN_YOLO_PASSWORD}"
-  # 自建人体解析。username/password 成对省略则匿名。
+  # 自建人体解析。username/password 成对省略则匿名。国内和新加坡继续用这个 ID。
   human_parser_cn:
     models: [human-parser]
     human_parser:
       base_url: https://human-parser.model.wgdl.tech
       username: "${HUMAN_PARSER_USERNAME}"
       password: "${HUMAN_PARSER_PASSWORD}"
+  # 薇光点亮 G7 人体解析。无鉴权。只在美东路演把衣橱 human_parse_model 指到 human_parse。
+  human_parse_g7:
+    models: [human_parse]
+    human_parser:
+      base_url: http://172.31.42.52:6105
   # 阿里云 1:1 人脸比对。模型 ID 不下发上游。
   facebody_compare_cn:
     models: [facebody-compare-face]

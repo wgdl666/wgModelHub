@@ -71,7 +71,8 @@ type ProviderConfig struct {
 	VWorldImage *VWorldImageProviderConfig `yaml:"vworld_image"`
 	// HumanYOLO 承接自建人体检测。和 Rekognition、人体解析分实例。
 	HumanYOLO *HumanYOLOProviderConfig `yaml:"human_yolo"`
-	// HumanParser 承接自建人体解析，输出分割 JSON 而不是检测框。
+	// HumanParser 承接人体解析，输出分割 JSON 而不是检测框。
+	// 同一结构服务两个 ID：human-parser 走旧 /predict，human_parse 走 G7 /human_parser/predict。
 	HumanParser *HumanParserProviderConfig `yaml:"human_parser"`
 	// RekognitionDetect 承接 DetectLabels 人检。Region 不能是 cn-*。
 	RekognitionDetect *RekognitionDetectProviderConfig `yaml:"rekognition_detect"`
@@ -221,7 +222,8 @@ type HumanYOLOProviderConfig struct {
 	Password string `yaml:"password"`
 }
 
-// HumanParserProviderConfig 是自建解析服务。账号密码成对，两个都空则匿名。
+// HumanParserProviderConfig 是人体解析地址。账号密码成对，两个都空则匿名。
+// G7 只靠网络 ACL，路演应把账号密码留空；不要把 G7 地址写进国内或新加坡配置。
 type HumanParserProviderConfig struct {
 	BaseURL  string `yaml:"base_url"`
 	Username string `yaml:"username"`
