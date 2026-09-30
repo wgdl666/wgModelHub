@@ -68,7 +68,7 @@ func TestTextAccumulatorThoughtSignatureNonUTF8Base64(t *testing.T) {
 
 func TestBuildImageOutputThoughtSignatureBase64(t *testing.T) {
 	raw := []byte{0xff, 0x00}
-	payload, _ := BuildImageOutput(&modelhubv2.GenerateEvent{Items: []*modelhubv2.OutputItem{
+	payload, _, _ := BuildImageOutput(&modelhubv2.GenerateEvent{Items: []*modelhubv2.OutputItem{
 		{Item: &modelhubv2.OutputItem_ToolCall{ToolCall: &modelhubv2.ToolCall{
 			Id: "x", Name: "n", ThoughtSignature: raw,
 		}}},

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,6 +19,9 @@ const persistTimeout = 2 * time.Second
 type Store interface {
 	Record(ctx context.Context, rec Record) error
 	UpsertByGenerationTask(ctx context.Context, rec Record) error
+	// UpdateResult 按 call_id 补结果。行还不存在时插入整行；已终态不被更早的 pending 盖回。
+	UpdateResult(ctx context.Context, rec Record) error
+	Delete(ctx context.Context, callID string) error
 }
 
 // Record 是一条逻辑模型生成调用的落库事实。
@@ -28,6 +32,8 @@ type Record struct {
 	BusinessLine     string
 	BusinessScene    string
 	BusinessSubscene string
+	// TraceID 是发起调用时的 trace。空字符串表示没有 span，更新时不得覆盖已写入的值。
+	TraceID          string
 	Operation        string
 	Capability       string
 	Model            string
@@ -110,12 +116,18 @@ func NewPostgres(client *ent.Client) *Postgres {
 	return &Postgres{client: client}
 }
 
-// Memory 供单测断言落库内容；并发安全不在此保证以外的生产路径使用。
+// Memory 供单测断言落库内容。互斥锁只为异步写入和测试读取不打架。
 type Memory struct {
+	mu      sync.Mutex
 	Records []Record
 }
 
 func (m *Memory) Record(_ context.Context, rec Record) error {
+	if m == nil {
+		return nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if rec.CallID == "" {
 		rec.CallID = uuid.NewString()
 	}
@@ -124,9 +136,14 @@ func (m *Memory) Record(_ context.Context, rec Record) error {
 }
 
 func (m *Memory) UpsertByGenerationTask(_ context.Context, rec Record) error {
+	if m == nil {
+		return nil
+	}
 	if rec.GenerationTaskID == "" {
 		return errors.New("generation_task_id required")
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	for i := range m.Records {
 		if m.Records[i].GenerationTaskID == rec.GenerationTaskID {
 			m.Records[i] = mergeVideoRecord(m.Records[i], rec)
@@ -137,6 +154,43 @@ func (m *Memory) UpsertByGenerationTask(_ context.Context, rec Record) error {
 		rec.CallID = uuid.NewString()
 	}
 	m.Records = append(m.Records, rec)
+	return nil
+}
+
+func (m *Memory) UpdateResult(_ context.Context, rec Record) error {
+	if m == nil {
+		return nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i := range m.Records {
+		if m.Records[i].CallID != rec.CallID {
+			continue
+		}
+		m.Records[i] = mergeCallResult(m.Records[i], rec)
+		return nil
+	}
+	if rec.CallID == "" {
+		rec.CallID = uuid.NewString()
+	}
+	m.Records = append(m.Records, rec)
+	return nil
+}
+
+func (m *Memory) Delete(_ context.Context, callID string) error {
+	if m == nil || callID == "" {
+		return nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	kept := m.Records[:0]
+	for _, rec := range m.Records {
+		if rec.CallID == callID {
+			continue
+		}
+		kept = append(kept, rec)
+	}
+	m.Records = kept
 	return nil
 }
 
@@ -154,7 +208,11 @@ func (p *Postgres) Record(ctx context.Context, rec Record) error {
 		SetCallerService(normalizeLabel(rec.CallerService)).
 		SetBusinessLine(normalizeLabel(rec.BusinessLine)).
 		SetBusinessScene(normalizeLabel(rec.BusinessScene)).
-		SetBusinessSubscene(normalizeLabel(rec.BusinessSubscene)).
+		SetBusinessSubscene(normalizeLabel(rec.BusinessSubscene))
+	if rec.TraceID != "" {
+		builder.SetTraceID(rec.TraceID)
+	}
+	builder = builder.
 		SetOperation(rec.Operation).
 		SetCapability(rec.Capability).
 		SetModel(rec.Model).
@@ -191,6 +249,65 @@ func (p *Postgres) Record(ctx context.Context, rec Record) error {
 		builder.SetFinishedAt(*rec.FinishedAt)
 	}
 	_, err := builder.Save(persistCtx)
+	return err
+}
+
+// UpdateResult 补这一次调用的结果。不改 trace_id，也不让更晚的 pending 覆盖已终态。
+func (p *Postgres) UpdateResult(ctx context.Context, rec Record) error {
+	if p == nil || p.client == nil {
+		return nil
+	}
+	if rec.CallID == "" {
+		return p.Record(ctx, rec)
+	}
+	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), persistTimeout)
+	defer cancel()
+	existing, err := p.client.ModelCall.Get(persistCtx, rec.CallID)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return p.Record(ctx, rec)
+		}
+		return err
+	}
+	if isTerminalStatus(existing.Status) && !isTerminalStatus(rec.Status) {
+		return nil
+	}
+	upd := p.client.ModelCall.UpdateOneID(rec.CallID).
+		SetStatus(rec.Status).
+		SetDeliveryStatus(defaultDelivery(rec.DeliveryStatus)).
+		SetErrorCategory(rec.ErrorCategory).
+		SetErrorCode(rec.ErrorCode).
+		SetErrorReason(rec.ErrorReason).
+		SetErrorMessage(sanitizeErrorMessage(rec.ErrorMessage)).
+		SetOutputPayload(nonNilMap(rec.OutputPayload)).
+		SetUsageDetail(nonNilMap(rec.UsageDetail)).
+		SetLatencyMs(rec.LatencyMS)
+	if rec.FinishedAt != nil {
+		upd.SetFinishedAt(*rec.FinishedAt)
+	}
+	applyOptionalUsageUpdate(upd, rec.Usage)
+	if rec.ImageCount != nil {
+		upd.SetImageCount(*rec.ImageCount)
+	}
+	if rec.VideoCount != nil {
+		upd.SetVideoCount(*rec.VideoCount)
+	}
+	if existing.TraceID == nil && rec.TraceID != "" {
+		upd.SetTraceID(rec.TraceID)
+	}
+	return upd.Exec(persistCtx)
+}
+
+func (p *Postgres) Delete(ctx context.Context, callID string) error {
+	if p == nil || p.client == nil || callID == "" {
+		return nil
+	}
+	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), persistTimeout)
+	defer cancel()
+	err := p.client.ModelCall.DeleteOneID(callID).Exec(persistCtx)
+	if ent.IsNotFound(err) {
+		return nil
+	}
 	return err
 }
 
@@ -279,6 +396,9 @@ func (p *Postgres) updateMergedOptimistic(ctx context.Context, existing *ent.Mod
 	}
 	if existing.BusinessSubscene == UnknownLabel && merged.BusinessSubscene != "" && merged.BusinessSubscene != UnknownLabel {
 		upd.SetBusinessSubscene(normalizeLabel(merged.BusinessSubscene))
+	}
+	if (existing.TraceID == nil || *existing.TraceID == "") && merged.TraceID != "" {
+		upd.SetTraceID(merged.TraceID)
 	}
 	if existing.ImageSize == "" && merged.ImageSize != "" {
 		upd.SetImageSize(merged.ImageSize)
@@ -396,6 +516,7 @@ func fromEnt(row *ent.ModelCall) Record {
 		BusinessLine:     row.BusinessLine,
 		BusinessScene:    row.BusinessScene,
 		BusinessSubscene: row.BusinessSubscene,
+		TraceID:          derefString(row.TraceID),
 		Operation:        row.Operation,
 		Capability:       row.Capability,
 		Model:            row.Model,
@@ -458,6 +579,10 @@ func mergeVideoRecord(prev, next Record) Record {
 	out.BusinessLine = firstNonEmptyPreferKnown(out.BusinessLine, next.BusinessLine)
 	out.BusinessScene = firstNonEmptyPreferKnown(out.BusinessScene, next.BusinessScene)
 	out.BusinessSubscene = firstNonEmptyPreferKnown(out.BusinessSubscene, next.BusinessSubscene)
+	// 提交时写入的 trace 保持不变。后半段 Get 没有这份 trace，不得用空值覆盖。
+	if out.TraceID == "" {
+		out.TraceID = next.TraceID
+	}
 	out.Operation = firstNonEmpty(out.Operation, next.Operation)
 	out.Capability = firstNonEmpty(out.Capability, next.Capability)
 	out.Model = firstNonEmpty(out.Model, next.Model)
@@ -574,4 +699,57 @@ func firstNonEmptyPreferKnown(a, b string) string {
 		return b
 	}
 	return a
+}
+
+func derefString(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
+}
+
+// mergeCallResult 用同一次调用的最终结果覆盖 pending 行，保留已写入的 trace 和输入。
+func mergeCallResult(prev, next Record) Record {
+	if isTerminalStatus(prev.Status) && !isTerminalStatus(next.Status) {
+		return prev
+	}
+	out := prev
+	if next.Status != "" {
+		out.Status = next.Status
+	}
+	if next.DeliveryStatus != "" {
+		out.DeliveryStatus = next.DeliveryStatus
+	}
+	out.ErrorCategory = next.ErrorCategory
+	out.ErrorCode = next.ErrorCode
+	out.ErrorReason = next.ErrorReason
+	out.ErrorMessage = next.ErrorMessage
+	if len(next.OutputPayload) > 0 {
+		out.OutputPayload = next.OutputPayload
+	}
+	if next.Usage != nil {
+		out.Usage = next.Usage
+	}
+	if len(next.UsageDetail) > 0 {
+		out.UsageDetail = next.UsageDetail
+	}
+	if next.FinishedAt != nil {
+		out.FinishedAt = next.FinishedAt
+	}
+	if next.LatencyMS > 0 {
+		out.LatencyMS = next.LatencyMS
+	}
+	if out.TraceID == "" {
+		out.TraceID = next.TraceID
+	}
+	if len(out.InputPayload) == 0 && len(next.InputPayload) > 0 {
+		out.InputPayload = next.InputPayload
+	}
+	if next.ImageCount != nil {
+		out.ImageCount = next.ImageCount
+	}
+	if next.VideoCount != nil {
+		out.VideoCount = next.VideoCount
+	}
+	return out
 }

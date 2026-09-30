@@ -1154,6 +1154,7 @@ type ModelCallMutation struct {
 	business_line             *string
 	business_scene            *string
 	business_subscene         *string
+	trace_id                  *string
 	operation                 *string
 	capability                *string
 	model                     *string
@@ -1494,6 +1495,55 @@ func (m *ModelCallMutation) OldBusinessSubscene(ctx context.Context) (v string, 
 // ResetBusinessSubscene resets all changes to the "business_subscene" field.
 func (m *ModelCallMutation) ResetBusinessSubscene() {
 	m.business_subscene = nil
+}
+
+// SetTraceID sets the "trace_id" field.
+func (m *ModelCallMutation) SetTraceID(s string) {
+	m.trace_id = &s
+}
+
+// TraceID returns the value of the "trace_id" field in the mutation.
+func (m *ModelCallMutation) TraceID() (r string, exists bool) {
+	v := m.trace_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTraceID returns the old "trace_id" field's value of the ModelCall entity.
+// If the ModelCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelCallMutation) OldTraceID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTraceID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTraceID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTraceID: %w", err)
+	}
+	return oldValue.TraceID, nil
+}
+
+// ClearTraceID clears the value of the "trace_id" field.
+func (m *ModelCallMutation) ClearTraceID() {
+	m.trace_id = nil
+	m.clearedFields[modelcall.FieldTraceID] = struct{}{}
+}
+
+// TraceIDCleared returns if the "trace_id" field was cleared in this mutation.
+func (m *ModelCallMutation) TraceIDCleared() bool {
+	_, ok := m.clearedFields[modelcall.FieldTraceID]
+	return ok
+}
+
+// ResetTraceID resets all changes to the "trace_id" field.
+func (m *ModelCallMutation) ResetTraceID() {
+	m.trace_id = nil
+	delete(m.clearedFields, modelcall.FieldTraceID)
 }
 
 // SetOperation sets the "operation" field.
@@ -2915,7 +2965,7 @@ func (m *ModelCallMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ModelCallMutation) Fields() []string {
-	fields := make([]string, 0, 35)
+	fields := make([]string, 0, 36)
 	if m.generation_task_id != nil {
 		fields = append(fields, modelcall.FieldGenerationTaskID)
 	}
@@ -2930,6 +2980,9 @@ func (m *ModelCallMutation) Fields() []string {
 	}
 	if m.business_subscene != nil {
 		fields = append(fields, modelcall.FieldBusinessSubscene)
+	}
+	if m.trace_id != nil {
+		fields = append(fields, modelcall.FieldTraceID)
 	}
 	if m.operation != nil {
 		fields = append(fields, modelcall.FieldOperation)
@@ -3039,6 +3092,8 @@ func (m *ModelCallMutation) Field(name string) (ent.Value, bool) {
 		return m.BusinessScene()
 	case modelcall.FieldBusinessSubscene:
 		return m.BusinessSubscene()
+	case modelcall.FieldTraceID:
+		return m.TraceID()
 	case modelcall.FieldOperation:
 		return m.Operation()
 	case modelcall.FieldCapability:
@@ -3118,6 +3173,8 @@ func (m *ModelCallMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldBusinessScene(ctx)
 	case modelcall.FieldBusinessSubscene:
 		return m.OldBusinessSubscene(ctx)
+	case modelcall.FieldTraceID:
+		return m.OldTraceID(ctx)
 	case modelcall.FieldOperation:
 		return m.OldOperation(ctx)
 	case modelcall.FieldCapability:
@@ -3221,6 +3278,13 @@ func (m *ModelCallMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetBusinessSubscene(v)
+		return nil
+	case modelcall.FieldTraceID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTraceID(v)
 		return nil
 	case modelcall.FieldOperation:
 		v, ok := value.(string)
@@ -3576,6 +3640,9 @@ func (m *ModelCallMutation) ClearedFields() []string {
 	if m.FieldCleared(modelcall.FieldGenerationTaskID) {
 		fields = append(fields, modelcall.FieldGenerationTaskID)
 	}
+	if m.FieldCleared(modelcall.FieldTraceID) {
+		fields = append(fields, modelcall.FieldTraceID)
+	}
 	if m.FieldCleared(modelcall.FieldInputTokens) {
 		fields = append(fields, modelcall.FieldInputTokens)
 	}
@@ -3619,6 +3686,9 @@ func (m *ModelCallMutation) ClearField(name string) error {
 	switch name {
 	case modelcall.FieldGenerationTaskID:
 		m.ClearGenerationTaskID()
+		return nil
+	case modelcall.FieldTraceID:
+		m.ClearTraceID()
 		return nil
 	case modelcall.FieldInputTokens:
 		m.ClearInputTokens()
@@ -3669,6 +3739,9 @@ func (m *ModelCallMutation) ResetField(name string) error {
 		return nil
 	case modelcall.FieldBusinessSubscene:
 		m.ResetBusinessSubscene()
+		return nil
+	case modelcall.FieldTraceID:
+		m.ResetTraceID()
 		return nil
 	case modelcall.FieldOperation:
 		m.ResetOperation()

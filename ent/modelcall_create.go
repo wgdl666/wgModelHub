@@ -90,6 +90,20 @@ func (_c *ModelCallCreate) SetNillableBusinessSubscene(v *string) *ModelCallCrea
 	return _c
 }
 
+// SetTraceID sets the "trace_id" field.
+func (_c *ModelCallCreate) SetTraceID(v string) *ModelCallCreate {
+	_c.mutation.SetTraceID(v)
+	return _c
+}
+
+// SetNillableTraceID sets the "trace_id" field if the given value is not nil.
+func (_c *ModelCallCreate) SetNillableTraceID(v *string) *ModelCallCreate {
+	if v != nil {
+		_c.SetTraceID(*v)
+	}
+	return _c
+}
+
 // SetOperation sets the "operation" field.
 func (_c *ModelCallCreate) SetOperation(v string) *ModelCallCreate {
 	_c.mutation.SetOperation(v)
@@ -689,6 +703,10 @@ func (_c *ModelCallCreate) createSpec() (*ModelCall, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.BusinessSubscene(); ok {
 		_spec.SetField(modelcall.FieldBusinessSubscene, field.TypeString, value)
 		_node.BusinessSubscene = value
+	}
+	if value, ok := _c.mutation.TraceID(); ok {
+		_spec.SetField(modelcall.FieldTraceID, field.TypeString, value)
+		_node.TraceID = &value
 	}
 	if value, ok := _c.mutation.Operation(); ok {
 		_spec.SetField(modelcall.FieldOperation, field.TypeString, value)

@@ -328,6 +328,8 @@ type Config struct {
 	Database DatabaseConfig `yaml:"database"`
 	// Logfire 与 Hub 等同项目；token 写在本服务 Nacos，禁止再挂 wg-hub-env。
 	Logfire LogfireConfig `yaml:"logfire"`
+	// ObjectStorage 保存账本里的图片和视频。留空则只记占位 URI，不挡调用。
+	ObjectStorage ObjectStorageConfig `yaml:"object_storage"`
 }
 
 // DatabaseConfig 只接受 DSN；连接参数由 DSN 自身表达，避免散落多字段半配置。
@@ -342,6 +344,29 @@ type LogfireConfig struct {
 	Service      string `yaml:"service"`
 	Version      string `yaml:"version"`
 	OtelLogLevel string `yaml:"otel_log_level"`
+}
+
+// ObjectStorageConfig 是账本媒体使用的对象存储。字段全空表示不启用。
+type ObjectStorageConfig struct {
+	Bucket          string `yaml:"bucket"`
+	Region          string `yaml:"region"`
+	Endpoint        string `yaml:"endpoint"`
+	AccessKeyID     string `yaml:"access_key_id"`
+	AccessKeySecret string `yaml:"access_key_secret"`
+}
+
+func (c ObjectStorageConfig) Enabled() bool {
+	return strings.TrimSpace(c.Bucket) != "" || strings.TrimSpace(c.Region) != "" || strings.TrimSpace(c.Endpoint) != "" || strings.TrimSpace(c.AccessKeyID) != "" || strings.TrimSpace(c.AccessKeySecret) != ""
+}
+
+func (c ObjectStorageConfig) validate() error {
+	if !c.Enabled() {
+		return nil
+	}
+	if strings.TrimSpace(c.Bucket) == "" || strings.TrimSpace(c.Region) == "" || strings.TrimSpace(c.AccessKeyID) == "" || strings.TrimSpace(c.AccessKeySecret) == "" {
+		return fmt.Errorf("object_storage requires bucket, region, access_key_id and access_key_secret")
+	}
+	return nil
 }
 
 func LoadBootstrapFile(path string) (Bootstrap, error) {
@@ -483,6 +508,9 @@ func (c Config) Validate() error {
 	}
 	if strings.TrimSpace(c.Database.DSN) == "" {
 		return fmt.Errorf("database.dsn is required")
+	}
+	if err := c.ObjectStorage.validate(); err != nil {
+		return err
 	}
 	if len(c.Providers) == 0 {
 		return fmt.Errorf("providers are required")

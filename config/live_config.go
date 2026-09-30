@@ -93,6 +93,9 @@ func RestartRequiredFields(previous, next Config) []string {
 	if previous.Logfire != next.Logfire {
 		fields = append(fields, "logfire")
 	}
+	if previous.ObjectStorage != next.ObjectStorage {
+		fields = append(fields, "object_storage")
+	}
 	if !providerResourcesEqual(previous.Providers, next.Providers) {
 		fields = append(fields, "providers")
 	}

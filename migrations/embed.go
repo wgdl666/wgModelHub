@@ -26,3 +26,8 @@ var ModelCallBusinessLineSQL string
 //
 //go:embed 007_model_call_business_subscene.sql
 var ModelCallBusinessSubsceneSQL string
+
+// ModelCallTraceSQL 给账本补 trace_id，便于按调用链找到这一次模型请求。
+//
+//go:embed 008_model_call_trace_id.sql
+var ModelCallTraceSQL string

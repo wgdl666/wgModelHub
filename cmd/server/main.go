@@ -21,6 +21,7 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/infra/factory"
 	"github.com/wgdl666/wgModelHub/internal/infra/grpclistener"
 	"github.com/wgdl666/wgModelHub/internal/infra/httpserver"
+	"github.com/wgdl666/wgModelHub/internal/infra/objectstore"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/publicrpc"
 	"github.com/wgdl666/wgModelHub/internal/service/modelhub"
@@ -90,6 +91,11 @@ func main() {
 	apiKeys := apikeystore.New(entClient)
 	ledger := callledger.NewPostgres(entClient)
 	hubService := modelhub.NewWithLedger(live, providers, taskstore.NewPostgres(entClient), ledger)
+	objects, err := objectstore.New(ctx, runtimeConfig.ObjectStorage)
+	if err != nil {
+		fatal("object_storage_init_failed", err)
+	}
+	hubService.SetObjectStore(objects)
 
 	healthServer := health.NewServer()
 	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)

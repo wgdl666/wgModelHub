@@ -26,6 +26,9 @@ type Service struct {
 	providerCfg map[string]config.ProviderConfig
 	tasks       taskstore.Store
 	ledger      callledger.Store
+	objects     callledger.ObjectStore
+	// ledgerGo 生产环境异步执行。测试改成同步，返回后就能断言账本。
+	ledgerGo func(func())
 }
 
 func New(live *config.LiveConfig, providers map[string]provider.Set, tasks taskstore.Store) *Service {
@@ -44,7 +47,55 @@ func NewWithLedger(live *config.LiveConfig, providers map[string]provider.Set, t
 		providerCfg: cfg.Providers,
 		tasks:       tasks,
 		ledger:      ledger,
+		ledgerGo:    func(fn func()) { go fn() },
 	}
+}
+
+// SetObjectStore 注入图片和视频的对象存储。未配置时账本仍写占位 URI，不挡模型调用。
+func (s *Service) SetObjectStore(objects callledger.ObjectStore) {
+	if s == nil {
+		return
+	}
+	s.objects = objects
+}
+
+// track 在打模型之前异步记下请求和 trace_id。
+func (s *Service) track(ctx context.Context, rec *callledger.Record, blobs []callledger.Blob) *callledger.Call {
+	if s == nil || s.ledger == nil || rec == nil {
+		return nil
+	}
+	return callledger.Open(ctx, s.ledger, s.objects, rec, blobs, s.ledgerGo)
+}
+
+// endTrack 在函数返回后更新结果。供应商没被调用时删掉已经写下的请求行。
+func (s *Service) endTrack(call *callledger.Call, rec *callledger.Record, providerErr *error, out *[]callledger.Blob) {
+	if call == nil {
+		return
+	}
+	var err error
+	if providerErr != nil {
+		err = *providerErr
+	}
+	if err != nil && !s.shouldRecord(err) {
+		call.Abort()
+		return
+	}
+	var blobs []callledger.Blob
+	if out != nil {
+		blobs = *out
+	}
+	call.Finish(rec, blobs)
+}
+
+func (s *Service) schedule(fn func()) {
+	if fn == nil {
+		return
+	}
+	if s == nil || s.ledgerGo == nil {
+		go fn()
+		return
+	}
+	s.ledgerGo(fn)
 }
 
 // Generate 按 OutputSpec oneof 选择 text/image/video 能力，并以 request.model（真实供应商模型 ID）路由。
@@ -97,7 +148,12 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 	// StartedAt 在 provider 调用前由 stampCallTiming 写入；此处占位。
 	rec := s.baseRecord(ctx, request.GetBusinessMetadata(), callledger.OperationGenerateText, callledger.CapabilityText, binding.model, binding.provider, time.Time{})
 	// 输入快照必须在缓存策略改写请求之前，保留调用方原始参数。
-	rec.InputPayload = callledger.BuildGenerateInput(request)
+	var inBlobs []callledger.Blob
+	rec.InputPayload, inBlobs = callledger.BuildGenerateInput(request)
+	var providerErr error
+	var outBlobs []callledger.Blob
+	tracked := s.track(ctx, &rec, inBlobs)
+	defer s.endTrack(tracked, &rec, &providerErr, &outBlobs)
 	// 应用文本缓存策略（普通缺省开启 / endpoint-bound Ark 隐式自动）；返回实际生效遥测模式。
 	cachingMode := applyTextCachingPolicy(request, s.providerCfg[binding.provider])
 	streamMode := request.GetOutput().GetStream()
@@ -168,6 +224,7 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 		}
 		callFinished := time.Now()
 		stampCallTiming(&rec, callStarted, callFinished)
+		providerErr = err
 		if final == nil {
 			final = &modelhubv2.GenerateEvent{}
 		}
@@ -180,7 +237,6 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 		if sendErr != nil {
 			if s.shouldRecord(err) || err == nil {
 				s.finishRecord(&rec, err, sendErr)
-				callledger.BestEffort(ctx, s.ledger, rec)
 			}
 			telemetry.RecordError(ctx, sendErr)
 			return sendErr
@@ -188,7 +244,6 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 		if err != nil {
 			if s.shouldRecord(err) {
 				s.finishRecord(&rec, err, nil)
-				callledger.BestEffort(ctx, s.ledger, rec)
 			}
 			statusErr := provider.ToStatus(err)
 			telemetry.RecordError(ctx, statusErr)
@@ -204,7 +259,6 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 			Safety:       final.GetSafety(),
 		})
 		s.finishRecord(&rec, nil, finalSendErr)
-		callledger.BestEffort(ctx, s.ledger, rec)
 		return finalSendErr
 	}
 
@@ -231,6 +285,7 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 	}
 	callFinished := time.Now()
 	stampCallTiming(&rec, callStarted, callFinished)
+	providerErr = err
 	if event == nil {
 		event = &modelhubv2.GenerateEvent{}
 	}
@@ -244,7 +299,6 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 	if err != nil {
 		if s.shouldRecord(err) {
 			s.finishRecord(&rec, err, nil)
-			callledger.BestEffort(ctx, s.ledger, rec)
 		}
 		statusErr := provider.ToStatus(err)
 		telemetry.RecordError(ctx, statusErr)
@@ -255,7 +309,6 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 	llmmetric.RecordUsageAndCache(ctx, labels, cachingMode, event.GetUsage())
 	sendErr := stream.Send(event)
 	s.finishRecord(&rec, nil, sendErr)
-	callledger.BestEffort(ctx, s.ledger, rec)
 	return sendErr
 }
 
@@ -347,14 +400,17 @@ func (s *Service) SynthesizeSpeech(ctx context.Context, request *modelhubv2.Synt
 	}
 	rec := s.baseRecord(ctx, request.GetBusinessMetadata(), callledger.OperationSynthesizeSpeech, callledger.CapabilitySpeech, binding.model, binding.provider, time.Time{})
 	rec.InputPayload = callledger.BuildSpeechInput(request)
+	var providerErr error
+	tracked := s.track(ctx, &rec, nil)
+	defer s.endTrack(tracked, &rec, &providerErr, nil)
 	callStarted := time.Now()
 	resp, err := binding.set.Speech.SynthesizeSpeech(ctx, binding.model, request)
 	callFinished := time.Now()
 	stampCallTiming(&rec, callStarted, callFinished)
+	providerErr = err
 	if err != nil {
 		if s.shouldRecord(err) {
 			s.finishRecord(&rec, err, nil)
-			callledger.BestEffort(ctx, s.ledger, rec)
 		}
 		statusErr := provider.ToStatus(err)
 		telemetry.RecordError(ctx, statusErr)
@@ -362,16 +418,15 @@ func (s *Service) SynthesizeSpeech(ctx context.Context, request *modelhubv2.Synt
 	}
 	if err := validateSpeechResponse(resp); err != nil {
 		// 供应商已返回但响应不合约：记为真实调用失败。
+		providerErr = err
 		rec.OutputPayload = callledger.BuildSpeechOutput(resp)
 		s.finishRecord(&rec, err, nil)
-		callledger.BestEffort(ctx, s.ledger, rec)
 		statusErr := provider.ToStatus(err)
 		telemetry.RecordError(ctx, statusErr)
 		return nil, statusErr
 	}
 	rec.OutputPayload = callledger.BuildSpeechOutput(resp)
 	s.finishRecord(&rec, nil, nil)
-	callledger.BestEffort(ctx, s.ledger, rec)
 	return resp, nil
 }
 
@@ -383,16 +438,23 @@ func (s *Service) generateImage(ctx context.Context, binding binding, request *m
 		return statusErr
 	}
 	rec := s.baseRecord(ctx, request.GetBusinessMetadata(), callledger.OperationGenerateImage, callledger.CapabilityImage, binding.model, binding.provider, time.Time{})
-	rec.InputPayload = callledger.BuildGenerateInput(request)
+	var inBlobs []callledger.Blob
+	rec.InputPayload, inBlobs = callledger.BuildGenerateInput(request)
 	rec.ImageSize, rec.ImageAspectRatio = callledger.RequestImageSpec(request)
+	var providerErr error
+	var outBlobs []callledger.Blob
+	tracked := s.track(ctx, &rec, inBlobs)
+	defer s.endTrack(tracked, &rec, &providerErr, &outBlobs)
 	callStarted := time.Now()
 	event, err := binding.set.Image.GenerateImage(ctx, binding.model, request)
 	callFinished := time.Now()
 	stampCallTiming(&rec, callStarted, callFinished)
+	providerErr = err
 	// event+err 也保留已知输出/usage，不只成功支路。
 	if event != nil {
-		out, n := callledger.BuildImageOutput(event)
+		out, n, blobs := callledger.BuildImageOutput(event)
 		rec.OutputPayload = out
+		outBlobs = blobs
 		rec.ImageCount = intPtr(n)
 		applyEventUsage(&rec, event)
 	}
@@ -402,18 +464,17 @@ func (s *Service) generateImage(ctx context.Context, binding binding, request *m
 				_, rec.UsageDetail = callledger.UsageFromProto(nil)
 			}
 			s.finishRecord(&rec, err, nil)
-			callledger.BestEffort(ctx, s.ledger, rec)
 		}
 		statusErr := provider.ToStatus(err)
 		telemetry.RecordError(ctx, statusErr)
 		return statusErr
 	}
 	if err := validateImageEvent(event); err != nil {
+		providerErr = err
 		if rec.Usage == nil {
 			_, rec.UsageDetail = callledger.UsageFromProto(nil)
 		}
 		s.finishRecord(&rec, err, nil)
-		callledger.BestEffort(ctx, s.ledger, rec)
 		statusErr := provider.ToStatus(err)
 		telemetry.RecordError(ctx, statusErr)
 		return statusErr
@@ -425,7 +486,6 @@ func (s *Service) generateImage(ctx context.Context, binding binding, request *m
 	event.Final = true
 	sendErr := stream.Send(event)
 	s.finishRecord(&rec, nil, sendErr)
-	callledger.BestEffort(ctx, s.ledger, rec)
 	return sendErr
 }
 
@@ -437,9 +497,14 @@ func (s *Service) generateVideo(ctx context.Context, binding binding, request *m
 		return statusErr
 	}
 	rec := s.baseRecord(ctx, request.GetBusinessMetadata(), callledger.OperationGenerateVideo, callledger.CapabilityVideo, binding.model, binding.provider, time.Time{})
-	rec.InputPayload = callledger.BuildGenerateInput(request)
+	var inBlobs []callledger.Blob
+	rec.InputPayload, inBlobs = callledger.BuildGenerateInput(request)
 	resolution, durationSec, aspect := callledger.RequestVideoSpec(request)
 	rec.VideoResolution, rec.VideoDurationSec, rec.VideoAspectRatio = resolution, durationSec, aspect
+	var providerErr error
+	var outBlobs []callledger.Blob
+	tracked := s.track(ctx, &rec, inBlobs)
+	defer s.endTrack(tracked, &rec, &providerErr, &outBlobs)
 	var sendErr error
 	var totalBytes int64
 	var chunkCount int
@@ -452,6 +517,9 @@ func (s *Service) generateVideo(ctx context.Context, binding binding, request *m
 				if video := item.GetVideo(); video != nil {
 					sawVideo = true
 					mimeType = video.GetMimeType()
+					if blob, ok := callledger.TakeVideoBlob(len(outBlobs), video); ok {
+						outBlobs = append(outBlobs, blob)
+					}
 					if data := video.GetData(); len(data) > 0 {
 						totalBytes += int64(len(data))
 						chunkCount++
@@ -462,11 +530,12 @@ func (s *Service) generateVideo(ctx context.Context, binding binding, request *m
 		sendErr = stream.Send(event)
 		return sendErr
 	}
-	// 流式视频：emit 内 Send 背压计入 provider 耗时，无法拆开。
+	// 流式视频：emit 内 Send 背压计入 provider 耗时，无法拆开。上传放到返回之后。
 	callStarted := time.Now()
 	err := binding.set.Video.GenerateVideo(ctx, binding.model, request, emit)
 	callFinished := time.Now()
 	stampCallTiming(&rec, callStarted, callFinished)
+	providerErr = err
 	videoCount := 0
 	if sawVideo {
 		videoCount = 1
@@ -476,7 +545,6 @@ func (s *Service) generateVideo(ctx context.Context, binding binding, request *m
 	if sendErr != nil {
 		if s.shouldRecord(err) || err == nil {
 			s.finishRecord(&rec, err, sendErr)
-			callledger.BestEffort(ctx, s.ledger, rec)
 		}
 		telemetry.RecordError(ctx, sendErr)
 		return sendErr
@@ -484,14 +552,12 @@ func (s *Service) generateVideo(ctx context.Context, binding binding, request *m
 	if err != nil {
 		if s.shouldRecord(err) {
 			s.finishRecord(&rec, err, nil)
-			callledger.BestEffort(ctx, s.ledger, rec)
 		}
 		statusErr := provider.ToStatus(err)
 		telemetry.RecordError(ctx, statusErr)
 		return statusErr
 	}
 	s.finishRecord(&rec, nil, nil)
-	callledger.BestEffort(ctx, s.ledger, rec)
 	return nil
 }
 

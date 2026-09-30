@@ -89,6 +89,11 @@ func BusinessSubscene(v string) predicate.ModelCall {
 	return predicate.ModelCall(sql.FieldEQ(FieldBusinessSubscene, v))
 }
 
+// TraceID applies equality check predicate on the "trace_id" field. It's identical to TraceIDEQ.
+func TraceID(v string) predicate.ModelCall {
+	return predicate.ModelCall(sql.FieldEQ(FieldTraceID, v))
+}
+
 // Operation applies equality check predicate on the "operation" field. It's identical to OperationEQ.
 func Operation(v string) predicate.ModelCall {
 	return predicate.ModelCall(sql.FieldEQ(FieldOperation, v))
@@ -557,6 +562,81 @@ func BusinessSubsceneEqualFold(v string) predicate.ModelCall {
 // BusinessSubsceneContainsFold applies the ContainsFold predicate on the "business_subscene" field.
 func BusinessSubsceneContainsFold(v string) predicate.ModelCall {
 	return predicate.ModelCall(sql.FieldContainsFold(FieldBusinessSubscene, v))
+}
+
+// TraceIDEQ applies the EQ predicate on the "trace_id" field.
+func TraceIDEQ(v string) predicate.ModelCall {
+	return predicate.ModelCall(sql.FieldEQ(FieldTraceID, v))
+}
+
+// TraceIDNEQ applies the NEQ predicate on the "trace_id" field.
+func TraceIDNEQ(v string) predicate.ModelCall {
+	return predicate.ModelCall(sql.FieldNEQ(FieldTraceID, v))
+}
+
+// TraceIDIn applies the In predicate on the "trace_id" field.
+func TraceIDIn(vs ...string) predicate.ModelCall {
+	return predicate.ModelCall(sql.FieldIn(FieldTraceID, vs...))
+}
+
+// TraceIDNotIn applies the NotIn predicate on the "trace_id" field.
+func TraceIDNotIn(vs ...string) predicate.ModelCall {
+	return predicate.ModelCall(sql.FieldNotIn(FieldTraceID, vs...))
+}
+
+// TraceIDGT applies the GT predicate on the "trace_id" field.
+func TraceIDGT(v string) predicate.ModelCall {
+	return predicate.ModelCall(sql.FieldGT(FieldTraceID, v))
+}
+
+// TraceIDGTE applies the GTE predicate on the "trace_id" field.
+func TraceIDGTE(v string) predicate.ModelCall {
+	return predicate.ModelCall(sql.FieldGTE(FieldTraceID, v))
+}
+
+// TraceIDLT applies the LT predicate on the "trace_id" field.
+func TraceIDLT(v string) predicate.ModelCall {
+	return predicate.ModelCall(sql.FieldLT(FieldTraceID, v))
+}
+
+// TraceIDLTE applies the LTE predicate on the "trace_id" field.
+func TraceIDLTE(v string) predicate.ModelCall {
+	return predicate.ModelCall(sql.FieldLTE(FieldTraceID, v))
+}
+
+// TraceIDContains applies the Contains predicate on the "trace_id" field.
+func TraceIDContains(v string) predicate.ModelCall {
+	return predicate.ModelCall(sql.FieldContains(FieldTraceID, v))
+}
+
+// TraceIDHasPrefix applies the HasPrefix predicate on the "trace_id" field.
+func TraceIDHasPrefix(v string) predicate.ModelCall {
+	return predicate.ModelCall(sql.FieldHasPrefix(FieldTraceID, v))
+}
+
+// TraceIDHasSuffix applies the HasSuffix predicate on the "trace_id" field.
+func TraceIDHasSuffix(v string) predicate.ModelCall {
+	return predicate.ModelCall(sql.FieldHasSuffix(FieldTraceID, v))
+}
+
+// TraceIDIsNil applies the IsNil predicate on the "trace_id" field.
+func TraceIDIsNil() predicate.ModelCall {
+	return predicate.ModelCall(sql.FieldIsNull(FieldTraceID))
+}
+
+// TraceIDNotNil applies the NotNil predicate on the "trace_id" field.
+func TraceIDNotNil() predicate.ModelCall {
+	return predicate.ModelCall(sql.FieldNotNull(FieldTraceID))
+}
+
+// TraceIDEqualFold applies the EqualFold predicate on the "trace_id" field.
+func TraceIDEqualFold(v string) predicate.ModelCall {
+	return predicate.ModelCall(sql.FieldEqualFold(FieldTraceID, v))
+}
+
+// TraceIDContainsFold applies the ContainsFold predicate on the "trace_id" field.
+func TraceIDContainsFold(v string) predicate.ModelCall {
+	return predicate.ModelCall(sql.FieldContainsFold(FieldTraceID, v))
 }
 
 // OperationEQ applies the EQ predicate on the "operation" field.

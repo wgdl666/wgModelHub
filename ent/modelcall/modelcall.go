@@ -23,6 +23,8 @@ const (
 	FieldBusinessScene = "business_scene"
 	// FieldBusinessSubscene holds the string denoting the business_subscene field in the database.
 	FieldBusinessSubscene = "business_subscene"
+	// FieldTraceID holds the string denoting the trace_id field in the database.
+	FieldTraceID = "trace_id"
 	// FieldOperation holds the string denoting the operation field in the database.
 	FieldOperation = "operation"
 	// FieldCapability holds the string denoting the capability field in the database.
@@ -95,6 +97,7 @@ var Columns = []string{
 	FieldBusinessLine,
 	FieldBusinessScene,
 	FieldBusinessSubscene,
+	FieldTraceID,
 	FieldOperation,
 	FieldCapability,
 	FieldModel,
@@ -211,6 +214,11 @@ func ByBusinessScene(opts ...sql.OrderTermOption) OrderOption {
 // ByBusinessSubscene orders the results by the business_subscene field.
 func ByBusinessSubscene(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldBusinessSubscene, opts...).ToFunc()
+}
+
+// ByTraceID orders the results by the trace_id field.
+func ByTraceID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTraceID, opts...).ToFunc()
 }
 
 // ByOperation orders the results by the operation field.

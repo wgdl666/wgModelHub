@@ -41,6 +41,10 @@ func (ModelCall) Fields() []ent.Field {
 			Default("unknown"),
 		// 子场景由业务调用位置明确上报，未上报不猜测。
 		field.String("business_subscene").Default("unknown"),
+		// trace_id 记发起这次模型调用的 span。没有 span 时留空，后续更新不得覆盖。
+		field.String("trace_id").
+			Optional().
+			Nillable(),
 		field.String("operation"),
 		field.String("capability"),
 		field.String("model"),
@@ -125,5 +129,6 @@ func (ModelCall) Indexes() []ent.Index {
 		index.Fields("business_line", "business_scene", "started_at"),
 		index.Fields("model", "started_at"),
 		index.Fields("status", "started_at"),
+		index.Fields("trace_id"),
 	}
 }

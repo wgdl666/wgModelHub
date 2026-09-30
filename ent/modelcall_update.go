@@ -105,6 +105,26 @@ func (_u *ModelCallUpdate) SetNillableBusinessSubscene(v *string) *ModelCallUpda
 	return _u
 }
 
+// SetTraceID sets the "trace_id" field.
+func (_u *ModelCallUpdate) SetTraceID(v string) *ModelCallUpdate {
+	_u.mutation.SetTraceID(v)
+	return _u
+}
+
+// SetNillableTraceID sets the "trace_id" field if the given value is not nil.
+func (_u *ModelCallUpdate) SetNillableTraceID(v *string) *ModelCallUpdate {
+	if v != nil {
+		_u.SetTraceID(*v)
+	}
+	return _u
+}
+
+// ClearTraceID clears the value of the "trace_id" field.
+func (_u *ModelCallUpdate) ClearTraceID() *ModelCallUpdate {
+	_u.mutation.ClearTraceID()
+	return _u
+}
+
 // SetOperation sets the "operation" field.
 func (_u *ModelCallUpdate) SetOperation(v string) *ModelCallUpdate {
 	_u.mutation.SetOperation(v)
@@ -650,6 +670,12 @@ func (_u *ModelCallUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.BusinessSubscene(); ok {
 		_spec.SetField(modelcall.FieldBusinessSubscene, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.TraceID(); ok {
+		_spec.SetField(modelcall.FieldTraceID, field.TypeString, value)
+	}
+	if _u.mutation.TraceIDCleared() {
+		_spec.ClearField(modelcall.FieldTraceID, field.TypeString)
+	}
 	if value, ok := _u.mutation.Operation(); ok {
 		_spec.SetField(modelcall.FieldOperation, field.TypeString, value)
 	}
@@ -883,6 +909,26 @@ func (_u *ModelCallUpdateOne) SetNillableBusinessSubscene(v *string) *ModelCallU
 	if v != nil {
 		_u.SetBusinessSubscene(*v)
 	}
+	return _u
+}
+
+// SetTraceID sets the "trace_id" field.
+func (_u *ModelCallUpdateOne) SetTraceID(v string) *ModelCallUpdateOne {
+	_u.mutation.SetTraceID(v)
+	return _u
+}
+
+// SetNillableTraceID sets the "trace_id" field if the given value is not nil.
+func (_u *ModelCallUpdateOne) SetNillableTraceID(v *string) *ModelCallUpdateOne {
+	if v != nil {
+		_u.SetTraceID(*v)
+	}
+	return _u
+}
+
+// ClearTraceID clears the value of the "trace_id" field.
+func (_u *ModelCallUpdateOne) ClearTraceID() *ModelCallUpdateOne {
+	_u.mutation.ClearTraceID()
 	return _u
 }
 
@@ -1460,6 +1506,12 @@ func (_u *ModelCallUpdateOne) sqlSave(ctx context.Context) (_node *ModelCall, er
 	}
 	if value, ok := _u.mutation.BusinessSubscene(); ok {
 		_spec.SetField(modelcall.FieldBusinessSubscene, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.TraceID(); ok {
+		_spec.SetField(modelcall.FieldTraceID, field.TypeString, value)
+	}
+	if _u.mutation.TraceIDCleared() {
+		_spec.ClearField(modelcall.FieldTraceID, field.TypeString)
 	}
 	if value, ok := _u.mutation.Operation(); ok {
 		_spec.SetField(modelcall.FieldOperation, field.TypeString, value)

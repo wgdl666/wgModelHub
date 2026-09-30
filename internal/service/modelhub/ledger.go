@@ -26,6 +26,7 @@ func (s *Service) baseRecord(ctx context.Context, business *modelhubv2.BusinessM
 		BusinessLine:     business.GetBusinessLine(),
 		BusinessScene:    business.GetBusinessScene(),
 		BusinessSubscene: business.GetBusinessSubscene(),
+		TraceID:          callledger.TraceIDFromContext(ctx),
 		Operation:        operation,
 		Capability:       capability,
 		Model:            model,

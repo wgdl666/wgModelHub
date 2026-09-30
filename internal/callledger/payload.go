@@ -31,19 +31,19 @@ var (
 	apiKeySecretPattern = regexp.MustCompile(`(?i)((?:api[_-]?key|token)\s*[:=]\s*)[^\s,;]+`)
 )
 
-// BuildGenerateInput 保留文本/工具/参数全文；内联媒体字节替换为 URI/类型/字节数摘要。
-func BuildGenerateInput(req *modelhubv2.GenerateRequest) map[string]any {
+// BuildGenerateInput 保留文本/工具/参数全文；内联图片和视频换成待上传占位，字节经 blobs 交给异步上传。
+func BuildGenerateInput(req *modelhubv2.GenerateRequest) (map[string]any, []Blob) {
 	if req == nil {
-		return map[string]any{}
+		return map[string]any{}, nil
 	}
 	cloned, ok := proto.Clone(req).(*modelhubv2.GenerateRequest)
 	if !ok || cloned == nil {
-		return map[string]any{}
+		return map[string]any{}, nil
 	}
-	redactGenerateRequestMedia(cloned)
+	blobs := redactGenerateRequestMedia(cloned)
 	out := protoToMap(cloned)
 	out["media_archive"] = mediaArchiveNote
-	return out
+	return out, blobs
 }
 
 // BuildSpeechInput 保存 TTS 文本与音色参数；不含密钥。
@@ -189,14 +189,14 @@ func BuildTextOutput(acc *TextAccumulator, final *modelhubv2.GenerateEvent) map[
 	return out
 }
 
-// BuildImageOutput 保留诊断文本；图片只存摘要，声明未归档原文件。
-func BuildImageOutput(event *modelhubv2.GenerateEvent) (payload map[string]any, imageCount int) {
+// BuildImageOutput 保留诊断文本。图片和视频内联字节交给 blobs 上传，JSONB 里只留占位 URI。
+func BuildImageOutput(event *modelhubv2.GenerateEvent) (payload map[string]any, imageCount int, blobs []Blob) {
 	payload = map[string]any{
 		"media_archive": mediaArchiveNote,
 		"items":         []any{},
 	}
 	if event == nil {
-		return payload, 0
+		return payload, 0, nil
 	}
 	items := make([]any, 0, len(event.GetItems()))
 	for _, item := range event.GetItems() {
@@ -205,9 +205,17 @@ func BuildImageOutput(event *modelhubv2.GenerateEvent) (payload map[string]any, 
 			items = append(items, map[string]any{"type": "text", "text": value.Text})
 		case *modelhubv2.OutputItem_Image:
 			imageCount++
-			items = append(items, map[string]any{"type": "image", "media": summarizeMedia(value.Image)})
+			stored, blob := stashImageVideo("out", value.Image, len(blobs))
+			if blob != nil {
+				blobs = append(blobs, *blob)
+			}
+			items = append(items, map[string]any{"type": "image", "media": mediaView(stored)})
 		case *modelhubv2.OutputItem_Video:
-			items = append(items, map[string]any{"type": "video", "media": summarizeMedia(value.Video)})
+			stored, blob := stashImageVideo("out", value.Video, len(blobs))
+			if blob != nil {
+				blobs = append(blobs, *blob)
+			}
+			items = append(items, map[string]any{"type": "video", "media": mediaView(stored)})
 		case *modelhubv2.OutputItem_ToolCall:
 			if value.ToolCall != nil {
 				entry := map[string]any{
@@ -237,7 +245,7 @@ func BuildImageOutput(event *modelhubv2.GenerateEvent) (payload map[string]any, 
 			"message": event.GetSafety().GetMessage(),
 		}
 	}
-	return payload, imageCount
+	return payload, imageCount, blobs
 }
 
 // BuildVideoOutputSummary 不累计分块正文（可至 200MiB）；只记条数与字节摘要。
@@ -331,38 +339,86 @@ func summarizeMedia(media *modelhubv2.Media) map[string]any {
 	return out
 }
 
-func redactGenerateRequestMedia(req *modelhubv2.GenerateRequest) {
+func redactGenerateRequestMedia(req *modelhubv2.GenerateRequest) []Blob {
 	if req == nil || req.GetInput() == nil {
-		return
+		return nil
 	}
+	var blobs []Blob
 	for _, item := range req.GetInput().GetItems() {
 		switch value := item.GetItem().(type) {
 		case *modelhubv2.InputItem_Message:
 			for _, part := range value.Message.GetParts() {
-				redactContentPart(part)
+				blobs = redactContentPart(part, blobs)
 			}
 		case *modelhubv2.InputItem_ToolOutput:
 			for i, image := range value.ToolOutput.GetImages() {
-				value.ToolOutput.Images[i] = mediaSummaryAsPlaceholder(image)
+				stored, blob := stashImageVideo("in", image, len(blobs))
+				if blob != nil {
+					blobs = append(blobs, *blob)
+				}
+				value.ToolOutput.Images[i] = stored
 			}
 		}
 	}
+	return blobs
 }
 
-func redactContentPart(part *modelhubv2.ContentPart) {
+func redactContentPart(part *modelhubv2.ContentPart, blobs []Blob) []Blob {
 	if part == nil {
-		return
+		return blobs
 	}
 	switch value := part.GetContent().(type) {
 	case *modelhubv2.ContentPart_Image:
-		part.Content = &modelhubv2.ContentPart_Image{Image: mediaSummaryAsPlaceholder(value.Image)}
+		stored, blob := stashImageVideo("in", value.Image, len(blobs))
+		if blob != nil {
+			blobs = append(blobs, *blob)
+		}
+		part.Content = &modelhubv2.ContentPart_Image{Image: stored}
 	case *modelhubv2.ContentPart_Video:
-		part.Content = &modelhubv2.ContentPart_Video{Video: mediaSummaryAsPlaceholder(value.Video)}
+		stored, blob := stashImageVideo("in", value.Video, len(blobs))
+		if blob != nil {
+			blobs = append(blobs, *blob)
+		}
+		part.Content = &modelhubv2.ContentPart_Video{Video: stored}
 	case *modelhubv2.ContentPart_Audio:
 		part.Content = &modelhubv2.ContentPart_Audio{Audio: mediaSummaryAsPlaceholder(value.Audio)}
 	case *modelhubv2.ContentPart_File:
 		part.Content = &modelhubv2.ContentPart_File{File: mediaSummaryAsPlaceholder(value.File)}
 	}
+	return blobs
+}
+
+// stashImageVideo 拷走内联字节，原位置改成 ledger://pending/...，上传完成后再换成对象 URI。
+func stashImageVideo(dir string, media *modelhubv2.Media, index int) (*modelhubv2.Media, *Blob) {
+	if media == nil {
+		return nil, nil
+	}
+	data := append([]byte(nil), media.GetData()...)
+	if len(data) == 0 {
+		return mediaSummaryAsPlaceholder(media), nil
+	}
+	placeholder := fmt.Sprintf("ledger://pending/%s/%d", dir, index)
+	blob := &Blob{Placeholder: placeholder, MIME: media.GetMimeType(), Data: data}
+	return &modelhubv2.Media{MimeType: media.GetMimeType(), Source: &modelhubv2.Media_Uri{Uri: placeholder}}, blob
+}
+
+// TakeVideoBlob 从流式视频分块拷贝字节。调用方把结果放进异步更新，不在回传客户端时上传。
+func TakeVideoBlob(index int, media *modelhubv2.Media) (Blob, bool) {
+	_, blob := stashImageVideo("out", media, index)
+	if blob == nil {
+		return Blob{}, false
+	}
+	return *blob, true
+}
+
+func mediaView(media *modelhubv2.Media) map[string]any {
+	if media == nil {
+		return map[string]any{"missing": true}
+	}
+	if media.GetUri() != "" {
+		return map[string]any{"mime_type": media.GetMimeType(), "source": "uri", "uri": media.GetUri()}
+	}
+	return summarizeMedia(media)
 }
 
 // mediaSummaryAsPlaceholder 用短 URI 占位保留 mime/长度，避免把内联字节写入 JSONB。

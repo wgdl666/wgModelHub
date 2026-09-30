@@ -28,6 +28,9 @@ func (s *Service) SynthesizeSpeechStream(request *modelhubv2.SynthesizeSpeechReq
 	}
 	rec := s.baseRecord(ctx, request.GetBusinessMetadata(), callledger.OperationSynthesizeSpeechStream, callledger.CapabilitySpeech, binding.model, binding.provider, time.Time{})
 	rec.InputPayload = callledger.BuildSpeechInput(request)
+	var providerErr error
+	tracked := s.track(ctx, &rec, nil)
+	defer s.endTrack(tracked, &rec, &providerErr, nil)
 	started := time.Now()
 	total, chunks := 0, 0
 	var firstChunkMs int64
@@ -57,10 +60,10 @@ func (s *Service) SynthesizeSpeechStream(request *modelhubv2.SynthesizeSpeechReq
 		err = provider.New(provider.ErrorInvalidResponse, "speech provider returned empty audio")
 	}
 	stampCallTiming(&rec, started, time.Now())
+	providerErr = err
 	rec.OutputPayload = map[string]any{"mime_type": "audio/mpeg", "audio_bytes": total, "chunks": chunks, "first_chunk_ms": firstChunkMs}
 	if err == nil || s.shouldRecord(err) {
 		s.finishRecord(&rec, err, sendErr)
-		callledger.BestEffort(ctx, s.ledger, rec)
 	}
 	if sendErr != nil {
 		telemetry.RecordError(ctx, sendErr)

@@ -22,7 +22,10 @@ import (
 )
 
 func newLedgerService(cfg config.Config, providers map[string]provider.Set, tasks taskstore.Store, ledger callledger.Store) *Service {
-	return NewWithLedger(config.NewLiveConfig(cfg), providers, tasks, ledger)
+	svc := NewWithLedger(config.NewLiveConfig(cfg), providers, tasks, ledger)
+	// 测试里同步落账，返回后可以直接读 Memory。
+	svc.ledgerGo = func(fn func()) { fn() }
+	return svc
 }
 
 func textLedgerCFG(model string) config.Config {
