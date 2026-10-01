@@ -161,6 +161,10 @@ func TestLedgerRecordsStreamSuccessCancelAndProviderFailure(t *testing.T) {
 	if rec.Status != callledger.StatusSucceeded || rec.Usage == nil || rec.Usage.TotalTokens != 5 {
 		t.Fatalf("rec=%+v", rec)
 	}
+	// 异步插入前已有真实 StartedAt，不能再落成 Go 零时间，否则业务日报按时间窗会漏数。
+	if rec.StartedAt.IsZero() || rec.StartedAt.Year() < 2020 {
+		t.Fatalf("started_at must be real wall clock, got %v", rec.StartedAt)
+	}
 	texts, _ := rec.OutputPayload["texts"].([]string)
 	if len(texts) != 2 || texts[0]+texts[1] != "hello" {
 		t.Fatalf("texts=%v", texts)

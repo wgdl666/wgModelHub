@@ -644,7 +644,8 @@ func mergeVideoRecord(prev, next Record) Record {
 	out.VideoAspectRatio = firstNonEmpty(out.VideoAspectRatio, next.VideoAspectRatio)
 	out.ImageSize = firstNonEmpty(out.ImageSize, next.ImageSize)
 	out.ImageAspectRatio = firstNonEmpty(out.ImageAspectRatio, next.ImageAspectRatio)
-	if out.StartedAt.IsZero() {
+	if !next.StartedAt.IsZero() {
+		// 与 Postgres UpdateResult 一致：结果阶段可把 stampCallTiming 后的真实开始时间写回。
 		out.StartedAt = next.StartedAt
 	}
 	if len(out.InputPayload) == 0 && len(next.InputPayload) > 0 {
