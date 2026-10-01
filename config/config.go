@@ -135,7 +135,6 @@ type LTXProviderConfig struct {
 	FPS          int     `yaml:"fps"`
 	Seed         int     `yaml:"seed"`
 	PollInterval float64 `yaml:"poll_interval"`
-	MaxPollTime  float64 `yaml:"max_poll_time"`
 }
 
 // DashScopeVideoProviderConfig 承接 Wan/HappyHorse/Kling 图生视频与 wan2.7-videoedit。
@@ -143,7 +142,6 @@ type DashScopeVideoProviderConfig struct {
 	APIKey       string  `yaml:"api_key"`
 	BaseURL      string  `yaml:"base_url"`
 	PollInterval float64 `yaml:"poll_interval"`
-	MaxPollTime  float64 `yaml:"max_poll_time"`
 }
 
 // OminilinkVideoProviderConfig 承接 vg-api.aig-ai.com 异步视频生成。
@@ -151,7 +149,6 @@ type OminilinkVideoProviderConfig struct {
 	APIKey       string  `yaml:"api_key"`
 	BaseURL      string  `yaml:"base_url"`
 	PollInterval float64 `yaml:"poll_interval"`
-	MaxPollTime  float64 `yaml:"max_poll_time"`
 }
 
 // GeminiVideoProviderConfig 承接 Gemini Interactions 图生视频与编辑；auth_header 支持 OminiLink 网关。
@@ -168,7 +165,6 @@ type ArkVideoProviderConfig struct {
 	APIKey       string  `yaml:"api_key"`
 	BaseURL      string  `yaml:"base_url"`
 	PollInterval float64 `yaml:"poll_interval"`
-	MaxPollTime  float64 `yaml:"max_poll_time"`
 }
 
 // MinimaxTTSProviderConfig 对齐线上 wgHub Minimax WebSocket TTS。
@@ -692,8 +688,7 @@ func validateProvider(name string, provider ProviderConfig) error {
 		if strings.TrimSpace(ltx.BaseURL) == "" ||
 			ltx.Duration <= 0 ||
 			ltx.FPS <= 0 ||
-			ltx.PollInterval <= 0 ||
-			ltx.MaxPollTime <= 0 {
+			ltx.PollInterval <= 0 {
 			return fmt.Errorf("provider %s LTX configuration is incomplete", name)
 		}
 	case provider.DashScopeVideo != nil:

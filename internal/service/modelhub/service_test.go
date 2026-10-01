@@ -211,7 +211,7 @@ func TestServiceRejectsCapabilityMismatch(t *testing.T) {
 	service := newTestService(config.Config{
 		Providers: map[string]config.ProviderConfig{
 			"ltx": {Models: []string{models.LTX}, LTX: &config.LTXProviderConfig{
-				BaseURL: "https://x", Duration: 1, FPS: 1, PollInterval: 1, MaxPollTime: 1,
+				BaseURL: "https://x", Duration: 1, FPS: 1, PollInterval: 1,
 			}},
 		},
 	}, map[string]provider.Set{"ltx": {Video: nil}}, nil)

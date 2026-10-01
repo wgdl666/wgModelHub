@@ -17,6 +17,46 @@ import (
 	"github.com/wgdl666/wgModelHub/protocol"
 )
 
+// submitGetRead 仅测试复用：走正式 Submit→Get→ReadResult；无 deadline 时加 5s 上限，避免无界轮询。
+func submitGetRead(ctx context.Context, p provider.VideoProvider, model string, request *modelhubv2.GenerateRequest, emit provider.EmitEvent) error {
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+	}
+	id, err := p.SubmitVideo(ctx, model, request)
+	if err != nil {
+		return err
+	}
+	for {
+		job, err := p.GetVideo(ctx, model, id)
+		if err != nil {
+			return err
+		}
+		switch job.State {
+		case provider.VideoJobSucceeded:
+			return p.ReadVideoResult(ctx, model, id, emit)
+		case provider.VideoJobFailed:
+			if job.Err != nil {
+				return job.Err
+			}
+			return provider.New(provider.ErrorUnavailable, "video job failed")
+		default:
+			wait := time.Duration(job.PollAfterMs) * time.Millisecond
+			if wait <= 0 {
+				wait = time.Second
+			}
+			timer := time.NewTimer(wait)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return ctx.Err()
+			case <-timer.C:
+			}
+		}
+	}
+}
+
 func TestProviderRetriesSubmitOn404(t *testing.T) {
 	var submitCalls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -31,7 +71,7 @@ func TestProviderRetriesSubmitOn404(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider, err := New("ltx", server.URL, "token", 4, 24, 42, 0.001, 1)
+	provider, err := New("ltx", server.URL, "token", 4, 24, 42, 0.001)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +94,7 @@ func TestProviderDoesNotRetrySubmitOn5xx(t *testing.T) {
 	}))
 	defer server.Close()
 
-	p, err := New("ltx", server.URL, "token", 4, 24, 42, 0.001, 1)
+	p, err := New("ltx", server.URL, "token", 4, 24, 42, 0.001)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,48 +105,6 @@ func TestProviderDoesNotRetrySubmitOn5xx(t *testing.T) {
 	}
 	if submitCalls.Load() != 1 {
 		t.Fatalf("calls=%d want 1 (no 5xx auto-retry)", submitCalls.Load())
-	}
-}
-
-func TestGenerateVideoHonorsMaxPollTime(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/vton":
-			_ = json.NewEncoder(w).Encode(map[string]string{"job_id": "job-1"})
-		case "/jobs/job-1":
-			_ = json.NewEncoder(w).Encode(map[string]string{"status": "processing"})
-		}
-	}))
-	defer server.Close()
-
-	p, err := New("ltx", server.URL, "", 4, 24, 42, 0.05, 0.15)
-	if err != nil {
-		t.Fatal(err)
-	}
-	p.client = server.Client()
-
-	start := time.Now()
-	err = p.GenerateVideo(context.Background(), "ltx", &modelhubv2.GenerateRequest{
-		Input: &modelhubv2.Input{Items: []*modelhubv2.InputItem{{
-			Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
-				Role: modelhubv2.Role_ROLE_USER,
-				Parts: []*modelhubv2.ContentPart{
-					{Content: &modelhubv2.ContentPart_Image{Image: &modelhubv2.Media{
-						MimeType: "image/png",
-						Source:   &modelhubv2.Media_Data{Data: []byte("png")},
-					}}},
-					{Content: &modelhubv2.ContentPart_Text{Text: "video"}},
-				},
-			}},
-		}}},
-		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Video{Video: &modelhubv2.VideoOutput{Resolution: "720p"}}},
-	}, nil)
-	elapsed := time.Since(start)
-	if err == nil || provider.Kind(err) != provider.ErrorTimeout {
-		t.Fatalf("err=%v kind=%v", err, provider.Kind(err))
-	}
-	if elapsed > 2*time.Second {
-		t.Fatalf("maxPollTime ineffective, elapsed=%v", elapsed)
 	}
 }
 
@@ -125,7 +123,7 @@ func TestGetVideoStatusMapping(t *testing.T) {
 				_ = json.NewEncoder(w).Encode(map[string]string{"status": tc.status})
 			}))
 			defer server.Close()
-			p, err := New("ltx", server.URL, "", 4, 24, 42, 0.001, 1)
+			p, err := New("ltx", server.URL, "", 4, 24, 42, 0.001)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -157,7 +155,7 @@ func TestReadVideoResultResolvesRelativeVideoURL(t *testing.T) {
 	}))
 	defer server.Close()
 
-	p, err := New("ltx", server.URL, "", 4, 24, 42, 0.001, 1)
+	p, err := New("ltx", server.URL, "", 4, 24, 42, 0.001)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +194,7 @@ func TestReadVideoResultRejectsOversizedVideo(t *testing.T) {
 	defer server.Close()
 	serverURL = server.URL
 
-	p, err := New("ltx", server.URL, "", 4, 24, 42, 0.001, 1)
+	p, err := New("ltx", server.URL, "", 4, 24, 42, 0.001)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +224,7 @@ func TestReadVideoResultAcceptsExactlyMaxVideoSize(t *testing.T) {
 	defer server.Close()
 	serverURL = server.URL
 
-	p, err := New("ltx", server.URL, "", 4, 24, 42, 0.001, 1)
+	p, err := New("ltx", server.URL, "", 4, 24, 42, 0.001)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,59 +245,6 @@ func TestReadVideoResultAcceptsExactlyMaxVideoSize(t *testing.T) {
 	}
 }
 
-func TestGenerateVideoHonorsContextCancel(t *testing.T) {
-	block := make(chan struct{})
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		switch request.URL.Path {
-		case "/vton":
-			_ = json.NewEncoder(writer).Encode(map[string]string{"job_id": "job-1"})
-		case "/jobs/job-1":
-			_ = json.NewEncoder(writer).Encode(map[string]string{"status": "processing"})
-			<-block
-		}
-	}))
-	defer server.Close()
-
-	p, err := New("ltx", server.URL, "", 4, 24, 42, 0.001, 5)
-	if err != nil {
-		t.Fatal(err)
-	}
-	p.client = server.Client()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan error, 1)
-	go func() {
-		done <- p.GenerateVideo(ctx, "ltx", &modelhubv2.GenerateRequest{
-			Input: &modelhubv2.Input{Items: []*modelhubv2.InputItem{{
-				Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
-					Role: modelhubv2.Role_ROLE_USER,
-					Parts: []*modelhubv2.ContentPart{
-						{Content: &modelhubv2.ContentPart_Image{Image: &modelhubv2.Media{
-							MimeType: "image/png",
-							Source:   &modelhubv2.Media_Data{Data: []byte("png")},
-						}}},
-						{Content: &modelhubv2.ContentPart_Text{Text: "video"}},
-					},
-				}},
-			}}},
-			Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Video{Video: &modelhubv2.VideoOutput{Resolution: "720p"}}},
-		}, func(chunk *modelhubv2.GenerateEvent) error {
-			return nil
-		})
-	}()
-	time.Sleep(20 * time.Millisecond)
-	cancel()
-	select {
-	case err := <-done:
-		if err == nil {
-			t.Fatal("expected cancel error")
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("generate video did not stop after cancel")
-	}
-	close(block)
-}
-
 func TestSubmitReadsRequestBodyOnEachRetry(t *testing.T) {
 	var bodies []int
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -313,7 +258,7 @@ func TestSubmitReadsRequestBodyOnEachRetry(t *testing.T) {
 	}))
 	defer server.Close()
 
-	p, err := New("ltx", server.URL, "", 4, 24, 42, 0.001, 1)
+	p, err := New("ltx", server.URL, "", 4, 24, 42, 0.001)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -340,7 +285,7 @@ func TestReadVideoResultRejectsEmptyBody(t *testing.T) {
 	defer server.Close()
 	serverURL = server.URL
 
-	p, _ := New("ltx", server.URL, "", 4, 24, 42, 0.001, 1)
+	p, _ := New("ltx", server.URL, "", 4, 24, 42, 0.001)
 	p.client = server.Client()
 	err := p.ReadVideoResult(context.Background(), "ltx", "job-1", nil)
 	if err == nil || !strings.Contains(err.Error(), "0 bytes") {
@@ -362,7 +307,7 @@ func TestReadVideoResultStreamsMultipleChunks(t *testing.T) {
 	defer server.Close()
 	serverURL = server.URL
 
-	p, _ := New("ltx", server.URL, "", 4, 24, 42, 0.001, 1)
+	p, _ := New("ltx", server.URL, "", 4, 24, 42, 0.001)
 	p.client = server.Client()
 	var chunks int
 	err := p.ReadVideoResult(context.Background(), "ltx", "job-1", func(ev *modelhubv2.GenerateEvent) error {
@@ -388,7 +333,7 @@ func TestSubmitKeepsPerRequestTimingAndZeroSeed(t *testing.T) {
 		w.Write([]byte(`{"job_id":"timing"}`))
 	}))
 	defer server.Close()
-	p, err := New("ltx", server.URL, "", 4, 24, 42, 1, 120)
+	p, err := New("ltx", server.URL, "", 4, 24, 42, 1)
 	if err != nil {
 		t.Fatal(err)
 	}

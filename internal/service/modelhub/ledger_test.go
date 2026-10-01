@@ -18,7 +18,9 @@ import (
 	"github.com/wgdl666/wgModelHub/models"
 	"github.com/wgdl666/wgModelHub/protocol"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
 func newLedgerService(cfg config.Config, providers map[string]provider.Set, tasks taskstore.Store, ledger callledger.Store) *Service {
@@ -237,7 +239,7 @@ func TestLedgerVideoSubmitGetIdempotentOneRecord(t *testing.T) {
 	svc := newLedgerService(config.Config{
 		Providers: map[string]config.ProviderConfig{
 			"ltx": {Models: []string{"ltx"}, LTX: &config.LTXProviderConfig{
-				BaseURL: "https://x", Duration: 1, FPS: 1, PollInterval: 1, MaxPollTime: 1,
+				BaseURL: "https://x", Duration: 1, FPS: 1, PollInterval: 1,
 			}},
 		},
 	}, map[string]provider.Set{"ltx": {Video: video}}, store, mem)
@@ -422,7 +424,7 @@ func TestLedgerVideoDownloadFailureKeepsSucceeded(t *testing.T) {
 	svc := newLedgerService(config.Config{
 		Providers: map[string]config.ProviderConfig{
 			"ltx": {Models: []string{"ltx"}, LTX: &config.LTXProviderConfig{
-				BaseURL: "https://x", Duration: 1, FPS: 1, PollInterval: 1, MaxPollTime: 1,
+				BaseURL: "https://x", Duration: 1, FPS: 1, PollInterval: 1,
 			}},
 		},
 	}, map[string]provider.Set{"ltx": {Video: video}}, store, mem)
@@ -535,7 +537,7 @@ func TestLedgerStreamVideoResultKeepsUsage(t *testing.T) {
 	svc := newLedgerService(config.Config{
 		Providers: map[string]config.ProviderConfig{
 			"ltx": {Models: []string{"ltx"}, LTX: &config.LTXProviderConfig{
-				BaseURL: "https://x", Duration: 1, FPS: 1, PollInterval: 1, MaxPollTime: 1,
+				BaseURL: "https://x", Duration: 1, FPS: 1, PollInterval: 1,
 			}},
 		},
 	}, map[string]provider.Set{"ltx": {Video: video}}, store, mem)
@@ -595,68 +597,28 @@ func ledgerVideoService(video provider.VideoProvider, ledger callledger.Store) *
 	return newLedgerService(config.Config{
 		Providers: map[string]config.ProviderConfig{
 			"ltx": {Models: []string{"ltx"}, LTX: &config.LTXProviderConfig{
-				BaseURL: "https://x", Duration: 1, FPS: 1, PollInterval: 1, MaxPollTime: 1,
+				BaseURL: "https://x", Duration: 1, FPS: 1, PollInterval: 1,
 			}},
 		},
 	}, map[string]provider.Set{"ltx": {Video: video}}, nil, ledger)
 }
 
-// TestLedgerRunVideoJobPostSubmitFailureStillRecords：旧 Generate(video) 走 RunVideoJob，
-// Submit 成功后 poll/download 普通失败仍须落一条失败账本，不得被误标 NotAttempted 丢弃。
-func TestLedgerRunVideoJobPostSubmitFailureStillRecords(t *testing.T) {
-	cases := []struct {
-		name  string
-		video *fakeVideo
-	}{
-		{
-			name: "poll after submit",
-			video: &fakeVideo{
-				getErr: provider.Wrap(provider.ErrorInvalidArgument, "create poll request", errors.New("bad poll url")),
-			},
-		},
-		{
-			name: "download after submit",
-			video: &fakeVideo{
-				job:       provider.VideoJob{State: provider.VideoJobSucceeded},
-				readError: provider.Wrap(provider.ErrorInvalidArgument, "create download request", errors.New("bad download url")),
-			},
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			mem := &callledger.Memory{}
-			svc := ledgerVideoService(tc.video, mem)
-			err := svc.Generate(ledgerVideoGenerateReq("ltx"), &generateRecorder{ctx: context.Background()})
-			if err == nil {
-				t.Fatal("expected post-submit failure")
-			}
-			if provider.IsNotAttempted(err) {
-				t.Fatal("post-submit poll/download must count as attempted")
-			}
-			if tc.video.submitCount != 1 {
-				t.Fatalf("submitCount=%d", tc.video.submitCount)
-			}
-			if len(mem.Records) != 1 || mem.Records[0].Status != callledger.StatusFailed {
-				t.Fatalf("want one failed record, got %v", mem.Records)
-			}
-		})
-	}
-}
-
-// TestLedgerRunVideoJobInputPrepCancelSkips：输入准备阶段取消标 NotAttempted，整次未提交生成，不落账本。
-func TestLedgerRunVideoJobInputPrepCancelSkips(t *testing.T) {
+// TestLedgerGenerateVideoRejectedWithoutRecord：Generate(video) 已下线，须 FailedPrecondition，且零 provider 调用、零账本。
+func TestLedgerGenerateVideoRejectedWithoutRecord(t *testing.T) {
 	mem := &callledger.Memory{}
-	video := &fakeVideo{submitErr: provider.AsNotAttempted(context.Canceled)}
+	video := &fakeVideo{job: provider.VideoJob{State: provider.VideoJobSucceeded}}
 	svc := ledgerVideoService(video, mem)
 	err := svc.Generate(ledgerVideoGenerateReq("ltx"), &generateRecorder{ctx: context.Background()})
 	if err == nil {
-		t.Fatal("expected input prep cancel")
+		t.Fatal("expected Generate(video) rejection")
 	}
-	// ToStatus 会剥掉 Local；以 shouldRecord 语义与账本为空为准。
-	if svc.shouldRecord(provider.AsNotAttempted(context.Canceled)) {
-		t.Fatal("AsNotAttempted cancel must not be recorded")
+	if status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("code=%v err=%v", status.Code(err), err)
+	}
+	if video.submitCount != 0 {
+		t.Fatalf("submitCount=%d, want 0", video.submitCount)
 	}
 	if len(mem.Records) != 0 {
-		t.Fatalf("input prep cancel must not record: %d", len(mem.Records))
+		t.Fatalf("rejected Generate(video) must not record: %v", mem.Records)
 	}
 }

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -20,7 +19,6 @@ const (
 	defaultBaseURL      = "https://dashscope.aliyuncs.com/api/v1"
 	createPath          = "/services/aigc/video-generation/video-synthesis"
 	defaultPollInterval = 3 * time.Second
-	defaultMaxPollTime  = 10 * time.Minute
 	maxReferenceImgs    = 4
 	videoMIMEType       = "video/mp4"
 )
@@ -30,11 +28,10 @@ type Provider struct {
 	apiKey       string
 	baseURL      string
 	pollInterval time.Duration
-	maxPollTime  time.Duration
 	client       *http.Client
 }
 
-func New(name, apiKey, baseURL string, pollInterval, maxPollTime float64) (*Provider, error) {
+func New(name, apiKey, baseURL string, pollInterval float64) (*Provider, error) {
 	apiKey = strings.TrimSpace(apiKey)
 	if apiKey == "" {
 		return nil, provider.New(provider.ErrorConfiguration, name+" api_key is required")
@@ -44,28 +41,13 @@ func New(name, apiKey, baseURL string, pollInterval, maxPollTime float64) (*Prov
 	if pollInterval <= 0 {
 		pollInterval = float64(defaultPollInterval) / float64(time.Second)
 	}
-	if maxPollTime <= 0 {
-		maxPollTime = float64(defaultMaxPollTime) / float64(time.Second)
-	}
 	return &Provider{
 		name:         name,
 		apiKey:       apiKey,
 		baseURL:      baseURL,
 		pollInterval: time.Duration(pollInterval * float64(time.Second)),
-		maxPollTime:  time.Duration(maxPollTime * float64(time.Second)),
 		client:       telemetry.NewHTTPClient(),
 	}, nil
-}
-
-// GenerateVideo 复用 Submit/Get/ReadResult；前台等待受 maxPollTime 限制，异步 Submit/Get 不受影响。
-func (p *Provider) GenerateVideo(ctx context.Context, model string, request *modelhubv2.GenerateRequest, emit provider.EmitEvent) error {
-	ctx, cancel := context.WithTimeout(ctx, p.maxPollTime)
-	defer cancel()
-	err := provider.RunVideoJob(ctx, p, model, request, emit)
-	if errors.Is(err, context.DeadlineExceeded) {
-		return provider.Errorf(provider.ErrorTimeout, "%s video generation timed out", p.name)
-	}
-	return err
 }
 
 // SubmitVideo 按模型分支创建 DashScope 异步任务；wan2.7-videoedit 走编辑请求形态。

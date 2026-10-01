@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/provider"
@@ -58,13 +59,53 @@ func testGenRequest(imageURL string, duration int32, aspect string) *modelhubv2.
 	}
 }
 
+// submitGetRead 仅测试复用：走正式 Submit→Get→ReadResult；无 deadline 时加 5s 上限，避免无界轮询。
+func submitGetRead(ctx context.Context, p provider.VideoProvider, model string, request *modelhubv2.GenerateRequest, emit provider.EmitEvent) error {
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+	}
+	id, err := p.SubmitVideo(ctx, model, request)
+	if err != nil {
+		return err
+	}
+	for {
+		job, err := p.GetVideo(ctx, model, id)
+		if err != nil {
+			return err
+		}
+		switch job.State {
+		case provider.VideoJobSucceeded:
+			return p.ReadVideoResult(ctx, model, id, emit)
+		case provider.VideoJobFailed:
+			if job.Err != nil {
+				return job.Err
+			}
+			return provider.New(provider.ErrorUnavailable, "video job failed")
+		default:
+			wait := time.Duration(job.PollAfterMs) * time.Millisecond
+			if wait <= 0 {
+				wait = time.Second
+			}
+			timer := time.NewTimer(wait)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return ctx.Err()
+			case <-timer.C:
+			}
+		}
+	}
+}
+
 func TestNewUsesDefaultPollWhenZero(t *testing.T) {
-	p, err := New("ark_video", "sk-test", "", 0, 0)
+	p, err := New("ark_video", "sk-test", "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.pollInterval != defaultPollInterval || p.maxPollTime != defaultMaxPollTime {
-		t.Fatalf("poll=%v max=%v", p.pollInterval, p.maxPollTime)
+	if p.pollInterval != defaultPollInterval {
+		t.Fatalf("poll=%v", p.pollInterval)
 	}
 	if p.baseURL != defaultBaseURL {
 		t.Fatalf("baseURL=%s", p.baseURL)
@@ -91,7 +132,7 @@ func TestGenerateSeedance25Payload(t *testing.T) {
 	defer server.Close()
 	baseURL = server.URL
 
-	p, err := New("ark_video", "sk-test", server.URL, 0.001, 2)
+	p, err := New("ark_video", "sk-test", server.URL, 0.001)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +140,7 @@ func TestGenerateSeedance25Payload(t *testing.T) {
 
 	var final *modelhubv2.GenerateEvent
 	var gotBytes []byte
-	if err := p.GenerateVideo(context.Background(), models.DoubaoSeedance25, testGenRequest("https://cdn.example/frame.png", 40, "3:4"), func(ev *modelhubv2.GenerateEvent) error {
+	if err := submitGetRead(context.Background(), p, models.DoubaoSeedance25, testGenRequest("https://cdn.example/frame.png", 40, "3:4"), func(ev *modelhubv2.GenerateEvent) error {
 		if items := ev.GetItems(); len(items) > 0 {
 			if v := items[0].GetVideo(); v != nil {
 				gotBytes = append(gotBytes, v.GetData()...)
@@ -165,7 +206,7 @@ func TestSubmitInlineBytesAsDataURI(t *testing.T) {
 		_, _ = w.Write([]byte(`{"id":"cgt-inline"}`))
 	}))
 	defer server.Close()
-	p, err := New("ark_video", "sk-test", server.URL, 0.01, 1)
+	p, err := New("ark_video", "sk-test", server.URL, 0.01)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +242,7 @@ func TestSubmitInlineBytesAsDataURI(t *testing.T) {
 }
 
 func TestSubmitInlineBytesRequiresMimeType(t *testing.T) {
-	p, err := New("ark_video", "sk", "https://example.com", 1, 1)
+	p, err := New("ark_video", "sk", "https://example.com", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +253,7 @@ func TestSubmitInlineBytesRequiresMimeType(t *testing.T) {
 }
 
 func TestSubmitRejectsVideoInput(t *testing.T) {
-	p, err := New("ark_video", "sk", "https://example.com", 1, 1)
+	p, err := New("ark_video", "sk", "https://example.com", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +280,7 @@ func TestSubmitTextToVideoPayload(t *testing.T) {
 		_, _ = w.Write([]byte(`{"id":"cgt-t2v"}`))
 	}))
 	defer server.Close()
-	p, err := New("ark_video", "sk-test", server.URL, 0.01, 1)
+	p, err := New("ark_video", "sk-test", server.URL, 0.01)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -271,7 +312,7 @@ func TestSubmitTextToVideoPayload(t *testing.T) {
 }
 
 func TestSubmitRequiresPromptText(t *testing.T) {
-	p, err := New("ark_video", "sk", "https://example.com", 1, 1)
+	p, err := New("ark_video", "sk", "https://example.com", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -289,7 +330,7 @@ func TestGetVideoMapsFailedStatus(t *testing.T) {
 		_, _ = w.Write([]byte(`{"id":"cgt-1","status":"failed","error":{"code":"InputImageSensitiveContentDetected","message":"blocked"}}`))
 	}))
 	defer server.Close()
-	p, err := New("ark_video", "sk", server.URL, 0.01, 1)
+	p, err := New("ark_video", "sk", server.URL, 0.01)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -309,7 +350,7 @@ func TestCreateHTTPErrorIncludesBody(t *testing.T) {
 		_, _ = w.Write([]byte(`{"error":{"code":"InvalidParameter","message":"ratio must be adaptive"}}`))
 	}))
 	defer server.Close()
-	p, err := New("ark_video", "sk", server.URL, 0.01, 1)
+	p, err := New("ark_video", "sk", server.URL, 0.01)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -321,27 +362,7 @@ func TestCreateHTTPErrorIncludesBody(t *testing.T) {
 }
 
 func TestNewRequiresAPIKey(t *testing.T) {
-	if _, err := New("ark_video", "  ", "", 1, 1); err == nil {
+	if _, err := New("ark_video", "  ", "", 1); err == nil {
 		t.Fatal("expected api_key error")
-	}
-}
-
-func TestPollTimeout(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			_, _ = w.Write([]byte(`{"id":"cgt-slow"}`))
-			return
-		}
-		_, _ = w.Write([]byte(`{"id":"cgt-slow","status":"running"}`))
-	}))
-	defer server.Close()
-	p, err := New("ark_video", "sk", server.URL, 0.01, 0.05)
-	if err != nil {
-		t.Fatal(err)
-	}
-	p.client = server.Client()
-	err = p.GenerateVideo(context.Background(), models.DoubaoSeedance25, testGenRequest("https://cdn.example/frame.png", 5, "adaptive"), nil)
-	if err == nil || provider.Kind(err) != provider.ErrorTimeout {
-		t.Fatalf("err=%v", err)
 	}
 }

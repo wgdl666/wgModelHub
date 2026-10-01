@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -30,15 +29,14 @@ type Provider struct {
 	fps          int
 	seed         int
 	pollInterval time.Duration
-	maxPollTime  time.Duration
 	client       *http.Client
 }
 
-func New(name, baseURL, token string, duration float64, fps, seed int, pollInterval, maxPollTime float64) (*Provider, error) {
+func New(name, baseURL, token string, duration float64, fps, seed int, pollInterval float64) (*Provider, error) {
 	if strings.TrimSpace(baseURL) == "" {
 		return nil, provider.New(provider.ErrorConfiguration, name+" base_url is required")
 	}
-	if duration <= 0 || fps <= 0 || pollInterval <= 0 || maxPollTime <= 0 {
+	if duration <= 0 || fps <= 0 || pollInterval <= 0 {
 		return nil, provider.New(provider.ErrorConfiguration, name+" LTX timing configuration is incomplete")
 	}
 	if seed == 0 {
@@ -52,20 +50,8 @@ func New(name, baseURL, token string, duration float64, fps, seed int, pollInter
 		fps:          fps,
 		seed:         seed,
 		pollInterval: time.Duration(pollInterval * float64(time.Second)),
-		maxPollTime:  time.Duration(maxPollTime * float64(time.Second)),
 		client:       telemetry.NewHTTPClient(),
 	}, nil
-}
-
-// GenerateVideo 复用 Submit/Get/ReadResult；前台等待受 maxPollTime 限制，异步 Submit/Get 不受影响。
-func (p *Provider) GenerateVideo(ctx context.Context, model string, request *modelhubv2.GenerateRequest, emit provider.EmitEvent) error {
-	ctx, cancel := context.WithTimeout(ctx, p.maxPollTime)
-	defer cancel()
-	err := provider.RunVideoJob(ctx, p, model, request, emit)
-	if errors.Is(err, context.DeadlineExceeded) {
-		return provider.Errorf(provider.ErrorTimeout, "%s video generation timed out", p.name)
-	}
-	return err
 }
 
 // SubmitVideo 加载首帧并提交 LTX /vton，返回 job_id 供后续 Get/Read 使用。

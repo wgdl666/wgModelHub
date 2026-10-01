@@ -32,7 +32,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// ModelHubService：Generate 承接文本/图片与迁移期同步视频；视频长任务走 Submit/Get。
+// ModelHubService：Generate 承接文本/图片；视频长任务只走 Submit/Get（已移除迁移期 Generate(video)）。
 // CreateCachedContent 仅服务 Gemini 等显式前缀缓存。
 // SynthesizeSpeech 是独立 unary TTS：一次请求返回完整音频或 gRPC error，不进入 OutputSpec。
 // capability 由 OutputSpec oneof 或 Speech RPC 决定，真实供应商模型 ID 经 request.model 路由到唯一 provider 实例。
@@ -162,7 +162,7 @@ func (c *modelHubServiceClient) ListModels(ctx context.Context, in *ListModelsRe
 // All implementations must embed UnimplementedModelHubServiceServer
 // for forward compatibility.
 //
-// ModelHubService：Generate 承接文本/图片与迁移期同步视频；视频长任务走 Submit/Get。
+// ModelHubService：Generate 承接文本/图片；视频长任务只走 Submit/Get（已移除迁移期 Generate(video)）。
 // CreateCachedContent 仅服务 Gemini 等显式前缀缓存。
 // SynthesizeSpeech 是独立 unary TTS：一次请求返回完整音频或 gRPC error，不进入 OutputSpec。
 // capability 由 OutputSpec oneof 或 Speech RPC 决定，真实供应商模型 ID 经 request.model 路由到唯一 provider 实例。

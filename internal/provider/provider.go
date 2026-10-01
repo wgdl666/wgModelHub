@@ -24,12 +24,11 @@ type ImageProvider interface {
 	GenerateImage(context.Context, string, *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error)
 }
 
-// VideoProvider 把视频拆成 Submit/Get/ReadResult；GenerateVideo 必须复用这三者，禁止第二套供应商协议。
+// VideoProvider 只暴露 Submit/Get/ReadResult；异步任务账本与对外 RPC 经 Service 编排，禁止同步 GenerateVideo 包装。
 type VideoProvider interface {
 	SubmitVideo(context.Context, string, *modelhubv2.GenerateRequest) (providerTaskID string, err error)
 	GetVideo(context.Context, string, string) (VideoJob, error)
 	ReadVideoResult(context.Context, string, string, EmitEvent) error
-	GenerateVideo(context.Context, string, *modelhubv2.GenerateRequest, EmitEvent) error
 }
 
 // Set 表示一个已配置供应商真正实现的能力，不用空实现伪装未支持的 RPC。

@@ -32,7 +32,7 @@
 - 文本必须保留 `ThoughtSignature`、`response_id`、`previous_response_id`、工具调用历史、usage、finish reason、JSON Schema、thinking 与流式取消。
 - 文本 stream：非 final 为增量，唯一 final 只带终态元数据；non-stream：仅一个 final，含完整文本/工具调用与元数据。
 - `optional` 标量（含 `temperature=0`）已设置时必须原样下发供应商。
-- 文字与图片继续走 `Generate`。视频长任务走 `SubmitGeneration` / `GetGeneration`；迁移期旧 `Generate(video)` 仍可用，并复用同一套 provider Submit/Get/ReadResult，禁止第二套供应商协议。
+- 文字与图片继续走 `Generate`。视频长任务走 `SubmitGeneration` / `GetGeneration`；`Generate(video)` 已移除，调用方必须用 Submit/Get。
 - 同步 TTS 走独立 unary `SynthesizeSpeech`，不进入 `OutputSpec`；成功只表示完整音频已收集，不表示 Mirror 播放。
 - `SubmitGeneration` 第一阶段只接受 `output.video`；幂等键为 `(x-wg-caller-service, request_id)`，caller 缺失不拒绝，只用于归因与命名空间，不做鉴权。
 - `GetGeneration` 对外只表达 ModelHub 任务状态（UNSPECIFIED/PENDING/RUNNING/SUCCEEDED/FAILED）；PENDING/RUNNING/FAILED 只回一个 status 事件，SUCCEEDED 先 status 再流式 `GenerateEvent`。不暴露 provider/supplier 字段，不做 Cancel/List/Watch/Delete/Webhook/进度百分比/后台轮询 worker。

@@ -107,7 +107,6 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 			cfg.FPS,
 			cfg.Seed,
 			cfg.PollInterval,
-			cfg.MaxPollTime,
 		)
 		if err != nil {
 			return provider.Set{}, err
@@ -115,14 +114,14 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 		return provider.Set{Video: client}, nil
 	case providerCfg.DashScopeVideo != nil:
 		cfg := providerCfg.DashScopeVideo
-		client, err := dashscopevideo.New(name, cfg.APIKey, cfg.BaseURL, cfg.PollInterval, cfg.MaxPollTime)
+		client, err := dashscopevideo.New(name, cfg.APIKey, cfg.BaseURL, cfg.PollInterval)
 		if err != nil {
 			return provider.Set{}, err
 		}
 		return provider.Set{Video: client}, nil
 	case providerCfg.OminilinkVideo != nil:
 		cfg := providerCfg.OminilinkVideo
-		client, err := ominilinkvideo.New(name, cfg.APIKey, cfg.BaseURL, cfg.PollInterval, cfg.MaxPollTime)
+		client, err := ominilinkvideo.New(name, cfg.APIKey, cfg.BaseURL, cfg.PollInterval)
 		if err != nil {
 			return provider.Set{}, err
 		}
@@ -136,7 +135,7 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 		return provider.Set{Video: client}, nil
 	case providerCfg.ArkVideo != nil:
 		cfg := providerCfg.ArkVideo
-		client, err := arkvideo.New(name, cfg.APIKey, cfg.BaseURL, cfg.PollInterval, cfg.MaxPollTime)
+		client, err := arkvideo.New(name, cfg.APIKey, cfg.BaseURL, cfg.PollInterval)
 		if err != nil {
 			return provider.Set{}, err
 		}

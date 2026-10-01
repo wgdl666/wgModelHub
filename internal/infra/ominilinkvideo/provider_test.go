@@ -35,7 +35,7 @@ func testGenRequest(imageURL string) *modelhubv2.GenerateRequest {
 }
 
 func newTestProvider(server *httptest.Server) *Provider {
-	p, err := New("ominilink", "sk-test", server.URL, 0, 0)
+	p, err := New("ominilink", "sk-test", server.URL, 0)
 	if err != nil {
 		panic(err)
 	}
@@ -43,13 +43,53 @@ func newTestProvider(server *httptest.Server) *Provider {
 	return p
 }
 
+// submitGetRead 仅测试复用：走正式 Submit→Get→ReadResult；无 deadline 时加 5s 上限，避免无界轮询。
+func submitGetRead(ctx context.Context, p provider.VideoProvider, model string, request *modelhubv2.GenerateRequest, emit provider.EmitEvent) error {
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+	}
+	id, err := p.SubmitVideo(ctx, model, request)
+	if err != nil {
+		return err
+	}
+	for {
+		job, err := p.GetVideo(ctx, model, id)
+		if err != nil {
+			return err
+		}
+		switch job.State {
+		case provider.VideoJobSucceeded:
+			return p.ReadVideoResult(ctx, model, id, emit)
+		case provider.VideoJobFailed:
+			if job.Err != nil {
+				return job.Err
+			}
+			return provider.New(provider.ErrorUnavailable, "video job failed")
+		default:
+			wait := time.Duration(job.PollAfterMs) * time.Millisecond
+			if wait <= 0 {
+				wait = time.Second
+			}
+			timer := time.NewTimer(wait)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return ctx.Err()
+			case <-timer.C:
+			}
+		}
+	}
+}
+
 func TestNewUsesDefaultPollWhenZero(t *testing.T) {
-	p, err := New("ominilink", "sk-test", "https://example.com", 0, 0)
+	p, err := New("ominilink", "sk-test", "https://example.com", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.pollInterval != defaultPollInterval || p.maxPollTime != defaultMaxPollTime {
-		t.Fatalf("poll=%v max=%v", p.pollInterval, p.maxPollTime)
+	if p.pollInterval != defaultPollInterval {
+		t.Fatalf("poll=%v", p.pollInterval)
 	}
 }
 
@@ -77,7 +117,7 @@ func TestGenerateSeedancePayload(t *testing.T) {
 	p := newTestProvider(server)
 	var final *modelhubv2.GenerateEvent
 	var gotBytes []byte
-	if err := p.GenerateVideo(context.Background(), model, testGenRequest("https://cdn.example/frame.png"), func(ev *modelhubv2.GenerateEvent) error {
+	if err := submitGetRead(context.Background(), p, model, testGenRequest("https://cdn.example/frame.png"), func(ev *modelhubv2.GenerateEvent) error {
 		if item := ev.GetItems(); len(item) > 0 {
 			if v := item[0].GetVideo(); v != nil {
 				gotBytes = append(gotBytes, v.GetData()...)
@@ -120,7 +160,7 @@ func TestGenerateKlingUsesImage2VideoPath(t *testing.T) {
 	baseURL = server.URL
 
 	p := newTestProvider(server)
-	if err := p.GenerateVideo(context.Background(), model, testGenRequest("https://cdn.example/frame.png"), nil); err != nil {
+	if err := submitGetRead(context.Background(), p, model, testGenRequest("https://cdn.example/frame.png"), nil); err != nil {
 		t.Fatal(err)
 	}
 	if createPayload["Model"] != "v3.0" {
@@ -152,7 +192,7 @@ func TestGenerateViduUsesImg2VideoPath(t *testing.T) {
 	baseURL = server.URL
 
 	p := newTestProvider(server)
-	if err := p.GenerateVideo(context.Background(), model, testGenRequest("https://cdn.example/frame.png"), nil); err != nil {
+	if err := submitGetRead(context.Background(), p, model, testGenRequest("https://cdn.example/frame.png"), nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -186,7 +226,7 @@ func TestGenerateVeoUsesInstancesPayload(t *testing.T) {
 
 	p := newTestProvider(apiServer)
 	req := testGenRequest(imageServer.URL + "/frame.png")
-	if err := p.GenerateVideo(context.Background(), model, req, nil); err != nil {
+	if err := submitGetRead(context.Background(), p, model, req, nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := createPayload["instances"]; !ok {
@@ -335,7 +375,7 @@ func TestSubmitKlingCreateErrorIsSurfaced(t *testing.T) {
 }
 
 func TestGenerateRejectsVideoPart(t *testing.T) {
-	p, err := New("ominilink", "sk", "https://example.com", 1, 1)
+	p, err := New("ominilink", "sk", "https://example.com", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -351,7 +391,7 @@ func TestGenerateRejectsVideoPart(t *testing.T) {
 			}},
 		}}},
 	}
-	err = p.GenerateVideo(context.Background(), models.KlingV3, req, nil)
+	err = submitGetRead(context.Background(), p, models.KlingV3, req, nil)
 	if err == nil || !strings.Contains(err.Error(), "does not accept video") {
 		t.Fatalf("err=%v", err)
 	}
@@ -369,35 +409,10 @@ func TestGeneratePollFailed(t *testing.T) {
 	defer server.Close()
 
 	p := newTestProvider(server)
-	err := p.GenerateVideo(context.Background(), model, testGenRequest("https://cdn.example/frame.png"), nil)
+	err := submitGetRead(context.Background(), p, model, testGenRequest("https://cdn.example/frame.png"), nil)
 	if err == nil {
 		t.Fatal("expected failure")
 	}
-}
-
-func TestGenerateHonorsContextCancel(t *testing.T) {
-	block := make(chan struct{})
-	const model = models.KlingV3
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			_, _ = w.Write([]byte(`{"Response":{"JobId":"tid"}}`))
-			return
-		}
-		select {
-		case <-block:
-		case <-r.Context().Done():
-		}
-	}))
-	defer server.Close()
-
-	p := newTestProvider(server)
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-	defer cancel()
-	err := p.GenerateVideo(ctx, model, testGenRequest("https://cdn.example/frame.png"), nil)
-	if err == nil {
-		t.Fatal("expected cancel")
-	}
-	close(block)
 }
 
 func TestGetVideoStatusMapping(t *testing.T) {
@@ -425,31 +440,5 @@ func TestGetVideoStatusMapping(t *testing.T) {
 				t.Fatalf("state=%v want=%v", job.State, tc.want)
 			}
 		})
-	}
-}
-
-func TestGenerateVideoHonorsMaxPollTime(t *testing.T) {
-	// 迁移期 Generate 受 maxPollTime；异步 GetVideo 单次查询不受此上限。
-	const model = models.KlingV3
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			_, _ = w.Write([]byte(`{"Response":{"JobId":"tid"}}`))
-			return
-		}
-		_, _ = w.Write([]byte(`{"status":"processing"}`))
-	}))
-	defer server.Close()
-	p, err := New("ominilink", "sk", server.URL, 0.05, 0.15)
-	if err != nil {
-		t.Fatal(err)
-	}
-	p.client = server.Client()
-	start := time.Now()
-	err = p.GenerateVideo(context.Background(), model, testGenRequest("https://cdn.example/frame.png"), nil)
-	if err == nil || provider.Kind(err) != provider.ErrorTimeout {
-		t.Fatalf("err=%v kind=%v", err, provider.Kind(err))
-	}
-	if time.Since(start) > 2*time.Second {
-		t.Fatalf("maxPollTime ineffective")
 	}
 }

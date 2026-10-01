@@ -89,7 +89,6 @@ providers:
       api_key: "${ARK_API_KEY}"
       base_url: https://ark.cn-beijing.volces.com/api/v3
       poll_interval: 3
-      max_poll_time: 600
   # Quick Speech：DashScope OpenAI-compatible，模型 ID 与线上一致。
   quick_speech:
     models: [qwen-flash, qwen3.7-plus, qwen3.8-max, kimi/kimi-k3]
@@ -306,7 +305,6 @@ providers:
       fps: 24
       seed: 42
       poll_interval: 2
-      max_poll_time: 120
   # DashScope Wan/HappyHorse/Kling 图生视频与 wan2.7-videoedit。
   dashscope_video:
     models:
@@ -325,7 +323,6 @@ providers:
       api_key: "${DASHSCOPE_API_KEY}"
       base_url: https://dashscope.aliyuncs.com/api/v1
       poll_interval: 3
-      max_poll_time: 600
   # OminiLink vg-api 视频生成（含 UI 未展示的 Dreamina）。
   ominilink_video:
     models:
@@ -351,7 +348,6 @@ providers:
       api_key: "${OMINILINK_VIDEO_API_KEY}"
       base_url: https://vg-api.aig-ai.com/v1
       poll_interval: 3
-      max_poll_time: 600
   # Gemini Interactions 图生视频与编辑；auth_header 可指向 OminiLink 网关。
   gemini_video:
     models: [gemini-omni-flash-preview]

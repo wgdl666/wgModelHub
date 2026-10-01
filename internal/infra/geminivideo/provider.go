@@ -39,9 +39,7 @@ type Provider struct {
 	baseURL      string
 	authHeader   string
 	pollInterval time.Duration
-	// maxPollTime 只约束迁移期同步 GenerateVideo 的前台轮询总时长，恢复原先 HTTP client 10 分钟上限语义；异步 Submit/Get 不用它。
-	maxPollTime time.Duration
-	client      *http.Client
+	client       *http.Client
 }
 
 func New(name, apiKey, baseURL, authHeader, proxyURL string, pollInterval float64) (*Provider, error) {
@@ -66,7 +64,6 @@ func New(name, apiKey, baseURL, authHeader, proxyURL string, pollInterval float6
 		baseURL:      base,
 		authHeader:   authHeader,
 		pollInterval: time.Duration(pollInterval * float64(time.Second)),
-		maxPollTime:  defaultHTTPTimeout,
 		client:       client,
 	}, nil
 }
@@ -87,17 +84,6 @@ func newHTTPClient(name, proxyURL string) (*http.Client, error) {
 	client = telemetry.NewHTTPClientWithTransport(transport)
 	client.Timeout = defaultHTTPTimeout
 	return client, nil
-}
-
-// GenerateVideo 复用 Submit/Get/ReadResult；前台等待受 maxPollTime 限制，异步 Submit/Get 不受影响。
-func (p *Provider) GenerateVideo(ctx context.Context, model string, request *modelhubv2.GenerateRequest, emit provider.EmitEvent) error {
-	ctx, cancel := context.WithTimeout(ctx, p.maxPollTime)
-	defer cancel()
-	err := provider.RunVideoJob(ctx, p, model, request, emit)
-	if errors.Is(err, context.DeadlineExceeded) {
-		return provider.Errorf(provider.ErrorTimeout, "%s video generation timed out", p.name)
-	}
-	return err
 }
 
 // SubmitVideo 创建 background interaction 并立即返回 id，不在 Submit 阶段等待成片。

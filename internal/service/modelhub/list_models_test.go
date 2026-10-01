@@ -33,7 +33,7 @@ func listModelsTestService() *Service {
 			},
 			"video": {
 				Models: []string{models.LTX},
-				LTX:    &config.LTXProviderConfig{BaseURL: "https://x", Duration: 1, FPS: 1, PollInterval: 1, MaxPollTime: 1},
+				LTX:    &config.LTXProviderConfig{BaseURL: "https://x", Duration: 1, FPS: 1, PollInterval: 1},
 			},
 			"tts": {
 				Models:     []string{models.Speech28Turbo},

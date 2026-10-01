@@ -62,6 +62,46 @@ func completedInteractionJSON(id string, videoField string) string {
 	}`
 }
 
+// submitGetRead 仅测试复用：走正式 Submit→Get→ReadResult；无 deadline 时加 5s 上限，避免无界轮询。
+func submitGetRead(ctx context.Context, p provider.VideoProvider, model string, request *modelhubv2.GenerateRequest, emit provider.EmitEvent) error {
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+	}
+	id, err := p.SubmitVideo(ctx, model, request)
+	if err != nil {
+		return err
+	}
+	for {
+		job, err := p.GetVideo(ctx, model, id)
+		if err != nil {
+			return err
+		}
+		switch job.State {
+		case provider.VideoJobSucceeded:
+			return p.ReadVideoResult(ctx, model, id, emit)
+		case provider.VideoJobFailed:
+			if job.Err != nil {
+				return job.Err
+			}
+			return provider.New(provider.ErrorUnavailable, "video job failed")
+		default:
+			wait := time.Duration(job.PollAfterMs) * time.Millisecond
+			if wait <= 0 {
+				wait = time.Second
+			}
+			timer := time.NewTimer(wait)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return ctx.Err()
+			case <-timer.C:
+			}
+		}
+	}
+}
+
 func TestNewUsesDefaultPollWhenZero(t *testing.T) {
 	p, err := New("gemini", "sk-test", "", "", "", 0)
 	if err != nil {
@@ -69,9 +109,6 @@ func TestNewUsesDefaultPollWhenZero(t *testing.T) {
 	}
 	if p.pollInterval != defaultPollInterval {
 		t.Fatalf("poll=%v", p.pollInterval)
-	}
-	if p.maxPollTime != defaultHTTPTimeout {
-		t.Fatalf("maxPollTime=%v want=%v", p.maxPollTime, defaultHTTPTimeout)
 	}
 }
 
@@ -132,7 +169,7 @@ func TestGenerateI2VInteractionPayload(t *testing.T) {
 
 	p := newTestProvider(server.URL+"/v1beta", server.Client())
 	var final *modelhubv2.GenerateEvent
-	err := p.GenerateVideo(context.Background(), models.GeminiOmniFlashPreview, testI2VRequest(), func(ev *modelhubv2.GenerateEvent) error {
+	err := submitGetRead(context.Background(), p, models.GeminiOmniFlashPreview, testI2VRequest(), func(ev *modelhubv2.GenerateEvent) error {
 		if ev.GetFinal() {
 			final = ev
 		}
@@ -189,7 +226,7 @@ func TestGenerateI2VURIOutputDownloadsWithAuth(t *testing.T) {
 	p := newTestProvider(server.URL+"/v1beta", server.Client())
 	var final *modelhubv2.GenerateEvent
 	var gotBytes []byte
-	err := p.GenerateVideo(context.Background(), models.GeminiOmniFlashPreview, testI2VRequest(), func(ev *modelhubv2.GenerateEvent) error {
+	err := submitGetRead(context.Background(), p, models.GeminiOmniFlashPreview, testI2VRequest(), func(ev *modelhubv2.GenerateEvent) error {
 		if item := ev.GetItems(); len(item) > 0 {
 			if v := item[0].GetVideo(); v != nil {
 				gotBytes = append(gotBytes, v.GetData()...)
@@ -262,7 +299,7 @@ func TestGenerateEditUploadsFilesAndOrdersParts(t *testing.T) {
 		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Video{Video: &modelhubv2.VideoOutput{}}},
 	}
 	p := newTestProvider(server.URL+"/v1beta", server.Client())
-	if err := p.GenerateVideo(context.Background(), models.GeminiOmniFlashPreview, req, func(*modelhubv2.GenerateEvent) error { return nil }); err != nil {
+	if err := submitGetRead(context.Background(), p, models.GeminiOmniFlashPreview, req, func(*modelhubv2.GenerateEvent) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
 	if !uploadFinalize {
@@ -424,58 +461,4 @@ func TestLoadMediaBytesEnforcesCallerMaxBytes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected video under MaxVideoBytes to pass: %v", err)
 	}
-}
-
-func TestGenerateVideoHonorsMaxPollTime(t *testing.T) {
-	// 迁移期 Generate 受 maxPollTime；异步 GetVideo 单次查询不受此上限。
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/v1beta/interactions" && r.Method == http.MethodPost:
-			_, _ = w.Write([]byte(`{"id":"int-1","status":"running"}`))
-		case r.URL.Path == "/v1beta/interactions/int-1":
-			_, _ = w.Write([]byte(`{"id":"int-1","status":"running"}`))
-		default:
-			t.Fatalf("path %s", r.URL.Path)
-		}
-	}))
-	defer server.Close()
-
-	p := newTestProvider(server.URL+"/v1beta", server.Client())
-	p.pollInterval = 50 * time.Millisecond
-	p.maxPollTime = 150 * time.Millisecond
-	start := time.Now()
-	err := p.GenerateVideo(context.Background(), models.GeminiOmniFlashPreview, testI2VRequest(), nil)
-	if err == nil || provider.Kind(err) != provider.ErrorTimeout {
-		t.Fatalf("err=%v kind=%v", err, provider.Kind(err))
-	}
-	if time.Since(start) > 2*time.Second {
-		t.Fatalf("maxPollTime ineffective")
-	}
-}
-
-func TestGenerateHonorsContextCancel(t *testing.T) {
-	block := make(chan struct{})
-	var pollCalls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/v1beta/interactions" && r.Method == http.MethodPost:
-			_, _ = w.Write([]byte(`{"id":"int-1","status":"running"}`))
-		case r.URL.Path == "/v1beta/interactions/int-1":
-			pollCalls.Add(1)
-			select {
-			case <-block:
-			case <-r.Context().Done():
-			}
-		}
-	}))
-	defer server.Close()
-
-	p := newTestProvider(server.URL+"/v1beta", server.Client())
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-	defer cancel()
-	err := p.GenerateVideo(ctx, models.GeminiOmniFlashPreview, testI2VRequest(), nil)
-	if err == nil {
-		t.Fatal("expected cancel")
-	}
-	close(block)
 }

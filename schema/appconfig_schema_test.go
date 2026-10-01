@@ -103,7 +103,7 @@ func TestAppConfigSchemaContract(t *testing.T) {
 	} {
 		properties := mustMap(t, mustMap(t, definitions[definitionName])["properties"])
 		for field, raw := range properties {
-			if field == "duration" || field == "fps" || field == "seed" || field == "poll_interval" || field == "max_poll_time" {
+			if field == "duration" || field == "fps" || field == "seed" || field == "poll_interval" {
 				continue
 			}
 			property := mustMap(t, raw)

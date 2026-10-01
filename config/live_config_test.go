@@ -192,7 +192,6 @@ func TestLiveConfigRejectsProviderResourceChanges(t *testing.T) {
 					FPS:          p.LTX.FPS,
 					Seed:         p.LTX.Seed,
 					PollInterval: 9,
-					MaxPollTime:  p.LTX.MaxPollTime,
 				}
 				cfg.Providers["ltx"] = p
 				return cfg

@@ -164,15 +164,14 @@
     },
     "ltx": {
       "type": "object",
-      "required": ["base_url", "duration", "fps", "poll_interval", "max_poll_time"],
+      "required": ["base_url", "duration", "fps", "poll_interval"],
       "properties": {
         "base_url": { "type": "string", "minLength": 1 },
         "token": { "type": "string" },
         "duration": { "type": "number", "minimum": 0, "exclusiveMinimum": true },
         "fps": { "type": "integer", "minimum": 0, "exclusiveMinimum": true },
         "seed": { "type": "integer" },
-        "poll_interval": { "type": "number", "minimum": 0, "exclusiveMinimum": true },
-        "max_poll_time": { "type": "number", "minimum": 0, "exclusiveMinimum": true }
+        "poll_interval": { "type": "number", "minimum": 0, "exclusiveMinimum": true }
       }
     },
     "dashscopeVideo": {
@@ -181,8 +180,7 @@
       "properties": {
         "api_key": { "type": "string", "minLength": 1 },
         "base_url": { "type": "string" },
-        "poll_interval": { "type": "number", "minimum": 0 },
-        "max_poll_time": { "type": "number", "minimum": 0 }
+        "poll_interval": { "type": "number", "minimum": 0 }
       }
     },
     "ominilinkVideo": {
@@ -191,8 +189,7 @@
       "properties": {
         "api_key": { "type": "string", "minLength": 1 },
         "base_url": { "type": "string" },
-        "poll_interval": { "type": "number", "minimum": 0 },
-        "max_poll_time": { "type": "number", "minimum": 0 }
+        "poll_interval": { "type": "number", "minimum": 0 }
       }
     },
     "geminiVideo": {
@@ -212,8 +209,7 @@
       "properties": {
         "api_key": { "type": "string", "minLength": 1 },
         "base_url": { "type": "string" },
-        "poll_interval": { "type": "number", "minimum": 0 },
-        "max_poll_time": { "type": "number", "minimum": 0 }
+        "poll_interval": { "type": "number", "minimum": 0 }
       }
     },
     "photoroom": {

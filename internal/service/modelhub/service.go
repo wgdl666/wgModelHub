@@ -112,6 +112,12 @@ func (s *Service) Generate(request *modelhubv2.GenerateRequest, stream modelhubv
 		telemetry.RecordError(ctx, statusErr)
 		return statusErr
 	}
+	// 视频长任务只走 SubmitGeneration/GetGeneration；cn-dev Wardrobe 已迁完，不再提供 Generate(video) 迁移路径。
+	if capability == config.CapabilityVideo {
+		statusErr := provider.ToStatus(provider.NotAttempted(provider.ErrorConfiguration, "video generation requires SubmitGeneration/GetGeneration; Generate(video) has been removed"))
+		telemetry.RecordError(ctx, statusErr)
+		return statusErr
+	}
 	if err := validateGenerateRequest(request, capability); err != nil {
 		statusErr := provider.ToStatus(err)
 		telemetry.RecordError(ctx, statusErr)
@@ -129,8 +135,6 @@ func (s *Service) Generate(request *modelhubv2.GenerateRequest, stream modelhubv
 		return s.generateText(ctx, binding, request, stream, startedAt)
 	case config.CapabilityImage:
 		return s.generateImage(ctx, binding, request, stream)
-	case config.CapabilityVideo:
-		return s.generateVideo(ctx, binding, request, stream)
 	default:
 		statusErr := provider.ToStatus(provider.NotAttemptedf(provider.ErrorInvalidArgument, "unsupported capability %s", capability))
 		telemetry.RecordError(ctx, statusErr)
@@ -487,78 +491,6 @@ func (s *Service) generateImage(ctx context.Context, binding binding, request *m
 	sendErr := stream.Send(event)
 	s.finishRecord(&rec, nil, sendErr)
 	return sendErr
-}
-
-func (s *Service) generateVideo(ctx context.Context, binding binding, request *modelhubv2.GenerateRequest, stream modelhubv2.ModelHubService_GenerateServer) error {
-	if binding.set.Video == nil {
-		err := provider.Errorf(provider.ErrorConfiguration, "model %s does not support video", request.GetModel())
-		statusErr := provider.ToStatus(err)
-		telemetry.RecordError(ctx, statusErr)
-		return statusErr
-	}
-	rec := s.baseRecord(ctx, request.GetBusinessMetadata(), callledger.OperationGenerateVideo, callledger.CapabilityVideo, binding.model, binding.provider, time.Time{})
-	var inBlobs []callledger.Blob
-	rec.InputPayload, inBlobs = callledger.BuildGenerateInput(request)
-	resolution, durationSec, aspect := callledger.RequestVideoSpec(request)
-	rec.VideoResolution, rec.VideoDurationSec, rec.VideoAspectRatio = resolution, durationSec, aspect
-	var providerErr error
-	var outBlobs []callledger.Blob
-	tracked := s.track(ctx, &rec, inBlobs)
-	defer s.endTrack(tracked, &rec, &providerErr, &outBlobs)
-	var sendErr error
-	var totalBytes int64
-	var chunkCount int
-	var mimeType string
-	var sawVideo bool
-	emit := func(event *modelhubv2.GenerateEvent) error {
-		if event != nil {
-			applyEventUsage(&rec, event)
-			for _, item := range event.GetItems() {
-				if video := item.GetVideo(); video != nil {
-					sawVideo = true
-					mimeType = video.GetMimeType()
-					if blob, ok := callledger.TakeVideoBlob(len(outBlobs), video); ok {
-						outBlobs = append(outBlobs, blob)
-					}
-					if data := video.GetData(); len(data) > 0 {
-						totalBytes += int64(len(data))
-						chunkCount++
-					}
-				}
-			}
-		}
-		sendErr = stream.Send(event)
-		return sendErr
-	}
-	// 流式视频：emit 内 Send 背压计入 provider 耗时，无法拆开。上传放到返回之后。
-	callStarted := time.Now()
-	err := binding.set.Video.GenerateVideo(ctx, binding.model, request, emit)
-	callFinished := time.Now()
-	stampCallTiming(&rec, callStarted, callFinished)
-	providerErr = err
-	videoCount := 0
-	if sawVideo {
-		videoCount = 1
-	}
-	rec.VideoCount = intPtr(videoCount)
-	rec.OutputPayload = callledger.BuildVideoOutputSummary(videoCount, totalBytes, mimeType, chunkCount)
-	if sendErr != nil {
-		if s.shouldRecord(err) || err == nil {
-			s.finishRecord(&rec, err, sendErr)
-		}
-		telemetry.RecordError(ctx, sendErr)
-		return sendErr
-	}
-	if err != nil {
-		if s.shouldRecord(err) {
-			s.finishRecord(&rec, err, nil)
-		}
-		statusErr := provider.ToStatus(err)
-		telemetry.RecordError(ctx, statusErr)
-		return statusErr
-	}
-	s.finishRecord(&rec, nil, nil)
-	return nil
 }
 
 type binding struct {

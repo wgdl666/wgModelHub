@@ -163,10 +163,6 @@ func (f *fakeVideo) ReadVideoResult(_ context.Context, _ string, _ string, emit 
 	return provider.EmitVideoChunksFromReader(strings.NewReader(string(f.result)), "video/mp4", "provider-task-1", 0, emit)
 }
 
-func (f *fakeVideo) GenerateVideo(ctx context.Context, model string, request *modelhubv2.GenerateRequest, emit provider.EmitEvent) error {
-	return provider.RunVideoJob(ctx, f, model, request, emit)
-}
-
 type generationStreamRecorder struct {
 	grpc.ServerStream
 	ctx    context.Context
@@ -184,7 +180,7 @@ func videoService(video provider.VideoProvider, store taskstore.Store) *Service 
 	return newTestService(config.Config{
 		Providers: map[string]config.ProviderConfig{
 			"ltx": {Models: []string{"ltx"}, LTX: &config.LTXProviderConfig{
-				BaseURL: "https://x", Duration: 1, FPS: 1, PollInterval: 1, MaxPollTime: 1,
+				BaseURL: "https://x", Duration: 1, FPS: 1, PollInterval: 1,
 			}},
 		},
 	}, map[string]provider.Set{"ltx": {Video: video}}, store)
@@ -257,7 +253,7 @@ func TestSubmitGenerationPersistsModelRouteSelectedProvider(t *testing.T) {
 	backup := &fakeVideo{}
 	store := newMemoryStore()
 	ltxCfg := &config.LTXProviderConfig{
-		BaseURL: "https://x", Duration: 1, FPS: 1, PollInterval: 1, MaxPollTime: 1,
+		BaseURL: "https://x", Duration: 1, FPS: 1, PollInterval: 1,
 	}
 	const modelID = "shared-video"
 	service := newTestService(config.Config{

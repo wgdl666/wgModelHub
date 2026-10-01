@@ -37,7 +37,6 @@ func validConfig() Config {
 					Duration:     4,
 					FPS:          24,
 					PollInterval: 2,
-					MaxPollTime:  120,
 				},
 			},
 		},
@@ -273,7 +272,7 @@ func TestProviderSupportsVideoProviders(t *testing.T) {
 		{OminilinkVideo: &OminilinkVideoProviderConfig{APIKey: "k"}},
 		{GeminiVideo: &GeminiVideoProviderConfig{APIKey: "k"}},
 		{ArkVideo: &ArkVideoProviderConfig{APIKey: "k"}},
-		{LTX: &LTXProviderConfig{BaseURL: "https://ltx", Duration: 4, FPS: 24, PollInterval: 1, MaxPollTime: 60}},
+		{LTX: &LTXProviderConfig{BaseURL: "https://ltx", Duration: 4, FPS: 24, PollInterval: 1}},
 	}
 	for i, provider := range cases {
 		if !ProviderSupports(provider, CapabilityVideo) {

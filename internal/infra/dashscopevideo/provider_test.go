@@ -15,13 +15,53 @@ import (
 	"github.com/wgdl666/wgModelHub/models"
 )
 
+// submitGetRead 仅测试复用：走正式 Submit→Get→ReadResult；无 deadline 时加 5s 上限，避免无界轮询。
+func submitGetRead(ctx context.Context, p provider.VideoProvider, model string, request *modelhubv2.GenerateRequest, emit provider.EmitEvent) error {
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+	}
+	id, err := p.SubmitVideo(ctx, model, request)
+	if err != nil {
+		return err
+	}
+	for {
+		job, err := p.GetVideo(ctx, model, id)
+		if err != nil {
+			return err
+		}
+		switch job.State {
+		case provider.VideoJobSucceeded:
+			return p.ReadVideoResult(ctx, model, id, emit)
+		case provider.VideoJobFailed:
+			if job.Err != nil {
+				return job.Err
+			}
+			return provider.New(provider.ErrorUnavailable, "video job failed")
+		default:
+			wait := time.Duration(job.PollAfterMs) * time.Millisecond
+			if wait <= 0 {
+				wait = time.Second
+			}
+			timer := time.NewTimer(wait)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return ctx.Err()
+			case <-timer.C:
+			}
+		}
+	}
+}
+
 func TestNewUsesDefaultPollWhenZero(t *testing.T) {
-	p, err := New("dashscope", "sk-test", "https://example.com", 0, 0)
+	p, err := New("dashscope", "sk-test", "https://example.com", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.pollInterval != defaultPollInterval || p.maxPollTime != defaultMaxPollTime {
-		t.Fatalf("poll=%v max=%v", p.pollInterval, p.maxPollTime)
+	if p.pollInterval != defaultPollInterval {
+		t.Fatalf("poll=%v", p.pollInterval)
 	}
 }
 
@@ -45,7 +85,7 @@ func TestProviderGenerateWanI2V(t *testing.T) {
 	defer server.Close()
 	baseURL = server.URL
 
-	p, err := New("dashscope", "sk-test", server.URL, 0.001, 1)
+	p, err := New("dashscope", "sk-test", server.URL, 0.001)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +107,7 @@ func TestProviderGenerateWanI2V(t *testing.T) {
 			Resolution: "480p",
 		}}},
 	}
-	err = p.GenerateVideo(context.Background(), models.Wan22I2VFlash, req, func(ev *modelhubv2.GenerateEvent) error {
+	err = submitGetRead(context.Background(), p, models.Wan22I2VFlash, req, func(ev *modelhubv2.GenerateEvent) error {
 		chunks = append(chunks, ev)
 		return nil
 	})
@@ -114,7 +154,7 @@ func TestProviderEditWanVideoEdit(t *testing.T) {
 	defer server.Close()
 	baseURL = server.URL
 
-	p, err := New("dashscope", "sk-test", server.URL, 0.001, 2)
+	p, err := New("dashscope", "sk-test", server.URL, 0.001)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +177,7 @@ func TestProviderEditWanVideoEdit(t *testing.T) {
 		}}},
 		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Video{Video: &modelhubv2.VideoOutput{}}},
 	}
-	if err := p.GenerateVideo(context.Background(), models.Wan27VideoEdit, req, func(*modelhubv2.GenerateEvent) error { return nil }); err != nil {
+	if err := submitGetRead(context.Background(), p, models.Wan27VideoEdit, req, func(*modelhubv2.GenerateEvent) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
 	params, _ := createPayload["parameters"].(map[string]any)
@@ -147,7 +187,7 @@ func TestProviderEditWanVideoEdit(t *testing.T) {
 }
 
 func TestProviderRejectsGenerationWithVideoPart(t *testing.T) {
-	p, err := New("dashscope", "sk", "https://example.com", 1, 1)
+	p, err := New("dashscope", "sk", "https://example.com", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,19 +203,19 @@ func TestProviderRejectsGenerationWithVideoPart(t *testing.T) {
 			}},
 		}}},
 	}
-	err = p.GenerateVideo(context.Background(), models.Wan22I2VFlash, req, nil)
+	err = submitGetRead(context.Background(), p, models.Wan22I2VFlash, req, nil)
 	if err == nil || !strings.Contains(err.Error(), "does not accept video") {
 		t.Fatalf("err=%v", err)
 	}
 }
 
 func TestProviderRejectsEditWithoutVideo(t *testing.T) {
-	p, err := New("dashscope", "sk", "https://example.com", 1, 1)
+	p, err := New("dashscope", "sk", "https://example.com", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	req := testGenRequest()
-	err = p.GenerateVideo(context.Background(), models.Wan27VideoEdit, req, nil)
+	err = submitGetRead(context.Background(), p, models.Wan27VideoEdit, req, nil)
 	if err == nil || !strings.Contains(err.Error(), "requires video") {
 		t.Fatalf("err=%v", err)
 	}
@@ -200,12 +240,12 @@ func TestProviderWan27I2VUsesMediaFirstFrame(t *testing.T) {
 	defer server.Close()
 	baseURL = server.URL
 
-	p, err := New("dashscope", "sk-test", server.URL, 0.001, 2)
+	p, err := New("dashscope", "sk-test", server.URL, 0.001)
 	if err != nil {
 		t.Fatal(err)
 	}
 	p.client = server.Client()
-	if err := p.GenerateVideo(context.Background(), models.Wan27I2V, testGenRequest(), nil); err != nil {
+	if err := submitGetRead(context.Background(), p, models.Wan27I2V, testGenRequest(), nil); err != nil {
 		t.Fatal(err)
 	}
 	input, _ := createPayload["input"].(map[string]any)
@@ -223,13 +263,13 @@ func TestProviderPollFailed(t *testing.T) {
 		_, _ = w.Write([]byte(`{"output":{"task_status":"FAILED","code":"X","message":"bad"}}`))
 	}))
 	defer server.Close()
-	p, err := New("dashscope", "sk", server.URL, 0.001, 1)
+	p, err := New("dashscope", "sk", server.URL, 0.001)
 	if err != nil {
 		t.Fatal(err)
 	}
 	p.client = server.Client()
 	req := testGenRequest()
-	err = p.GenerateVideo(context.Background(), models.Wan22I2VFlash, req, func(*modelhubv2.GenerateEvent) error { return nil })
+	err = submitGetRead(context.Background(), p, models.Wan22I2VFlash, req, func(*modelhubv2.GenerateEvent) error { return nil })
 	if err == nil {
 		t.Fatal("expected poll failure")
 	}
@@ -295,7 +335,7 @@ func TestSubmitInlineBytesAsDataURI(t *testing.T) {
 		_, _ = w.Write([]byte(`{"output":{"task_id":"tid-inline"}}`))
 	}))
 	defer server.Close()
-	p, err := New("dashscope", "sk-test", server.URL, 0.01, 1)
+	p, err := New("dashscope", "sk-test", server.URL, 0.01)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -323,7 +363,7 @@ func TestSubmitWan27InlineBytesAsDataURI(t *testing.T) {
 		_, _ = w.Write([]byte(`{"output":{"task_id":"tid-w27-inline"}}`))
 	}))
 	defer server.Close()
-	p, err := New("dashscope", "sk-test", server.URL, 0.01, 1)
+	p, err := New("dashscope", "sk-test", server.URL, 0.01)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -348,54 +388,6 @@ func TestSubmitWan27InlineBytesAsDataURI(t *testing.T) {
 	assertDataURI(t, url, png)
 }
 
-func TestWaitHonorsContextCancel(t *testing.T) {
-	block := make(chan struct{})
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/services/aigc/video-generation/video-synthesis" {
-			_, _ = w.Write([]byte(`{"output":{"task_id":"tid"}}`))
-			return
-		}
-		select {
-		case <-block:
-		case <-r.Context().Done():
-		}
-	}))
-	defer server.Close()
-	p, _ := New("dashscope", "sk", server.URL, 0.05, 5)
-	p.client = server.Client()
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-	defer cancel()
-	err := p.GenerateVideo(ctx, models.Wan22I2VFlash, testGenRequest(), func(*modelhubv2.GenerateEvent) error { return nil })
-	if err == nil {
-		t.Fatal("expected cancel/timeout")
-	}
-	close(block)
-}
-
-func TestGenerateVideoHonorsMaxPollTime(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/services/aigc/video-generation/video-synthesis" {
-			_, _ = w.Write([]byte(`{"output":{"task_id":"tid"}}`))
-			return
-		}
-		_, _ = w.Write([]byte(`{"output":{"task_status":"RUNNING"}}`))
-	}))
-	defer server.Close()
-	p, err := New("dashscope", "sk", server.URL, 0.05, 0.15)
-	if err != nil {
-		t.Fatal(err)
-	}
-	p.client = server.Client()
-	start := time.Now()
-	err = p.GenerateVideo(context.Background(), models.Wan22I2VFlash, testGenRequest(), nil)
-	if err == nil || provider.Kind(err) != provider.ErrorTimeout {
-		t.Fatalf("err=%v kind=%v", err, provider.Kind(err))
-	}
-	if time.Since(start) > 2*time.Second {
-		t.Fatalf("maxPollTime ineffective")
-	}
-}
-
 func TestGetVideoStatusMapping(t *testing.T) {
 	tests := []struct {
 		status string
@@ -411,7 +403,7 @@ func TestGetVideoStatusMapping(t *testing.T) {
 				_, _ = w.Write([]byte(`{"output":{"task_status":"` + tc.status + `"}}`))
 			}))
 			defer server.Close()
-			p, err := New("dashscope", "sk", server.URL, 1, 1)
+			p, err := New("dashscope", "sk", server.URL, 1)
 			if err != nil {
 				t.Fatal(err)
 			}
