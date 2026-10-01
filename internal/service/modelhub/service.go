@@ -149,8 +149,10 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 		telemetry.RecordError(ctx, statusErr)
 		return statusErr
 	}
-	// StartedAt 在 provider 调用前由 stampCallTiming 写入；此处占位。
-	rec := s.baseRecord(ctx, request.GetBusinessMetadata(), callledger.OperationGenerateText, callledger.CapabilityText, binding.model, binding.provider, time.Time{})
+	// track 会异步插入请求行；StartedAt 必须在插入前写入，否则账本落成 0001-01-01，按时间窗统计会漏掉。
+	// 供应商耗时仍由下方 stampCallTiming 用 provider 边界重写，Finish 时 UpdateResult 一并落库。
+	callStarted := time.Now()
+	rec := s.baseRecord(ctx, request.GetBusinessMetadata(), callledger.OperationGenerateText, callledger.CapabilityText, binding.model, binding.provider, callStarted)
 	// 输入快照必须在缓存策略改写请求之前，保留调用方原始参数。
 	var inBlobs []callledger.Blob
 	rec.InputPayload, inBlobs = callledger.BuildGenerateInput(request)
@@ -201,9 +203,10 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 			}
 			return rawEmit(event)
 		}
-		callStarted := time.Now()
 		var final *modelhubv2.GenerateEvent
 		var err error
+		// 供应商边界重打点：不含上方 track/缓存准备，也不含后续 Send。
+		callStarted = time.Now()
 		for attempt := 0; attempt <= textTransientRetries; attempt++ {
 			if attempt > 0 {
 				if waitErr := waitTextTransientRetry(ctx, attempt); waitErr != nil {
@@ -266,9 +269,10 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 		return finalSendErr
 	}
 
-	callStarted := time.Now()
 	var event *modelhubv2.GenerateEvent
 	var err error
+	// 供应商边界重打点：不含上方 track/缓存准备，也不含后续 Send。
+	callStarted = time.Now()
 	for attempt := 0; attempt <= textTransientRetries; attempt++ {
 		if attempt > 0 {
 			if waitErr := waitTextTransientRetry(ctx, attempt); waitErr != nil {
@@ -402,12 +406,14 @@ func (s *Service) SynthesizeSpeech(ctx context.Context, request *modelhubv2.Synt
 		telemetry.RecordError(ctx, statusErr)
 		return nil, statusErr
 	}
-	rec := s.baseRecord(ctx, request.GetBusinessMetadata(), callledger.OperationSynthesizeSpeech, callledger.CapabilitySpeech, binding.model, binding.provider, time.Time{})
+	// 与文本路径相同：插入前先有真实 StartedAt，避免异步请求行落成零时间。
+	callStarted := time.Now()
+	rec := s.baseRecord(ctx, request.GetBusinessMetadata(), callledger.OperationSynthesizeSpeech, callledger.CapabilitySpeech, binding.model, binding.provider, callStarted)
 	rec.InputPayload = callledger.BuildSpeechInput(request)
 	var providerErr error
 	tracked := s.track(ctx, &rec, nil)
 	defer s.endTrack(tracked, &rec, &providerErr, nil)
-	callStarted := time.Now()
+	callStarted = time.Now()
 	resp, err := binding.set.Speech.SynthesizeSpeech(ctx, binding.model, request)
 	callFinished := time.Now()
 	stampCallTiming(&rec, callStarted, callFinished)
@@ -441,7 +447,9 @@ func (s *Service) generateImage(ctx context.Context, binding binding, request *m
 		telemetry.RecordError(ctx, statusErr)
 		return statusErr
 	}
-	rec := s.baseRecord(ctx, request.GetBusinessMetadata(), callledger.OperationGenerateImage, callledger.CapabilityImage, binding.model, binding.provider, time.Time{})
+	// 与文本路径相同：插入前先有真实 StartedAt，避免异步请求行落成零时间。
+	callStarted := time.Now()
+	rec := s.baseRecord(ctx, request.GetBusinessMetadata(), callledger.OperationGenerateImage, callledger.CapabilityImage, binding.model, binding.provider, callStarted)
 	var inBlobs []callledger.Blob
 	rec.InputPayload, inBlobs = callledger.BuildGenerateInput(request)
 	rec.ImageSize, rec.ImageAspectRatio = callledger.RequestImageSpec(request)
@@ -449,7 +457,7 @@ func (s *Service) generateImage(ctx context.Context, binding binding, request *m
 	var outBlobs []callledger.Blob
 	tracked := s.track(ctx, &rec, inBlobs)
 	defer s.endTrack(tracked, &rec, &providerErr, &outBlobs)
-	callStarted := time.Now()
+	callStarted = time.Now()
 	event, err := binding.set.Image.GenerateImage(ctx, binding.model, request)
 	callFinished := time.Now()
 	stampCallTiming(&rec, callStarted, callFinished)

@@ -31,12 +31,14 @@ func (s *Service) SynthesizeSpeechStream(request *modelhubv2.SynthesizeSpeechReq
 	if mime == "" {
 		return provider.ToStatus(provider.New(provider.ErrorConfiguration, "streaming speech mime is required"))
 	}
-	rec := s.baseRecord(ctx, request.GetBusinessMetadata(), callledger.OperationSynthesizeSpeechStream, callledger.CapabilitySpeech, binding.model, binding.provider, time.Time{})
+	// 插入前写入真实 StartedAt；流式首包耗时仍用下方 provider 边界的 started。
+	started := time.Now()
+	rec := s.baseRecord(ctx, request.GetBusinessMetadata(), callledger.OperationSynthesizeSpeechStream, callledger.CapabilitySpeech, binding.model, binding.provider, started)
 	rec.InputPayload = callledger.BuildSpeechInput(request)
 	var providerErr error
 	tracked := s.track(ctx, &rec, nil)
 	defer s.endTrack(tracked, &rec, &providerErr, nil)
-	started := time.Now()
+	started = time.Now()
 	total, chunks := 0, 0
 	var firstChunkMs int64
 	var sendErr error

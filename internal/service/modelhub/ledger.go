@@ -37,6 +37,7 @@ func (s *Service) baseRecord(ctx context.Context, business *modelhubv2.BusinessM
 }
 
 // stampCallTiming 固定模型调用耗时：provider 调用前开始、返回时结束；不含后续 Send/落库。
+// started_at 在 Ent 中 Immutable，只能在 track 插入前写入；此处主要写 FinishedAt/LatencyMS。
 func stampCallTiming(rec *callledger.Record, started, finished time.Time) {
 	if rec == nil {
 		return
