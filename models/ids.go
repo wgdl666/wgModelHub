@@ -62,6 +62,9 @@ const (
 	VWorldWardrobe10 = "VWorld_wardrobe-1.0"
 	// VWorldOutfit10 是薇光点亮虚拟换衣（edits + vton）。尺寸固定 768x1024，禁止走 OpenAI 3:4 换算。
 	VWorldOutfit10 = "VWorld_outfit_1.0"
+	// VWorldOutfitVideo10 是薇光点亮穿搭视频的唯一对外模型 ID。
+	// 路由绑 LTX provider；/vton 的 multipart model 仍写 ltx，不能把本 ID 原样下发，也不能再把 ltx 当 request.model。
+	VWorldOutfitVideo10 = "VWorld_outfit_video_1.0"
 	// PhotoroomSegment 标识官方 Remove Background 产品端点 POST /v1/segment（operationId=remove-background）。
 	// 该 API 没有 request-level model 参数；本常量只用于 ModelHub 路由与 ListModels，禁止下发上游，也不是业务别名。
 	PhotoroomSegment = "photoroom-segment"
@@ -109,7 +112,6 @@ const (
 	// HumanParse 是薇光点亮 G7 人体解析 POST /human_parser/predict。
 	// 与 human-parser 不能互换：路径、鉴权和部署面都不同，路演单独切这个 ID。
 	HumanParse = "human_parse"
-	LTX        = "ltx"
 
 	// DashScope Wan / HappyHorse / Kling 图生视频。
 	Wan22I2VFlash              = "wan2.2-i2v-flash"
@@ -209,7 +211,7 @@ func All() []string {
 		RekognitionFaceLibrary,
 		HumanParser,
 		HumanParse,
-		LTX,
+		VWorldOutfitVideo10,
 		Wan22I2VFlash,
 		Wan22I2VPlus,
 		Wan22I2VTurbo,

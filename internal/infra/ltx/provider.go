@@ -17,6 +17,9 @@ import (
 	"github.com/wgdl666/wgModelHub/protocol"
 )
 
+// upstreamLTXModel 是 LTX /vton 的 multipart model。本 provider 只承接穿搭视频，对外 ID 已是 VWorld_outfit_video_1.0，不能把对外 ID 原样下发，也不兼容旧公开 ID ltx。
+const upstreamLTXModel = "ltx"
+
 const (
 	videoMIMEType = "video/mp4"
 )
@@ -68,7 +71,7 @@ func (p *Provider) SubmitVideo(ctx context.Context, model string, request *model
 	if video := request.GetOutput().GetVideo(); video != nil {
 		resolution = video.GetResolution()
 	}
-	return p.submit(ctx, model, imageBytes, provider.JoinedText(request.GetInput()), resolution, request.GetOutput().GetVideo())
+	return p.submit(ctx, upstreamLTXModel, imageBytes, provider.JoinedText(request.GetInput()), resolution, request.GetOutput().GetVideo())
 }
 
 // GetVideo 单次查询 /jobs/{id}；done/error/进行中分别映射为 Succeeded/Failed/Running。

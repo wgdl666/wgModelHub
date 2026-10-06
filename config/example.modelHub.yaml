@@ -295,9 +295,9 @@ providers:
     rekognition_library:
       region: us-east-2
       collection: wg-face-identity-us
-  # LTX 供应商请求体里的 model 字段值就是 ltx，不是业务别名。
+  # 穿搭视频对外 ID 是 VWorld_outfit_video_1.0；LTX /vton 的 multipart model 仍写 ltx。
   ltx_video:
-    models: [ltx]
+    models: [VWorld_outfit_video_1.0]
     ltx:
       base_url: https://ltx.example
       token: "${LTX_TOKEN}"

@@ -242,7 +242,7 @@ func TestLedgerVideoSubmitGetIdempotentOneRecord(t *testing.T) {
 	duration := int32(4)
 	svc := newLedgerService(config.Config{
 		Providers: map[string]config.ProviderConfig{
-			"ltx": {Models: []string{"ltx"}, LTX: &config.LTXProviderConfig{
+			"ltx": {Models: []string{models.VWorldOutfitVideo10}, LTX: &config.LTXProviderConfig{
 				BaseURL: "https://x", Duration: 1, FPS: 1, PollInterval: 1,
 			}},
 		},
@@ -252,7 +252,7 @@ func TestLedgerVideoSubmitGetIdempotentOneRecord(t *testing.T) {
 	req := &modelhubv2.SubmitGenerationRequest{
 		RequestId: "req-1",
 		Request: &modelhubv2.GenerateRequest{
-			Model: "ltx",
+			Model: models.VWorldOutfitVideo10,
 			Input: &modelhubv2.Input{Items: []*modelhubv2.InputItem{{Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
 				Role:  modelhubv2.Role_ROLE_USER,
 				Parts: []*modelhubv2.ContentPart{{Content: &modelhubv2.ContentPart_Text{Text: "clip"}}},
@@ -427,7 +427,7 @@ func TestLedgerVideoDownloadFailureKeepsSucceeded(t *testing.T) {
 	}
 	svc := newLedgerService(config.Config{
 		Providers: map[string]config.ProviderConfig{
-			"ltx": {Models: []string{"ltx"}, LTX: &config.LTXProviderConfig{
+			"ltx": {Models: []string{models.VWorldOutfitVideo10}, LTX: &config.LTXProviderConfig{
 				BaseURL: "https://x", Duration: 1, FPS: 1, PollInterval: 1,
 			}},
 		},
@@ -435,7 +435,7 @@ func TestLedgerVideoDownloadFailureKeepsSucceeded(t *testing.T) {
 	task, err := svc.SubmitGeneration(context.Background(), &modelhubv2.SubmitGenerationRequest{
 		RequestId: "req-dl",
 		Request: &modelhubv2.GenerateRequest{
-			Model: "ltx",
+			Model: models.VWorldOutfitVideo10,
 			Input: &modelhubv2.Input{Items: []*modelhubv2.InputItem{{Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
 				Role:  modelhubv2.Role_ROLE_USER,
 				Parts: []*modelhubv2.ContentPart{{Content: &modelhubv2.ContentPart_Text{Text: "clip"}}},
@@ -540,7 +540,7 @@ func TestLedgerStreamVideoResultKeepsUsage(t *testing.T) {
 	}
 	svc := newLedgerService(config.Config{
 		Providers: map[string]config.ProviderConfig{
-			"ltx": {Models: []string{"ltx"}, LTX: &config.LTXProviderConfig{
+			"ltx": {Models: []string{models.VWorldOutfitVideo10}, LTX: &config.LTXProviderConfig{
 				BaseURL: "https://x", Duration: 1, FPS: 1, PollInterval: 1,
 			}},
 		},
@@ -548,7 +548,7 @@ func TestLedgerStreamVideoResultKeepsUsage(t *testing.T) {
 	task, err := svc.SubmitGeneration(context.Background(), &modelhubv2.SubmitGenerationRequest{
 		RequestId: "req-usage",
 		Request: &modelhubv2.GenerateRequest{
-			Model: "ltx",
+			Model: models.VWorldOutfitVideo10,
 			Input: &modelhubv2.Input{Items: []*modelhubv2.InputItem{{Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
 				Role:  modelhubv2.Role_ROLE_USER,
 				Parts: []*modelhubv2.ContentPart{{Content: &modelhubv2.ContentPart_Text{Text: "clip"}}},
@@ -600,7 +600,7 @@ func ledgerVideoGenerateReq(model string) *modelhubv2.GenerateRequest {
 func ledgerVideoService(video provider.VideoProvider, ledger callledger.Store) *Service {
 	return newLedgerService(config.Config{
 		Providers: map[string]config.ProviderConfig{
-			"ltx": {Models: []string{"ltx"}, LTX: &config.LTXProviderConfig{
+			"ltx": {Models: []string{models.VWorldOutfitVideo10}, LTX: &config.LTXProviderConfig{
 				BaseURL: "https://x", Duration: 1, FPS: 1, PollInterval: 1,
 			}},
 		},
@@ -612,7 +612,7 @@ func TestLedgerGenerateVideoRejectedWithoutRecord(t *testing.T) {
 	mem := &callledger.Memory{}
 	video := &fakeVideo{job: provider.VideoJob{State: provider.VideoJobSucceeded}}
 	svc := ledgerVideoService(video, mem)
-	err := svc.Generate(ledgerVideoGenerateReq("ltx"), &generateRecorder{ctx: context.Background()})
+	err := svc.Generate(ledgerVideoGenerateReq(models.VWorldOutfitVideo10), &generateRecorder{ctx: context.Background()})
 	if err == nil {
 		t.Fatal("expected Generate(video) rejection")
 	}

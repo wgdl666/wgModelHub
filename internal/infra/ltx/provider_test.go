@@ -14,6 +14,7 @@ import (
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/provider"
+	"github.com/wgdl666/wgModelHub/models"
 	"github.com/wgdl666/wgModelHub/protocol"
 )
 
@@ -341,5 +342,44 @@ func TestSubmitKeepsPerRequestTimingAndZeroSeed(t *testing.T) {
 	_, err = p.submit(context.Background(), "ltx", []byte("image"), "prompt", "720p", &modelhubv2.VideoOutput{DurationSeconds: &duration, Fps: &fps, Seed: &seed})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestSubmitVideoSendsUpstreamLTXModelField(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			t.Fatal(err)
+		}
+		if got := r.FormValue("model"); got != upstreamLTXModel {
+			t.Fatalf("upstream model=%q want %q", got, upstreamLTXModel)
+		}
+		w.Write([]byte(`{"job_id":"mapped"}`))
+	}))
+	defer server.Close()
+	p, err := New("ltx_video", server.URL, "", 4, 24, 42, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.client = server.Client()
+	id, err := p.SubmitVideo(context.Background(), models.VWorldOutfitVideo10, &modelhubv2.GenerateRequest{
+		Model: models.VWorldOutfitVideo10,
+		Input: &modelhubv2.Input{Items: []*modelhubv2.InputItem{{
+			Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
+				Role: modelhubv2.Role_ROLE_USER,
+				Parts: []*modelhubv2.ContentPart{{
+					Content: &modelhubv2.ContentPart_Image{Image: &modelhubv2.Media{
+						MimeType: "image/png",
+						Source:   &modelhubv2.Media_Data{Data: []byte("png")},
+					}},
+				}},
+			}},
+		}}},
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Video{Video: &modelhubv2.VideoOutput{Resolution: "720p"}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id != "mapped" {
+		t.Fatalf("job=%s", id)
 	}
 }

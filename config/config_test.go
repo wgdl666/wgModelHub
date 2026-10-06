@@ -30,7 +30,7 @@ func validConfig() Config {
 				Gemini: &GeminiProviderConfig{APIKey: "key"},
 			},
 			"ltx": {
-				Models: []string{models.LTX},
+				Models: []string{models.VWorldOutfitVideo10},
 				LTX: &LTXProviderConfig{
 					BaseURL:      "https://ltx.example",
 					Token:        "token",
@@ -162,7 +162,7 @@ func TestValidateRejectsMixedProviderKinds(t *testing.T) {
 
 func TestModelRoutes(t *testing.T) {
 	routes := validConfig().ModelRoutes()
-	if routes[models.Gemini25Flash] != "gemini" || routes[models.LTX] != "ltx" {
+	if routes[models.Gemini25Flash] != "gemini" || routes[models.VWorldOutfitVideo10] != "ltx" {
 		t.Fatalf("unexpected routes %#v", routes)
 	}
 }

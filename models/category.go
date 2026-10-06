@@ -95,7 +95,7 @@ var categories = map[string]Category{
 	HumanParser:             CategoryHumanParser,
 	HumanParse:              CategoryHumanParser,
 
-	LTX:                        CategoryVideoGeneration,
+	VWorldOutfitVideo10:        CategoryVideoGeneration,
 	Wan22I2VFlash:              CategoryVideoGeneration,
 	Wan22I2VPlus:               CategoryVideoGeneration,
 	Wan22I2VTurbo:              CategoryVideoGeneration,

@@ -68,6 +68,19 @@ func TestVWorldImageModelIDs(t *testing.T) {
 	}
 }
 
+// TestVWorldOutfitVideoModelID 锁定穿搭视频对外 ID；ltx 只是供应商协议字段，不能再当目录 ID。
+func TestVWorldOutfitVideoModelID(t *testing.T) {
+	if VWorldOutfitVideo10 != "VWorld_outfit_video_1.0" {
+		t.Fatalf("VWorldOutfitVideo10=%q, want VWorld_outfit_video_1.0", VWorldOutfitVideo10)
+	}
+	if slices.Contains(All(), "ltx") {
+		t.Fatal("All() must not keep legacy public id ltx")
+	}
+	if !slices.Contains(All(), VWorldOutfitVideo10) {
+		t.Fatalf("All() missing %q", VWorldOutfitVideo10)
+	}
+}
+
 // TestGPTImage25ModelIDs 锁定 GPT Image 2.5 真实模型 ID，禁止写成 flare/sunburst 业务简称或塞进 gpt-image-2。
 func TestGPTImage25ModelIDs(t *testing.T) {
 	cases := []struct {

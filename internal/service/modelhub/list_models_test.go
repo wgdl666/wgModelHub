@@ -32,7 +32,7 @@ func listModelsTestService() *Service {
 				OpenAI: &config.OpenAIProviderConfig{APIKey: "k"},
 			},
 			"video": {
-				Models: []string{models.LTX},
+				Models: []string{models.VWorldOutfitVideo10},
 				LTX:    &config.LTXProviderConfig{BaseURL: "https://x", Duration: 1, FPS: 1, PollInterval: 1},
 			},
 			"tts": {
@@ -81,7 +81,7 @@ func TestListModelsReturnsRoutedPublicCategories(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := listModelIDs(resp)
-	want := []string{models.Gemini37Flash, models.DeepSeekV41Flash, models.Qwen3VLPlus, models.Qwen37Flash, models.GPTImage2, models.LTX, models.Speech28Turbo, models.Qwen3VLEmbedding, models.Qwen37TextRerank, models.FacebodyCompareFace, models.FacebodyDetectFace, models.FacebodyFaceLibrary, models.HumanYOLO, models.HumanParser, models.HumanParse}
+	want := []string{models.Gemini37Flash, models.DeepSeekV41Flash, models.Qwen3VLPlus, models.Qwen37Flash, models.GPTImage2, models.VWorldOutfitVideo10, models.Speech28Turbo, models.Qwen3VLEmbedding, models.Qwen37TextRerank, models.FacebodyCompareFace, models.FacebodyDetectFace, models.FacebodyFaceLibrary, models.HumanYOLO, models.HumanParser, models.HumanParse}
 	if !sameStrings(got, want) {
 		t.Fatalf("models=%v want=%v", got, want)
 	}

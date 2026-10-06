@@ -14,6 +14,7 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/auth"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/internal/taskstore"
+	"github.com/wgdl666/wgModelHub/models"
 	"github.com/wgdl666/wgModelHub/protocol"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	rpcstatus "google.golang.org/genproto/googleapis/rpc/status"
@@ -179,7 +180,7 @@ func (r *generationStreamRecorder) Send(event *modelhubv2.GenerationTaskEvent) e
 func videoService(video provider.VideoProvider, store taskstore.Store) *Service {
 	return newTestService(config.Config{
 		Providers: map[string]config.ProviderConfig{
-			"ltx": {Models: []string{"ltx"}, LTX: &config.LTXProviderConfig{
+			"ltx": {Models: []string{models.VWorldOutfitVideo10}, LTX: &config.LTXProviderConfig{
 				BaseURL: "https://x", Duration: 1, FPS: 1, PollInterval: 1,
 			}},
 		},
@@ -230,11 +231,11 @@ func TestSubmitGenerationIdempotentSameHash(t *testing.T) {
 	service := videoService(video, store)
 
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(protocol.CallerMetadataKey, "wg-hub"))
-	first, err := service.SubmitGeneration(ctx, videoSubmitRequest("ltx", "req-1"))
+	first, err := service.SubmitGeneration(ctx, videoSubmitRequest(models.VWorldOutfitVideo10, "req-1"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := service.SubmitGeneration(ctx, videoSubmitRequest("ltx", "req-1"))
+	second, err := service.SubmitGeneration(ctx, videoSubmitRequest(models.VWorldOutfitVideo10, "req-1"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -289,10 +290,10 @@ func TestSubmitGenerationConflictDifferentHash(t *testing.T) {
 	service := videoService(video, newMemoryStore())
 
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(protocol.CallerMetadataKey, "wg-hub"))
-	if _, err := service.SubmitGeneration(ctx, videoSubmitRequest("ltx", "req-2")); err != nil {
+	if _, err := service.SubmitGeneration(ctx, videoSubmitRequest(models.VWorldOutfitVideo10, "req-2")); err != nil {
 		t.Fatal(err)
 	}
-	conflict := videoSubmitRequest("ltx", "req-2")
+	conflict := videoSubmitRequest(models.VWorldOutfitVideo10, "req-2")
 	conflict.Request.Input.Items[0].GetMessage().Parts[1] = &modelhubv2.ContentPart{
 		Content: &modelhubv2.ContentPart_Text{Text: "different"},
 	}
@@ -308,7 +309,7 @@ func TestSubmitUncertainOutcomeMarksFailedNoRetry(t *testing.T) {
 	service := videoService(video, store)
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(protocol.CallerMetadataKey, "wg-hub"))
 
-	first, err := service.SubmitGeneration(ctx, videoSubmitRequest("ltx", "req-uncertain"))
+	first, err := service.SubmitGeneration(ctx, videoSubmitRequest(models.VWorldOutfitVideo10, "req-uncertain"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,7 +327,7 @@ func TestSubmitUncertainOutcomeMarksFailedNoRetry(t *testing.T) {
 		t.Fatalf("error_message=%q", stored.ErrorMessage)
 	}
 
-	second, err := service.SubmitGeneration(ctx, videoSubmitRequest("ltx", "req-uncertain"))
+	second, err := service.SubmitGeneration(ctx, videoSubmitRequest(models.VWorldOutfitVideo10, "req-uncertain"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -345,7 +346,7 @@ func TestSubmitHTTPErrorPersistsVendorMessage(t *testing.T) {
 	service := videoService(video, store)
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(protocol.CallerMetadataKey, "wg-hub"))
 
-	task, err := service.SubmitGeneration(ctx, videoSubmitRequest("ltx", "req-ark-404"))
+	task, err := service.SubmitGeneration(ctx, videoSubmitRequest(models.VWorldOutfitVideo10, "req-ark-404"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -369,7 +370,7 @@ func TestSubmitMarkRunningUsesDetachedContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(metadata.NewIncomingContext(context.Background(), metadata.Pairs(protocol.CallerMetadataKey, "wg-hub")))
 	cancel() // 请求已取消；落库必须用 detached context，否则会丢掉已返回的 provider id。
 
-	task, err := service.SubmitGeneration(ctx, videoSubmitRequest("ltx", "req-detach"))
+	task, err := service.SubmitGeneration(ctx, videoSubmitRequest(models.VWorldOutfitVideo10, "req-detach"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -390,7 +391,7 @@ func TestSubmitMarkRunningDBFailureReturnsUnavailable(t *testing.T) {
 	service := videoService(video, store)
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(protocol.CallerMetadataKey, "wg-hub"))
 
-	_, err := service.SubmitGeneration(ctx, videoSubmitRequest("ltx", "req-db"))
+	_, err := service.SubmitGeneration(ctx, videoSubmitRequest(models.VWorldOutfitVideo10, "req-db"))
 	if status.Code(err) != codes.Unavailable {
 		t.Fatalf("code=%v err=%v", status.Code(err), err)
 	}
@@ -406,7 +407,7 @@ func TestGetStalePendingWithoutProviderTaskIDFails(t *testing.T) {
 		Caller:      "wg-hub",
 		RequestID:   "stale-req",
 		RequestHash: "h",
-		Model:       "ltx",
+		Model:       models.VWorldOutfitVideo10,
 		Provider:    "ltx",
 		State:       taskstore.StatePending,
 		CreatedAt:   time.Now().Add(-stalePendingWithoutProviderTaskID - time.Minute),
@@ -443,7 +444,7 @@ func TestGetFreshPendingWithoutProviderTaskIDStillPending(t *testing.T) {
 	taskID := "fresh-pending"
 	_, _, err := store.InsertPending(ctx, taskstore.Task{
 		TaskID: taskID, Caller: "wg-hub", RequestID: "fresh-req", RequestHash: "h",
-		Model: "ltx", Provider: "ltx", State: taskstore.StatePending,
+		Model: models.VWorldOutfitVideo10, Provider: "ltx", State: taskstore.StatePending,
 		CreatedAt: time.Now().Add(-(geminiFilesSubmitWindow + time.Minute)),
 	})
 	if err != nil {
@@ -465,7 +466,7 @@ func TestGetRunningWithoutProviderTaskIDFailsImmediately(t *testing.T) {
 	taskID := "running-no-id"
 	_, _, err := store.InsertPending(ctx, taskstore.Task{
 		TaskID: taskID, Caller: "wg-hub", RequestID: "bad-running", RequestHash: "h",
-		Model: "ltx", Provider: "ltx", State: taskstore.StatePending, CreatedAt: time.Now(),
+		Model: models.VWorldOutfitVideo10, Provider: "ltx", State: taskstore.StatePending, CreatedAt: time.Now(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -499,7 +500,7 @@ func TestGetGenerationRunningAndSucceeded(t *testing.T) {
 	service := videoService(video, store)
 
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(protocol.CallerMetadataKey, "wg-hub"))
-	task, err := service.SubmitGeneration(ctx, videoSubmitRequest("ltx", "req-3"))
+	task, err := service.SubmitGeneration(ctx, videoSubmitRequest(models.VWorldOutfitVideo10, "req-3"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -549,7 +550,7 @@ func TestGetGenerationFailedIncludesErrorInfo(t *testing.T) {
 	service := videoService(video, store)
 
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(protocol.CallerMetadataKey, "wg-hub"))
-	task, err := service.SubmitGeneration(ctx, videoSubmitRequest("ltx", "req-4"))
+	task, err := service.SubmitGeneration(ctx, videoSubmitRequest(models.VWorldOutfitVideo10, "req-4"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -619,7 +620,7 @@ func TestGetStalePendingAfterMarkRunningReturnsUnavailable(t *testing.T) {
 	taskID := "stale-race"
 	_, _, err := store.InsertPending(ctx, taskstore.Task{
 		TaskID: taskID, Caller: "wg-hub", RequestID: "stale-race-req", RequestHash: "h",
-		Model: "ltx", Provider: "ltx", State: taskstore.StatePending,
+		Model: models.VWorldOutfitVideo10, Provider: "ltx", State: taskstore.StatePending,
 		CreatedAt: time.Now().Add(-stalePendingWithoutProviderTaskID - time.Minute),
 	})
 	if err != nil {
@@ -655,7 +656,7 @@ func TestGetTerminalUpdateConflictReturnsUnavailable(t *testing.T) {
 	taskID := "conflict-terminal"
 	_, _, err := store.InsertPending(ctx, taskstore.Task{
 		TaskID: taskID, Caller: "wg-hub", RequestID: "req-conflict", RequestHash: "h",
-		Model: "ltx", Provider: "ltx", State: taskstore.StatePending, CreatedAt: time.Now(),
+		Model: models.VWorldOutfitVideo10, Provider: "ltx", State: taskstore.StatePending, CreatedAt: time.Now(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -667,7 +668,7 @@ func TestGetTerminalUpdateConflictReturnsUnavailable(t *testing.T) {
 	if err := store.MarkSucceeded(ctx, taskID); err != nil {
 		t.Fatal(err)
 	}
-	snap := taskstore.Task{TaskID: taskID, Provider: "ltx", Model: "ltx", ProviderTaskID: "provider-task-1", State: taskstore.StateRunning}
+	snap := taskstore.Task{TaskID: taskID, Provider: "ltx", Model: models.VWorldOutfitVideo10, ProviderTaskID: "provider-task-1", State: taskstore.StateRunning}
 	okStream := &generationStreamRecorder{ctx: ctx}
 	err = service.pollRunningTask(ctx, snap, okStream)
 	if status.Code(err) != codes.Unavailable {
@@ -739,7 +740,7 @@ func TestSubmitGenerationUsesPublicCallerOverMetadata(t *testing.T) {
 	service := videoService(video, store)
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(protocol.CallerMetadataKey, "spoofed"))
 	ctx = auth.ContextWithPublicPrincipal(ctx, "principal-42", "kid")
-	req := videoSubmitRequest("ltx", "req-public-caller")
+	req := videoSubmitRequest(models.VWorldOutfitVideo10, "req-public-caller")
 	_, err := service.SubmitGeneration(ctx, req)
 	if err != nil {
 		t.Fatalf("SubmitGeneration: %v", err)
@@ -748,5 +749,14 @@ func TestSubmitGenerationUsesPublicCallerOverMetadata(t *testing.T) {
 		if task.RequestID == req.GetRequestId() && task.Caller != "public:principal-42" {
 			t.Fatalf("caller=%q want public:principal-42", task.Caller)
 		}
+	}
+}
+
+func TestSubmitGenerationRejectsLegacyLTXPublicID(t *testing.T) {
+	service := videoService(&fakeVideo{}, newMemoryStore())
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(protocol.CallerMetadataKey, "wg-wardrobe"))
+	_, err := service.SubmitGeneration(ctx, videoSubmitRequest("ltx", "req-legacy-ltx"))
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("code=%v err=%v", status.Code(err), err)
 	}
 }

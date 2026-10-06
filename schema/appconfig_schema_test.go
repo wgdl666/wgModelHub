@@ -34,7 +34,7 @@ func TestAppConfigSchemaContract(t *testing.T) {
 	for _, definitionName := range []string{
 		"database", "logfire", "provider", "gemini", "ark", "openai", "ltx",
 		"dashscopeVideo", "ominilinkVideo", "geminiVideo", "arkVideo", "photoroom",
-		"minimaxTts", "elevenlabsTts", "segmentPerson",
+		"minimaxTts", "elevenlabsTts", "segmentPerson", "vworldImage",
 		"humanYolo", "humanParser", "rekognitionDetect", "facebodyCompare", "rekognitionCompare",
 		"dashscopeEmbedding", "cohereEmbedding", "bedrockEmbedding", "dashscopeRerank", "bedrockRerank", "cohereRerank", "mixedbreadRerank",
 		"facebodyDetect", "facebodyLibrary", "rekognitionFaces", "rekognitionLibrary",
@@ -61,13 +61,15 @@ func TestAppConfigSchemaContract(t *testing.T) {
 	provider := mustMap(t, definitions["provider"])
 	assertStringSet(t, provider["required"], "models")
 	oneOf := mustSlice(t, provider["oneOf"])
+	// 合同必须覆盖 schema 已声明的全部 provider oneOf，包括现网已有的 vworld_image；漏项会让 TestAppConfigSchemaContract 误报并阻断必要测试。
 	wantKinds := map[string]bool{
 		"fashion": false, "image_seg": false,
 		"gemini": false, "vertexai": false, "ark": false, "openai": false,
 		"ltx": false, "dashscope_video": false, "ominilink_video": false,
 		"gemini_video": false, "ark_video": false, "minimax_tts": false,
 		"elevenlabs_tts": false, "photoroom": false, "segment_person": false,
-		"human_yolo": false, "human_parser": false, "rekognition_detect": false,
+		"vworld_image": false,
+		"human_yolo":   false, "human_parser": false, "rekognition_detect": false,
 		"facebody_compare": false, "rekognition_compare": false,
 		"dashscope_embedding": false, "cohere_embedding": false, "bedrock_embedding": false,
 		"dashscope_rerank": false, "bedrock_rerank": false, "cohere_rerank": false, "mixedbread_rerank": false,
@@ -96,7 +98,7 @@ func TestAppConfigSchemaContract(t *testing.T) {
 
 	for _, definitionName := range []string{
 		"gemini", "ark", "openai", "ltx", "dashscopeVideo",
-		"ominilinkVideo", "geminiVideo", "arkVideo", "photoroom", "segmentPerson",
+		"ominilinkVideo", "geminiVideo", "arkVideo", "photoroom", "segmentPerson", "vworldImage",
 		"humanYolo", "humanParser", "rekognitionDetect", "facebodyCompare", "rekognitionCompare",
 		"dashscopeEmbedding", "cohereEmbedding", "bedrockEmbedding", "dashscopeRerank", "bedrockRerank", "cohereRerank", "mixedbreadRerank",
 		"facebodyDetect", "facebodyLibrary", "rekognitionFaces", "rekognitionLibrary", "logfire", "database",

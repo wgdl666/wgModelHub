@@ -210,14 +210,14 @@ func TestServiceRoutesTextByRealModel(t *testing.T) {
 func TestServiceRejectsCapabilityMismatch(t *testing.T) {
 	service := newTestService(config.Config{
 		Providers: map[string]config.ProviderConfig{
-			"ltx": {Models: []string{models.LTX}, LTX: &config.LTXProviderConfig{
+			"ltx": {Models: []string{models.VWorldOutfitVideo10}, LTX: &config.LTXProviderConfig{
 				BaseURL: "https://x", Duration: 1, FPS: 1, PollInterval: 1,
 			}},
 		},
 	}, map[string]provider.Set{"ltx": {Video: nil}}, nil)
 
 	stream := &generateRecorder{ctx: context.Background()}
-	err := service.Generate(textRequest(models.LTX, "x"), stream)
+	err := service.Generate(textRequest(models.VWorldOutfitVideo10, "x"), stream)
 	if status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("code=%v err=%v", status.Code(err), err)
 	}
