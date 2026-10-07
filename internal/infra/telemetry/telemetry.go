@@ -15,10 +15,12 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/infra/metricserver"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
+	otelcodes "go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/propagation"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const logfireEndpoint = "logfire-us.pydantic.dev"
@@ -94,10 +96,31 @@ func StartSpan(ctx context.Context, name string) (context.Context, trace.Span) {
 	return otel.Tracer("github.com/wgdl666/wgModelHub").Start(ctx, name)
 }
 
+// RecordError 把真实失败记到当前 span。上游主动取消（如 wardrobe VTON 三路竞速淘汰）
+// 是正常中断：账本/指标已归 cancelled，这里不得抬成 Error，否则 Logfire/Ops 排障会被噪声淹没。
 func RecordError(ctx context.Context, err error) {
+	if err == nil {
+		return
+	}
 	span := trace.SpanFromContext(ctx)
+	if isCallerCanceled(err) {
+		span.SetAttributes(attribute.String("outcome", "cancelled"))
+		logs.Default().With("error", err.Error()).CtxWarn(ctx, "modelhub_request_canceled")
+		return
+	}
 	span.RecordError(err)
-	span.SetStatus(codes.Error, err.Error())
+	span.SetStatus(otelcodes.Error, err.Error())
+}
+
+// isCallerCanceled 认 context.Canceled 与已收敛的 gRPC codes.Canceled（如 provider.ToStatus）。
+func isCallerCanceled(err error) bool {
+	if errors.Is(err, context.Canceled) {
+		return true
+	}
+	if st, ok := status.FromError(err); ok && st.Code() == codes.Canceled {
+		return true
+	}
+	return false
 }
 
 // NewHTTPClient 只记录目标主机、状态码和正文大小，禁止采集请求或响应正文。
@@ -133,7 +156,7 @@ func (t *traceTransport) RoundTrip(request *http.Request) (*http.Response, error
 	}
 	span.SetAttributes(attribute.Int("http.response.status_code", response.StatusCode))
 	if response.StatusCode >= 400 {
-		span.SetStatus(codes.Error, fmt.Sprintf("HTTP %d", response.StatusCode))
+		span.SetStatus(otelcodes.Error, fmt.Sprintf("HTTP %d", response.StatusCode))
 	}
 	if response.Body == nil || response.Body == http.NoBody {
 		span.End()
