@@ -51,7 +51,8 @@ func TestGarmentExtractionContract(t *testing.T) {
 		if r.FormValue("lora_name") != loraClothGen || r.FormValue("lora_strength") != loraStrength {
 			t.Fatalf("lora = %q/%q", r.FormValue("lora_name"), r.FormValue("lora_strength"))
 		}
-		if r.FormValue("use_crop") != "true" || r.FormValue("size") != garmentSize || r.FormValue("response_format") != responseFormat || r.FormValue("n") != "1" {
+		// 单图无 parse_mask：录衣商品图路径，不得强制裁切。
+		if r.FormValue("use_crop") != "false" || r.FormValue("size") != garmentSize || r.FormValue("response_format") != responseFormat || r.FormValue("n") != "1" {
 			t.Fatalf("form = %#v", r.Form)
 		}
 		if r.FormValue("garment_name") != "白色衬衫" || r.FormValue("garment_role") != "clothing::top/full" {
@@ -114,6 +115,9 @@ func TestGarmentExtractionForwardsParserMask(t *testing.T) {
 		if r.Form.Has("prompt") {
 			t.Fatal("prompt must not be sent")
 		}
+		if r.FormValue("use_crop") != "true" {
+			t.Fatalf("use_crop = %q", r.FormValue("use_crop"))
+		}
 		if r.FormValue("garment_name") != "白色衬衫" || r.FormValue("garment_role") != "clothing::top/full" {
 			t.Fatalf("garment fields name=%q role=%q", r.FormValue("garment_name"), r.FormValue("garment_role"))
 		}
@@ -172,6 +176,7 @@ func TestGarmentExtractionRejectsMaskWithoutLabels(t *testing.T) {
 
 func TestGarmentExtractionFailsWhenCropNotApplied(t *testing.T) {
 	src := pngBytes(t)
+	mask := []byte{1, 2, 3, 4}
 	out := pngBytes(t)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -181,10 +186,38 @@ func TestGarmentExtractionFailsWhenCropNotApplied(t *testing.T) {
 	}))
 	defer server.Close()
 
+	// 有 parse_mask 时必须裁切成功；applied=false 不能当拆衣服成功。
 	p := newTestProvider(t, server.URL)
-	_, err := p.GenerateImage(context.Background(), models.VWorldWardrobe10, wardrobeRequest(src, `{"garment_name":"白衬衫","garment_category":"tops"}`))
+	_, err := p.GenerateImage(context.Background(), models.VWorldWardrobe10, wardrobeRequest(src, `{"garment_name":"白衬衫","garment_category":"tops","parse_labels":{"1":"top"}}`, mask))
 	if err == nil || !strings.Contains(err.Error(), "crop.applied") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestGarmentExtractionAllowsUnappliedCropWithoutMask(t *testing.T) {
+	src := pngBytes(t)
+	out := pngBytes(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseMultipartForm(8 << 20); err != nil {
+			t.Fatal(err)
+		}
+		if r.FormValue("use_crop") != "false" {
+			t.Fatalf("use_crop = %q", r.FormValue("use_crop"))
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]string{{"b64_json": base64.StdEncoding.EncodeToString(out)}},
+			"crop": map[string]any{"applied": false},
+		})
+	}))
+	defer server.Close()
+
+	p := newTestProvider(t, server.URL)
+	event, err := p.GenerateImage(context.Background(), models.VWorldWardrobe10, wardrobeRequest(src, `{"garment_name":"白衬衫","garment_category":"tops"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := event.GetItems()[0].GetImage().GetData(); !bytes.Equal(got, out) {
+		t.Fatalf("output len=%d", len(got))
 	}
 }
 

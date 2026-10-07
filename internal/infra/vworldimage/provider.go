@@ -1,6 +1,6 @@
 // Package vworldimage 承接薇光点亮公网 FLUX 生图：拆衣服与虚拟换衣。
-// 与 SeeTacloud 上的 FLUX.2-klein-9B OpenAI Bearer 实例分绑；鉴权、LoRA、固定尺寸和 crop.applied
-// 验收都只在本包，调用方只传 ModelHub 模型 ID 与业务图文。
+// 与 SeeTacloud 上的 FLUX.2-klein-9B OpenAI Bearer 实例分绑；鉴权、LoRA、固定尺寸，以及
+// 有 parse_mask 时的 crop.applied 验收都只在本包，调用方只传 ModelHub 模型 ID 与业务图文。
 package vworldimage
 
 import (
@@ -13,6 +13,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
+	"strconv"
 	"strings"
 	"time"
 
@@ -140,13 +141,15 @@ func (p *Provider) generateGarmentExtraction(ctx context.Context, request *model
 	if hasMask != hasLabels {
 		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "VWorld_wardrobe-1.0 parse mask and parse_labels must be provided together")
 	}
+	// use_crop 跟输入走：有 parse_mask 才裁区域；录衣单图是已主体商品图，强制裁切只会 applied=false。
+	useCrop := hasMask
 	fields := map[string]string{
 		"model":           upstreamCompatibleModel,
 		"n":               "1",
 		"response_format": responseFormat,
 		"lora_name":       loraClothGen,
 		"lora_strength":   loraStrength,
-		"use_crop":        "true",
+		"use_crop":        strconv.FormatBool(useCrop),
 		"garment_name":    meta.Name,
 		"size":            garmentSize,
 	}
@@ -182,8 +185,8 @@ func (p *Provider) generateGarmentExtraction(ctx context.Context, request *model
 	if err != nil {
 		return nil, err
 	}
-	// HTTP 200 但 applied=false 表示整图回退或解析失败回退，不能当拆衣服成功交给衣橱。
-	if parsed.Crop == nil || !parsed.Crop.Applied {
+	// 开了裁切却 applied=false 是整图/解析失败回退，不能当拆衣服成功；未请求裁切则不看 applied。
+	if useCrop && (parsed.Crop == nil || !parsed.Crop.Applied) {
 		return nil, provider.New(provider.ErrorInvalidResponse, p.name+" garment extraction crop.applied is not true")
 	}
 	return imageEvent(parsed.Data)
