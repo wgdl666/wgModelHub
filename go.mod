@@ -162,7 +162,8 @@ require (
 )
 
 require (
+	github.com/aliyun/alibabacloud-oss-go-sdk-v2 v1.5.3
 	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.7.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.18.15 // indirect
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.79.2 // indirect
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.79.2
 )

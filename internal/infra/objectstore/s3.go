@@ -4,8 +4,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
+	"time"
 
+	oss "github.com/aliyun/alibabacloud-oss-go-sdk-v2/oss"
+	osscredentials "github.com/aliyun/alibabacloud-oss-go-sdk-v2/oss/credentials"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -16,6 +20,7 @@ import (
 // S3 把账本图片和视频写到当前环境的对象存储。URI 只作为账本里的地址。
 type S3 struct {
 	client *s3.Client
+	oss    *oss.Client
 	bucket string
 }
 
@@ -23,10 +28,20 @@ func New(ctx context.Context, cfg config.ObjectStorageConfig) (*S3, error) {
 	if !cfg.Enabled() {
 		return nil, nil
 	}
-	awsCfg, err := awsconfig.LoadDefaultConfig(ctx,
-		awsconfig.WithRegion(strings.TrimSpace(cfg.Region)),
-		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(strings.TrimSpace(cfg.AccessKeyID), strings.TrimSpace(cfg.AccessKeySecret), "")),
-	)
+	// 同一份桶配置保留原 endpoint，按 provider 使用对应厂商的签名和默认寻址规则。
+	if cfg.Provider == "oss" {
+		client := oss.NewClient(oss.LoadDefaultConfig().WithHttpClient(&http.Client{Timeout: 120 * time.Second}).WithRegion(strings.TrimSpace(cfg.Region)).WithEndpoint(strings.TrimSpace(cfg.Endpoint)).WithCredentialsProvider(osscredentials.NewStaticCredentialsProvider(strings.TrimSpace(cfg.AccessKeyID), strings.TrimSpace(cfg.AccessKeySecret))))
+		return &S3{oss: client, bucket: strings.TrimSpace(cfg.Bucket)}, nil
+	}
+	if cfg.Provider != "s3" {
+		return nil, fmt.Errorf("unsupported object storage provider %q", cfg.Provider)
+	}
+	opts := []func(*awsconfig.LoadOptions) error{awsconfig.WithRegion(strings.TrimSpace(cfg.Region)), awsconfig.WithHTTPClient(&http.Client{Timeout: 120 * time.Second})}
+	// AWS 未配置静态凭据时保留任务角色凭据链。
+	if cfg.AccessKeyID != "" {
+		opts = append(opts, awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(strings.TrimSpace(cfg.AccessKeyID), strings.TrimSpace(cfg.AccessKeySecret), "")))
+	}
+	awsCfg, err := awsconfig.LoadDefaultConfig(ctx, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("object storage config: %w", err)
 	}
@@ -34,18 +49,25 @@ func New(ctx context.Context, cfg config.ObjectStorageConfig) (*S3, error) {
 	client := s3.NewFromConfig(awsCfg, func(options *s3.Options) {
 		if endpoint != "" {
 			options.BaseEndpoint = aws.String(endpoint)
-			// 自建端点和 OSS 兼容地址不保证虚拟主机域名，用 path-style。
-			options.UsePathStyle = true
+			// endpoint 不决定寻址方式；使用 AWS SDK 默认规则。
 		}
 	})
 	return &S3{client: client, bucket: strings.TrimSpace(cfg.Bucket)}, nil
 }
 
 func (s *S3) Put(ctx context.Context, key, contentType string, body []byte) (string, error) {
-	if s == nil || s.client == nil {
+	if s == nil || (s.client == nil && s.oss == nil) {
 		return "", fmt.Errorf("object storage is not configured")
 	}
 	key = strings.TrimLeft(strings.TrimSpace(key), "/")
+	if s.oss != nil {
+		_, err := s.oss.PutObject(ctx, &oss.PutObjectRequest{Bucket: oss.Ptr(s.bucket), Key: oss.Ptr(key), Body: bytes.NewReader(body), ContentType: oss.Ptr(contentType)})
+		if err != nil {
+			return "", err
+		}
+		// 账本 URI 是对象身份，沿用既有协议；不能持久化短期签名 URL。
+		return "s3://" + s.bucket + "/" + key, nil
+	}
 	input := &s3.PutObjectInput{
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(key),

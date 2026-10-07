@@ -346,6 +346,8 @@ type LogfireConfig struct {
 
 // ObjectStorageConfig 是账本媒体使用的对象存储。字段全空表示不启用。
 type ObjectStorageConfig struct {
+	// Provider 明确存储厂商，OSS 与 S3 的签名协议不能混用。
+	Provider        string `yaml:"provider"`
 	Bucket          string `yaml:"bucket"`
 	Region          string `yaml:"region"`
 	Endpoint        string `yaml:"endpoint"`
@@ -354,15 +356,21 @@ type ObjectStorageConfig struct {
 }
 
 func (c ObjectStorageConfig) Enabled() bool {
-	return strings.TrimSpace(c.Bucket) != "" || strings.TrimSpace(c.Region) != "" || strings.TrimSpace(c.Endpoint) != "" || strings.TrimSpace(c.AccessKeyID) != "" || strings.TrimSpace(c.AccessKeySecret) != ""
+	return strings.TrimSpace(c.Provider) != "" || strings.TrimSpace(c.Bucket) != "" || strings.TrimSpace(c.Region) != "" || strings.TrimSpace(c.Endpoint) != "" || strings.TrimSpace(c.AccessKeyID) != "" || strings.TrimSpace(c.AccessKeySecret) != ""
 }
 
 func (c ObjectStorageConfig) validate() error {
 	if !c.Enabled() {
 		return nil
 	}
-	if strings.TrimSpace(c.Bucket) == "" || strings.TrimSpace(c.Region) == "" || strings.TrimSpace(c.AccessKeyID) == "" || strings.TrimSpace(c.AccessKeySecret) == "" {
-		return fmt.Errorf("object_storage requires bucket, region, access_key_id and access_key_secret")
+	if c.Provider != "oss" && c.Provider != "s3" {
+		return fmt.Errorf("object_storage.provider must be oss or s3")
+	}
+	if strings.TrimSpace(c.Bucket) == "" || strings.TrimSpace(c.Region) == "" {
+		return fmt.Errorf("object_storage requires bucket and region")
+	}
+	if (c.AccessKeyID == "") != (c.AccessKeySecret == "") || (c.Provider == "oss" && (c.AccessKeyID == "" || c.Endpoint == "")) {
+		return fmt.Errorf("object_storage requires paired credentials; oss also requires endpoint and static credentials")
 	}
 	return nil
 }

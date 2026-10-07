@@ -363,3 +363,8 @@ providers:
 model_routes:
   gemini-2.5-flash-image: aig_gemini_image
   gemini-3.1-flash-image: aig_gemini_image
+
+# 账本媒体归档默认关闭；启用时填写 provider: oss 或 s3、bucket、region。
+# OSS 使用阿里云官方 SDK，还需 endpoint、access_key_id、access_key_secret。
+# AWS 使用官方 S3 SDK，省略静态凭据时走默认任务角色；endpoint 可保留区域端点。
+# object_storage.provider/endpoint/凭据属于启动期资源，变更后需滚动重启。
