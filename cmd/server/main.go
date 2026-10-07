@@ -77,7 +77,7 @@ func main() {
 		_ = httpSrv.Stop(shutdownCtx)
 	}()
 
-	providers, err := factory.Build(ctx, runtimeConfig)
+	providers, err := factory.BuildLive(ctx, live)
 	if err != nil {
 		fatal("provider_factory_failed", err)
 	}

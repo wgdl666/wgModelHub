@@ -371,6 +371,43 @@ func inlinePNG(data []byte) *modelhubv2.Media {
 
 func strPtr(v string) *string { return &v }
 
+func TestBaseURLFollowsResolverOnNextRequest(t *testing.T) {
+	src := pngBytes(t)
+	out := pngBytes(t)
+	var hits []string
+	newServer := func(name string) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			hits = append(hits, name)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]string{{"b64_json": base64.StdEncoding.EncodeToString(out)}},
+				"crop": map[string]any{"applied": true},
+			})
+		}))
+	}
+	first := newServer("startup")
+	defer first.Close()
+	second := newServer("hot")
+	defer second.Close()
+
+	current := first.URL
+	p, err := NewResolving("vworld_flux_image", "wgdl", "secret", func() string { return current })
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.client = http.DefaultClient
+	req := wardrobeRequest(src, `{"garment_name":"白色衬衫","garment_category":"tops.shirts"}`)
+	if _, err := p.GenerateImage(context.Background(), models.VWorldWardrobe10, req); err != nil {
+		t.Fatal(err)
+	}
+	current = second.URL
+	if _, err := p.GenerateImage(context.Background(), models.VWorldWardrobe10, req); err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) != 2 || hits[0] != "startup" || hits[1] != "hot" {
+		t.Fatalf("hits=%v", hits)
+	}
+}
+
 func newTestProvider(t *testing.T, baseURL string) *Provider {
 	t.Helper()
 	p, err := New("vworld_flux_image", baseURL, "wgdl", "secret")

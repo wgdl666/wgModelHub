@@ -84,7 +84,9 @@ func ParseAndValidateYAML(content string) (Config, error) {
 }
 
 // RestartRequiredFields 列出绑定启动期连接/资源的字段。
-// 同名同资源 provider 仅 Models 或顶层 model_routes 变化可热更新；实例增删、类型/凭据/端点等资源参数变化整单拒绝。
+// 同名 provider 的 Models、顶层 model_routes，以及 vworld_image.base_url 可热更新。
+// 薇光生图地址按请求读取，路演可以把公网入口切到俄亥俄内网而不重启。
+// 凭据、代理和其他供应商端点仍整单拒绝，避免配置已记下、进程还在连旧地址。
 func RestartRequiredFields(previous, next Config) []string {
 	var fields []string
 	if previous.Database.DSN != next.Database.DSN {
@@ -103,6 +105,7 @@ func RestartRequiredFields(previous, next Config) []string {
 }
 
 // providerResourcesEqual 只比较启动期绑定的连接与资源参数；Models 是路由元数据，不参与重启判定。
+// vworld_image.base_url 也不参与：运行中的生图客户端每次请求都会重读它。
 func providerResourcesEqual(previous, next map[string]ProviderConfig) bool {
 	if len(previous) != len(next) {
 		return false
@@ -124,5 +127,18 @@ func providerResourceEqual(previous, next ProviderConfig) bool {
 	right := next
 	left.Models = nil
 	right.Models = nil
+	left.VWorldImage = vworldImageWithoutBaseURL(left.VWorldImage)
+	right.VWorldImage = vworldImageWithoutBaseURL(right.VWorldImage)
 	return reflect.DeepEqual(left, right)
+}
+
+// vworldImageWithoutBaseURL 去掉可热更新的地址后再比较。用户名和密码仍是启动期凭据。
+// 复制结构体，避免把正在服务的配置指针改掉。
+func vworldImageWithoutBaseURL(cfg *VWorldImageProviderConfig) *VWorldImageProviderConfig {
+	if cfg == nil {
+		return nil
+	}
+	copied := *cfg
+	copied.BaseURL = ""
+	return &copied
 }

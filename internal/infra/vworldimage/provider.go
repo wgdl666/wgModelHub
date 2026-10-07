@@ -42,13 +42,15 @@ const (
 	requestTimeout = 900 * time.Second
 )
 
-// Provider 只实现 ImageProvider。两个模型共用公网入口，靠路径与 LoRA 分流。
+// Provider 只实现 ImageProvider。两个模型共用同一个入口，靠路径与 LoRA 分流。
 type Provider struct {
 	name     string
 	baseURL  string
 	username string
 	password string
 	client   *http.Client
+	// resolveBaseURL 每次请求重读入口。路演要把国内公网切到俄亥俄 G6，不能把地址冻在进程启动时。
+	resolveBaseURL func() string
 }
 
 func New(name, baseURL, username, password string) (*Provider, error) {
@@ -75,6 +77,33 @@ func New(name, baseURL, username, password string) (*Provider, error) {
 		password: password,
 		client:   client,
 	}, nil
+}
+
+// NewResolving 与 New 相同，但地址在每次请求时通过 resolve 读取。
+// 启动时仍用第一次读到的地址做校验；之后配置热更新改 base_url 会在下一次生图生效。
+// 用户名和密码保持启动时的值，改凭据仍然要重启。
+func NewResolving(name, username, password string, resolve func() string) (*Provider, error) {
+	if resolve == nil {
+		return nil, provider.New(provider.ErrorConfiguration, "vworld-image base_url resolver is required")
+	}
+	p, err := New(name, resolve(), username, password)
+	if err != nil {
+		return nil, err
+	}
+	p.resolveBaseURL = resolve
+	return p, nil
+}
+
+func (p *Provider) currentBaseURL() string {
+	if p.resolveBaseURL == nil {
+		return p.baseURL
+	}
+	next := strings.TrimRight(strings.TrimSpace(p.resolveBaseURL()), "/")
+	// 热更新瞬间读到空地址时继续用启动入口，避免请求打到空 host。
+	if next == "" {
+		return p.baseURL
+	}
+	return next
 }
 
 // GenerateImage 按真实模型 ID 选择拆衣服或虚拟换衣；尺寸与 LoRA 固定在供应商内，不受衣橱 AspectRatio 换算影响。
@@ -242,7 +271,7 @@ func (p *Provider) doMultipart(ctx context.Context, path string, fields map[stri
 		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" build request failed", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+path, &buf)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.currentBaseURL()+path, &buf)
 	if err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" create request failed", err)
 	}

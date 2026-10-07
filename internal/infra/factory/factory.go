@@ -38,11 +38,24 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/provider"
 )
 
-// Build 按 Nacos providers 段实例化供应商能力；真实模型路由在 service 层完成，这里只负责连接与能力装配。
+// Build 按配置实例化供应商能力；真实模型路由在 service 层完成，这里只负责连接与能力装配。
 func Build(ctx context.Context, cfg config.Config) (map[string]provider.Set, error) {
+	return build(ctx, cfg, nil)
+}
+
+// BuildLive 与 Build 相同，但薇光生图会在每次请求重读 live 里的 base_url。
+// 其他供应商仍使用启动时的连接参数；那些字段变化继续由 LiveConfig 拒绝。
+func BuildLive(ctx context.Context, live *config.LiveConfig) (map[string]provider.Set, error) {
+	if live == nil {
+		return nil, fmt.Errorf("live config is required")
+	}
+	return build(ctx, live.Load(), live)
+}
+
+func build(ctx context.Context, cfg config.Config, live *config.LiveConfig) (map[string]provider.Set, error) {
 	sets := make(map[string]provider.Set, len(cfg.Providers))
 	for name, providerCfg := range cfg.Providers {
-		set, err := buildProvider(ctx, name, providerCfg)
+		set, err := buildProvider(ctx, name, providerCfg, live)
 		if err != nil {
 			return nil, fmt.Errorf("provider %s: %w", name, err)
 		}
@@ -51,7 +64,7 @@ func Build(ctx context.Context, cfg config.Config) (map[string]provider.Set, err
 	return sets, nil
 }
 
-func buildProvider(ctx context.Context, name string, providerCfg config.ProviderConfig) (provider.Set, error) {
+func buildProvider(ctx context.Context, name string, providerCfg config.ProviderConfig, live *config.LiveConfig) (provider.Set, error) {
 	switch {
 	case providerCfg.ImageSeg != nil:
 		cfg := providerCfg.ImageSeg
@@ -297,7 +310,22 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 		return provider.Set{Image: client}, nil
 	case providerCfg.VWorldImage != nil:
 		cfg := providerCfg.VWorldImage
-		client, err := vworldimage.New(name, cfg.BaseURL, cfg.Username, cfg.Password)
+		var client *vworldimage.Provider
+		var err error
+		if live != nil {
+			// 闭包按供应商名读当前配置。只换 base_url 时下一次生图走新地址，不必滚动重启。
+			providerName := name
+			fallback := cfg.BaseURL
+			client, err = vworldimage.NewResolving(name, cfg.Username, cfg.Password, func() string {
+				current, ok := live.Load().Providers[providerName]
+				if !ok || current.VWorldImage == nil {
+					return fallback
+				}
+				return current.VWorldImage.BaseURL
+			})
+		} else {
+			client, err = vworldimage.New(name, cfg.BaseURL, cfg.Username, cfg.Password)
+		}
 		if err != nil {
 			return provider.Set{}, err
 		}

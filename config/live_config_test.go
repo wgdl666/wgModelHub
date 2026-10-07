@@ -176,6 +176,68 @@ func TestRestartRequiredWhenPhotoroomProxyURLChanges(t *testing.T) {
 	}
 }
 
+func TestLiveConfigAppliesVWorldBaseURL(t *testing.T) {
+	initial := validConfig()
+	initial.Providers["vworld_flux_image"] = ProviderConfig{
+		Models: []string{models.VWorldWardrobe10},
+		VWorldImage: &VWorldImageProviderConfig{
+			BaseURL:  "https://vmind-image.model.wgdl.tech",
+			Username: "wgdl",
+			Password: "secret",
+		},
+	}
+	if err := initial.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	lc := NewLiveConfig(initial)
+
+	next := cloneConfig(initial)
+	vworld := next.Providers["vworld_flux_image"]
+	copied := *vworld.VWorldImage
+	copied.BaseURL = "http://172.31.43.7:18280"
+	vworld.VWorldImage = &copied
+	next.Providers["vworld_flux_image"] = vworld
+
+	if fields := RestartRequiredFields(initial, next); len(fields) != 0 {
+		t.Fatalf("vworld base_url must hot reload, fields=%v", fields)
+	}
+	lc.ApplyYAML(mustYAML(t, next))
+	got := lc.Load().Providers["vworld_flux_image"].VWorldImage
+	if got == nil || got.BaseURL != "http://172.31.43.7:18280" || got.Password != "secret" {
+		t.Fatalf("applied vworld=%#v", got)
+	}
+}
+
+func TestLiveConfigRejectsVWorldCredentialChange(t *testing.T) {
+	initial := validConfig()
+	initial.Providers["vworld_flux_image"] = ProviderConfig{
+		Models: []string{models.VWorldWardrobe10},
+		VWorldImage: &VWorldImageProviderConfig{
+			BaseURL:  "https://vmind-image.model.wgdl.tech",
+			Username: "wgdl",
+			Password: "secret",
+		},
+	}
+	if err := initial.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	lc := NewLiveConfig(initial)
+	next := cloneConfig(initial)
+	vworld := next.Providers["vworld_flux_image"]
+	copied := *vworld.VWorldImage
+	copied.Password = "changed"
+	vworld.VWorldImage = &copied
+	next.Providers["vworld_flux_image"] = vworld
+
+	if fields := RestartRequiredFields(initial, next); len(fields) == 0 || fields[0] != "providers" {
+		t.Fatalf("fields=%v", fields)
+	}
+	lc.ApplyYAML(mustYAML(t, next))
+	if lc.Load().Providers["vworld_flux_image"].VWorldImage.Password != "secret" {
+		t.Fatal("credential change must keep previous password")
+	}
+}
+
 func TestLiveConfigRejectsProviderResourceChanges(t *testing.T) {
 	initial := validConfig()
 	lc := NewLiveConfig(initial)
