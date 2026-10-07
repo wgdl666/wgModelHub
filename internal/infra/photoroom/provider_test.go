@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
@@ -37,7 +38,7 @@ func imageRequest(images ...*modelhubv2.Media) *modelhubv2.GenerateRequest {
 
 func newTestProvider(t *testing.T, baseURL string) *Provider {
 	t.Helper()
-	p, err := New("photoroom_test", "test-api-key", baseURL)
+	p, err := New("photoroom_test", "test-api-key", baseURL, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +46,7 @@ func newTestProvider(t *testing.T, baseURL string) *Provider {
 }
 
 func TestNewDefaultsBaseURL(t *testing.T) {
-	p, err := New("photoroom", "key", "")
+	p, err := New("photoroom", "key", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,35 +58,98 @@ func TestNewDefaultsBaseURL(t *testing.T) {
 	}
 }
 
+func TestNewRejectsInvalidProxyURL(t *testing.T) {
+	_, err := New("photoroom", "key", "", "http://[")
+	if err == nil || !strings.Contains(err.Error(), "proxy URL is invalid") {
+		t.Fatalf("err=%v", err)
+	}
+	assertKind(t, err, provider.ErrorConfiguration)
+}
+
+func TestNewRoutesHTTPThroughProxy(t *testing.T) {
+	var proxied atomic.Bool
+	// handler 不得 t.Fatal/FailNow：会在服务端 goroutine 里立刻结束测试，客户端可能挂死。
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Errorf("direct upstream hit; request must go through proxy")
+		http.Error(w, "direct hit", http.StatusBadGateway)
+	}))
+	defer upstream.Close()
+
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		proxied.Store(true)
+		if r.Method != http.MethodPost {
+			t.Errorf("proxy method=%s", r.Method)
+			http.Error(w, "bad method", http.StatusBadRequest)
+			return
+		}
+		// Go HTTP 客户端经明文代理时使用绝对 URL；确认仍指向上游 segment。
+		wantTarget := upstream.URL + segmentPath
+		if r.RequestURI != wantTarget && r.URL.String() != wantTarget {
+			t.Errorf("proxy target requestURI=%q url=%q, want %q", r.RequestURI, r.URL.String(), wantTarget)
+			http.Error(w, "bad target", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write([]byte(tinyPNG))
+	}))
+	defer proxy.Close()
+
+	p, err := New("photoroom_test", "test-api-key", upstream.URL, proxy.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	event, err := p.GenerateImage(context.Background(), models.PhotoroomSegment, imageRequest(
+		&modelhubv2.Media{MimeType: "image/png", Source: &modelhubv2.Media_Data{Data: []byte(tinyPNG)}},
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !proxied.Load() {
+		t.Fatal("request did not go through proxy")
+	}
+	if string(event.GetItems()[0].GetImage().GetData()) != tinyPNG {
+		t.Fatalf("unexpected output")
+	}
+}
+
 func TestGenerateImageInlinePNGRoundTrip(t *testing.T) {
 	var gotAPIKey, gotContentType string
 	var gotFileName, gotFileType string
 	var gotBody []byte
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != segmentPath || r.Method != http.MethodPost {
-			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+			http.Error(w, "unexpected request", http.StatusBadRequest)
+			return
 		}
 		gotAPIKey = r.Header.Get("x-api-key")
 		gotContentType = r.Header.Get("Content-Type")
 		if err := r.ParseMultipartForm(1 << 20); err != nil {
-			t.Fatal(err)
+			t.Errorf("ParseMultipartForm: %v", err)
+			http.Error(w, "bad multipart", http.StatusBadRequest)
+			return
 		}
 		file, header, err := r.FormFile("image_file")
 		if err != nil {
-			t.Fatal(err)
+			t.Errorf("FormFile: %v", err)
+			http.Error(w, "missing image_file", http.StatusBadRequest)
+			return
 		}
 		defer file.Close()
 		gotFileName = header.Filename
 		gotFileType = header.Header.Get("Content-Type")
 		gotBody, err = io.ReadAll(file)
 		if err != nil {
-			t.Fatal(err)
+			t.Errorf("ReadAll: %v", err)
+			http.Error(w, "read failed", http.StatusBadRequest)
+			return
 		}
 		w.Header().Set("Content-Type", "image/png")
 		_, _ = w.Write([]byte(tinyPNG))
 	}))
 	defer server.Close()
 
+	// 未配置 proxy_url：走 New 默认 client；成功即验证未配置路径仍可完成真实请求。
 	p := newTestProvider(t, server.URL)
 	event, err := p.GenerateImage(context.Background(), models.PhotoroomSegment, imageRequest(
 		&modelhubv2.Media{MimeType: "image/png", Source: &modelhubv2.Media_Data{Data: []byte(tinyPNG)}},
@@ -119,19 +183,27 @@ func TestGenerateImageURIInput(t *testing.T) {
 	})
 	mux.HandleFunc(segmentPath, func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseMultipartForm(1 << 20); err != nil {
-			t.Fatal(err)
+			t.Errorf("ParseMultipartForm: %v", err)
+			http.Error(w, "bad multipart", http.StatusBadRequest)
+			return
 		}
 		file, header, err := r.FormFile("image_file")
 		if err != nil {
-			t.Fatal(err)
+			t.Errorf("FormFile: %v", err)
+			http.Error(w, "missing image_file", http.StatusBadRequest)
+			return
 		}
 		defer file.Close()
 		if header.Filename != "image.jpg" || header.Header.Get("Content-Type") != "image/jpeg" {
-			t.Fatalf("header=%#v", header)
+			t.Errorf("header=%#v", header)
+			http.Error(w, "bad file header", http.StatusBadRequest)
+			return
 		}
 		data, _ := io.ReadAll(file)
 		if !bytes.Equal(data, []byte{0xff, 0xd8, 0xff, 0xd9}) {
-			t.Fatalf("uploaded=%v", data)
+			t.Errorf("uploaded=%v", data)
+			http.Error(w, "bad upload", http.StatusBadRequest)
+			return
 		}
 		_, _ = w.Write([]byte(tinyPNG))
 	})
@@ -189,8 +261,9 @@ func TestGenerateImageRejectsEmptyURIContent(t *testing.T) {
 	mux.HandleFunc("/empty", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
 	})
-	mux.HandleFunc(segmentPath, func(http.ResponseWriter, *http.Request) {
-		t.Fatal("segment must not be called")
+	mux.HandleFunc(segmentPath, func(w http.ResponseWriter, _ *http.Request) {
+		t.Errorf("segment must not be called")
+		http.Error(w, "unexpected segment", http.StatusBadGateway)
 	})
 	server := httptest.NewServer(mux)
 	defer server.Close()
@@ -208,8 +281,9 @@ func TestGenerateImageRejectsOversizedURIInput(t *testing.T) {
 		w.Header().Set("Content-Type", "image/png")
 		_, _ = w.Write(bytes.Repeat([]byte{0x01}, protocol.MaxMediaBytes+1))
 	})
-	mux.HandleFunc(segmentPath, func(http.ResponseWriter, *http.Request) {
-		t.Fatal("segment must not be called")
+	mux.HandleFunc(segmentPath, func(w http.ResponseWriter, _ *http.Request) {
+		t.Errorf("segment must not be called")
+		http.Error(w, "unexpected segment", http.StatusBadGateway)
 	})
 	server := httptest.NewServer(mux)
 	defer server.Close()
@@ -227,8 +301,9 @@ func TestGenerateImageRejectsNonImageURIBody(t *testing.T) {
 		w.Header().Set("Content-Type", "text/plain")
 		_, _ = w.Write([]byte("not-an-image"))
 	})
-	mux.HandleFunc(segmentPath, func(http.ResponseWriter, *http.Request) {
-		t.Fatal("segment must not be called")
+	mux.HandleFunc(segmentPath, func(w http.ResponseWriter, _ *http.Request) {
+		t.Errorf("segment must not be called")
+		http.Error(w, "unexpected segment", http.StatusBadGateway)
 	})
 	server := httptest.NewServer(mux)
 	defer server.Close()
@@ -319,10 +394,14 @@ func TestGenerateImageMapsUpstreamStatus(t *testing.T) {
 func TestGenerateImageDoesNotSendModelUpstream(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseMultipartForm(1 << 20); err != nil {
-			t.Fatal(err)
+			t.Errorf("ParseMultipartForm: %v", err)
+			http.Error(w, "bad multipart", http.StatusBadRequest)
+			return
 		}
 		if _, ok := r.MultipartForm.Value["model"]; ok {
-			t.Fatal("model must not be sent upstream")
+			t.Errorf("model must not be sent upstream")
+			http.Error(w, "unexpected model", http.StatusBadRequest)
+			return
 		}
 		_, _ = w.Write([]byte(tinyPNG))
 	}))

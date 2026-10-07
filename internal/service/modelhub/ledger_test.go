@@ -307,7 +307,7 @@ func TestLedgerRecordsRealPhotoroomInvalidResponseAfterHTTP(t *testing.T) {
 		_, _ = w.Write([]byte("not-a-png"))
 	}))
 	t.Cleanup(server.Close)
-	img, err := photoroom.New("photoroom_test", "k", server.URL)
+	img, err := photoroom.New("photoroom_test", "k", server.URL, "")
 	if err != nil {
 		t.Fatal(err)
 	}

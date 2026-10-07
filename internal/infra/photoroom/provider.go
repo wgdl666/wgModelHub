@@ -36,7 +36,9 @@ type Provider struct {
 	client  *http.Client
 }
 
-func New(name, apiKey, baseURL string) (*Provider, error) {
+// New 装配 Photoroom HTTP 客户端。proxyURL 未配置时保持原有默认 HTTP transport 行为；
+// 非空时 Clone DefaultTransport 并设 Proxy，仅本实例出站走该代理。非法 URL 启动期按 ErrorConfiguration 拒绝。
+func New(name, apiKey, baseURL, proxyURL string) (*Provider, error) {
 	if strings.TrimSpace(apiKey) == "" {
 		return nil, provider.New(provider.ErrorConfiguration, name+" API key is required")
 	}
@@ -46,11 +48,22 @@ func New(name, apiKey, baseURL string) (*Provider, error) {
 	if strings.TrimSpace(baseURL) == "" {
 		baseURL = DefaultBaseURL
 	}
+	// 与 Gemini 同模式：未配置走 telemetry.NewHTTPClient()（DefaultTransport）；有配置再 Clone 并钉死 Proxy。
+	client := telemetry.NewHTTPClient()
+	if proxyURL = strings.TrimSpace(proxyURL); proxyURL != "" {
+		parsed, err := url.Parse(proxyURL)
+		if err != nil {
+			return nil, provider.Wrap(provider.ErrorConfiguration, name+" proxy URL is invalid", err)
+		}
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.Proxy = http.ProxyURL(parsed)
+		client = telemetry.NewHTTPClientWithTransport(transport)
+	}
 	return &Provider{
 		name:    name,
 		apiKey:  apiKey,
 		baseURL: strings.TrimRight(baseURL, "/"),
-		client:  telemetry.NewHTTPClient(),
+		client:  client,
 	}, nil
 }
 

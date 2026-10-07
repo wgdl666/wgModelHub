@@ -145,6 +145,37 @@ func TestLiveConfigRejectsProviderKeyAddDelete(t *testing.T) {
 	}
 }
 
+func TestRestartRequiredWhenPhotoroomProxyURLChanges(t *testing.T) {
+	// proxy_url 与 base_url/api_key 同属连接资源：仅改代理不得热更新半生效。
+	previous := Config{
+		Providers: map[string]ProviderConfig{
+			"photoroom_bg": {
+				Models: []string{models.PhotoroomSegment},
+				Photoroom: &PhotoroomProviderConfig{
+					APIKey:  "k",
+					BaseURL: "https://sdk.photoroom.com",
+				},
+			},
+		},
+	}
+	next := Config{
+		Providers: map[string]ProviderConfig{
+			"photoroom_bg": {
+				Models: []string{models.PhotoroomSegment},
+				Photoroom: &PhotoroomProviderConfig{
+					APIKey:   "k",
+					BaseURL:  "https://sdk.photoroom.com",
+					ProxyURL: "http://127.0.0.1:1081",
+				},
+			},
+		},
+	}
+	fields := RestartRequiredFields(previous, next)
+	if len(fields) == 0 || fields[0] != "providers" {
+		t.Fatalf("fields=%v", fields)
+	}
+}
+
 func TestLiveConfigRejectsProviderResourceChanges(t *testing.T) {
 	initial := validConfig()
 	lc := NewLiveConfig(initial)

@@ -189,9 +189,13 @@ type ElevenLabsTTSProviderConfig struct {
 
 // PhotoroomProviderConfig 承接官方 Remove Background Basic plan。
 // base_url 可选，默认 https://sdk.photoroom.com；路径固定 /v1/segment，调用方不得注入供应商地址。
+// proxy_url 与 Gemini 同语义：未配置时保持原有默认 HTTP transport 行为；CN 等无法直达
+// sdk.photoroom.com 的环境须显式配置出口代理（telemetry.NewHTTPClient 使用 DefaultTransport，仍可能读代理环境变量）。
+// proxy_url / base_url / api_key 属启动期连接资源，变更须滚动重启，不能热更新部分生效。
 type PhotoroomProviderConfig struct {
-	APIKey  string `yaml:"api_key"`
-	BaseURL string `yaml:"base_url"`
+	APIKey   string `yaml:"api_key"`
+	BaseURL  string `yaml:"base_url"`
+	ProxyURL string `yaml:"proxy_url"`
 }
 
 // SegmentPersonProviderConfig 承接国内自建抠图。

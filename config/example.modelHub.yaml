@@ -186,11 +186,13 @@ providers:
       username: wgdl
       password: "${VWORLD_IMAGE_PASSWORD}"
   # Photoroom Remove Background：官方 POST /v1/segment；models 常量仅作路由，不发上游。
+  # proxy_url 未配置时保持原有默认 HTTP transport 行为；CN 等需经出口代理访问官方 SDK 时再填（与 Gemini 同语义，属连接资源，变更须重启）。
   photoroom_bg:
     models: [photoroom-segment]
     photoroom:
       api_key: "${PHOTOROOM_API_KEY}"
       base_url: https://sdk.photoroom.com
+      proxy_url: ""
   # 国内自建抠图。两个模型 ID 分别对应人物 /api/segment 与商品主体 /api/segment_subject。
   # username/password 可成对省略（匿名）；method 是上游算法名，不是模型 ID。
   segment_person_bria:

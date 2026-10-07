@@ -217,7 +217,8 @@
       "required": ["api_key"],
       "properties": {
         "api_key": { "type": "string", "minLength": 1 },
-        "base_url": { "type": "string" }
+        "base_url": { "type": "string" },
+        "proxy_url": { "type": "string" }
       }
     },
     "minimaxTts": {

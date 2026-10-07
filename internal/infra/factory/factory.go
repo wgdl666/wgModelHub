@@ -170,7 +170,7 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 		return provider.Set{Speech: client}, nil
 	case providerCfg.Photoroom != nil:
 		cfg := providerCfg.Photoroom
-		client, err := photoroom.New(name, cfg.APIKey, cfg.BaseURL)
+		client, err := photoroom.New(name, cfg.APIKey, cfg.BaseURL, cfg.ProxyURL)
 		if err != nil {
 			return provider.Set{}, err
 		}
