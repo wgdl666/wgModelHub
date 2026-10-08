@@ -64,6 +64,14 @@
         "ark_video": { "$ref": "#/definitions/arkVideo" },
         "minimax_tts": { "$ref": "#/definitions/minimaxTts" },
         "elevenlabs_tts": { "$ref": "#/definitions/elevenlabsTts" },
+        "volcengine_asr": { "$ref": "#/definitions/asrVolcengine" },
+        "aliyun_asr": { "$ref": "#/definitions/asrAliyun" },
+        "fun_asr": { "$ref": "#/definitions/asrDashscope" },
+        "qwen_asr": { "$ref": "#/definitions/asrDashscope" },
+        "tencent_asr": { "$ref": "#/definitions/asrTencent" },
+        "assemblyai_asr": { "$ref": "#/definitions/asrAPIKey" },
+        "deepgram_asr": { "$ref": "#/definitions/asrAPIKey" },
+        "soniox_asr": { "$ref": "#/definitions/asrAPIKey" },
         "photoroom": { "$ref": "#/definitions/photoroom" },
         "segment_person": { "$ref": "#/definitions/segmentPerson" },
         "vworld_image": { "$ref": "#/definitions/vworldImage" },
@@ -98,6 +106,14 @@
         { "required": ["ark_video"] },
         { "required": ["minimax_tts"] },
         { "required": ["elevenlabs_tts"] },
+        { "required": ["volcengine_asr"] },
+        { "required": ["aliyun_asr"] },
+        { "required": ["fun_asr"] },
+        { "required": ["qwen_asr"] },
+        { "required": ["tencent_asr"] },
+        { "required": ["assemblyai_asr"] },
+        { "required": ["deepgram_asr"] },
+        { "required": ["soniox_asr"] },
         { "required": ["photoroom"] },
         { "required": ["segment_person"] },
         { "required": ["vworld_image"] },
@@ -407,6 +423,50 @@
         "access_key_secret": { "type": "string" },
         "session_token": { "type": "string" },
         "collection": { "type": "string", "minLength": 1 }
+      }
+    },
+    "asrAPIKey": {
+      "type": "object",
+      "properties": {
+        "api_key": { "type": "string" },
+        "url": { "type": "string" }
+      }
+    },
+    "asrDashscope": {
+      "type": "object",
+      "properties": {
+        "api_key": { "type": "string" },
+        "workspace_id": { "type": "string" },
+        "url": { "type": "string" }
+      }
+    },
+    "asrVolcengine": {
+      "type": "object",
+      "properties": {
+        "app_key": { "type": "string" },
+        "access_key": { "type": "string" },
+        "api_key": { "type": "string" },
+        "resource_id": { "type": "string" },
+        "url": { "type": "string" }
+      }
+    },
+    "asrAliyun": {
+      "type": "object",
+      "properties": {
+        "ak_id": { "type": "string" },
+        "ak_key": { "type": "string" },
+        "app_key": { "type": "string" },
+        "token": { "type": "string" },
+        "url": { "type": "string" }
+      }
+    },
+    "asrTencent": {
+      "type": "object",
+      "properties": {
+        "app_id": { "type": "string" },
+        "secret_id": { "type": "string" },
+        "secret_key": { "type": "string" },
+        "proxy_url": { "type": "string" }
       }
     }
   }

@@ -23,6 +23,10 @@ service ModelHubService {
   // 每条响应的 audio.data 是增量 MP3 字节，可跨编码帧；仅正常 EOF 表示合成完成。
   // 收到首包不代表成功，后续 status error 表示不完整音频；取消立即传播供应商。
   rpc SynthesizeSpeechStream(SynthesizeSpeechRequest) returns (stream SynthesizeSpeechResponse);
+  // 实时 ASR 必须双向流：首包声明模型和音频契约，后续持续上行 PCM。
+  // 不可恢复错误只通过 gRPC status 结束，禁止在事件里再造一套错误协议。
+  rpc TranscribeSpeechStream(stream TranscribeSpeechClientMessage)
+      returns (stream TranscribeSpeechServerMessage);
   // ListModels 返回当前进程已路由的真实模型 ID，可按产品主用途过滤；不暴露 provider / 密钥。
   rpc ListModels(ListModelsRequest) returns (ListModelsResponse);
 }
@@ -47,6 +51,8 @@ enum ModelCategory {
   MODEL_CATEGORY_HUMAN_PARSER = 12;
   // 抠图出透明图。和文生图、图生图不是同一类。
   MODEL_CATEGORY_SEGMENT = 13;
+  // 实时语音识别与 SPEECH(TTS) 方向相反，必须独立列类，避免调用方把合成模型用于转写。
+  MODEL_CATEGORY_ASR = 14;
 }
 
 message ListModelsRequest {
@@ -377,4 +383,73 @@ message SynthesizeSpeechRequest {
 // SynthesizeSpeechResponse 必须携带完整可解码音频；半截收集只能映射为 gRPC error。
 message SynthesizeSpeechResponse {
   Media audio = 1;
+}
+
+message TranscribeSpeechClientMessage {
+  oneof item {
+    TranscribeSpeechStart start = 1;
+    TranscribeSpeechAudio audio = 2;
+    TranscribeSpeechFinalize finalize = 3;
+    TranscribeSpeechStop stop = 4;
+  }
+}
+
+message TranscribeSpeechStart {
+  string model = 1;
+  BusinessMetadata business_metadata = 2;
+  AudioEncoding encoding = 3;
+  int32 sample_rate_hz = 4;
+  int32 channels = 5;
+  repeated string language_hints = 6;
+  repeated string keyterms = 7;
+  bool speaker_diarization = 8;
+  TurnSilence turn_silence = 9;
+  ASRFeatures features = 10;
+}
+
+message TurnSilence {
+  // 0 表示沿用该模型默认值；两者都设置时 min_ms 不得大于 max_ms。
+  int32 min_ms = 1;
+  int32 max_ms = 2;
+}
+
+message ASRFeatures {
+  string hotword_table_id = 1;
+  int32 max_speakers = 2;
+  bool prefer_formatted_final = 3;
+}
+
+enum AudioEncoding {
+  AUDIO_ENCODING_UNSPECIFIED = 0;
+  AUDIO_ENCODING_PCM_S16LE = 1;
+}
+
+message TranscribeSpeechAudio {
+  bytes data = 1;
+}
+
+message TranscribeSpeechFinalize {}
+message TranscribeSpeechStop {}
+
+message TranscribeSpeechServerMessage {
+  oneof item {
+    TranscribeSpeechSession session = 1;
+    TranscribeSpeechTranscript transcript = 2;
+  }
+}
+
+message TranscribeSpeechSession {
+  string session_id = 1;
+}
+
+message TranscribeSpeechTranscript {
+  string text = 1;
+  bool is_final = 2;
+  bool has_media_time = 3;
+  int64 media_start_ms = 4;
+  int64 media_end_ms = 5;
+  double confidence = 6;
+  string speaker = 7;
+  repeated string speakers = 8;
+  repeated string session_speakers = 9;
 }

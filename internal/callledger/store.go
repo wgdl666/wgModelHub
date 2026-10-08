@@ -90,11 +90,13 @@ const (
 	OperationSubmitGeneration       = "submit_generation"
 	OperationSynthesizeSpeech       = "synthesize_speech"
 	OperationSynthesizeSpeechStream = "synthesize_speech_stream"
+	OperationTranscribeSpeechStream = "transcribe_speech_stream"
 
 	CapabilityText   = "text"
 	CapabilityImage  = "image"
 	CapabilityVideo  = "video"
 	CapabilitySpeech = "speech"
+	CapabilityASR    = "asr"
 
 	UnknownLabel = "unknown"
 )

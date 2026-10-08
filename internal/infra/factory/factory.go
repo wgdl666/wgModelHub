@@ -7,6 +7,14 @@ import (
 	"github.com/wgdl666/wgModelHub/config"
 	"github.com/wgdl666/wgModelHub/internal/infra/ark"
 	"github.com/wgdl666/wgModelHub/internal/infra/arkvideo"
+	aliyunasr "github.com/wgdl666/wgModelHub/internal/infra/asr/aliyun"
+	assemblyaiasr "github.com/wgdl666/wgModelHub/internal/infra/asr/assemblyai"
+	deepgramasr "github.com/wgdl666/wgModelHub/internal/infra/asr/deepgram"
+	funasr "github.com/wgdl666/wgModelHub/internal/infra/asr/funasr"
+	qwenasr "github.com/wgdl666/wgModelHub/internal/infra/asr/qwen"
+	sonioxasr "github.com/wgdl666/wgModelHub/internal/infra/asr/soniox"
+	tencentasr "github.com/wgdl666/wgModelHub/internal/infra/asr/tencent"
+	volcengineasr "github.com/wgdl666/wgModelHub/internal/infra/asr/volcengine"
 	"github.com/wgdl666/wgModelHub/internal/infra/bedrockembed"
 	"github.com/wgdl666/wgModelHub/internal/infra/bedrockrerank"
 	"github.com/wgdl666/wgModelHub/internal/infra/cohereembed"
@@ -55,6 +63,10 @@ func BuildLive(ctx context.Context, live *config.LiveConfig) (map[string]provide
 func build(ctx context.Context, cfg config.Config, live *config.LiveConfig) (map[string]provider.Set, error) {
 	sets := make(map[string]provider.Set, len(cfg.Providers))
 	for name, providerCfg := range cfg.Providers {
+		if config.IsASRProvider(providerCfg) && !config.ASRCredentialsPresent(providerCfg) {
+			// 多环境共用配置模板时，只实例化本区真正有凭据的 ASR，避免空密钥占用模型路由。
+			continue
+		}
 		set, err := buildProvider(ctx, name, providerCfg, live)
 		if err != nil {
 			return nil, fmt.Errorf("provider %s: %w", name, err)
@@ -66,6 +78,38 @@ func build(ctx context.Context, cfg config.Config, live *config.LiveConfig) (map
 
 func buildProvider(ctx context.Context, name string, providerCfg config.ProviderConfig, live *config.LiveConfig) (provider.Set, error) {
 	switch {
+	case providerCfg.VolcengineASR != nil:
+		cfg := providerCfg.VolcengineASR
+		client, err := volcengineasr.New(volcengineasr.Config{AppKey: cfg.AppKey, AccessKey: cfg.AccessKey, APIKey: cfg.APIKey, ResourceID: cfg.ResourceID, URL: cfg.URL})
+		return provider.Set{ASR: client}, err
+	case providerCfg.AliyunASR != nil:
+		cfg := providerCfg.AliyunASR
+		client, err := aliyunasr.New(aliyunasr.Config{AKID: cfg.AKID, AKKey: cfg.AKKey, AppKey: cfg.AppKey, Token: cfg.Token, URL: cfg.URL})
+		return provider.Set{ASR: client}, err
+	case providerCfg.FunASR != nil:
+		cfg := providerCfg.FunASR
+		client, err := funasr.New(funasr.Config{APIKey: cfg.APIKey, WorkspaceID: cfg.WorkspaceID, URL: cfg.URL})
+		return provider.Set{ASR: client}, err
+	case providerCfg.QwenASR != nil:
+		cfg := providerCfg.QwenASR
+		client, err := qwenasr.New(qwenasr.Config{APIKey: cfg.APIKey, WorkspaceID: cfg.WorkspaceID, URL: cfg.URL})
+		return provider.Set{ASR: client}, err
+	case providerCfg.TencentASR != nil:
+		cfg := providerCfg.TencentASR
+		client, err := tencentasr.New(tencentasr.Config{AppID: cfg.AppID, SecretID: cfg.SecretID, SecretKey: cfg.SecretKey, ProxyURL: cfg.ProxyURL})
+		return provider.Set{ASR: client}, err
+	case providerCfg.AssemblyAIASR != nil:
+		cfg := providerCfg.AssemblyAIASR
+		client, err := assemblyaiasr.New(assemblyaiasr.Config{APIKey: cfg.APIKey, URL: cfg.URL})
+		return provider.Set{ASR: client}, err
+	case providerCfg.DeepgramASR != nil:
+		cfg := providerCfg.DeepgramASR
+		client, err := deepgramasr.New(deepgramasr.Config{APIKey: cfg.APIKey, URL: cfg.URL})
+		return provider.Set{ASR: client}, err
+	case providerCfg.SonioxASR != nil:
+		cfg := providerCfg.SonioxASR
+		client, err := sonioxasr.New(sonioxasr.Config{APIKey: cfg.APIKey, URL: cfg.URL})
+		return provider.Set{ASR: client}, err
 	case providerCfg.ImageSeg != nil:
 		cfg := providerCfg.ImageSeg
 		client, err := imageseg.New(cfg.Endpoint, cfg.AccessKeyID, cfg.AccessKeySecret)

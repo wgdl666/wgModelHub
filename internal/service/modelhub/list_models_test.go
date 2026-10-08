@@ -39,6 +39,10 @@ func listModelsTestService() *Service {
 				Models:     []string{models.Speech28Turbo},
 				MinimaxTTS: &config.MinimaxTTSProviderConfig{APIKey: "k"},
 			},
+			"asr": {
+				Models:    []string{models.SonioxSTTRTV5},
+				SonioxASR: &config.SonioxASRProviderConfig{APIKey: "k"},
+			},
 			"embed": {
 				Models:             []string{models.Qwen3VLEmbedding},
 				DashScopeEmbedding: &config.DashScopeEmbeddingProviderConfig{BaseURL: "https://example.invalid", APIKey: "k"},
@@ -81,7 +85,7 @@ func TestListModelsReturnsRoutedPublicCategories(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := listModelIDs(resp)
-	want := []string{models.Gemini37Flash, models.DeepSeekV41Flash, models.Qwen3VLPlus, models.Qwen37Flash, models.GPTImage2, models.VWorldOutfitVideo10, models.Speech28Turbo, models.Qwen3VLEmbedding, models.Qwen37TextRerank, models.FacebodyCompareFace, models.FacebodyDetectFace, models.FacebodyFaceLibrary, models.HumanYOLO, models.HumanParser, models.HumanParse}
+	want := []string{models.Gemini37Flash, models.DeepSeekV41Flash, models.Qwen3VLPlus, models.Qwen37Flash, models.GPTImage2, models.VWorldOutfitVideo10, models.Speech28Turbo, models.SonioxSTTRTV5, models.Qwen3VLEmbedding, models.Qwen37TextRerank, models.FacebodyCompareFace, models.FacebodyDetectFace, models.FacebodyFaceLibrary, models.HumanYOLO, models.HumanParser, models.HumanParse}
 	if !sameStrings(got, want) {
 		t.Fatalf("models=%v want=%v", got, want)
 	}
@@ -121,6 +125,21 @@ func TestListModelsFiltersSpeech(t *testing.T) {
 		t.Fatalf("speech=%v", got)
 	}
 	if resp.GetModels()[0].GetCategory() != modelhubv2.ModelCategory_MODEL_CATEGORY_SPEECH {
+		t.Fatalf("category=%v", resp.GetModels()[0].GetCategory())
+	}
+}
+
+func TestListModelsFiltersASRApartFromSpeech(t *testing.T) {
+	resp, err := listModelsTestService().ListModels(context.Background(), &modelhubv2.ListModelsRequest{
+		Category: modelhubv2.ModelCategory_MODEL_CATEGORY_ASR,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sameStrings(listModelIDs(resp), []string{models.SonioxSTTRTV5}) {
+		t.Fatalf("asr=%v", listModelIDs(resp))
+	}
+	if resp.GetModels()[0].GetCategory() != modelhubv2.ModelCategory_MODEL_CATEGORY_ASR {
 		t.Fatalf("category=%v", resp.GetModels()[0].GetCategory())
 	}
 }

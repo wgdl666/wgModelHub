@@ -149,6 +149,51 @@ providers:
       stability: 0.30
       similarity_boost: 0.30
       style: 0.50
+  # 实时 ASR 按厂家分实例；缺凭据时该实例和模型路由会被跳过，便于 CN/海外共用模板。
+  volcengine_asr:
+    models: [volcengine-bigmodel-streaming]
+    volcengine_asr:
+      api_key: "${VOLCENGINE_ASR_API_KEY}"
+      resource_id: volc.seedasr.sauc.duration
+      url: wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async
+  aliyun_asr:
+    models: [aliyun-nls]
+    aliyun_asr:
+      app_key: "${ALIYUN_NLS_APP_KEY}"
+      token: "${ALIYUN_NLS_TOKEN}"
+      ak_id: "${ALIYUN_NLS_AK_ID}"
+      ak_key: "${ALIYUN_NLS_AK_KEY}"
+  fun_asr:
+    models: [fun-asr-realtime]
+    fun_asr:
+      api_key: "${DASHSCOPE_API_KEY}"
+      workspace_id: "${DASHSCOPE_WORKSPACE_ID}"
+  qwen_asr:
+    models: [qwen3-asr-flash-realtime-2026-02-10]
+    qwen_asr:
+      api_key: "${DASHSCOPE_API_KEY}"
+      workspace_id: "${DASHSCOPE_WORKSPACE_ID}"
+  tencent_asr:
+    models: [16k_zh]
+    tencent_asr:
+      app_id: "${TENCENT_ASR_APP_ID}"
+      secret_id: "${TENCENT_ASR_SECRET_ID}"
+      secret_key: "${TENCENT_ASR_SECRET_KEY}"
+  assemblyai_asr:
+    models: [universal-3-5-pro]
+    assemblyai_asr:
+      api_key: "${ASSEMBLYAI_API_KEY}"
+      url: wss://streaming.assemblyai.com/v3/ws
+  deepgram_asr:
+    models: [nova-3]
+    deepgram_asr:
+      api_key: "${DEEPGRAM_API_KEY}"
+      url: wss://api.deepgram.com/v1/listen
+  soniox_asr:
+    models: [stt-rt-v5]
+    soniox_asr:
+      api_key: "${SONIOX_API_KEY}"
+      url: wss://stt-rt.soniox.com/transcribe-websocket
   # 当前生图主渠道：api.aig-ai.com 上的 Gemini generateContent（非 OpenAI Images）。
   # gemini-3-pro-image 仅绑此实例；两个 flash-image 与 aws_gemini 双声明，由 model_routes 手动切换。
   aig_gemini_image:

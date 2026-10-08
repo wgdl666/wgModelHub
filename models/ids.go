@@ -156,6 +156,16 @@ const (
 
 	// ElevenFlashV25 是镜子口播首选：低延迟且含中文；账号/中文不可用时再配 eleven_multilingual_v2，不用纯英型号。
 	ElevenFlashV25 = "eleven_flash_v2_5"
+
+	// ASR 模型 ID 使用供应商真实型号；它们与 TTS Speech 模型分属独立能力，禁止互相路由。
+	VolcengineBigModelStreaming  = "volcengine-bigmodel-streaming"
+	AliyunNLS                    = "aliyun-nls"
+	FunASRRealtime               = "fun-asr-realtime"
+	Qwen3ASRFlashRealtime        = "qwen3-asr-flash-realtime-2026-02-10"
+	Tencent16KZH                 = "16k_zh"
+	AssemblyAIUniversalStreaming = "universal-3-5-pro"
+	DeepgramNova3                = "nova-3"
+	SonioxSTTRTV5                = "stt-rt-v5"
 )
 
 // All 返回当前仓库承认的全部真实模型 ID，顺序稳定便于对照。
@@ -245,5 +255,13 @@ func All() []string {
 		GeminiOmniFlashPreview,
 		Speech28Turbo,
 		ElevenFlashV25,
+		VolcengineBigModelStreaming,
+		AliyunNLS,
+		FunASRRealtime,
+		Qwen3ASRFlashRealtime,
+		Tencent16KZH,
+		AssemblyAIUniversalStreaming,
+		DeepgramNova3,
+		SonioxSTTRTV5,
 	}
 }

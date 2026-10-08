@@ -26,6 +26,7 @@ const (
 	CapabilityImage  = "image"
 	CapabilityVideo  = "video"
 	CapabilitySpeech = "speech"
+	CapabilityASR    = "asr"
 )
 
 // Bootstrap 只保存 Nacos 定位信息；供应商凭据只能存在于受保护的配置正文中。
@@ -63,6 +64,15 @@ type ProviderConfig struct {
 	MinimaxTTS *MinimaxTTSProviderConfig `yaml:"minimax_tts"`
 	// ElevenLabsTTS 承接整段和流式 TTS；与 Minimax 分绑，未配置时不影响现有 speech 路由。
 	ElevenLabsTTS *ElevenLabsTTSProviderConfig `yaml:"elevenlabs_tts"`
+	// 八类实时 ASR 各自独立配置，避免把厂家字段泄漏进统一 RPC，也不与 TTS Speech 共用实例。
+	VolcengineASR *VolcengineASRProviderConfig `yaml:"volcengine_asr"`
+	AliyunASR     *AliyunASRProviderConfig     `yaml:"aliyun_asr"`
+	FunASR        *FunASRProviderConfig        `yaml:"fun_asr"`
+	QwenASR       *QwenASRProviderConfig       `yaml:"qwen_asr"`
+	TencentASR    *TencentASRProviderConfig    `yaml:"tencent_asr"`
+	AssemblyAIASR *AssemblyAIASRProviderConfig `yaml:"assemblyai_asr"`
+	DeepgramASR   *DeepgramASRProviderConfig   `yaml:"deepgram_asr"`
+	SonioxASR     *SonioxASRProviderConfig     `yaml:"soniox_asr"`
 	// Photoroom 承接官方 Remove Background（POST /v1/segment）；与 OpenAI/Gemini 生图实例分绑，禁止共用。
 	Photoroom *PhotoroomProviderConfig `yaml:"photoroom"`
 	// SegmentPerson 承接国内自建人物/商品主体抠图；与 Photoroom 分实例，靠 models 列表切换。
@@ -113,6 +123,56 @@ type GeminiProviderConfig struct {
 type VertexAIProviderConfig struct {
 	Project  string `yaml:"project"`
 	Location string `yaml:"location"`
+}
+
+type VolcengineASRProviderConfig struct {
+	AppKey     string `yaml:"app_key"`
+	AccessKey  string `yaml:"access_key"`
+	APIKey     string `yaml:"api_key"`
+	ResourceID string `yaml:"resource_id"`
+	URL        string `yaml:"url"`
+}
+
+type AliyunASRProviderConfig struct {
+	AKID   string `yaml:"ak_id"`
+	AKKey  string `yaml:"ak_key"`
+	AppKey string `yaml:"app_key"`
+	Token  string `yaml:"token"`
+	URL    string `yaml:"url"`
+}
+
+type FunASRProviderConfig struct {
+	APIKey      string `yaml:"api_key"`
+	WorkspaceID string `yaml:"workspace_id"`
+	URL         string `yaml:"url"`
+}
+
+type QwenASRProviderConfig struct {
+	APIKey      string `yaml:"api_key"`
+	WorkspaceID string `yaml:"workspace_id"`
+	URL         string `yaml:"url"`
+}
+
+type TencentASRProviderConfig struct {
+	AppID     string `yaml:"app_id"`
+	SecretID  string `yaml:"secret_id"`
+	SecretKey string `yaml:"secret_key"`
+	ProxyURL  string `yaml:"proxy_url"`
+}
+
+type AssemblyAIASRProviderConfig struct {
+	APIKey string `yaml:"api_key"`
+	URL    string `yaml:"url"`
+}
+
+type DeepgramASRProviderConfig struct {
+	APIKey string `yaml:"api_key"`
+	URL    string `yaml:"url"`
+}
+
+type SonioxASRProviderConfig struct {
+	APIKey string `yaml:"api_key"`
+	URL    string `yaml:"url"`
 }
 
 type ArkProviderConfig struct {
@@ -641,6 +701,10 @@ func (c Config) ModelRoutes() map[string]string {
 	}
 	declaredBy := make(map[string][]string)
 	for name, provider := range c.Providers {
+		// ASR 示例允许保留空凭据；无凭据实例不进入真实路由，也不会被 ListModels 暴露。
+		if IsASRProvider(provider) && !ASRCredentialsPresent(provider) {
+			continue
+		}
 		for _, model := range provider.Models {
 			model = strings.TrimSpace(model)
 			if model == "" {
@@ -738,6 +802,29 @@ func validateProvider(name string, provider ProviderConfig) error {
 		// 路演可按控制台比例调口播；越界直接拒配，避免静默夹逼成听感漂移。
 		if err := validateElevenLabsVoiceSettings(name, provider.ElevenLabsTTS); err != nil {
 			return err
+		}
+	case IsASRProvider(provider):
+		// 凭据全部缺失表示该环境未启用此厂家，启动时跳过；只填一半则拒绝，避免生成坏路由。
+		if !ASRCredentialsPresent(provider) {
+			return nil
+		}
+		if provider.VolcengineASR != nil {
+			v := provider.VolcengineASR
+			if strings.TrimSpace(v.APIKey) == "" && (strings.TrimSpace(v.AppKey) == "" || strings.TrimSpace(v.AccessKey) == "") {
+				return fmt.Errorf("provider %s volcengine_asr requires api_key or app_key/access_key", name)
+			}
+		}
+		if provider.AliyunASR != nil {
+			v := provider.AliyunASR
+			if strings.TrimSpace(v.AppKey) == "" || (strings.TrimSpace(v.Token) == "" && (strings.TrimSpace(v.AKID) == "" || strings.TrimSpace(v.AKKey) == "")) {
+				return fmt.Errorf("provider %s aliyun_asr requires app_key and token or AK pair", name)
+			}
+		}
+		if provider.TencentASR != nil {
+			v := provider.TencentASR
+			if strings.TrimSpace(v.AppID) == "" || strings.TrimSpace(v.SecretID) == "" || strings.TrimSpace(v.SecretKey) == "" {
+				return fmt.Errorf("provider %s tencent_asr requires app_id, secret_id and secret_key", name)
+			}
 		}
 	case provider.Photoroom != nil:
 		if strings.TrimSpace(provider.Photoroom.APIKey) == "" {
@@ -893,6 +980,30 @@ func countConcreteProviders(provider ProviderConfig) int {
 	if provider.ElevenLabsTTS != nil {
 		n++
 	}
+	if provider.VolcengineASR != nil {
+		n++
+	}
+	if provider.AliyunASR != nil {
+		n++
+	}
+	if provider.FunASR != nil {
+		n++
+	}
+	if provider.QwenASR != nil {
+		n++
+	}
+	if provider.TencentASR != nil {
+		n++
+	}
+	if provider.AssemblyAIASR != nil {
+		n++
+	}
+	if provider.DeepgramASR != nil {
+		n++
+	}
+	if provider.SonioxASR != nil {
+		n++
+	}
 	if provider.Photoroom != nil {
 		n++
 	}
@@ -994,7 +1105,7 @@ func validateElevenLabsVoiceSettings(name string, cfg *ElevenLabsTTSProviderConf
 	return nil
 }
 
-// ProviderSupports 根据供应商类型判断能否承接 OutputSpec 对应能力。
+// ProviderSupports 根据供应商类型判断能力；ASR/Speech 是专用 RPC，不经过 Generate OutputSpec。
 func ProviderSupports(provider ProviderConfig, capability string) bool {
 	switch {
 	case provider.Gemini != nil, provider.OpenAI != nil:
@@ -1011,6 +1122,42 @@ func ProviderSupports(provider ProviderConfig, capability string) bool {
 		return capability == CapabilityVideo
 	case provider.MinimaxTTS != nil, provider.ElevenLabsTTS != nil:
 		return capability == CapabilitySpeech
+	case IsASRProvider(provider):
+		return capability == CapabilityASR
+	default:
+		return false
+	}
+}
+
+// IsASRProvider 只判断配置类型；凭据是否足够由 ASRCredentialsPresent 单独判断。
+func IsASRProvider(provider ProviderConfig) bool {
+	return provider.VolcengineASR != nil || provider.AliyunASR != nil || provider.FunASR != nil ||
+		provider.QwenASR != nil || provider.TencentASR != nil || provider.AssemblyAIASR != nil ||
+		provider.DeepgramASR != nil || provider.SonioxASR != nil
+}
+
+// ASRCredentialsPresent 用于环境裁剪：缺密钥的厂家不绑定模型，避免占位配置制造“可用”假象。
+func ASRCredentialsPresent(provider ProviderConfig) bool {
+	switch {
+	case provider.VolcengineASR != nil:
+		v := provider.VolcengineASR
+		return strings.TrimSpace(v.APIKey) != "" || strings.TrimSpace(v.AppKey) != "" || strings.TrimSpace(v.AccessKey) != ""
+	case provider.AliyunASR != nil:
+		v := provider.AliyunASR
+		return strings.TrimSpace(v.AppKey) != "" || strings.TrimSpace(v.Token) != "" || strings.TrimSpace(v.AKID) != "" || strings.TrimSpace(v.AKKey) != ""
+	case provider.FunASR != nil:
+		return strings.TrimSpace(provider.FunASR.APIKey) != ""
+	case provider.QwenASR != nil:
+		return strings.TrimSpace(provider.QwenASR.APIKey) != ""
+	case provider.TencentASR != nil:
+		v := provider.TencentASR
+		return strings.TrimSpace(v.AppID) != "" || strings.TrimSpace(v.SecretID) != "" || strings.TrimSpace(v.SecretKey) != ""
+	case provider.AssemblyAIASR != nil:
+		return strings.TrimSpace(provider.AssemblyAIASR.APIKey) != ""
+	case provider.DeepgramASR != nil:
+		return strings.TrimSpace(provider.DeepgramASR.APIKey) != ""
+	case provider.SonioxASR != nil:
+		return strings.TrimSpace(provider.SonioxASR.APIKey) != ""
 	default:
 		return false
 	}

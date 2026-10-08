@@ -22,6 +22,8 @@ const (
 	CategoryHumanParser Category = "human_parser"
 	// CategorySegment 是抠图。透明图出，不是文生图。
 	CategorySegment Category = "segment"
+	// CategoryASR 是持续上行音频的实时识别；不能复用只做下行合成的 CategorySpeech。
+	CategoryASR Category = "asr"
 )
 
 var categories = map[string]Category{
@@ -130,6 +132,15 @@ var categories = map[string]Category{
 
 	Speech28Turbo:  CategorySpeech,
 	ElevenFlashV25: CategorySpeech,
+
+	VolcengineBigModelStreaming:  CategoryASR,
+	AliyunNLS:                    CategoryASR,
+	FunASRRealtime:               CategoryASR,
+	Qwen3ASRFlashRealtime:        CategoryASR,
+	Tencent16KZH:                 CategoryASR,
+	AssemblyAIUniversalStreaming: CategoryASR,
+	DeepgramNova3:                CategoryASR,
+	SonioxSTTRTV5:                CategoryASR,
 }
 
 // CategoryOf 返回真实模型 ID 的产品分类；未知 ID 不得猜测。
@@ -144,6 +155,8 @@ func (c Category) Public() bool {
 	case CategoryLLM, CategoryMultimodal, CategoryImageGeneration, CategoryVideoGeneration, CategorySpeech,
 		CategoryEmbedding, CategoryRerank, CategoryFaceCompare, CategoryFaceDetect, CategoryFaceLibrary,
 		CategoryPersonDetect, CategoryHumanParser, CategorySegment:
+		return true
+	case CategoryASR:
 		return true
 	default:
 		return false

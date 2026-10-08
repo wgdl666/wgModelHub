@@ -155,11 +155,15 @@ require (
 )
 
 require (
+	github.com/aliyun/alibabacloud-nls-go-sdk v1.1.1
 	github.com/aws/aws-sdk-go-v2/service/bedrockagentruntime v1.63.1
 	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.63.0
 	github.com/aws/aws-sdk-go-v2/service/sts v1.51.0
+	github.com/tencentcloud/tencentcloud-speech-sdk-go v1.0.19
 	github.com/wgdl666/kangaroo/callmeta v0.1.0
 )
+
+require github.com/satori/go.uuid v1.2.0 // indirect
 
 require (
 	github.com/aliyun/alibabacloud-oss-go-sdk-v2 v1.5.3
