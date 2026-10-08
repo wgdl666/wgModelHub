@@ -3,8 +3,13 @@ package telemetry
 import (
 	"context"
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
@@ -83,5 +88,64 @@ func TestIsCallerCanceled(t *testing.T) {
 	}
 	if isCallerCanceled(errors.New("boom")) {
 		t.Fatal("generic error")
+	}
+}
+
+// TestNewTimedHTTPClientEmitsProviderHTTPSpan 自测：换 traced client 后能看到主机与状态码，且 Timeout 不丢。
+func TestNewTimedHTTPClientEmitsProviderHTTPSpan(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(w, `{"error":"rate_limited"}`)
+	}))
+	t.Cleanup(server.Close)
+
+	recorder := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	prev := otel.GetTracerProvider()
+	otel.SetTracerProvider(tp)
+	t.Cleanup(func() { otel.SetTracerProvider(prev) })
+
+	client := NewTimedHTTPClient(20 * time.Second)
+	if client.Timeout != 20*time.Second {
+		t.Fatalf("timeout=%v want 20s", client.Timeout)
+	}
+	resp, err := client.Get(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusTooManyRequests || string(body) != `{"error":"rate_limited"}` {
+		t.Fatalf("status=%d body=%s", resp.StatusCode, body)
+	}
+
+	var httpSpan sdktrace.ReadOnlySpan
+	for _, span := range recorder.Ended() {
+		if span.Name() == "provider.http" {
+			httpSpan = span
+			break
+		}
+	}
+	if httpSpan == nil {
+		t.Fatal("missing provider.http span")
+	}
+	attrs := map[string]any{}
+	for _, attr := range httpSpan.Attributes() {
+		attrs[string(attr.Key)] = attr.Value.AsInterface()
+	}
+	if attrs["http.request.method"] != "GET" {
+		t.Fatalf("method=%v", attrs["http.request.method"])
+	}
+	if attrs["server.address"] != server.Listener.Addr().String() {
+		t.Fatalf("server.address=%v want %s", attrs["server.address"], server.Listener.Addr().String())
+	}
+	if attrs["http.response.status_code"] != int64(429) {
+		t.Fatalf("status_code=%v want 429", attrs["http.response.status_code"])
+	}
+	if httpSpan.Status().Code != codes.Error {
+		t.Fatalf("span status=%v want Error for HTTP 429", httpSpan.Status().Code)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/wgdl666/kangaroo/logs"
 	"github.com/wgdl666/wgModelHub/config"
@@ -126,6 +127,14 @@ func isCallerCanceled(err error) bool {
 // NewHTTPClient 只记录目标主机、状态码和正文大小，禁止采集请求或响应正文。
 func NewHTTPClient() *http.Client {
 	return NewHTTPClientWithTransport(http.DefaultTransport)
+}
+
+// NewTimedHTTPClient 在 provider.http 观测之上钉死超时。
+// 裸 &http.Client{Timeout} 换成 traced client 时必须走这里，否则会丢掉 Timeout、把排障所需的主机/状态码也一起丢掉。
+func NewTimedHTTPClient(timeout time.Duration) *http.Client {
+	client := NewHTTPClient()
+	client.Timeout = timeout
+	return client
 }
 
 func NewHTTPClientWithTransport(base http.RoundTripper) *http.Client {

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
 )
@@ -55,7 +56,7 @@ func New(name, baseURL, apiKey string) (*Provider, error) {
 	if name == "" || baseURL == "" || apiKey == "" {
 		return nil, provider.New(provider.ErrorConfiguration, "mixedbread rerank requires base_url and api_key")
 	}
-	return &Provider{name: name, client: &http.Client{Timeout: 20 * time.Second}, endpoint: baseURL + "/v1/reranking", apiKey: apiKey}, nil
+	return &Provider{name: name, client: telemetry.NewTimedHTTPClient(20 * time.Second), endpoint: baseURL + "/v1/reranking", apiKey: apiKey}, nil
 }
 
 func (p *Provider) Generate(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
