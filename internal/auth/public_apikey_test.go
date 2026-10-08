@@ -196,3 +196,31 @@ func TestStreamInterceptorCoversSynthesizeSpeechStream(t *testing.T) {
 		t.Fatalf("authorized stream failed: %v", err)
 	}
 }
+
+// ASR 是新增的 client+server 双向流，必须与既有流式 TTS 使用同一公网 API Key 边界。
+func TestStreamInterceptorCoversTranscribeSpeechStream(t *testing.T) {
+	store, mat := openAuthTestStore(t)
+	interceptor := StreamServerInterceptor(store)
+	info := &grpc.StreamServerInfo{
+		FullMethod:     "/wg_model_hub.v2.ModelHubService/TranscribeSpeechStream",
+		IsClientStream: true,
+		IsServerStream: true,
+	}
+	called := false
+	handler := func(_ any, stream grpc.ServerStream) error {
+		called = true
+		caller, ok := PublicCaller(stream.Context())
+		if !ok || caller != "public:"+mat.PrincipalID {
+			t.Fatalf("caller=%q ok=%v", caller, ok)
+		}
+		return nil
+	}
+	err := interceptor(nil, &fakeServerStream{ctx: context.Background()}, info, handler)
+	if status.Code(err) != codes.Unauthenticated || called {
+		t.Fatalf("unauthenticated ASR stream reached handler: %v", err)
+	}
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", mat.Bearer))
+	if err := interceptor(nil, &fakeServerStream{ctx: ctx}, info, handler); err != nil || !called {
+		t.Fatalf("authorized ASR stream failed: %v", err)
+	}
+}

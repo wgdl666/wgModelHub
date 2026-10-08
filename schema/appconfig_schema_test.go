@@ -38,6 +38,7 @@ func TestAppConfigSchemaContract(t *testing.T) {
 		"humanYolo", "humanParser", "rekognitionDetect", "facebodyCompare", "rekognitionCompare",
 		"dashscopeEmbedding", "cohereEmbedding", "bedrockEmbedding", "dashscopeRerank", "bedrockRerank", "cohereRerank", "mixedbreadRerank",
 		"facebodyDetect", "facebodyLibrary", "rekognitionFaces", "rekognitionLibrary",
+		"asrAPIKey", "asrDashscope", "asrVolcengine", "asrAliyun", "asrTencent",
 	} {
 		def := mustMap(t, definitions[definitionName])
 		if ap, exists := def["additionalProperties"]; exists && ap == false {
@@ -68,6 +69,8 @@ func TestAppConfigSchemaContract(t *testing.T) {
 		"ltx": false, "dashscope_video": false, "ominilink_video": false,
 		"gemini_video": false, "ark_video": false, "minimax_tts": false,
 		"elevenlabs_tts": false, "photoroom": false, "segment_person": false,
+		"volcengine_asr": false, "aliyun_asr": false, "fun_asr": false, "qwen_asr": false,
+		"tencent_asr": false, "assemblyai_asr": false, "deepgram_asr": false, "soniox_asr": false,
 		"vworld_image": false,
 		"human_yolo":   false, "human_parser": false, "rekognition_detect": false,
 		"facebody_compare": false, "rekognition_compare": false,
@@ -102,6 +105,7 @@ func TestAppConfigSchemaContract(t *testing.T) {
 		"humanYolo", "humanParser", "rekognitionDetect", "facebodyCompare", "rekognitionCompare",
 		"dashscopeEmbedding", "cohereEmbedding", "bedrockEmbedding", "dashscopeRerank", "bedrockRerank", "cohereRerank", "mixedbreadRerank",
 		"facebodyDetect", "facebodyLibrary", "rekognitionFaces", "rekognitionLibrary", "logfire", "database",
+		"asrAPIKey", "asrDashscope", "asrVolcengine", "asrAliyun", "asrTencent",
 	} {
 		properties := mustMap(t, mustMap(t, definitions[definitionName])["properties"])
 		for field, raw := range properties {

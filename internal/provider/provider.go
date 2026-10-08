@@ -37,6 +37,7 @@ type Set struct {
 	Image  ImageProvider
 	Video  VideoProvider
 	Speech SpeechProvider
+	ASR    ASRProvider
 }
 
 // SpeechProvider 承接同步一次性 TTS；成功必须返回完整音频，半截收集只能以 error 结束。
@@ -50,4 +51,21 @@ type SpeechProvider interface {
 type StreamingSpeechProvider interface {
 	SynthesizeSpeechStream(context.Context, string, *modelhubv2.SynthesizeSpeechRequest, func([]byte) error) error
 	SpeechMIME() string
+}
+
+// ASREmit 由供应商读循环调用；回调返回错误表示客户端流已不可写，供应商必须尽快停止。
+type ASREmit func(*modelhubv2.TranscribeSpeechTranscript) error
+
+// ASRProvider 为每条 gRPC 流创建独立会话。供应商连接不能跨调用共享，否则 stop/取消会串线。
+type ASRProvider interface {
+	OpenASR(context.Context, string, *modelhubv2.TranscribeSpeechStart, ASREmit) (ASRSession, error)
+}
+
+// ASRSession 只承载已经建立的单条双向会话；Finalize 不关闭连接，Stop 才释放计费资源。
+type ASRSession interface {
+	ID() string
+	SendAudio([]byte) error
+	Finalize() error
+	Stop() error
+	Errors() <-chan error
 }

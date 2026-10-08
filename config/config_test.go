@@ -181,6 +181,30 @@ func TestProviderSupportsSpeech(t *testing.T) {
 	}
 }
 
+func TestProviderSupportsASRWithoutReusingSpeech(t *testing.T) {
+	asr := ProviderConfig{SonioxASR: &SonioxASRProviderConfig{APIKey: "k"}}
+	if !ProviderSupports(asr, CapabilityASR) {
+		t.Fatal("soniox must support ASR")
+	}
+	if ProviderSupports(asr, CapabilitySpeech) {
+		t.Fatal("ASR provider must not support TTS speech")
+	}
+}
+
+func TestModelRoutesSkipsASRWithoutCredentials(t *testing.T) {
+	cfg := Config{Providers: map[string]ProviderConfig{
+		"disabled": {Models: []string{"stt-rt-v5"}, SonioxASR: &SonioxASRProviderConfig{}},
+		"enabled":  {Models: []string{"nova-3"}, DeepgramASR: &DeepgramASRProviderConfig{APIKey: "k"}},
+	}}
+	routes := cfg.ModelRoutes()
+	if _, ok := routes["stt-rt-v5"]; ok {
+		t.Fatal("ASR without credentials must not bind a model")
+	}
+	if routes["nova-3"] != "enabled" {
+		t.Fatalf("routes=%v", routes)
+	}
+}
+
 func TestProviderSupportsOpenAIImage(t *testing.T) {
 	openai := ProviderConfig{OpenAI: &OpenAIProviderConfig{APIKey: "k"}}
 	if !ProviderSupports(openai, CapabilityText) || !ProviderSupports(openai, CapabilityImage) {

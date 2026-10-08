@@ -74,6 +74,8 @@ func catalogFilter(category modelhubv2.ModelCategory) (func(models.Category) boo
 		return func(c models.Category) bool { return c == models.CategoryHumanParser }, nil
 	case modelhubv2.ModelCategory_MODEL_CATEGORY_SEGMENT:
 		return func(c models.Category) bool { return c == models.CategorySegment }, nil
+	case modelhubv2.ModelCategory_MODEL_CATEGORY_ASR:
+		return func(c models.Category) bool { return c == models.CategoryASR }, nil
 	default:
 		return nil, provider.New(provider.ErrorInvalidArgument, "unsupported model category")
 	}
@@ -107,6 +109,8 @@ func protoCategory(category models.Category) modelhubv2.ModelCategory {
 		return modelhubv2.ModelCategory_MODEL_CATEGORY_HUMAN_PARSER
 	case models.CategorySegment:
 		return modelhubv2.ModelCategory_MODEL_CATEGORY_SEGMENT
+	case models.CategoryASR:
+		return modelhubv2.ModelCategory_MODEL_CATEGORY_ASR
 	default:
 		return modelhubv2.ModelCategory_MODEL_CATEGORY_UNSPECIFIED
 	}

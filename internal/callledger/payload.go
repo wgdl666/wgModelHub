@@ -58,6 +58,29 @@ func BuildSpeechInput(req *modelhubv2.SynthesizeSpeechRequest) map[string]any {
 	}
 }
 
+// BuildASRInput 只记录控制面，不记录持续 PCM 或密钥，避免调用账本膨胀和保存用户原始语音。
+func BuildASRInput(req *modelhubv2.TranscribeSpeechStart) map[string]any {
+	if req == nil {
+		return nil
+	}
+	out := map[string]any{
+		"encoding":            req.GetEncoding().String(),
+		"sample_rate_hz":      req.GetSampleRateHz(),
+		"channels":            req.GetChannels(),
+		"language_hints":      req.GetLanguageHints(),
+		"keyterm_count":       len(req.GetKeyterms()),
+		"speaker_diarization": req.GetSpeakerDiarization(),
+	}
+	if silence := req.GetTurnSilence(); silence != nil {
+		out["turn_silence"] = map[string]any{"min_ms": silence.GetMinMs(), "max_ms": silence.GetMaxMs()}
+	}
+	return out
+}
+
+func BuildASROutput(transcripts, finals int) map[string]any {
+	return map[string]any{"transcript_count": transcripts, "final_count": finals}
+}
+
 // TextAccumulator 按原始事件顺序累计文本与工具片段；工具按 index/id 聚合，互不混写。
 type TextAccumulator struct {
 	ordered []map[string]any
