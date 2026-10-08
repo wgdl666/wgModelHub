@@ -181,10 +181,15 @@ type MinimaxTTSProviderConfig struct {
 
 // ElevenLabsTTSProviderConfig 对齐 ElevenLabs HTTP TTS。
 // voice_id 必须由部署配置注入（路演可选音色），禁止业务代码写死成唯一路径。
+// Stability / SimilarityBoost / Style / Speed 对应控制台滑条；nil 表示不覆盖音色账号默认值。
 type ElevenLabsTTSProviderConfig struct {
-	APIKey  string `yaml:"api_key"`
-	BaseURL string `yaml:"base_url"`
-	VoiceID string `yaml:"voice_id"`
+	APIKey          string   `yaml:"api_key"`
+	BaseURL         string   `yaml:"base_url"`
+	VoiceID         string   `yaml:"voice_id"`
+	Stability       *float64 `yaml:"stability"`
+	SimilarityBoost *float64 `yaml:"similarity_boost"`
+	Style           *float64 `yaml:"style"`
+	Speed           *float64 `yaml:"speed"`
 }
 
 // PhotoroomProviderConfig 承接官方 Remove Background Basic plan。
@@ -730,6 +735,10 @@ func validateProvider(name string, provider ProviderConfig) error {
 		if strings.TrimSpace(provider.ElevenLabsTTS.VoiceID) == "" {
 			return fmt.Errorf("provider %s voice_id is required", name)
 		}
+		// 路演可按控制台比例调口播；越界直接拒配，避免静默夹逼成听感漂移。
+		if err := validateElevenLabsVoiceSettings(name, provider.ElevenLabsTTS); err != nil {
+			return err
+		}
 	case provider.Photoroom != nil:
 		if strings.TrimSpace(provider.Photoroom.APIKey) == "" {
 			return fmt.Errorf("provider %s api_key is required", name)
@@ -952,6 +961,35 @@ func validateRekognitionRegion(name, region, accessKey, secret, sessionToken str
 	key, secretKey := strings.TrimSpace(accessKey), strings.TrimSpace(secret)
 	if (key == "") != (secretKey == "") || (strings.TrimSpace(sessionToken) != "" && key == "") {
 		return fmt.Errorf("provider %s rekognition access key and secret must be configured together", name)
+	}
+	return nil
+}
+
+// validateElevenLabsVoiceSettings 校验可选口播滑条；未配置保持供应商音色默认，不强制写死。
+func validateElevenLabsVoiceSettings(name string, cfg *ElevenLabsTTSProviderConfig) error {
+	if cfg == nil {
+		return nil
+	}
+	check01 := func(field string, v *float64) error {
+		if v == nil {
+			return nil
+		}
+		if *v < 0 || *v > 1 {
+			return fmt.Errorf("provider %s elevenlabs_tts.%s must be between 0 and 1", name, field)
+		}
+		return nil
+	}
+	if err := check01("stability", cfg.Stability); err != nil {
+		return err
+	}
+	if err := check01("similarity_boost", cfg.SimilarityBoost); err != nil {
+		return err
+	}
+	if err := check01("style", cfg.Style); err != nil {
+		return err
+	}
+	if cfg.Speed != nil && (*cfg.Speed < 0.25 || *cfg.Speed > 4) {
+		return fmt.Errorf("provider %s elevenlabs_tts.speed must be between 0.25 and 4", name)
 	}
 	return nil
 }

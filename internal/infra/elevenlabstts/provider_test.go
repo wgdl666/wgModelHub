@@ -56,6 +56,70 @@ func TestSynthesizeSpeechSuccessReturnsFullAudio(t *testing.T) {
 	}
 }
 
+func TestSynthesizeSpeechSendsConfiguredVoiceSettings(t *testing.T) {
+	var gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		gotBody = string(body)
+		_, _ = w.Write([]byte("ID3ok"))
+	}))
+	defer srv.Close()
+
+	stability, similarity, style, speed := 0.30, 0.30, 0.50, 0.90
+	p, err := New(Config{
+		Name:    "eleven",
+		APIKey:  "k",
+		BaseURL: srv.URL,
+		VoiceID: "v",
+		VoiceSettings: VoiceSettings{
+			Stability:       &stability,
+			SimilarityBoost: &similarity,
+			Style:           &style,
+			Speed:           &speed,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = p.SynthesizeSpeech(context.Background(), models.ElevenFlashV25, &modelhubv2.SynthesizeSpeechRequest{Text: "hi"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`"voice_settings"`,
+		`"stability":0.3`,
+		`"similarity_boost":0.3`,
+		`"style":0.5`,
+		`"speed":0.9`,
+	} {
+		if !strings.Contains(gotBody, want) {
+			t.Fatalf("body missing %s: %s", want, gotBody)
+		}
+	}
+}
+
+func TestSynthesizeSpeechOmitsVoiceSettingsWhenUnset(t *testing.T) {
+	var gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		gotBody = string(body)
+		_, _ = w.Write([]byte("ID3ok"))
+	}))
+	defer srv.Close()
+
+	p, err := New(Config{Name: "eleven", APIKey: "k", BaseURL: srv.URL, VoiceID: "v"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = p.SynthesizeSpeech(context.Background(), models.ElevenFlashV25, &modelhubv2.SynthesizeSpeechRequest{Text: "hi"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(gotBody, "voice_settings") {
+		t.Fatalf("unexpected voice_settings in %s", gotBody)
+	}
+}
+
 func TestSynthesizeSpeechUsesConfiguredVoiceWhenRequestEmpty(t *testing.T) {
 	var gotVoice string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -28,12 +28,21 @@ const (
 	httpTimeout         = 30 * time.Second
 )
 
+// VoiceSettings 对应 ElevenLabs voice_settings；字段 nil 表示不覆盖该音色账号默认值。
+type VoiceSettings struct {
+	Stability       *float64
+	SimilarityBoost *float64
+	Style           *float64
+	Speed           *float64
+}
+
 // Config 是 ElevenLabs TTS 实例配置；默认音色只来自部署配置，不在业务代码写死唯一路径。
 type Config struct {
-	Name    string
-	APIKey  string
-	BaseURL string
-	VoiceID string
+	Name          string
+	APIKey        string
+	BaseURL       string
+	VoiceID       string
+	VoiceSettings VoiceSettings
 }
 
 // Provider 无会话级复用：每次 SynthesizeSpeech 独立 HTTP 请求，生命周期绑定调用方 ctx。
@@ -90,10 +99,15 @@ func (p *Provider) openSpeech(ctx context.Context, model string, request *modelh
 		voiceID = p.cfg.VoiceID
 	}
 
-	body, err := json.Marshal(map[string]string{
+	// 只发 text/model；口播滑条有配置才附 voice_settings，避免空对象覆盖账号默认。
+	payload := map[string]any{
 		"text":     text,
 		"model_id": model,
-	})
+	}
+	if settings, ok := p.cfg.VoiceSettings.asRequestMap(); ok {
+		payload["voice_settings"] = settings
+	}
+	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, "elevenlabs tts marshal request failed", err)
 	}
@@ -161,6 +175,27 @@ func (p *Provider) SynthesizeSpeech(ctx context.Context, model string, request *
 }
 
 func (p *Provider) SpeechMIME() string { return mimePCM16k }
+
+// asRequestMap 只放入已配置字段；全空则不上送，让上游继续用音色 stored settings。
+func (v VoiceSettings) asRequestMap() (map[string]any, bool) {
+	out := make(map[string]any, 4)
+	if v.Stability != nil {
+		out["stability"] = *v.Stability
+	}
+	if v.SimilarityBoost != nil {
+		out["similarity_boost"] = *v.SimilarityBoost
+	}
+	if v.Style != nil {
+		out["style"] = *v.Style
+	}
+	if v.Speed != nil {
+		out["speed"] = *v.Speed
+	}
+	if len(out) == 0 {
+		return nil, false
+	}
+	return out, true
+}
 
 // SynthesizeSpeechStream 直接消费 /stream 响应体，不等整句结束，也不自动重试已交付的声音。
 func (p *Provider) SynthesizeSpeechStream(ctx context.Context, model string, request *modelhubv2.SynthesizeSpeechRequest, emit func([]byte) error) error {

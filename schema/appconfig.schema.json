@@ -240,7 +240,11 @@
       "properties": {
         "api_key": { "type": "string", "minLength": 1 },
         "base_url": { "type": "string" },
-        "voice_id": { "type": "string", "minLength": 1 }
+        "voice_id": { "type": "string", "minLength": 1 },
+        "stability": { "type": "number", "minimum": 0, "maximum": 1 },
+        "similarity_boost": { "type": "number", "minimum": 0, "maximum": 1 },
+        "style": { "type": "number", "minimum": 0, "maximum": 1 },
+        "speed": { "type": "number", "minimum": 0.25, "maximum": 4 }
       }
     },
     "segmentPerson": {

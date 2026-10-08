@@ -171,11 +171,18 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 		return provider.Set{Speech: client}, nil
 	case providerCfg.ElevenLabsTTS != nil:
 		cfg := providerCfg.ElevenLabsTTS
+		// 口播滑条来自部署配置（如路演 AppConfig），启动时装入 provider，变更需滚动重启。
 		client, err := elevenlabstts.New(elevenlabstts.Config{
 			Name:    name,
 			APIKey:  cfg.APIKey,
 			BaseURL: cfg.BaseURL,
 			VoiceID: cfg.VoiceID,
+			VoiceSettings: elevenlabstts.VoiceSettings{
+				Stability:       cfg.Stability,
+				SimilarityBoost: cfg.SimilarityBoost,
+				Style:           cfg.Style,
+				Speed:           cfg.Speed,
+			},
 		})
 		if err != nil {
 			return provider.Set{}, err

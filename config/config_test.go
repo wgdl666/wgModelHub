@@ -254,6 +254,35 @@ func TestValidateRejectsPhotoroomWithoutAPIKey(t *testing.T) {
 	}
 }
 
+func TestValidateAcceptsElevenLabsVoiceSettings(t *testing.T) {
+	stability, similarity, style, speed := 0.30, 0.30, 0.50, 0.90
+	cfg := validConfig()
+	cfg.Providers["elevenlabs_tts"] = ProviderConfig{
+		Models: []string{models.ElevenFlashV25},
+		ElevenLabsTTS: &ElevenLabsTTSProviderConfig{
+			APIKey: "k", VoiceID: "v",
+			Stability: &stability, SimilarityBoost: &similarity, Style: &style, Speed: &speed,
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestValidateRejectsElevenLabsVoiceSettingsOutOfRange(t *testing.T) {
+	bad := 1.5
+	cfg := validConfig()
+	cfg.Providers["elevenlabs_tts"] = ProviderConfig{
+		Models: []string{models.ElevenFlashV25},
+		ElevenLabsTTS: &ElevenLabsTTSProviderConfig{
+			APIKey: "k", VoiceID: "v", Stability: &bad,
+		},
+	}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "stability") {
+		t.Fatalf("expected stability error, got %v", err)
+	}
+}
+
 func TestValidateRejectsMixedPhotoroomAndOpenAI(t *testing.T) {
 	cfg := validConfig()
 	cfg.Providers["mixed"] = ProviderConfig{
