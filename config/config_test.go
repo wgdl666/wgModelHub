@@ -278,6 +278,39 @@ func TestValidateRejectsPhotoroomWithoutAPIKey(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsVertexAIWithoutAPIKey(t *testing.T) {
+	cfg := validConfig()
+	cfg.Providers["vertex_chat"] = ProviderConfig{
+		Models:   []string{models.Gemini20Flash001},
+		VertexAI: &VertexAIProviderConfig{},
+	}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "api_key") {
+		t.Fatalf("expected api_key error, got %v", err)
+	}
+}
+
+func TestValidateRejectsVertexAIBlankAPIKey(t *testing.T) {
+	cfg := validConfig()
+	cfg.Providers["vertex_chat"] = ProviderConfig{
+		Models:   []string{models.Gemini20Flash001},
+		VertexAI: &VertexAIProviderConfig{APIKey: "   "},
+	}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "api_key") {
+		t.Fatalf("expected api_key error, got %v", err)
+	}
+}
+
+func TestValidateAcceptsVertexAIAPIKeyOnly(t *testing.T) {
+	cfg := validConfig()
+	cfg.Providers["vertex_chat"] = ProviderConfig{
+		Models:   []string{models.Gemini20Flash001},
+		VertexAI: &VertexAIProviderConfig{APIKey: "vertex-express-key"},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestValidateAcceptsElevenLabsVoiceSettings(t *testing.T) {
 	stability, similarity, style, speed := 0.30, 0.30, 0.50, 0.90
 	cfg := validConfig()

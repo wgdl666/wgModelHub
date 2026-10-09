@@ -37,11 +37,11 @@ providers:
       access_key_id: "${ALIYUN_ACCESS_KEY_ID}"
       access_key_secret: "${ALIYUN_ACCESS_KEY_SECRET}"
 
+  # Vertex Express：只配 api_key（与 project/location 互斥）；鉴权 x-goog-api-key，端点 aiplatform.googleapis.com。
   vertex_chat:
     models: [gemini-2.0-flash-001]
     vertexai:
-      project: "${VERTEX_PROJECT}"
-      location: us-central1
+      api_key: "${VERTEX_API_KEY}"
   ark_chat:
     models: [doubao-seed-1.6]
     ark:

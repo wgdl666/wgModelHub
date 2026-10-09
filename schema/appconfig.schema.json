@@ -155,10 +155,9 @@
     },
     "vertexai": {
       "type": "object",
-      "required": ["project", "location"],
+      "required": ["api_key"],
       "properties": {
-        "project": { "type": "string", "minLength": 1 },
-        "location": { "type": "string", "minLength": 1 }
+        "api_key": { "type": "string", "minLength": 1 }
       }
     },
     "ark": {

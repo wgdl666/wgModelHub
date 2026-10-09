@@ -133,7 +133,7 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 		return provider.Set{Text: client, Image: client}, nil
 	case providerCfg.VertexAI != nil:
 		cfg := providerCfg.VertexAI
-		client, err := genai.NewVertexAI(ctx, name, cfg.Project, cfg.Location)
+		client, err := genai.NewVertexAI(ctx, name, cfg.APIKey)
 		if err != nil {
 			return provider.Set{}, err
 		}

@@ -120,9 +120,11 @@ type GeminiProviderConfig struct {
 	ProxyURL string `yaml:"proxy_url"`
 }
 
+// VertexAIProviderConfig 使用 Vertex Express API key。
+// google.golang.org/genai 规定 APIKey 与 Project/Location 互斥；同时设置会在 NewClient 失败。
+// 因此契约只保留 api_key，请求走 aiplatform.googleapis.com + x-goog-api-key，不回退 ADC。
 type VertexAIProviderConfig struct {
-	Project  string `yaml:"project"`
-	Location string `yaml:"location"`
+	APIKey string `yaml:"api_key"`
 }
 
 type VolcengineASRProviderConfig struct {
@@ -740,8 +742,8 @@ func validateProvider(name string, provider ProviderConfig) error {
 			return fmt.Errorf("provider %s api_key is required", name)
 		}
 	case provider.VertexAI != nil:
-		if strings.TrimSpace(provider.VertexAI.Project) == "" || strings.TrimSpace(provider.VertexAI.Location) == "" {
-			return fmt.Errorf("provider %s project and location are required", name)
+		if strings.TrimSpace(provider.VertexAI.APIKey) == "" {
+			return fmt.Errorf("provider %s api_key is required", name)
 		}
 	case provider.Ark != nil:
 		if strings.TrimSpace(provider.Ark.APIKey) == "" {

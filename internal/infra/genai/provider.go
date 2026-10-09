@@ -54,15 +54,24 @@ func NewGemini(ctx context.Context, name, apiKey, endpoint, proxyURL string) (*P
 	return &Provider{name: name, client: client}, nil
 }
 
-func NewVertexAI(ctx context.Context, name, project, location string) (*Provider, error) {
-	if strings.TrimSpace(project) == "" || strings.TrimSpace(location) == "" {
-		return nil, provider.New(provider.ErrorConfiguration, name+" project and location are required")
+// NewVertexAI 以 Vertex Express API key 初始化，保持 BackendVertexAI 语义。
+// 锁定 SDK（genai v1.43）把 APIKey 与 Project/Location 标为互斥；只传 api_key，
+// 出站基址为 https://aiplatform.googleapis.com/，路径为 publishers/google/models/...，
+// 鉴权头 x-goog-api-key；显式 HTTPClient 且带 APIKey 时不会走 ADC/Authorization。
+func NewVertexAI(ctx context.Context, name, apiKey string) (*Provider, error) {
+	return newVertexAI(ctx, name, apiKey, telemetry.NewHTTPClient())
+}
+
+// newVertexAI 与 NewVertexAI 同构造，仅多 HTTPClient 注入点，供测试替换 Transport 断言出站路径/鉴权头。
+// 调用方必须提供非 nil httpClient；生产路径经 NewVertexAI 传入 telemetry.NewHTTPClient()。
+func newVertexAI(ctx context.Context, name, apiKey string, httpClient *http.Client) (*Provider, error) {
+	if strings.TrimSpace(apiKey) == "" {
+		return nil, provider.New(provider.ErrorConfiguration, name+" API key is required")
 	}
 	client, err := genaisdk.NewClient(ctx, &genaisdk.ClientConfig{
+		APIKey:     apiKey,
 		Backend:    genaisdk.BackendVertexAI,
-		Project:    project,
-		Location:   location,
-		HTTPClient: telemetry.NewHTTPClient(),
+		HTTPClient: httpClient,
 	})
 	if err != nil {
 		return nil, provider.Wrap(provider.ErrorConfiguration, "create "+name+" client", err)

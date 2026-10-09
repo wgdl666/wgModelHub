@@ -32,7 +32,7 @@ func TestAppConfigSchemaContract(t *testing.T) {
 	}
 	definitions := mustMap(t, schema["definitions"])
 	for _, definitionName := range []string{
-		"database", "logfire", "provider", "gemini", "ark", "openai", "ltx",
+		"database", "logfire", "provider", "gemini", "vertexai", "ark", "openai", "ltx",
 		"dashscopeVideo", "ominilinkVideo", "geminiVideo", "arkVideo", "photoroom",
 		"minimaxTts", "elevenlabsTts", "segmentPerson", "vworldImage",
 		"humanYolo", "humanParser", "rekognitionDetect", "facebodyCompare", "rekognitionCompare",
@@ -100,7 +100,7 @@ func TestAppConfigSchemaContract(t *testing.T) {
 	}
 
 	for _, definitionName := range []string{
-		"gemini", "ark", "openai", "ltx", "dashscopeVideo",
+		"gemini", "vertexai", "ark", "openai", "ltx", "dashscopeVideo",
 		"ominilinkVideo", "geminiVideo", "arkVideo", "photoroom", "segmentPerson", "vworldImage",
 		"humanYolo", "humanParser", "rekognitionDetect", "facebodyCompare", "rekognitionCompare",
 		"dashscopeEmbedding", "cohereEmbedding", "bedrockEmbedding", "dashscopeRerank", "bedrockRerank", "cohereRerank", "mixedbreadRerank",
@@ -123,6 +123,20 @@ func TestAppConfigSchemaContract(t *testing.T) {
 	endpointID := mustMap(t, arkProperties["endpoint_id"])
 	if endpointID["type"] != "string" {
 		t.Fatalf("ark.endpoint_id type=%v, want string", endpointID["type"])
+	}
+
+	// Vertex Express 契约：只认 api_key；project/location 与 SDK APIKey 互斥，不得再出现在 schema。
+	vertex := mustMap(t, definitions["vertexai"])
+	assertStringSet(t, vertex["required"], "api_key")
+	vertexProps := mustMap(t, vertex["properties"])
+	if _, ok := vertexProps["api_key"]; !ok {
+		t.Fatal("vertexai.api_key missing")
+	}
+	if _, ok := vertexProps["project"]; ok {
+		t.Fatal("vertexai must not declare project")
+	}
+	if _, ok := vertexProps["location"]; ok {
+		t.Fatal("vertexai must not declare location")
 	}
 }
 
