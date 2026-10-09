@@ -206,6 +206,19 @@ func TestLedgerRecordsStreamSuccessCancelAndProviderFailure(t *testing.T) {
 	}
 }
 
+func TestFinishRecordGRPCCanceledIsCancelled(t *testing.T) {
+	// 竞速淘汰常以 gRPC Canceled 到达且不包 context.Canceled；须与 ClassifyError 同归 cancelled。
+	svc := &Service{}
+	rec := &callledger.Record{}
+	svc.finishRecord(rec, status.Error(codes.Canceled, "context canceled"), nil)
+	if rec.Status != callledger.StatusCancelled {
+		t.Fatalf("status=%q want cancelled", rec.Status)
+	}
+	if rec.ErrorCategory != callledger.ErrorCategoryCancelled {
+		t.Fatalf("category=%q", rec.ErrorCategory)
+	}
+}
+
 func TestLedgerClientSendFailureKeepsUsage(t *testing.T) {
 	mem := &callledger.Memory{}
 	text := &ledgerTextProvider{event: &modelhubv2.GenerateEvent{

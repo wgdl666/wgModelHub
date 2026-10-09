@@ -2,7 +2,6 @@ package modelhub
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -71,12 +70,14 @@ func (s *Service) finishRecord(rec *callledger.Record, err error, sendErr error)
 		rec.Status = callledger.StatusSucceeded
 		return
 	}
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+	// 先归因再定 status：VTON 竞速淘汰常以 gRPC codes.Canceled 到达，
+	// 只认 errors.Is(context.Canceled) 会落成 failed，业务日报成功率被拉成 0。
+	rec.ErrorCategory, rec.ErrorCode, rec.ErrorReason, rec.ErrorMessage = callledger.ClassifyError(err)
+	if rec.ErrorCategory == callledger.ErrorCategoryCancelled {
 		rec.Status = callledger.StatusCancelled
 	} else {
 		rec.Status = callledger.StatusFailed
 	}
-	rec.ErrorCategory, rec.ErrorCode, rec.ErrorReason, rec.ErrorMessage = callledger.ClassifyError(err)
 }
 
 func intPtr(v int) *int { return &v }
