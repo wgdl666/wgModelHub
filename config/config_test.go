@@ -378,6 +378,20 @@ func TestValidateAcceptsVertexProjectAndRejectsBlank(t *testing.T) {
 			t.Fatalf("project %q must be rejected", project)
 		}
 	}
+	cfg.Providers["vertex_nano_banana"] = ProviderConfig{
+		Models:   []string{models.GeminiNanoBanana21},
+		VertexAI: &VertexAIProviderConfig{APIKey: "vertex-express-key", Project: "123", ProxyURL: "http://127.0.0.1:1081"},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	cfg.Providers["vertex_nano_banana"] = ProviderConfig{
+		Models:   []string{models.GeminiNanoBanana21},
+		VertexAI: &VertexAIProviderConfig{APIKey: "vertex-express-key", Project: "123", ProxyURL: "not a url"},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected invalid proxy")
+	}
 }
 
 func TestValidateAcceptsElevenLabsVoiceSettings(t *testing.T) {

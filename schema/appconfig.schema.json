@@ -158,7 +158,8 @@
       "required": ["api_key"],
       "properties": {
         "api_key": { "type": "string", "minLength": 1 },
-        "project": { "type": "string", "minLength": 1 }
+        "project": { "type": "string", "minLength": 1 },
+        "proxy_url": { "type": "string", "minLength": 1 }
       }
     },
     "ark": {

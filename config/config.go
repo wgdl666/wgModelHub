@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/url"
 	"os"
 	"sort"
 	"strconv"
@@ -126,10 +127,14 @@ type GeminiProviderConfig struct {
 // Project 只服务 Nano Banana 2.1：该模型只在 locations/global，官方 Express 短路径会落到调用方区域。
 // SDK 不允许 APIKey 与 Project/Location 同时设置，所以 global 客户端另建，密钥仍是这把 api_key，不走 ADC。
 // Location 固定 global，不进配置。缺 project 时该模型在请求时返回配置错误，不探测。
+// ProxyURL 可选。国内 ACK 直连 aiplatform.googleapis.com 会 TLS 超时，需要复用环境里已有的 HTTP 代理；
+// 留空则直连，美东路演保持这条路径。
 type VertexAIProviderConfig struct {
 	APIKey string `yaml:"api_key"`
 	// Project 是 Vertex 项目编号或 ID。空表示只走 Express 短路径。
 	Project string `yaml:"project"`
+	// ProxyURL 是已有 HTTP 代理。空表示直连。
+	ProxyURL string `yaml:"proxy_url"`
 }
 
 type VolcengineASRProviderConfig struct {
@@ -755,6 +760,12 @@ func validateProvider(name string, provider ProviderConfig) error {
 		project := provider.VertexAI.Project
 		if project != "" && (strings.TrimSpace(project) != project || strings.ContainsAny(project, "/ \t")) {
 			return fmt.Errorf("provider %s vertexai.project is invalid", name)
+		}
+		if proxyURL := provider.VertexAI.ProxyURL; proxyURL != "" {
+			parsed, err := url.Parse(proxyURL)
+			if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") || strings.TrimSpace(proxyURL) != proxyURL {
+				return fmt.Errorf("provider %s vertexai.proxy_url is invalid", name)
+			}
 		}
 	case provider.Ark != nil:
 		if strings.TrimSpace(provider.Ark.APIKey) == "" {

@@ -61,8 +61,19 @@ func NewGemini(ctx context.Context, name, apiKey, endpoint, proxyURL string) (*P
 // NewVertexAI 以 Vertex Express API key 初始化文本客户端。
 // project 非空时同时建好 locations/global 图片客户端。SDK 不允许 APIKey 与 Project/Location 同时设置，
 // 所以 global 客户端不传 APIKey，由 vertexAPIKeyTransport 写入原来的 x-goog-api-key。不使用 ADC。
-func NewVertexAI(ctx context.Context, name, apiKey, project string) (*Provider, error) {
-	return newVertexAI(ctx, name, apiKey, project, telemetry.NewHTTPClient())
+func NewVertexAI(ctx context.Context, name, apiKey, project, proxyURL string) (*Provider, error) {
+	httpClient := telemetry.NewHTTPClient()
+	if proxyURL = strings.TrimSpace(proxyURL); proxyURL != "" {
+		// 国内 ACK 直连 Google 会 TLS 超时。代理只包这一对 Vertex 客户端，不改其他供应商。
+		parsed, err := url.Parse(proxyURL)
+		if err != nil || parsed.Host == "" {
+			return nil, provider.New(provider.ErrorConfiguration, name+" proxy URL is invalid")
+		}
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.Proxy = http.ProxyURL(parsed)
+		httpClient = telemetry.NewHTTPClientWithTransport(transport)
+	}
+	return newVertexAI(ctx, name, apiKey, project, httpClient)
 }
 
 // newVertexAI 与 NewVertexAI 同构造，仅多 HTTPClient 注入点，供测试替换 Transport 断言出站路径/鉴权头。

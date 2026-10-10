@@ -11,6 +11,7 @@ import (
 	"image/png"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -65,10 +66,10 @@ func (t *vertexRecordingTransport) RoundTrip(req *http.Request) (*http.Response,
 }
 
 func TestNewVertexAIRequiresAPIKey(t *testing.T) {
-	if _, err := NewVertexAI(context.Background(), "vertex", "", ""); err == nil {
+	if _, err := NewVertexAI(context.Background(), "vertex", "", "", ""); err == nil {
 		t.Fatal("expected empty api_key error")
 	}
-	if _, err := NewVertexAI(context.Background(), "vertex", "  ", ""); err == nil {
+	if _, err := NewVertexAI(context.Background(), "vertex", "  ", "", ""); err == nil {
 		t.Fatal("expected blank api_key error")
 	}
 }
@@ -82,7 +83,7 @@ func TestNewVertexAIBuildsWithoutADC(t *testing.T) {
 	t.Setenv("GOOGLE_API_KEY", "")
 	t.Setenv("GEMINI_API_KEY", "")
 
-	p, err := NewVertexAI(context.Background(), "vertex", vertexTestAPIKey, "")
+	p, err := NewVertexAI(context.Background(), "vertex", vertexTestAPIKey, "", "")
 	if err != nil {
 		t.Fatalf("NewVertexAI without ADC: %v", err)
 	}
@@ -376,6 +377,35 @@ func TestGeminiBackendDoesNotUseVertexGlobalPath(t *testing.T) {
 	path := transport.last.URL.EscapedPath()
 	if strings.Contains(path, "/projects/") || strings.Contains(path, "locations/global") {
 		t.Fatalf("path=%q", path)
+	}
+}
+
+func TestVertexUsesConfiguredProxyForGoogle(t *testing.T) {
+	var connected string
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		connected = r.Host
+		hj, ok := w.(http.Hijacker)
+		if !ok || r.Method != http.MethodConnect {
+			http.Error(w, "not connect", http.StatusBadRequest)
+			return
+		}
+		conn, _, err := hj.Hijack()
+		if err != nil {
+			return
+		}
+		_, _ = conn.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n"))
+		_ = conn.Close()
+	}))
+	defer proxy.Close()
+	p, err := NewVertexAI(context.Background(), "vertex", vertexTestAPIKey, "123", proxy.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	_, _ = p.Generate(ctx, models.Gemini25Flash, vertexTextRequest())
+	if connected != "aiplatform.googleapis.com:443" {
+		t.Fatalf("proxy connect host=%q", connected)
 	}
 }
 

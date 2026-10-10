@@ -136,6 +136,10 @@ func TestAppConfigSchemaContract(t *testing.T) {
 	if project["type"] != "string" || project["minLength"] != float64(1) {
 		t.Fatalf("vertexai.project=%#v", project)
 	}
+	proxyURL := mustMap(t, vertexProps["proxy_url"])
+	if proxyURL["type"] != "string" || proxyURL["minLength"] != float64(1) {
+		t.Fatalf("vertexai.proxy_url=%#v", proxyURL)
+	}
 	if _, ok := vertexProps["location"]; ok {
 		t.Fatal("vertexai must not declare location")
 	}
