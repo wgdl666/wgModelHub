@@ -49,6 +49,10 @@ const (
 	Gemini3ProImage    = "gemini-3-pro-image"
 	Gemini25FlashImage = "gemini-2.5-flash-image"
 	Gemini31FlashImage = "gemini-3.1-flash-image"
+	// GeminiNanoBanana21 是 Vertex 上的 Nano Banana 2.1。官方模型 ID 与 Gemini Developer API 相同，
+	// 可用性以 Vertex 模型页为准，走 vertexai 的现有生图链路，不并入 Gemini generateContent。
+	// 思考推荐 MINIMAL/MEDIUM/HIGH；LOW 与其他生图模型一样原样下发。
+	GeminiNanoBanana21 = "gemini-nano-banana-2.1"
 	GPTImage2          = "gpt-image-2"
 	// GPTImage25Flare / GPTImage25Sunburst 是 GPT Image 2.5 真实模型 ID。
 	// 与 GPTImage2 一并绑现网已实测的 AIG OpenAI-compatible Images 实例（async_gpt_image），不能并入 Gemini 生图。
@@ -194,6 +198,7 @@ func All() []string {
 		Gemini3ProImage,
 		Gemini25FlashImage,
 		Gemini31FlashImage,
+		GeminiNanoBanana21,
 		GPTImage2,
 		GPTImage25Flare,
 		GPTImage25Sunburst,

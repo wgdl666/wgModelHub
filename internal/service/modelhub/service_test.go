@@ -233,6 +233,199 @@ func TestServiceRejectsCapabilityMismatch(t *testing.T) {
 	}
 }
 
+func TestVertexImageHotReloadAddsAndRemovesModel(t *testing.T) {
+	image := &recordingImage{}
+	text := &recordingText{}
+	cfg := config.Config{
+		Logfire:  config.LogfireConfig{Token: "t", Env: "test", Service: "wg-model-hub"},
+		Database: config.DatabaseConfig{DSN: "postgres://modelhub:modelhub@127.0.0.1:5432/modelhub?sslmode=disable"},
+		Providers: map[string]config.ProviderConfig{
+			"vertex_chat": {
+				Models:   []string{models.Gemini20Flash001},
+				VertexAI: &config.VertexAIProviderConfig{APIKey: "k"},
+			},
+		},
+	}
+	live := config.NewLiveConfig(cfg)
+	// Image 在 New 时就挂上，后面只 ApplyYAML 改 models，不换 client。
+	service := New(live, map[string]provider.Set{
+		"vertex_chat": {Text: text, Image: image},
+	}, nil)
+
+	assertVertexTextStillWorks := func() {
+		t.Helper()
+		stream := &generateRecorder{ctx: context.Background()}
+		if err := service.Generate(textRequest(models.Gemini20Flash001, "ping"), stream); err != nil {
+			t.Fatal(err)
+		}
+		if text.model != models.Gemini20Flash001 {
+			t.Fatalf("text model=%q", text.model)
+		}
+	}
+	assertTextModelImageRejected := func() {
+		t.Helper()
+		err := service.Generate(&modelhubv2.GenerateRequest{
+			Model:  models.Gemini20Flash001,
+			Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Image{Image: &modelhubv2.ImageOutput{}}},
+		}, &generateRecorder{ctx: context.Background()})
+		if status.Code(err) != codes.InvalidArgument {
+			t.Fatalf("text model image code=%v err=%v", status.Code(err), err)
+		}
+	}
+	imageListed := func() bool {
+		t.Helper()
+		list, err := service.ListModels(context.Background(), &modelhubv2.ListModelsRequest{
+			Category: modelhubv2.ModelCategory_MODEL_CATEGORY_IMAGE_GENERATION,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return contains(listModelIDs(list), models.GeminiNanoBanana21)
+	}
+
+	if imageListed() {
+		t.Fatal("nano banana must be absent before hot add")
+	}
+	if err := service.Generate(&modelhubv2.GenerateRequest{
+		Model:  models.GeminiNanoBanana21,
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Image{Image: &modelhubv2.ImageOutput{}}},
+	}, &generateRecorder{ctx: context.Background()}); err == nil {
+		t.Fatal("nano banana must be unknown before hot add")
+	}
+	assertVertexTextStillWorks()
+	assertTextModelImageRejected()
+
+	added := cfg
+	added.Providers = map[string]config.ProviderConfig{
+		"vertex_chat": {
+			Models:   []string{models.Gemini20Flash001, models.GeminiNanoBanana21},
+			VertexAI: &config.VertexAIProviderConfig{APIKey: "k"},
+		},
+	}
+	body, err := yaml.Marshal(added)
+	if err != nil {
+		t.Fatal(err)
+	}
+	live.ApplyYAML(string(body))
+	if live.Load().ModelRoutes()[models.GeminiNanoBanana21] != "vertex_chat" {
+		t.Fatalf("routes=%v", live.Load().ModelRoutes())
+	}
+	if !imageListed() {
+		t.Fatal("ListModels must include nano banana after hot add")
+	}
+	if err := service.Generate(&modelhubv2.GenerateRequest{
+		Model: models.GeminiNanoBanana21,
+		Input: &modelhubv2.Input{Items: []*modelhubv2.InputItem{{
+			Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
+				Role: modelhubv2.Role_ROLE_USER,
+				Parts: []*modelhubv2.ContentPart{
+					{Content: &modelhubv2.ContentPart_Text{Text: "edit"}},
+					{Content: &modelhubv2.ContentPart_Image{Image: &modelhubv2.Media{
+						MimeType: "image/png",
+						Source:   &modelhubv2.Media_Data{Data: []byte{0x89, 0x50, 0x4e, 0x47}},
+					}}},
+				},
+			}},
+		}}},
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Image{Image: &modelhubv2.ImageOutput{}}},
+	}, &generateRecorder{ctx: context.Background()}); err != nil {
+		t.Fatal(err)
+	}
+	if image.model != models.GeminiNanoBanana21 {
+		t.Fatalf("image model=%q", image.model)
+	}
+	assertVertexTextStillWorks()
+	assertTextModelImageRejected()
+
+	removed := cfg
+	removed.Providers = map[string]config.ProviderConfig{
+		"vertex_chat": {
+			Models:   []string{models.Gemini20Flash001},
+			VertexAI: &config.VertexAIProviderConfig{APIKey: "k"},
+		},
+	}
+	body, err = yaml.Marshal(removed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	live.ApplyYAML(string(body))
+	if imageListed() {
+		t.Fatal("ListModels must drop nano banana after hot remove")
+	}
+	image.model = ""
+	if err := service.Generate(&modelhubv2.GenerateRequest{
+		Model:  models.GeminiNanoBanana21,
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Image{Image: &modelhubv2.ImageOutput{}}},
+	}, &generateRecorder{ctx: context.Background()}); err == nil {
+		t.Fatal("nano banana must be unknown after hot remove")
+	}
+	if image.model != "" {
+		t.Fatalf("removed model must not reach the image client, model=%q", image.model)
+	}
+	assertVertexTextStillWorks()
+	assertTextModelImageRejected()
+}
+
+func TestServiceRoutesNanoBananaImageAndKeepsVertexText(t *testing.T) {
+	image := &recordingImage{}
+	text := &recordingText{}
+	service := newTestService(config.Config{
+		Providers: map[string]config.ProviderConfig{
+			"vertex_chat": {
+				Models:   []string{models.Gemini20Flash001},
+				VertexAI: &config.VertexAIProviderConfig{APIKey: "k"},
+			},
+			"vertex_nano_banana": {
+				Models:   []string{models.GeminiNanoBanana21},
+				VertexAI: &config.VertexAIProviderConfig{APIKey: "k"},
+			},
+		},
+	}, map[string]provider.Set{
+		"vertex_chat":        {Text: text},
+		"vertex_nano_banana": {Text: text, Image: image},
+	}, nil)
+
+	stream := &generateRecorder{ctx: context.Background()}
+	if err := service.Generate(&modelhubv2.GenerateRequest{
+		Model: models.GeminiNanoBanana21,
+		Input: &modelhubv2.Input{Items: []*modelhubv2.InputItem{{
+			Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
+				Role: modelhubv2.Role_ROLE_USER,
+				Parts: []*modelhubv2.ContentPart{
+					{Content: &modelhubv2.ContentPart_Text{Text: "edit"}},
+					{Content: &modelhubv2.ContentPart_Image{Image: &modelhubv2.Media{
+						MimeType: "image/png",
+						Source:   &modelhubv2.Media_Data{Data: []byte("ref")},
+					}}},
+				},
+			}},
+		}}},
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Image{Image: &modelhubv2.ImageOutput{}}},
+	}, stream); err != nil {
+		t.Fatal(err)
+	}
+	if image.model != models.GeminiNanoBanana21 {
+		t.Fatalf("image model=%q", image.model)
+	}
+
+	textStream := &generateRecorder{ctx: context.Background()}
+	if err := service.Generate(textRequest(models.Gemini20Flash001, "ping"), textStream); err != nil {
+		t.Fatal(err)
+	}
+	if text.model != models.Gemini20Flash001 {
+		t.Fatalf("text model=%q", text.model)
+	}
+
+	rejected := &generateRecorder{ctx: context.Background()}
+	err := service.Generate(&modelhubv2.GenerateRequest{
+		Model:  models.Gemini20Flash001,
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Image{Image: &modelhubv2.ImageOutput{}}},
+	}, rejected)
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("vertex text image output code=%v err=%v", status.Code(err), err)
+	}
+}
+
 func TestServiceRoutesImageByRealModel(t *testing.T) {
 	image := &recordingImage{}
 	service := newTestService(config.Config{

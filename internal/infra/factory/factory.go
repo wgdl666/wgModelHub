@@ -137,7 +137,9 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 		if err != nil {
 			return provider.Set{}, err
 		}
-		return provider.Set{Text: client}, nil
+		// 生图复用同一个 genai 客户端。Image 在启动时挂上，不读可热更新的 models 列表；
+		// 某次图片请求放不放行由 resolve 按当前真实模型判断。
+		return provider.Set{Text: client, Image: client}, nil
 	case providerCfg.Ark != nil:
 		cfg := providerCfg.Ark
 		client, err := ark.New(name, cfg.APIKey, cfg.BaseURL, cfg.EndpointID)

@@ -37,6 +37,7 @@ func TestCategoryOfKnownIDs(t *testing.T) {
 		{RekognitionDetectLabels, CategoryPersonDetect},
 		{HumanParser, CategoryHumanParser},
 		{HumanParse, CategoryHumanParser},
+		{GeminiNanoBanana21, CategoryImageGeneration},
 		{GPTImage2, CategoryImageGeneration},
 		{GPTImage25Flare, CategoryImageGeneration},
 		{GPTImage25Sunburst, CategoryImageGeneration},

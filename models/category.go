@@ -83,6 +83,7 @@ var categories = map[string]Category{
 	Gemini3ProImage:         CategoryImageGeneration,
 	Gemini25FlashImage:      CategoryImageGeneration,
 	Gemini31FlashImage:      CategoryImageGeneration,
+	GeminiNanoBanana21:      CategoryImageGeneration,
 	GPTImage2:               CategoryImageGeneration,
 	GPTImage25Flare:         CategoryImageGeneration,
 	GPTImage25Sunburst:      CategoryImageGeneration,

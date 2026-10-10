@@ -48,6 +48,19 @@ func TestGLM53FlashModelID(t *testing.T) {
 	}
 }
 
+// TestGeminiNanoBanana21ModelID 锁定 Vertex Nano Banana 2.1 的官方模型 ID，避免写成 banana 别名或并进 flash-image。
+func TestGeminiNanoBanana21ModelID(t *testing.T) {
+	if GeminiNanoBanana21 != "gemini-nano-banana-2.1" {
+		t.Fatalf("GeminiNanoBanana21=%q, want gemini-nano-banana-2.1", GeminiNanoBanana21)
+	}
+	if GeminiNanoBanana21 == Gemini31FlashImage || GeminiNanoBanana21 == Gemini25FlashImage {
+		t.Fatal("Nano Banana 2.1 must stay a distinct model ID")
+	}
+	if !slices.Contains(All(), GeminiNanoBanana21) {
+		t.Fatalf("All() missing %q", GeminiNanoBanana21)
+	}
+}
+
 // TestFlux2Klein9BModelID 锁定 FLUX.2 对外真实模型名，避免写成 Klein/FLUX2 等业务别名。
 func TestFlux2Klein9BModelID(t *testing.T) {
 	if Flux2Klein9B != "FLUX.2-klein-9B" {

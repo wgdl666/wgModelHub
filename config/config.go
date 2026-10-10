@@ -15,6 +15,7 @@ import (
 	"github.com/nacos-group/nacos-sdk-go/v2/clients"
 	"github.com/nacos-group/nacos-sdk-go/v2/common/constant"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
+	"github.com/wgdl666/wgModelHub/models"
 )
 
 const (
@@ -1116,7 +1117,10 @@ func ProviderSupports(provider ProviderConfig, capability string) bool {
 		return capability == CapabilityImage
 	case provider.Fashion != nil, provider.HumanYOLO != nil, provider.HumanParser != nil, provider.RekognitionDetect != nil, provider.FacebodyCompare != nil, provider.RekognitionCompare != nil, provider.DashScopeEmbedding != nil, provider.CohereEmbedding != nil, provider.BedrockEmbedding != nil, provider.DashScopeRerank != nil, provider.BedrockRerank != nil, provider.CohereRerank != nil, provider.MixedbreadRerank != nil, provider.FacebodyDetect != nil, provider.FacebodyLibrary != nil, provider.RekognitionFaces != nil, provider.RekognitionLibrary != nil:
 		return capability == CapabilityText
-	case provider.VertexAI != nil, provider.Ark != nil:
+	case provider.VertexAI != nil:
+		// 类型能力不读 models。该列表可热更新，不能用来决定进程里有没有生图客户端。
+		return capability == CapabilityText || capability == CapabilityImage
+	case provider.Ark != nil:
 		return capability == CapabilityText
 	case provider.LTX != nil:
 		return capability == CapabilityVideo
@@ -1129,6 +1133,16 @@ func ProviderSupports(provider ProviderConfig, capability string) bool {
 	default:
 		return false
 	}
+}
+
+// VertexImageRequestAllowed 只看这次请求的真实模型，不看实例上的 models 列表。
+// 同实例热加入生图 ID 后，已有文本模型的图片请求仍然拒绝。
+func VertexImageRequestAllowed(provider ProviderConfig, model, capability string) bool {
+	if provider.VertexAI == nil || capability != CapabilityImage {
+		return true
+	}
+	category, ok := models.CategoryOf(strings.TrimSpace(model))
+	return ok && category == models.CategoryImageGeneration
 }
 
 // IsASRProvider 只判断配置类型；凭据是否足够由 ASRCredentialsPresent 单独判断。

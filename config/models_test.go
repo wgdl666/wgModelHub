@@ -55,6 +55,9 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 			OpenAI *struct {
 				BaseURL string `yaml:"base_url"`
 			} `yaml:"openai"`
+			VertexAI *struct {
+				APIKey string `yaml:"api_key"`
+			} `yaml:"vertexai"`
 			VWorldImage *struct {
 				BaseURL  string `yaml:"base_url"`
 				Username string `yaml:"username"`
@@ -204,6 +207,31 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 	}
 	if asyncGPT.OpenAI == nil || asyncGPT.OpenAI.BaseURL != "https://api.aig-ai.com/v1" {
 		t.Fatalf("async_gpt_image openai.base_url=%v, want https://api.aig-ai.com/v1", asyncGPT.OpenAI)
+	}
+
+	// 示例把 Nano Banana 2.1 放在独立 Vertex 实例；单声明不写 model_routes。
+	vertexChat, ok := parsed.Providers["vertex_chat"]
+	if !ok {
+		t.Fatal("missing provider vertex_chat")
+	}
+	if len(vertexChat.Models) != 1 || vertexChat.Models[0] != models.Gemini20Flash001 {
+		t.Fatalf("vertex_chat models=%v, want [%q]", vertexChat.Models, models.Gemini20Flash001)
+	}
+	nano, ok := parsed.Providers["vertex_nano_banana"]
+	if !ok {
+		t.Fatal("missing provider vertex_nano_banana")
+	}
+	if len(nano.Models) != 1 || nano.Models[0] != models.GeminiNanoBanana21 {
+		t.Fatalf("vertex_nano_banana models=%v, want [%q]", nano.Models, models.GeminiNanoBanana21)
+	}
+	if nano.VertexAI == nil || nano.VertexAI.APIKey != "${VERTEX_API_KEY}" {
+		t.Fatalf("vertex_nano_banana vertexai=%#v", nano.VertexAI)
+	}
+	if _, routed := parsed.ModelRoutes[models.GeminiNanoBanana21]; routed {
+		t.Fatal("single-declared nano banana must not use model_routes")
+	}
+	if parsed.ModelRoutes[models.Gemini25Flash] != "" {
+		t.Fatalf("gemini-2.5-flash model_routes=%q", parsed.ModelRoutes[models.Gemini25Flash])
 	}
 
 	// 四候选：Gemini 两个进 gemini_main；Qwen3.8 进 hub_chat；Claude 用独立 OpenAI-compat 指官方 Anthropic endpoint。

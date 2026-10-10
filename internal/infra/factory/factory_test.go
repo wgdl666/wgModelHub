@@ -195,6 +195,31 @@ func TestBuildVWorldImageExposesImageOnly(t *testing.T) {
 	}
 }
 
+func TestBuildVertexRegistersImageWithoutReadingModels(t *testing.T) {
+	sets, err := Build(context.Background(), config.Config{
+		Providers: map[string]config.ProviderConfig{
+			"vertex_chat": {
+				Models:   []string{models.Gemini20Flash001},
+				VertexAI: &config.VertexAIProviderConfig{APIKey: "k"},
+			},
+			"vertex_nano_banana": {
+				Models:   []string{models.GeminiNanoBanana21},
+				VertexAI: &config.VertexAIProviderConfig{APIKey: "k"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// models 可热更新，启动时不能按当时的列表决定要不要挂 Image。
+	for _, name := range []string{"vertex_chat", "vertex_nano_banana"} {
+		set := sets[name]
+		if set.Text == nil || set.Image == nil || set.Video != nil {
+			t.Fatalf("%s set=%#v", name, set)
+		}
+	}
+}
+
 func TestBuildVideoProvidersAcceptZeroPollConfig(t *testing.T) {
 	_, err := Build(context.Background(), config.Config{
 		Providers: map[string]config.ProviderConfig{

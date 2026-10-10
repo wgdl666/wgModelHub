@@ -300,6 +300,55 @@ func TestValidateRejectsVertexAIBlankAPIKey(t *testing.T) {
 	}
 }
 
+func TestVertexImageCapabilityFollowsRequestedModel(t *testing.T) {
+	chat := ProviderConfig{
+		Models:   []string{models.Gemini25Flash, models.Gemini20Flash001},
+		VertexAI: &VertexAIProviderConfig{APIKey: "vertex-express-key"},
+	}
+	if !ProviderSupports(chat, CapabilityText) || !ProviderSupports(chat, CapabilityImage) {
+		t.Fatal("vertex client image capability must not depend on the models list")
+	}
+	mixed := ProviderConfig{
+		Models:   []string{models.Gemini20Flash001, models.GeminiNanoBanana21},
+		VertexAI: &VertexAIProviderConfig{APIKey: "vertex-express-key"},
+	}
+	if !VertexImageRequestAllowed(mixed, models.GeminiNanoBanana21, CapabilityImage) {
+		t.Fatal("image model request must be allowed")
+	}
+	if VertexImageRequestAllowed(mixed, models.Gemini20Flash001, CapabilityImage) {
+		t.Fatal("text model must not gain image because a sibling image model is declared")
+	}
+	if !VertexImageRequestAllowed(chat, models.GeminiNanoBanana21, CapabilityImage) {
+		t.Fatal("allowance follows the requested model, not the instance models list")
+	}
+	if ProviderSupports(mixed, CapabilityVideo) {
+		t.Fatal("vertex must not support video")
+	}
+	image := ProviderConfig{
+		Models:   []string{models.GeminiNanoBanana21},
+		VertexAI: &VertexAIProviderConfig{APIKey: "vertex-express-key"},
+	}
+	routes := Config{Providers: map[string]ProviderConfig{
+		"vertex_chat":        chat,
+		"vertex_nano_banana": image,
+		"gemini": {
+			Models: []string{models.Gemini25Flash},
+			Gemini: &GeminiProviderConfig{APIKey: "key"},
+		},
+	}, ModelRouteOverrides: map[string]string{
+		models.Gemini25Flash: "gemini",
+	}}.ModelRoutes()
+	if routes[models.Gemini25Flash] != "gemini" {
+		t.Fatalf("gemini-2.5-flash route=%q", routes[models.Gemini25Flash])
+	}
+	if routes[models.GeminiNanoBanana21] != "vertex_nano_banana" {
+		t.Fatalf("nano banana route=%q", routes[models.GeminiNanoBanana21])
+	}
+	if routes[models.Gemini20Flash001] != "vertex_chat" {
+		t.Fatalf("gemini-2.0 route=%q", routes[models.Gemini20Flash001])
+	}
+}
+
 func TestValidateAcceptsVertexAIAPIKeyOnly(t *testing.T) {
 	cfg := validConfig()
 	cfg.Providers["vertex_chat"] = ProviderConfig{

@@ -523,7 +523,9 @@ func (s *Service) resolve(model, capability string) (binding, error) {
 	if !ok {
 		return binding{}, provider.Errorf(provider.ErrorConfiguration, "model %s references unknown provider %s", model, providerName)
 	}
-	if !config.ProviderSupports(providerCfg, capability) {
+	// providerCfg 是启动快照，只用来识别供应商类型；models 热更新不重建客户端。
+	// Vertex 图片是否放行看当前请求的真实模型，不看实例列表里有没有别的生图 ID。
+	if !config.ProviderSupports(providerCfg, capability) || !config.VertexImageRequestAllowed(providerCfg, model, capability) {
 		return binding{}, provider.Errorf(
 			provider.ErrorInvalidArgument,
 			"model %s provider %s does not support output %s",

@@ -42,6 +42,13 @@ providers:
     models: [gemini-2.0-flash-001]
     vertexai:
       api_key: "${VERTEX_API_KEY}"
+  # Nano Banana 2.1 示例：request.model=gemini-nano-banana-2.1，OutputSpec.image。
+  # 分辨率原样下发 1K/2K/4K。思考推荐 MINIMAL/MEDIUM/HIGH；LOW 原样下发，上游会拒绝。
+  # 官方不支持 temperature；设置了会原样下发并返回上游错误。
+  vertex_nano_banana:
+    models: [gemini-nano-banana-2.1]
+    vertexai:
+      api_key: "${VERTEX_API_KEY}"
   ark_chat:
     models: [doubao-seed-1.6]
     ark:
