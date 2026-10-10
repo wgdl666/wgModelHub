@@ -66,8 +66,8 @@ func TestValidateAcceptsDuplicateModelsWithExplicitRoute(t *testing.T) {
 		Models: []string{models.Gemini25FlashImage},
 		Gemini: &GeminiProviderConfig{APIKey: "aws-key"},
 	}
-	cfg.ModelRouteOverrides = map[string]string{
-		models.Gemini25FlashImage: "aws_gemini",
+	cfg.ModelRouteOverrides = map[string]ModelRoute{
+		models.Gemini25FlashImage: {Default: "aws_gemini"},
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)
@@ -87,8 +87,8 @@ func TestValidateRejectsUnknownRouteProvider(t *testing.T) {
 		Models: []string{models.Gemini25FlashImage},
 		Gemini: &GeminiProviderConfig{APIKey: "aws-key"},
 	}
-	cfg.ModelRouteOverrides = map[string]string{
-		models.Gemini25FlashImage: "missing",
+	cfg.ModelRouteOverrides = map[string]ModelRoute{
+		models.Gemini25FlashImage: {Default: "missing"},
 	}
 	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "unknown provider") {
 		t.Fatalf("expected unknown provider error, got %v", err)
@@ -101,8 +101,8 @@ func TestValidateRejectsRouteProviderMissingModel(t *testing.T) {
 		Models: []string{models.Gemini25FlashImage},
 		Gemini: &GeminiProviderConfig{APIKey: "aws-key"},
 	}
-	cfg.ModelRouteOverrides = map[string]string{
-		models.Gemini25FlashImage: "ark",
+	cfg.ModelRouteOverrides = map[string]ModelRoute{
+		models.Gemini25FlashImage: {Default: "ark"},
 	}
 	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "does not declare") {
 		t.Fatalf("expected undeclared model route error, got %v", err)
@@ -111,8 +111,8 @@ func TestValidateRejectsRouteProviderMissingModel(t *testing.T) {
 
 func TestValidateRejectsRouteForUndeclaredModel(t *testing.T) {
 	cfg := validConfig()
-	cfg.ModelRouteOverrides = map[string]string{
-		models.Gemini31FlashImage: "gemini",
+	cfg.ModelRouteOverrides = map[string]ModelRoute{
+		models.Gemini31FlashImage: {Default: "gemini"},
 	}
 	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "not declared by any provider") {
 		t.Fatalf("expected undeclared model error, got %v", err)
@@ -335,8 +335,8 @@ func TestVertexImageCapabilityFollowsRequestedModel(t *testing.T) {
 			Models: []string{models.Gemini25Flash},
 			Gemini: &GeminiProviderConfig{APIKey: "key"},
 		},
-	}, ModelRouteOverrides: map[string]string{
-		models.Gemini25Flash: "gemini",
+	}, ModelRouteOverrides: map[string]ModelRoute{
+		models.Gemini25Flash: {Default: "gemini"},
 	}}.ModelRoutes()
 	if routes[models.Gemini25Flash] != "gemini" {
 		t.Fatalf("gemini-2.5-flash route=%q", routes[models.Gemini25Flash])
@@ -485,5 +485,40 @@ func TestValidateAcceptsArkEndpointIDWithSingleModel(t *testing.T) {
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestParseModelRouteAcceptsScalarAndRace(t *testing.T) {
+	raw := `
+logfire:
+  token: t
+  env: test
+  service: wg-model-hub
+database:
+  dsn: postgres://modelhub:modelhub@127.0.0.1:5432/modelhub?sslmode=disable
+providers:
+  gemini_main:
+    models: ["gemini-3.5-flash-lite"]
+    gemini:
+      api_key: a
+  vertex_chat:
+    models: ["gemini-3.5-flash-lite"]
+    vertexai:
+      api_key: b
+model_routes:
+  gemini-3.5-flash-lite:
+    default: gemini_main
+    race: [gemini_main, vertex_chat]
+`
+	cfg, err := ParseAndValidateYAML(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.ModelRoutes()["gemini-3.5-flash-lite"]; got != "gemini_main" {
+		t.Fatalf("default=%s", got)
+	}
+	race := cfg.RaceProviders("gemini-3.5-flash-lite")
+	if len(race) != 2 || race[0] != "gemini_main" || race[1] != "vertex_chat" {
+		t.Fatalf("race=%v", race)
 	}
 }

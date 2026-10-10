@@ -262,7 +262,7 @@ func TestSubmitGenerationPersistsModelRouteSelectedProvider(t *testing.T) {
 			"video_primary": {Models: []string{modelID}, LTX: ltxCfg},
 			"video_backup":  {Models: []string{modelID}, LTX: ltxCfg},
 		},
-		ModelRouteOverrides: map[string]string{modelID: "video_backup"},
+		ModelRouteOverrides: map[string]config.ModelRoute{modelID: {Default: "video_backup"}},
 	}, map[string]provider.Set{
 		"video_primary": {Video: primary},
 		"video_backup":  {Video: backup},

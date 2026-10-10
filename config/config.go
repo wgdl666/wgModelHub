@@ -17,6 +17,7 @@ import (
 	"github.com/nacos-group/nacos-sdk-go/v2/common/constant"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
 	"github.com/wgdl666/wgModelHub/models"
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -393,6 +394,43 @@ type RekognitionLibraryProviderConfig struct {
 	Collection      string `yaml:"collection"`
 }
 
+// ModelRoute 是一个真实模型的供应商选择。
+// 旧配置把值写成供应商名字，只表示唯一实例。对象形式用 default 表示不竞速时的实例；
+// race 列出请求带 race 标记时要并发的供应商，首个有效首字胜出。
+type ModelRoute struct {
+	Default string   `yaml:"default"`
+	Race    []string `yaml:"race,omitempty"`
+}
+
+// UnmarshalYAML 同时接受「供应商名字」和「default/race 对象」，避免已上线的 model_routes 失效。
+func (m *ModelRoute) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind == yaml.ScalarNode {
+		var name string
+		if err := value.Decode(&name); err != nil {
+			return err
+		}
+		m.Default = strings.TrimSpace(name)
+		m.Race = nil
+		return nil
+	}
+	var body struct {
+		Default string   `yaml:"default"`
+		Race    []string `yaml:"race"`
+	}
+	if err := value.Decode(&body); err != nil {
+		return err
+	}
+	m.Default = strings.TrimSpace(body.Default)
+	m.Race = nil
+	for _, name := range body.Race {
+		name = strings.TrimSpace(name)
+		if name != "" {
+			m.Race = append(m.Race, name)
+		}
+	}
+	return nil
+}
+
 type Config struct {
 	Server struct {
 		ListenAddress       string
@@ -401,8 +439,9 @@ type Config struct {
 		HTTPListenAddress string
 	} `yaml:"-"`
 	Providers map[string]ProviderConfig `yaml:"providers"`
-	// ModelRouteOverrides：真实模型 ID -> 显式选中的 provider 实例名；与各实例 Models 同属路由元数据，可经 ListenConfig 热更新。
-	ModelRouteOverrides map[string]string `yaml:"model_routes"`
+	// ModelRouteOverrides：真实模型 ID -> 路由。字符串值是唯一实例。
+	// 对象值的 default 是不竞速时的实例，race 是请求标明竞速时并发的供应商名单。与 Models 同属路由元数据，可热更新。
+	ModelRouteOverrides map[string]ModelRoute `yaml:"model_routes"`
 	// Database 仅服务视频长任务跨 Pod 查询；启动不做 DDL，migration 需显式执行。
 	Database DatabaseConfig `yaml:"database"`
 	// Logfire 与 Hub 等同项目；token 写在本服务 Nacos，禁止再挂 wg-hub-env。
@@ -627,12 +666,12 @@ func (c Config) Validate() error {
 	}
 
 	explicit := make(map[string]string, len(c.ModelRouteOverrides))
-	for model, providerName := range c.ModelRouteOverrides {
+	for model, route := range c.ModelRouteOverrides {
 		model = strings.TrimSpace(model)
-		providerName = strings.TrimSpace(providerName)
 		if model == "" {
 			return fmt.Errorf("model_routes contains an empty model id")
 		}
+		providerName := strings.TrimSpace(route.Default)
 		if providerName == "" {
 			return fmt.Errorf("model_routes[%s] provider is required", model)
 		}
@@ -640,18 +679,25 @@ func (c Config) Validate() error {
 		if !ok {
 			return fmt.Errorf("model_routes[%s] is not declared by any provider", model)
 		}
-		if _, exists := c.Providers[providerName]; !exists {
-			return fmt.Errorf("model_routes[%s] references unknown provider %s", model, providerName)
+		if err := validateRouteProvider(c, model, providerName, providers); err != nil {
+			return err
 		}
-		found := false
-		for _, declared := range providers {
-			if declared == providerName {
-				found = true
-				break
+		seenRace := make(map[string]struct{}, len(route.Race))
+		for _, name := range route.Race {
+			name = strings.TrimSpace(name)
+			if name == "" {
+				return fmt.Errorf("model_routes[%s] race contains an empty provider", model)
+			}
+			if _, dup := seenRace[name]; dup {
+				return fmt.Errorf("model_routes[%s] race lists %s more than once", model, name)
+			}
+			seenRace[name] = struct{}{}
+			if err := validateRouteProvider(c, model, name, providers); err != nil {
+				return err
 			}
 		}
-		if !found {
-			return fmt.Errorf("model_routes[%s] provider %s does not declare that model", model, providerName)
+		if len(route.Race) == 1 {
+			return fmt.Errorf("model_routes[%s] race requires at least two providers", model)
 		}
 		explicit[model] = providerName
 	}
@@ -705,11 +751,24 @@ func ApplyListenPortOverridesFromEnv(cfg *Config) error {
 	return nil
 }
 
-// ModelRoutes 返回真实模型 ID -> provider 实例名；单声明隐式选定，多声明取 model_routes。
+// validateRouteProvider 确认路由点名的实例存在，且 models 里声明了这个真实模型。
+func validateRouteProvider(c Config, model, providerName string, declared []string) error {
+	if _, exists := c.Providers[providerName]; !exists {
+		return fmt.Errorf("model_routes[%s] references unknown provider %s", model, providerName)
+	}
+	for _, name := range declared {
+		if name == providerName {
+			return nil
+		}
+	}
+	return fmt.Errorf("model_routes[%s] provider %s does not declare that model", model, providerName)
+}
+
+// ModelRoutes 返回真实模型 ID -> 不竞速时的 provider 实例名；单声明隐式选定，多声明取 default。
 func (c Config) ModelRoutes() map[string]string {
 	overrides := make(map[string]string, len(c.ModelRouteOverrides))
-	for model, providerName := range c.ModelRouteOverrides {
-		overrides[strings.TrimSpace(model)] = strings.TrimSpace(providerName)
+	for model, route := range c.ModelRouteOverrides {
+		overrides[strings.TrimSpace(model)] = strings.TrimSpace(route.Default)
 	}
 	declaredBy := make(map[string][]string)
 	for name, provider := range c.Providers {
@@ -736,6 +795,26 @@ func (c Config) ModelRoutes() map[string]string {
 		}
 	}
 	return routes
+}
+
+// RaceProviders 返回该模型在请求标明 race 时要并发的供应商。
+// 少于两家时返回 nil，调用方退回 ModelRoutes 的单路。
+func (c Config) RaceProviders(model string) []string {
+	route, ok := c.ModelRouteOverrides[strings.TrimSpace(model)]
+	if !ok || len(route.Race) < 2 {
+		return nil
+	}
+	out := make([]string, 0, len(route.Race))
+	for _, name := range route.Race {
+		name = strings.TrimSpace(name)
+		if name != "" {
+			out = append(out, name)
+		}
+	}
+	if len(out) < 2 {
+		return nil
+	}
+	return out
 }
 
 func validateProvider(name string, provider ProviderConfig) error {

@@ -95,6 +95,9 @@ message GenerateRequest {
   Input input = 2;
   OutputSpec output = 3;
   BusinessMetadata business_metadata = 4;
+  // race 为真且 model_routes 为该模型配置了 race 名单时，文本流并发这些供应商，首个有效首字胜出。
+  // 未配置名单时仍走 default 单路，避免主意图在配置未就绪时失败。
+  bool race = 5;
 }
 
 enum Role {

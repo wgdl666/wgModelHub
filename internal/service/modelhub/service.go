@@ -123,6 +123,19 @@ func (s *Service) Generate(request *modelhubv2.GenerateRequest, stream modelhubv
 		telemetry.RecordError(ctx, statusErr)
 		return statusErr
 	}
+	// 主意图会带 race。配了名单就并发首字；没配则退回单路，配置未就绪时对话仍可用。
+	if capability == config.CapabilityText && request.GetRace() {
+		if names := s.live.Load().RaceProviders(request.GetModel()); len(names) >= 2 {
+			raced, raceErr := s.raceBinding(request.GetModel(), names)
+			if raceErr != nil {
+				statusErr := provider.ToStatus(raceErr)
+				telemetry.RecordError(ctx, statusErr)
+				return statusErr
+			}
+			return s.generateText(ctx, raced, request, stream, startedAt)
+		}
+		logs.Default().WarnContext(ctx, "modelhub_race_fallback", "model", request.GetModel(), "reason", "race list missing")
+	}
 	binding, err := s.resolve(request.GetModel(), capability)
 	if err != nil {
 		statusErr := provider.ToStatus(err)
@@ -180,6 +193,13 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 			// 文本 stream 的唯一 final 由 service 发送；供应商误标 final 的事件只当增量丢弃终态标记。
 			if event == nil || event.GetFinal() {
 				return nil
+			}
+			// 竞速在首字出现时才知道赢家；指标和账本从这一刻改记赢家，不再记 default。
+			if raced, ok := binding.set.Text.(*raceText); ok {
+				if winner := raced.winner(); winner != "" {
+					labels.Provider = winner
+					rec.Provider = winner
+				}
 			}
 			acc.Consume(event)
 			applyEventUsage(&rec, event)

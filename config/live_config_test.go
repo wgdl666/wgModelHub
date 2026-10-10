@@ -15,7 +15,7 @@ func TestLiveConfigAppliesModelRoutes(t *testing.T) {
 	lc := NewLiveConfig(initial)
 
 	next := initial
-	next.ModelRouteOverrides = map[string]string{models.Gemini25Flash: "gemini_backup"}
+	next.ModelRouteOverrides = map[string]ModelRoute{models.Gemini25Flash: {Default: "gemini_backup"}}
 	lc.ApplyYAML(mustYAML(t, next))
 	routes := lc.Load().ModelRoutes()
 	if routes[models.Gemini25Flash] != "gemini_backup" {
@@ -28,7 +28,7 @@ func TestLiveConfigIgnoresUnknownFieldsWhenApplyingHotFields(t *testing.T) {
 	lc := NewLiveConfig(initial)
 
 	next := cloneConfig(initial)
-	next.ModelRouteOverrides = map[string]string{models.Gemini25Flash: "gemini_backup"}
+	next.ModelRouteOverrides = map[string]ModelRoute{models.Gemini25Flash: {Default: "gemini_backup"}}
 	gemini := next.Providers["gemini"]
 	gemini.Models = []string{models.Gemini25Flash, models.Gemini25FlashImage, models.Gemini37Flash}
 	next.Providers["gemini"] = gemini
@@ -352,7 +352,7 @@ func TestLiveConfigPreservesEnvListenAddressesOnHotReload(t *testing.T) {
 	lc := NewLiveConfig(initial)
 
 	next := initial
-	next.ModelRouteOverrides = map[string]string{models.Gemini25Flash: "gemini_backup"}
+	next.ModelRouteOverrides = map[string]ModelRoute{models.Gemini25Flash: {Default: "gemini_backup"}}
 	hotYAML := mustYAML(t, next)
 	if strings.Contains(hotYAML, "listen_address") || strings.Contains(hotYAML, "public_listen_address") || strings.Contains(hotYAML, "http_listen_address") {
 		t.Fatalf("serialized YAML must not contain listen addresses: %q", hotYAML)
@@ -439,7 +439,7 @@ func TestLiveConfigConcurrentLoadStore(t *testing.T) {
 		go func(selected string) {
 			defer wg.Done()
 			next := cloneConfig(initial)
-			next.ModelRouteOverrides = map[string]string{models.Gemini25Flash: selected}
+			next.ModelRouteOverrides = map[string]ModelRoute{models.Gemini25Flash: {Default: selected}}
 			lc.ApplyYAML(mustYAML(t, next))
 		}(provider)
 	}
@@ -474,7 +474,7 @@ func validConfigWithDualGeminiFlash() Config {
 		Models: []string{models.Gemini25Flash},
 		Gemini: &GeminiProviderConfig{APIKey: "backup-key"},
 	}
-	cfg.ModelRouteOverrides = map[string]string{models.Gemini25Flash: "gemini"}
+	cfg.ModelRouteOverrides = map[string]ModelRoute{models.Gemini25Flash: {Default: "gemini"}}
 	if err := cfg.Validate(); err != nil {
 		panic(err)
 	}

@@ -743,8 +743,11 @@ type GenerateRequest struct {
 	Input            *Input            `protobuf:"bytes,2,opt,name=input,proto3" json:"input,omitempty"`
 	Output           *OutputSpec       `protobuf:"bytes,3,opt,name=output,proto3" json:"output,omitempty"`
 	BusinessMetadata *BusinessMetadata `protobuf:"bytes,4,opt,name=business_metadata,json=businessMetadata,proto3" json:"business_metadata,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// race 为真且 model_routes 为该模型配置了 race 名单时，文本流并发这些供应商，首个有效首字胜出。
+	// 未配置名单时仍走 default 单路，避免主意图在配置未就绪时失败。
+	Race          bool `protobuf:"varint,5,opt,name=race,proto3" json:"race,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GenerateRequest) Reset() {
@@ -803,6 +806,13 @@ func (x *GenerateRequest) GetBusinessMetadata() *BusinessMetadata {
 		return x.BusinessMetadata
 	}
 	return nil
+}
+
+func (x *GenerateRequest) GetRace() bool {
+	if x != nil {
+		return x.Race
+	}
+	return false
 }
 
 // Media 同时支持内联字节和供应商可访问 URI。
@@ -4200,12 +4210,13 @@ const file_proto_wg_model_hub_v2_model_hub_proto_rawDesc = "" +
 	"\x10BusinessMetadata\x12#\n" +
 	"\rbusiness_line\x18\x01 \x01(\tR\fbusinessLine\x12%\n" +
 	"\x0ebusiness_scene\x18\x02 \x01(\tR\rbusinessScene\x12+\n" +
-	"\x11business_subscene\x18\x03 \x01(\tR\x10businessSubscene\"\xda\x01\n" +
+	"\x11business_subscene\x18\x03 \x01(\tR\x10businessSubscene\"\xee\x01\n" +
 	"\x0fGenerateRequest\x12\x14\n" +
 	"\x05model\x18\x01 \x01(\tR\x05model\x12,\n" +
 	"\x05input\x18\x02 \x01(\v2\x16.wg_model_hub.v2.InputR\x05input\x123\n" +
 	"\x06output\x18\x03 \x01(\v2\x1b.wg_model_hub.v2.OutputSpecR\x06output\x12N\n" +
-	"\x11business_metadata\x18\x04 \x01(\v2!.wg_model_hub.v2.BusinessMetadataR\x10businessMetadata\"X\n" +
+	"\x11business_metadata\x18\x04 \x01(\v2!.wg_model_hub.v2.BusinessMetadataR\x10businessMetadata\x12\x12\n" +
+	"\x04race\x18\x05 \x01(\bR\x04race\"X\n" +
 	"\x05Media\x12\x1b\n" +
 	"\tmime_type\x18\x01 \x01(\tR\bmimeType\x12\x14\n" +
 	"\x04data\x18\x02 \x01(\fH\x00R\x04data\x12\x12\n" +
