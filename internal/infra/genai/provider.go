@@ -6,7 +6,9 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
@@ -21,9 +23,23 @@ import (
 const defaultCachedContentTTL = time.Hour
 
 type Provider struct {
-	name   string
-	client *genaisdk.Client
+	name       string
+	client     *genaisdk.Client
+	apiKey     string
+	httpClient *http.Client
+
+	// Nano Banana 2.1 只在 locations/global。Express 的 publishers 短路径会按调用方所在区域解析
+	//（俄亥俄落到 us-central1，本机落到 asia-southeast1），区域里没有这个模型。
+	// SDK 不允许 APIKey 与 Project/Location 同时设置，所以全局客户端只填 project/location，
+	// 密钥仍由 transport 写入 x-goog-api-key。project 从区域 404 文案里取，不写进配置。
+	mu                sync.Mutex
+	globalProject     string
+	globalClient      *genaisdk.Client
+	useExpressForNano bool
 }
+
+// 区域 404 会带出密钥所属项目编号，例如 projects/686930556106/locations/us-central1。
+var vertexProjectInError = regexp.MustCompile(`projects/([0-9]+)/locations/`)
 
 func NewGemini(ctx context.Context, name, apiKey, endpoint, proxyURL string) (*Provider, error) {
 	if strings.TrimSpace(apiKey) == "" {
@@ -76,7 +92,92 @@ func newVertexAI(ctx context.Context, name, apiKey string, httpClient *http.Clie
 	if err != nil {
 		return nil, provider.Wrap(provider.ErrorConfiguration, "create "+name+" client", err)
 	}
-	return &Provider{name: name, client: client}, nil
+	return &Provider{name: name, client: client, apiKey: apiKey, httpClient: httpClient}, nil
+}
+
+// clientForImage 只有 Nano Banana 2.1 改走 locations/global；其他模型继续用 Express 短路径。
+func (p *Provider) clientForImage(ctx context.Context, model string) (*genaisdk.Client, error) {
+	if model != models.GeminiNanoBanana21 {
+		return p.client, nil
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.useExpressForNano {
+		return p.client, nil
+	}
+	if p.globalClient != nil {
+		return p.globalClient, nil
+	}
+	project := p.globalProject
+	if project == "" {
+		discovered, regionalOK, err := p.discoverVertexProject(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if regionalOK {
+			p.useExpressForNano = true
+			return p.client, nil
+		}
+		project = discovered
+		p.globalProject = project
+	}
+	client, err := p.newGlobalVertexClient(ctx, project)
+	if err != nil {
+		return nil, err
+	}
+	p.globalClient = client
+	return client, nil
+}
+
+func (p *Provider) discoverVertexProject(ctx context.Context) (project string, regionalOK bool, err error) {
+	// 用极短正文探测。区域没有该模型时上游 404，正文里带项目编号；成功则说明短路径已可用。
+	_, err = p.client.Models.GenerateContent(ctx, models.GeminiNanoBanana21, []*genaisdk.Content{
+		genaisdk.NewContentFromText(".", genaisdk.RoleUser),
+	}, nil)
+	if err == nil {
+		return "", true, nil
+	}
+	match := vertexProjectInError.FindStringSubmatch(err.Error())
+	if len(match) < 2 {
+		return "", false, p.mapError(ctx, "generate image", err)
+	}
+	return match[1], false, nil
+}
+
+func (p *Provider) newGlobalVertexClient(ctx context.Context, project string) (*genaisdk.Client, error) {
+	base := p.httpClient
+	if base == nil {
+		base = telemetry.NewHTTPClient()
+	}
+	transport := base.Transport
+	if transport == nil {
+		transport = http.DefaultTransport
+	}
+	client, err := genaisdk.NewClient(ctx, &genaisdk.ClientConfig{
+		Backend:    genaisdk.BackendVertexAI,
+		Project:    project,
+		Location:   "global",
+		HTTPClient: &http.Client{Transport: &vertexAPIKeyTransport{base: transport, key: p.apiKey}, Timeout: base.Timeout},
+	})
+	if err != nil {
+		return nil, provider.Wrap(provider.ErrorConfiguration, "create "+p.name+" global client", err)
+	}
+	return client, nil
+}
+
+type vertexAPIKeyTransport struct {
+	base http.RoundTripper
+	key  string
+}
+
+func (t *vertexAPIKeyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req = req.Clone(req.Context())
+	req.Header.Set("x-goog-api-key", t.key)
+	base := t.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	return base.RoundTrip(req)
 }
 
 // CreateCachedContent 把 system + tools 落到 Gemini CachedContent，供后续 Generate 引用。

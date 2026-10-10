@@ -131,4 +131,4 @@ Nacos 热更新；实例增删或凭据/端点等资源参数变化须滚动重�
 `github.com/wgdl666/wgModelHub/models` 常量，例如 `models.Speech28Turbo`。
 `models.Flux2Klein9B` 当前仅支持带参考图的 image edit（i2i），须绑定独立 OpenAI Images 实例。
 `models.GPTImage2` / `models.GPTImage25Flare` / `models.GPTImage25Sunburst` 走 OpenAI Images API（generations/edits），复用现网已实测的 AIG 实例 `async_gpt_image`（`https://api.aig-ai.com/v1`），不能并入 Gemini generateContent 生图实例。
-`models.GeminiNanoBanana21`（`gemini-nano-banana-2.1`）走 Vertex Express 的现有 Generate 图片链路，示例实例是 `vertex_nano_banana`。调用方使用 `request.model` 加 `OutputSpec.image`。分辨率传 `1K` / `2K` / `4K`。思考推荐 `MINIMAL` / `MEDIUM` / `HIGH`；`LOW` 会原样下发，由上游拒绝。官方不支持 `temperature`，设置了会原样下发并返回上游错误。
+`models.GeminiNanoBanana21`（`gemini-nano-banana-2.1`）走 Vertex Express 的现有 Generate 图片链路，示例实例是 `vertex_nano_banana`。调用方使用 `request.model` 加 `OutputSpec.image`。分辨率传 `1K` / `2K` / `4K`。该模型只在 `locations/global`；Express 短路径会落到调用方区域，所以生图改打同一把 API key 的 `locations/global` 资源路径，项目编号从区域 404 解析，不另配 project。思考推荐 `MINIMAL` / `MEDIUM` / `HIGH`；`LOW` 会原样下发，由上游拒绝。官方不支持 `temperature`，设置了会原样下发并返回上游错误。

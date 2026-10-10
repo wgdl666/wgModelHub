@@ -161,6 +161,8 @@ func TestVertexAIGenerateImageSendsNanoBananaRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newVertexAI: %v", err)
 	}
+	// 测试直接指定项目编号，避免先打一次区域 404。环境变量里的 project 不得进路径。
+	p.globalProject = "123"
 	ratio := "3:4"
 	size := "2K"
 	event, err := p.GenerateImage(context.Background(), models.GeminiNanoBanana21, &modelhubv2.GenerateRequest{
@@ -197,11 +199,11 @@ func TestVertexAIGenerateImageSendsNanoBananaRequest(t *testing.T) {
 		t.Fatal("image request must stay on Vertex, not Gemini Developer API")
 	}
 	path := req.URL.EscapedPath()
-	if !strings.Contains(path, "/publishers/google/models/"+models.GeminiNanoBanana21+":generateContent") {
+	if !strings.Contains(path, "/projects/123/locations/global/publishers/google/models/"+models.GeminiNanoBanana21+":generateContent") {
 		t.Fatalf("path=%q", path)
 	}
-	if strings.Contains(path, "/projects/") || strings.Contains(path, "should-not-appear-in-path") {
-		t.Fatalf("Express path must omit project prefix: %q", path)
+	if strings.Contains(path, "should-not-appear-in-path") || strings.Contains(path, "us-central1") {
+		t.Fatalf("path=%q", path)
 	}
 	if got := req.Header.Get("x-goog-api-key"); got != vertexTestAPIKey {
 		t.Fatalf("x-goog-api-key=%q", got)
@@ -309,4 +311,68 @@ func inlineImageBytes(t *testing.T, body map[string]any) []byte {
 	}
 	t.Fatal("request has no inline image")
 	return nil
+}
+
+// 第一次区域短路径 404 必须解析出项目编号，第二次改打 locations/global，且不能采用环境变量里的 project。
+func TestNanoBananaImageRetriesOnGlobalAfterRegionalNotFound(t *testing.T) {
+	t.Setenv("GOOGLE_CLOUD_PROJECT", "should-not-appear-in-path")
+	t.Setenv("GOOGLE_CLOUD_LOCATION", "us-central1")
+	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", "")
+	transport := &vertexScriptTransport{steps: []vertexScriptStep{
+		{status: http.StatusNotFound, body: `{"error":{"code":404,"message":"Publisher model projects/42/locations/us-central1/publishers/google/models/gemini-nano-banana-2.1 was not found","status":"NOT_FOUND"}}`},
+		{status: http.StatusOK, body: `{
+			"candidates":[{"content":{"role":"model","parts":[{"inlineData":{"mimeType":"image/png","data":"` + base64.StdEncoding.EncodeToString(onePixelPNG(t)) + `"}}]},"finishReason":"STOP"}]
+		}`},
+	}}
+	p, err := newVertexAI(context.Background(), "vertex", vertexTestAPIKey, &http.Client{Transport: transport})
+	if err != nil {
+		t.Fatalf("newVertexAI: %v", err)
+	}
+	_, err = p.GenerateImage(context.Background(), models.GeminiNanoBanana21, &modelhubv2.GenerateRequest{
+		Model: models.GeminiNanoBanana21,
+		Input: &modelhubv2.Input{Items: []*modelhubv2.InputItem{{
+			Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
+				Role:  modelhubv2.Role_ROLE_USER,
+				Parts: []*modelhubv2.ContentPart{{Content: &modelhubv2.ContentPart_Text{Text: "square"}}},
+			}},
+		}}},
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Image{Image: &modelhubv2.ImageOutput{}}},
+	})
+	if err != nil {
+		t.Fatalf("GenerateImage: %v", err)
+	}
+	if len(transport.paths) != 2 {
+		t.Fatalf("paths=%v", transport.paths)
+	}
+	if strings.Contains(transport.paths[0], "/projects/") {
+		t.Fatalf("probe path=%q", transport.paths[0])
+	}
+	if !strings.Contains(transport.paths[1], "/projects/42/locations/global/") || strings.Contains(transport.paths[1], "should-not-appear-in-path") {
+		t.Fatalf("global path=%q", transport.paths[1])
+	}
+}
+
+type vertexScriptStep struct {
+	status int
+	body   string
+}
+
+type vertexScriptTransport struct {
+	steps []vertexScriptStep
+	paths []string
+}
+
+func (t *vertexScriptTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.Body != nil {
+		_, _ = io.ReadAll(req.Body)
+		_ = req.Body.Close()
+	}
+	t.paths = append(t.paths, req.URL.EscapedPath())
+	step := t.steps[len(t.paths)-1]
+	return &http.Response{
+		StatusCode: step.status,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(step.body)),
+		Request:    req,
+	}, nil
 }

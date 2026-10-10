@@ -10,7 +10,7 @@
 - 每个 provider 实例用互斥嵌套字段表达 Gemini/VertexAI/Ark/OpenAI/Photoroom/SegmentPerson/LTX 以及各类视频供应商，并声明 `models: [真实模型 ID...]`。
 - `ark_video` 承接方舟 Seedance 2.5（`doubao-seedance-2-5-260628`）文生视频与首帧图生视频；与 `ark_chat` 文本实例分绑，不能共用一套能力。任务形态由 Input 推断，不另开模型 ID 或模式枚举。
 - OpenAI 实例同时承接 chat/completions 与 Images API；无参考图走 `/v1/images/generations`，有参考图走 `/v1/images/edits`。`gpt-image-2` / `gpt-image-2.5-flare` / `gpt-image-2.5-sunburst` 复用现网已实测的 AIG OpenAI-compatible Images 实例（`async_gpt_image`，`https://api.aig-ai.com/v1`），不能并入 Gemini generateContent 生图实例。
-- `gemini-nano-banana-2.1` 是 Vertex 上的 Nano Banana 2.1，走现有 Generate 图片链路，不并入 Gemini generateContent 生图实例。示例配置放在独立 `vertexai` 实例。思考推荐 MINIMAL/MEDIUM/HIGH，LOW 原样下发并由上游拒绝。该模型官方不支持 temperature；调用方若设置，ModelHub 原样下发，上游返回错误。
+- `gemini-nano-banana-2.1` 是 Vertex 上的 Nano Banana 2.1，走现有 Generate 图片链路，不并入 Gemini generateContent 生图实例。示例配置放在独立 `vertexai` 实例。该模型只在 `locations/global`；Express 短路径会按调用方区域解析并 404，因此生图请求使用同一把 API key 打到 `projects/{从区域404解析的项目}/locations/global`。思考推荐 MINIMAL/MEDIUM/HIGH，LOW 原样下发并由上游拒绝。该模型官方不支持 temperature；调用方若设置，ModelHub 原样下发，上游返回错误。
 - `photoroom` 承接官方 Remove Background（`POST /v1/segment`）；`photoroom-segment` 仅作路由常量、不下发上游。恰好一图入、透明 PNG 出；裁剪/填充/存储/业务重试留在调用方。
 - `segment_person` 承接国内自建抠图。`segment-person-bria` 走 `POST /api/segment`，`segment-subject-bria` 走 `POST /api/segment_subject`；`method` 与 Basic Auth 只在供应商配置，模型 ID 不下发上游。两个 ID 不能互相替代。恰好一图入、透明 PNG 出；`max_side` 裁剪、OSS 与业务重试留在衣橱。
 - `human_yolo` 承接自建人体检测 `POST /predict`，`human-parser` 承接自建人体解析。`rekognition_detect` 承接 DetectLabels 的 Person 框，模型 ID 是 `rekognition-detect-labels`。三者都返回文本 JSON；裁图和单件提取留在衣橱。

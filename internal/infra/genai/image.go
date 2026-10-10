@@ -16,7 +16,12 @@ func (p *Provider) GenerateImage(ctx context.Context, model string, request *mod
 	}
 	parts := buildImageParts(request)
 	contents := []*genaisdk.Content{genaisdk.NewContentFromParts(parts, genaisdk.RoleUser)}
-	response, err := p.client.Models.GenerateContent(ctx, model, contents, buildImageConfig(request))
+	// Nano Banana 2.1 只在 global；这里换成带 locations/global 的客户端，其他生图模型仍走原客户端。
+	client, err := p.clientForImage(ctx, model)
+	if err != nil {
+		return nil, err
+	}
+	response, err := client.Models.GenerateContent(ctx, model, contents, buildImageConfig(request))
 	if err != nil {
 		return nil, p.mapError(ctx, "generate image", err)
 	}
