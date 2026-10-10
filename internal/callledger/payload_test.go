@@ -1,6 +1,7 @@
 package callledger
 
 import (
+	"context"
 	"encoding/base64"
 	"strings"
 	"testing"
@@ -110,5 +111,41 @@ func TestRequestImageSpecNoFakeQuality(t *testing.T) {
 	gotSize, gotAspect := RequestImageSpec(req)
 	if gotSize != "1K" || gotAspect != "3:4" {
 		t.Fatalf("size=%q aspect=%q", gotSize, gotAspect)
+	}
+}
+
+func TestVideoArchiveRecordsBucketAndKey(t *testing.T) {
+	store := &putOnce{}
+	got := ArchiveDownloadedVideo(context.Background(), store, "call-9", 1, 5, "video/mp4", 2, []Blob{
+		{MIME: "video/mp4", Data: []byte("abc")},
+		{MIME: "video/mp4", Data: []byte("de")},
+	})
+	if got["bucket"] != "bucket" || got["object_key"] != "model-calls/call-9/video.mp4" {
+		t.Fatalf("location=%v %v", got["bucket"], got["object_key"])
+	}
+	if _, ok := got["uri"]; ok {
+		t.Fatalf("playback record is bucket and object_key, not uri: %v", got["uri"])
+	}
+	if store.key != "model-calls/call-9/video.mp4" || string(store.body) != "abcde" {
+		t.Fatalf("uploaded key=%s body=%q", store.key, store.body)
+	}
+	if _, ok := got["media_archive"]; ok {
+		t.Fatalf("archived video must drop the summary-only note: %v", got)
+	}
+	if got["chunk_count"] != 2 || got["mime_type"] != "video/mp4" {
+		t.Fatalf("payload=%v", got)
+	}
+	if FirstMediaKey(got) != "model-calls/call-9/video.mp4" {
+		t.Fatalf("key=%s", FirstMediaKey(got))
+	}
+}
+
+func TestVideoArchiveUploadFailureStaysSummary(t *testing.T) {
+	got := ArchiveDownloadedVideo(context.Background(), nil, "call-9", 1, 2, "video/mp4", 1, []Blob{{MIME: "video/mp4", Data: []byte("ab")}})
+	if got["bucket"] != nil || got["object_key"] != nil {
+		t.Fatalf("failed upload must not record a location: %v", got)
+	}
+	if got["media_archive"] != mediaArchiveNote || FirstMediaKey(got) != "" {
+		t.Fatalf("payload=%v key=%s", got, FirstMediaKey(got))
 	}
 }

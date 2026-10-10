@@ -2,6 +2,7 @@ package callledger
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 )
@@ -51,6 +52,20 @@ func TestMemoryListSkipsEvalAndSortsNewestFirst(t *testing.T) {
 	}
 	if total != 3 || rows[0].CallID != "eval" {
 		t.Fatalf("include eval total=%d first=%s", total, rows[0].CallID)
+	}
+}
+
+func TestCallIDByGenerationTask(t *testing.T) {
+	store := &Memory{}
+	if err := store.Record(context.Background(), Record{CallID: "call-9", GenerationTaskID: "task-9"}); err != nil {
+		t.Fatal(err)
+	}
+	id, err := store.CallIDByGenerationTask(context.Background(), "task-9")
+	if err != nil || id != "call-9" {
+		t.Fatalf("id=%q err=%v", id, err)
+	}
+	if _, err := store.CallIDByGenerationTask(context.Background(), "missing"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("err=%v", err)
 	}
 }
 

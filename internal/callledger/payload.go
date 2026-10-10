@@ -271,7 +271,8 @@ func BuildImageOutput(event *modelhubv2.GenerateEvent) (payload map[string]any, 
 	return payload, imageCount, blobs
 }
 
-// BuildVideoOutputSummary 不累计分块正文（可至 200MiB）；只记条数与字节摘要。
+// BuildVideoOutputSummary 不把视频正文写进 JSONB（单条可至 200MiB）；只记条数与字节摘要。
+// 可播放文件由 ArchiveDownloadedVideo 另存，并记下 bucket 与 object_key。
 func BuildVideoOutputSummary(videoCount int, totalBytes int64, mimeType string, chunkCount int) map[string]any {
 	return map[string]any{
 		"media_archive": mediaArchiveNote,
@@ -281,6 +282,29 @@ func BuildVideoOutputSummary(videoCount int, totalBytes int64, mimeType string, 
 		"chunk_count":   chunkCount,
 		"note":          "video chunks not inlined into ledger JSON",
 	}
+}
+
+// joinVideoBytes 把已经发给调用方的分块收成一个文件。
+// GetGeneration 仍按 1MiB 推流；这里只为账本留一份可播放的 mp4，第一块单独存不是完整视频。
+func joinVideoBytes(blobs []Blob, mimeType string) (string, []byte, bool) {
+	var buf []byte
+	mime := strings.TrimSpace(mimeType)
+	for _, blob := range blobs {
+		if len(blob.Data) == 0 {
+			continue
+		}
+		if mime == "" {
+			mime = blob.MIME
+		}
+		buf = append(buf, blob.Data...)
+	}
+	if len(buf) == 0 {
+		return "", nil, false
+	}
+	if mime == "" {
+		mime = "video/mp4"
+	}
+	return mime, buf, true
 }
 
 // BuildSpeechOutput 音频同样只存摘要。
