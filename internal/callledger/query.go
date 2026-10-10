@@ -38,6 +38,12 @@ type Reader interface {
 	Get(ctx context.Context, callID string) (Record, error)
 }
 
+// GenerationCallFinder 用异步视频的 task_id 找回账本 call_id。
+// 评测页只打开 model-calls/{call_id}/ 下的对象，视频不能写到 task_id 路径。
+type GenerationCallFinder interface {
+	CallIDByGenerationTask(ctx context.Context, generationTaskID string) (string, error)
+}
+
 func (m *Memory) List(_ context.Context, q Query) ([]Record, int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -59,6 +65,36 @@ func (m *Memory) List(_ context.Context, q Query) ([]Record, int, error) {
 	}
 	out := append([]Record(nil), matched[q.Offset:end]...)
 	return out, total, nil
+}
+
+func (m *Memory) CallIDByGenerationTask(_ context.Context, generationTaskID string) (string, error) {
+	if m == nil || generationTaskID == "" {
+		return "", ErrNotFound
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, rec := range m.Records {
+		if rec.GenerationTaskID == generationTaskID && rec.CallID != "" {
+			return rec.CallID, nil
+		}
+	}
+	return "", ErrNotFound
+}
+
+func (p *Postgres) CallIDByGenerationTask(ctx context.Context, generationTaskID string) (string, error) {
+	if p == nil || p.client == nil || generationTaskID == "" {
+		return "", ErrNotFound
+	}
+	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), persistTimeout)
+	defer cancel()
+	row, err := p.client.ModelCall.Query().Where(modelcall.GenerationTaskIDEQ(generationTaskID)).Only(persistCtx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return "", ErrNotFound
+		}
+		return "", err
+	}
+	return row.ID, nil
 }
 
 func (m *Memory) Get(_ context.Context, callID string) (Record, error) {

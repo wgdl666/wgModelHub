@@ -153,6 +153,52 @@ func AttachBlobs(ctx context.Context, objects ObjectStore, callID string, payloa
 	return payload
 }
 
+// videoObjectName 是评测页打开的那一个完整文件，不是 1MiB 分块序号。
+const videoObjectName = "video.mp4"
+
+// ArchiveDownloadedVideo 把已经下载完的整段视频写进当前环境的桶，并在摘要里记下 bucket 和 object_key。
+// 对象键必须落在 model-calls/{call_id}/ 下，评测页才允许按这条调用把视频播出来。
+// 没有对象存储或上传失败时回到摘要，不留下打不开的占位地址。
+func ArchiveDownloadedVideo(ctx context.Context, objects ObjectStore, callID string, videoCount int, totalBytes int64, mimeType string, chunkCount int, blobs []Blob) map[string]any {
+	payload := BuildVideoOutputSummary(videoCount, totalBytes, mimeType, chunkCount)
+	mime, data, ok := joinVideoBytes(blobs, mimeType)
+	callID = strings.TrimSpace(callID)
+	if !ok || objects == nil || callID == "" {
+		return payload
+	}
+	key := objectKey(callID, "ledger://pending/"+videoObjectName)
+	uploaded, err := objects.Put(ctx, key, mime, data)
+	if err != nil || uploaded == "" {
+		slog.Warn("model_call video archive failed", "call_id", callID, "key", key, "err", err)
+		return payload
+	}
+	bucket := bucketFromStoredURI(uploaded)
+	storedKey := ObjectKeyFromURI(uploaded)
+	if bucket == "" || !strings.HasPrefix(storedKey, "model-calls/"+callID+"/") {
+		slog.Warn("model_call video archive returned unusable address", "call_id", callID, "uri", uploaded)
+		return payload
+	}
+	delete(payload, "media_archive")
+	delete(payload, "note")
+	payload["bucket"] = bucket
+	payload["object_key"] = storedKey
+	payload["mime_type"] = mime
+	return payload
+}
+
+func bucketFromStoredURI(uri string) string {
+	uri = strings.TrimSpace(uri)
+	if !strings.HasPrefix(uri, "s3://") {
+		return ""
+	}
+	rest := strings.TrimPrefix(uri, "s3://")
+	bucket, _, ok := strings.Cut(rest, "/")
+	if !ok {
+		return ""
+	}
+	return bucket
+}
+
 func objectKey(callID, placeholder string) string {
 	suffix := strings.TrimPrefix(placeholder, "ledger://pending/")
 	suffix = strings.Trim(suffix, "/")

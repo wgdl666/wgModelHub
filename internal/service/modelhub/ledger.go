@@ -82,6 +82,23 @@ func (s *Service) finishRecord(rec *callledger.Record, err error, sendErr error)
 
 func intPtr(v int) *int { return &v }
 
+// ledgerCallID 找回这条异步视频在账本里的 call_id。
+// 对象存储路径必须用它，评测页才允许按 call_id 把视频播出来。
+func (s *Service) ledgerCallID(ctx context.Context, generationTaskID string) string {
+	if s == nil || generationTaskID == "" {
+		return ""
+	}
+	finder, ok := s.ledger.(callledger.GenerationCallFinder)
+	if !ok {
+		return ""
+	}
+	id, err := finder.CallIDByGenerationTask(ctx, generationTaskID)
+	if err != nil {
+		return ""
+	}
+	return id
+}
+
 // applyEventUsage 事件携带 usage 时保留最新累计值；取消/失败不得丢已返回量。
 func applyEventUsage(rec *callledger.Record, event *modelhubv2.GenerateEvent) {
 	if rec == nil || event == nil || event.GetUsage() == nil {

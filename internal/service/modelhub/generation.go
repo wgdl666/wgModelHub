@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -325,7 +326,7 @@ func (s *Service) pollRunningTask(ctx context.Context, task taskstore.Task, stre
 		// 首次获知模型成功即固定终态/耗时；后续读结果或发送失败只更新交付，不回退。
 		s.recordAsyncVideoModelTerminal(ctx, task, callledger.StatusSucceeded, nil, nil, 0, "", 0)
 		if err := stream.Send(statusEvent(modelhubv2.GenerationTaskState_GENERATION_TASK_STATE_SUCCEEDED, 0, nil)); err != nil {
-			s.recordAsyncVideoDelivery(ctx, task, err, 0, "", 0, nil, nil)
+			s.recordAsyncVideoDelivery(ctx, task, err, 0, "", 0, 0, nil, nil)
 			return err
 		}
 		return s.streamVideoResult(ctx, task, stream)
@@ -343,7 +344,7 @@ func (s *Service) streamVideoResult(ctx context.Context, task taskstore.Task, st
 		statusErr := provider.ToStatus(err)
 		telemetry.RecordError(ctx, statusErr)
 		// 模型终态已固定；结果读取配置失败只记交付/结果错误。
-		s.recordAsyncVideoDelivery(ctx, task, statusErr, 0, "", 0, nil, nil)
+		s.recordAsyncVideoDelivery(ctx, task, statusErr, 0, "", 0, 0, nil, nil)
 		return statusErr
 	}
 	var totalBytes int64
@@ -379,17 +380,17 @@ func (s *Service) streamVideoResult(ctx context.Context, task taskstore.Task, st
 	}
 	if err := video.ReadVideoResult(ctx, task.Model, task.ProviderTaskID, emit); err != nil {
 		if sendErr != nil {
-			s.recordAsyncVideoDelivery(ctx, task, sendErr, 1, mimeType, totalBytes, lastUsage, outBlobs)
+			s.recordAsyncVideoDelivery(ctx, task, sendErr, 1, mimeType, totalBytes, chunkCount, lastUsage, outBlobs)
 			telemetry.RecordError(ctx, sendErr)
 			return sendErr
 		}
 		statusErr := provider.ToStatus(err)
 		telemetry.RecordError(ctx, statusErr)
 		// 下载/读结果失败不得把已确认的模型成功改成 failed。
-		s.recordAsyncVideoDelivery(ctx, task, statusErr, 0, mimeType, totalBytes, lastUsage, outBlobs)
+		s.recordAsyncVideoDelivery(ctx, task, statusErr, 0, mimeType, totalBytes, chunkCount, lastUsage, outBlobs)
 		return statusErr
 	}
-	s.recordAsyncVideoDelivery(ctx, task, sendErr, 1, mimeType, totalBytes, lastUsage, outBlobs)
+	s.recordAsyncVideoDelivery(ctx, task, sendErr, 1, mimeType, totalBytes, chunkCount, lastUsage, outBlobs)
 	return sendErr
 }
 
@@ -432,7 +433,7 @@ func (s *Service) recordAsyncVideoModelTerminal(ctx context.Context, task taskst
 }
 
 // recordAsyncVideoDelivery：结果读取或发送失败只更新交付/输出/usage，不改模型终态、不延长耗时。
-func (s *Service) recordAsyncVideoDelivery(ctx context.Context, task taskstore.Task, deliveryErr error, videoCount int, mimeType string, totalBytes int64, usage *modelhubv2.Usage, blobs []callledger.Blob) {
+func (s *Service) recordAsyncVideoDelivery(ctx context.Context, task taskstore.Task, deliveryErr error, videoCount int, mimeType string, totalBytes int64, chunkCount int, usage *modelhubv2.Usage, blobs []callledger.Blob) {
 	if s.ledger == nil {
 		return
 	}
@@ -454,14 +455,27 @@ func (s *Service) recordAsyncVideoDelivery(ctx context.Context, task taskstore.T
 	}
 	if videoCount > 0 || totalBytes > 0 {
 		rec.VideoCount = intPtr(videoCount)
-		rec.OutputPayload = callledger.BuildVideoOutputSummary(videoCount, totalBytes, mimeType, 0)
 	}
 	if usage != nil {
 		rec.Usage, rec.UsageDetail = callledger.UsageFromProto(usage)
 	}
 	s.schedule(func() {
-		rec.OutputPayload = callledger.AttachBlobs(context.WithoutCancel(ctx), s.objects, task.TaskID, rec.OutputPayload, blobs)
-		callledger.BestEffort(context.WithoutCancel(ctx), s.ledger, rec)
+		// 图片归档超时是 30s。整段视频最大 200MiB，沿用那个超时会把已经下载完的文件丢掉。
+		persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
+		defer cancel()
+		if videoCount > 0 || totalBytes > 0 || len(blobs) > 0 {
+			rec.OutputPayload = callledger.BuildVideoOutputSummary(videoCount, totalBytes, mimeType, chunkCount)
+			// 回传中断时内存里只有前半段，拼起来不是可播放的 mp4。只归档完整下载。
+			if deliveryErr == nil {
+				callID := s.ledgerCallID(persistCtx, task.TaskID)
+				if callID == "" {
+					slog.Warn("model_call video archive skipped", "generation_task_id", task.TaskID, "reason", "ledger call id missing")
+				} else {
+					rec.OutputPayload = callledger.ArchiveDownloadedVideo(persistCtx, s.objects, callID, videoCount, totalBytes, mimeType, chunkCount, blobs)
+				}
+			}
+		}
+		callledger.BestEffort(persistCtx, s.ledger, rec)
 	})
 }
 
