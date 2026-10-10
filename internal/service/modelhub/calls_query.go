@@ -161,6 +161,8 @@ func summaryOf(rec callledger.Record) *modelhubv2.ModelCallSummary {
 		OutputPreview:     callledger.Preview(rec.OutputPayload),
 		InputMediaKey:     callledger.FirstMediaKey(rec.InputPayload),
 		OutputMediaKey:    callledger.FirstMediaKey(rec.OutputPayload),
+		// 列表直接带上 trace，评测页不用再为 Logfire 拉整份载荷。
+		TraceId: rec.TraceID,
 	}
 	if !rec.StartedAt.IsZero() {
 		out.StartedAt = timestamppb.New(rec.StartedAt)

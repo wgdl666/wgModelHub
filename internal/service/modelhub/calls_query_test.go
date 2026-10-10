@@ -26,6 +26,7 @@ func TestListModelCallsOrdersAndHidesEval(t *testing.T) {
 	_ = mem.Record(ctx, callledger.Record{
 		CallID: "a", Operation: callledger.OperationGenerateText, Capability: callledger.CapabilityText,
 		Status: callledger.StatusSucceeded, Model: "gemini-2.5-flash", BusinessScene: "chat",
+		TraceID:      "trace-a",
 		InputPayload: map[string]any{"input": map[string]any{"text": "hello"}},
 	})
 	_ = mem.Record(ctx, callledger.Record{
@@ -40,5 +41,8 @@ func TestListModelCallsOrdersAndHidesEval(t *testing.T) {
 	}
 	if !resp.GetCalls()[0].GetReplayable() {
 		t.Fatal("text success should be replayable")
+	}
+	if resp.GetCalls()[0].GetTraceId() != "trace-a" {
+		t.Fatalf("trace_id=%q", resp.GetCalls()[0].GetTraceId())
 	}
 }

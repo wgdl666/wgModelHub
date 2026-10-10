@@ -476,6 +476,8 @@ message ModelCallSummary {
   string output_preview = 11;
   string input_media_key = 12;
   string output_media_key = 13;
+  // trace_id 是发起这次调用的 trace。评测列表用它跳 Logfire；没有 span 时留空。
+  string trace_id = 14;
 }
 
 message ListModelCallsResponse {

@@ -3651,8 +3651,10 @@ type ModelCallSummary struct {
 	OutputPreview     string                 `protobuf:"bytes,11,opt,name=output_preview,json=outputPreview,proto3" json:"output_preview,omitempty"`
 	InputMediaKey     string                 `protobuf:"bytes,12,opt,name=input_media_key,json=inputMediaKey,proto3" json:"input_media_key,omitempty"`
 	OutputMediaKey    string                 `protobuf:"bytes,13,opt,name=output_media_key,json=outputMediaKey,proto3" json:"output_media_key,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// trace_id 是发起这次调用的 trace。评测列表用它跳 Logfire；没有 span 时留空。
+	TraceId       string `protobuf:"bytes,14,opt,name=trace_id,json=traceId,proto3" json:"trace_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ModelCallSummary) Reset() {
@@ -3772,6 +3774,13 @@ func (x *ModelCallSummary) GetInputMediaKey() string {
 func (x *ModelCallSummary) GetOutputMediaKey() string {
 	if x != nil {
 		return x.OutputMediaKey
+	}
+	return ""
+}
+
+func (x *ModelCallSummary) GetTraceId() string {
+	if x != nil {
+		return x.TraceId
 	}
 	return ""
 }
@@ -4410,7 +4419,7 @@ const file_proto_wg_model_hub_v2_model_hub_proto_rawDesc = "" +
 	"\x0ecaller_service\x18\x05 \x01(\tR\rcallerService\x12\x14\n" +
 	"\x05limit\x18\x06 \x01(\x05R\x05limit\x12\x16\n" +
 	"\x06offset\x18\a \x01(\x05R\x06offset\x12!\n" +
-	"\finclude_eval\x18\b \x01(\bR\vincludeEval\"\xf0\x03\n" +
+	"\finclude_eval\x18\b \x01(\bR\vincludeEval\"\x8b\x04\n" +
 	"\x10ModelCallSummary\x12\x17\n" +
 	"\acall_id\x18\x01 \x01(\tR\x06callId\x129\n" +
 	"\n" +
@@ -4430,7 +4439,8 @@ const file_proto_wg_model_hub_v2_model_hub_proto_rawDesc = "" +
 	" \x01(\tR\finputPreview\x12%\n" +
 	"\x0eoutput_preview\x18\v \x01(\tR\routputPreview\x12&\n" +
 	"\x0finput_media_key\x18\f \x01(\tR\rinputMediaKey\x12(\n" +
-	"\x10output_media_key\x18\r \x01(\tR\x0eoutputMediaKey\"g\n" +
+	"\x10output_media_key\x18\r \x01(\tR\x0eoutputMediaKey\x12\x19\n" +
+	"\btrace_id\x18\x0e \x01(\tR\atraceId\"g\n" +
 	"\x16ListModelCallsResponse\x127\n" +
 	"\x05calls\x18\x01 \x03(\v2!.wg_model_hub.v2.ModelCallSummaryR\x05calls\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x05R\x05total\".\n" +
