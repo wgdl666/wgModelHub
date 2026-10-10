@@ -51,11 +51,11 @@ func TestGarmentExtractionContract(t *testing.T) {
 		if r.FormValue("lora_name") != loraClothGen || r.FormValue("lora_strength") != loraStrength {
 			t.Fatalf("lora = %q/%q", r.FormValue("lora_name"), r.FormValue("lora_strength"))
 		}
-		// 单图无 parse_mask：录衣商品图路径，不得强制裁切。
+		// 单图无 parse_mask：录衣商品图路径，不得强制裁切。只有 garment_category 也不能带出 garment_role。
 		if r.FormValue("use_crop") != "false" || r.FormValue("size") != garmentSize || r.FormValue("response_format") != responseFormat || r.FormValue("n") != "1" {
 			t.Fatalf("form = %#v", r.Form)
 		}
-		if r.FormValue("garment_name") != "白色衬衫" || r.FormValue("garment_role") != "clothing::top/full" {
+		if r.FormValue("garment_name") != "白色衬衫" || r.Form.Has("garment_role") {
 			t.Fatalf("garment fields name=%q role=%q", r.FormValue("garment_name"), r.FormValue("garment_role"))
 		}
 		if r.Form.Has("prompt") || r.Form.Has("parse_mask") || r.Form.Has("parse_labels") {
@@ -154,7 +154,8 @@ func TestGarmentExtractionForwardsParserMask(t *testing.T) {
 	defer server.Close()
 
 	p := newTestProvider(t, server.URL)
-	_, err := p.GenerateImage(context.Background(), models.VWorldWardrobe10, wardrobeRequest(person, `{"garment_name":"白色衬衫","garment_category":"tops.shirts","parse_labels":{"4":"left shoe","1":"top"}}`, mask))
+	// garment_category 故意写成鞋类叶子：裁图角色只跟 inventory_slot，不能被类目改回去。
+	_, err := p.GenerateImage(context.Background(), models.VWorldWardrobe10, wardrobeRequest(person, `{"garment_name":"白色衬衫","garment_category":"footwear.sneakers","inventory_slot":"top","parse_labels":{"4":"left shoe","1":"top"}}`, mask))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +189,7 @@ func TestGarmentExtractionFailsWhenCropNotApplied(t *testing.T) {
 
 	// 有 parse_mask 时必须裁切成功；applied=false 不能当拆衣服成功。
 	p := newTestProvider(t, server.URL)
-	_, err := p.GenerateImage(context.Background(), models.VWorldWardrobe10, wardrobeRequest(src, `{"garment_name":"白衬衫","garment_category":"tops","parse_labels":{"1":"top"}}`, mask))
+	_, err := p.GenerateImage(context.Background(), models.VWorldWardrobe10, wardrobeRequest(src, `{"garment_name":"白衬衫","inventory_slot":"top","parse_labels":{"1":"top"}}`, mask))
 	if err == nil || !strings.Contains(err.Error(), "crop.applied") {
 		t.Fatalf("err = %v", err)
 	}
@@ -203,6 +204,10 @@ func TestGarmentExtractionAllowsUnappliedCropWithoutMask(t *testing.T) {
 		}
 		if r.FormValue("use_crop") != "false" {
 			t.Fatalf("use_crop = %q", r.FormValue("use_crop"))
+		}
+		// 只有类目、没有人体槽位：单图仍可生，但不能因此带上 garment_role。
+		if r.Form.Has("garment_role") {
+			t.Fatalf("category must not set garment_role=%q", r.FormValue("garment_role"))
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": []map[string]string{{"b64_json": base64.StdEncoding.EncodeToString(out)}},
@@ -240,6 +245,10 @@ func TestGarmentExtractionOmitsUnmappedRole(t *testing.T) {
 
 	p := newTestProvider(t, server.URL)
 	if _, err := p.GenerateImage(context.Background(), models.VWorldWardrobe10, wardrobeRequest(src, `{"garment_name":"项链","garment_category":"jewelry.necklaces"}`)); err != nil {
+		t.Fatal(err)
+	}
+	// 无裁切时不支持的槽位也不发明 role，并且不因此失败。
+	if _, err := p.GenerateImage(context.Background(), models.VWorldWardrobe10, wardrobeRequest(src, `{"garment_name":"帽子","inventory_slot":"hat","garment_category":"accessories.hats"}`)); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -339,23 +348,111 @@ func TestNewRequiresAuth(t *testing.T) {
 	}
 }
 
-func TestGarmentRoleMapping(t *testing.T) {
-	cases := map[string]string{
-		"tops.shirts":       "clothing::top/full",
-		"dresses.day":       "clothing::top/full",
-		"bottoms.pants":     "clothing::bottom",
-		"footwear.sneakers": "shoes",
-		"accessories.bags":  "bag",
-		"accessories.belts": "belt",
-		"outfit":            "outfit",
-		"jewelry.necklaces": "",
-		"socks":             "",
-		"jumpsuits":         "",
+func TestGarmentRoleFromSlot(t *testing.T) {
+	supported := map[string]string{
+		"top":   "clothing::top/full",
+		"dress": "clothing::top/full",
+		"skirt": "clothing::bottom",
+		"pants": "clothing::bottom",
+		"feet":  "shoes",
+		"FEET":  "shoes",
+		"bag":   "bag",
+		"belt":  "belt",
 	}
-	for category, want := range cases {
-		if got := garmentRoleFromCategory(category); got != want {
-			t.Fatalf("category %q => %q, want %q", category, got, want)
+	for slot, want := range supported {
+		got, ok := garmentRoleFromSlot(slot)
+		if !ok || got != want {
+			t.Fatalf("slot %q => %q ok=%v, want %q", slot, got, ok, want)
 		}
+	}
+	// 类目根、中文品类和 role 自身都不是解析槽位，不能再当回退。
+	for _, slot := range []string{"", "hat", "scarf", "glasses", "jewelry", "footwear", "shoes", "tops.shirts", "鞋", "outfit", "left shoe"} {
+		if got, ok := garmentRoleFromSlot(slot); ok || got != "" {
+			t.Fatalf("slot %q mapped to %q", slot, got)
+		}
+	}
+}
+
+func TestGarmentExtractionMapsParserSlotsToRole(t *testing.T) {
+	src := pngBytes(t)
+	mask := []byte{1, 2, 3, 4}
+	out := pngBytes(t)
+	cases := []struct {
+		slot string
+		role string
+	}{
+		{slot: "top", role: "clothing::top/full"},
+		{slot: "dress", role: "clothing::top/full"},
+		{slot: "skirt", role: "clothing::bottom"},
+		{slot: "pants", role: "clothing::bottom"},
+		{slot: "feet", role: "shoes"},
+		{slot: "bag", role: "bag"},
+		{slot: "belt", role: "belt"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.slot, func(t *testing.T) {
+			var gotRole string
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if err := r.ParseMultipartForm(8 << 20); err != nil {
+					t.Fatal(err)
+				}
+				if r.FormValue("use_crop") != "true" {
+					t.Fatalf("use_crop = %q", r.FormValue("use_crop"))
+				}
+				gotRole = r.FormValue("garment_role")
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"data": []map[string]string{{"b64_json": base64.StdEncoding.EncodeToString(out)}},
+					"crop": map[string]any{"applied": true},
+				})
+			}))
+			defer server.Close()
+			payload, err := json.Marshal(map[string]any{
+				"garment_name":     "单品",
+				"inventory_slot":   tc.slot,
+				"garment_category": "tops.shirts",
+				"parse_labels":     map[string]string{"1": tc.slot},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			p := newTestProvider(t, server.URL)
+			if _, err := p.GenerateImage(context.Background(), models.VWorldWardrobe10, wardrobeRequest(src, string(payload), mask)); err != nil {
+				t.Fatal(err)
+			}
+			if gotRole != tc.role {
+				t.Fatalf("garment_role = %q, want %q", gotRole, tc.role)
+			}
+		})
+	}
+}
+
+func TestGarmentExtractionCropRejectsSlotBeforeHTTP(t *testing.T) {
+	src := pngBytes(t)
+	mask := []byte{1, 2, 3, 4}
+	hits := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		http.Error(w, "upstream must not be called", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+	p := newTestProvider(t, server.URL)
+	texts := []string{
+		`{"garment_name":"白衬衫","garment_category":"tops.shirts","parse_labels":{"1":"top"}}`,
+		`{"garment_name":"白鞋","inventory_slot":"","garment_category":"footwear.sneakers","parse_labels":{"4":"feet"}}`,
+		`{"garment_name":"帽子","inventory_slot":"hat","garment_category":"accessories.hats","parse_labels":{"1":"hat"}}`,
+		`{"garment_name":"鞋","inventory_slot":"shoes","garment_category":"鞋","parse_labels":{"4":"feet"}}`,
+		`{"garment_name":"鞋","inventory_slot":"footwear","parse_labels":{"4":"feet"}}`,
+		`{"garment_name":"围巾","inventory_slot":"scarf","parse_labels":{"1":"scarf"}}`,
+		`{"garment_name":"眼镜","inventory_slot":"glasses","parse_labels":{"1":"glasses"}}`,
+	}
+	for _, text := range texts {
+		_, err := p.GenerateImage(context.Background(), models.VWorldWardrobe10, wardrobeRequest(src, text, mask))
+		if err == nil || !provider.IsNotAttempted(err) || !strings.Contains(err.Error(), "inventory_slot") {
+			t.Fatalf("text %s err = %v", text, err)
+		}
+	}
+	if hits != 0 {
+		t.Fatalf("upstream calls = %d", hits)
 	}
 }
 
