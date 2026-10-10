@@ -395,8 +395,8 @@ type RekognitionLibraryProviderConfig struct {
 }
 
 // ModelRoute 是一个真实模型的供应商选择。
-// 旧配置把值写成供应商名字，只表示唯一实例。对象形式用 default 表示不竞速时的实例；
-// race 列出请求带 race 标记时要并发的供应商，首个有效首字胜出。
+// 字符串值表示唯一实例。对象里 default 是不竞速时的实例；
+// race 列出要并发的供应商，文本流里首个有效首字胜出。
 type ModelRoute struct {
 	Default string   `yaml:"default"`
 	Race    []string `yaml:"race,omitempty"`
@@ -797,7 +797,7 @@ func (c Config) ModelRoutes() map[string]string {
 	return routes
 }
 
-// RaceProviders 返回该模型在请求标明 race 时要并发的供应商。
+// RaceProviders 返回该模型要并发的供应商。名单由配置决定，不看请求开关。
 // 少于两家时返回 nil，调用方退回 ModelRoutes 的单路。
 func (c Config) RaceProviders(model string) []string {
 	route, ok := c.ModelRouteOverrides[strings.TrimSpace(model)]

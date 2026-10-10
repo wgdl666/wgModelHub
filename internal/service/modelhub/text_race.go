@@ -58,7 +58,7 @@ func (r *raceText) claim(providerName string) bool {
 	return true
 }
 
-// Generate 没有可比较的首字。非流式退回 default，避免备忘误带 race 时双路付费。
+// Generate 没有可比较的首字。非流式退回 default，一次成文的调用不双路付费。
 func (r *raceText) Generate(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
 	if r.fallback == nil {
 		return nil, provider.Errorf(provider.ErrorConfiguration, "model %s race has no default provider", r.model)

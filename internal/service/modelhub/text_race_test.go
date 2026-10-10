@@ -85,7 +85,6 @@ func TestRaceUsesFirstTokenAndCancelsLoser(t *testing.T) {
 	slow := &delayText{delay: 2 * time.Second, text: "slow"}
 	service := raceService(fast, slow)
 	request := textRequest("gemini-3.5-flash-lite", "hi")
-	request.Race = true
 	request.Output.Stream = true
 	stream := &generateRecorder{ctx: context.Background()}
 	if err := service.Generate(request, stream); err != nil {
@@ -112,7 +111,6 @@ func TestRaceDropsLoserEventsBeforeFirstToken(t *testing.T) {
 	slow := &delayText{delay: 5 * time.Millisecond, prefix: provider.TextDeltaEvent(" "), hold: true}
 	service := raceService(fast, slow)
 	request := textRequest("gemini-3.5-flash-lite", "hi")
-	request.Race = true
 	request.Output.Stream = true
 	stream := &generateRecorder{ctx: context.Background()}
 	if err := service.Generate(request, stream); err != nil {
@@ -136,7 +134,6 @@ func TestRaceUnsetFallsBackToDefault(t *testing.T) {
 	slow := &delayText{delay: time.Millisecond, text: "slow"}
 	service := raceService(fast, slow)
 	request := textRequest("gemini-3.5-flash-lite", "hi")
-	request.Race = true
 	request.Output.Stream = true
 	service.live.Store(func() config.Config {
 		cfg := service.live.Load()

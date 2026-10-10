@@ -123,8 +123,8 @@ func (s *Service) Generate(request *modelhubv2.GenerateRequest, stream modelhubv
 		telemetry.RecordError(ctx, statusErr)
 		return statusErr
 	}
-	// 主意图会带 race。配了名单就并发首字；没配则退回单路，配置未就绪时对话仍可用。
-	if capability == config.CapabilityText && request.GetRace() {
+	// 竞速只由 model_routes.race 决定，调用方不传开关。没配名单就走原来的单路。
+	if capability == config.CapabilityText {
 		if names := s.live.Load().RaceProviders(request.GetModel()); len(names) >= 2 {
 			raced, raceErr := s.raceBinding(request.GetModel(), names)
 			if raceErr != nil {
@@ -134,7 +134,6 @@ func (s *Service) Generate(request *modelhubv2.GenerateRequest, stream modelhubv
 			}
 			return s.generateText(ctx, raced, request, stream, startedAt)
 		}
-		logs.Default().WarnContext(ctx, "modelhub_race_fallback", "model", request.GetModel(), "reason", "race list missing")
 	}
 	binding, err := s.resolve(request.GetModel(), capability)
 	if err != nil {
