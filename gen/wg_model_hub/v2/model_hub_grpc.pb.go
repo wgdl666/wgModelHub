@@ -27,6 +27,9 @@ const (
 	ModelHubService_SynthesizeSpeechStream_FullMethodName = "/wg_model_hub.v2.ModelHubService/SynthesizeSpeechStream"
 	ModelHubService_TranscribeSpeechStream_FullMethodName = "/wg_model_hub.v2.ModelHubService/TranscribeSpeechStream"
 	ModelHubService_ListModels_FullMethodName             = "/wg_model_hub.v2.ModelHubService/ListModels"
+	ModelHubService_ListModelCalls_FullMethodName         = "/wg_model_hub.v2.ModelHubService/ListModelCalls"
+	ModelHubService_GetModelCall_FullMethodName           = "/wg_model_hub.v2.ModelHubService/GetModelCall"
+	ModelHubService_GetModelCallMedia_FullMethodName      = "/wg_model_hub.v2.ModelHubService/GetModelCallMedia"
 )
 
 // ModelHubServiceClient is the client API for ModelHubService service.
@@ -55,6 +58,12 @@ type ModelHubServiceClient interface {
 	TranscribeSpeechStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[TranscribeSpeechClientMessage, TranscribeSpeechServerMessage], error)
 	// ListModels 返回当前进程已路由的真实模型 ID，可按产品主用途过滤；不暴露 provider / 密钥。
 	ListModels(ctx context.Context, in *ListModelsRequest, opts ...grpc.CallOption) (*ListModelsResponse, error)
+	// ListModelCalls 只读调用账本，按 started_at 倒序。默认不返回评测重放产生的 model_eval 行。
+	ListModelCalls(ctx context.Context, in *ListModelCallsRequest, opts ...grpc.CallOption) (*ListModelCallsResponse, error)
+	// GetModelCall 返回单次调用的输入输出，供评测页展示和换模型重放。
+	GetModelCall(ctx context.Context, in *GetModelCallRequest, opts ...grpc.CallOption) (*GetModelCallResponse, error)
+	// GetModelCallMedia 按 call_id 前缀读取已归档媒体。拒绝账本以外的对象键。
+	GetModelCallMedia(ctx context.Context, in *GetModelCallMediaRequest, opts ...grpc.CallOption) (*GetModelCallMediaResponse, error)
 }
 
 type modelHubServiceClient struct {
@@ -175,6 +184,36 @@ func (c *modelHubServiceClient) ListModels(ctx context.Context, in *ListModelsRe
 	return out, nil
 }
 
+func (c *modelHubServiceClient) ListModelCalls(ctx context.Context, in *ListModelCallsRequest, opts ...grpc.CallOption) (*ListModelCallsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListModelCallsResponse)
+	err := c.cc.Invoke(ctx, ModelHubService_ListModelCalls_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modelHubServiceClient) GetModelCall(ctx context.Context, in *GetModelCallRequest, opts ...grpc.CallOption) (*GetModelCallResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetModelCallResponse)
+	err := c.cc.Invoke(ctx, ModelHubService_GetModelCall_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modelHubServiceClient) GetModelCallMedia(ctx context.Context, in *GetModelCallMediaRequest, opts ...grpc.CallOption) (*GetModelCallMediaResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetModelCallMediaResponse)
+	err := c.cc.Invoke(ctx, ModelHubService_GetModelCallMedia_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ModelHubServiceServer is the server API for ModelHubService service.
 // All implementations must embed UnimplementedModelHubServiceServer
 // for forward compatibility.
@@ -201,6 +240,12 @@ type ModelHubServiceServer interface {
 	TranscribeSpeechStream(grpc.BidiStreamingServer[TranscribeSpeechClientMessage, TranscribeSpeechServerMessage]) error
 	// ListModels 返回当前进程已路由的真实模型 ID，可按产品主用途过滤；不暴露 provider / 密钥。
 	ListModels(context.Context, *ListModelsRequest) (*ListModelsResponse, error)
+	// ListModelCalls 只读调用账本，按 started_at 倒序。默认不返回评测重放产生的 model_eval 行。
+	ListModelCalls(context.Context, *ListModelCallsRequest) (*ListModelCallsResponse, error)
+	// GetModelCall 返回单次调用的输入输出，供评测页展示和换模型重放。
+	GetModelCall(context.Context, *GetModelCallRequest) (*GetModelCallResponse, error)
+	// GetModelCallMedia 按 call_id 前缀读取已归档媒体。拒绝账本以外的对象键。
+	GetModelCallMedia(context.Context, *GetModelCallMediaRequest) (*GetModelCallMediaResponse, error)
 	mustEmbedUnimplementedModelHubServiceServer()
 }
 
@@ -234,6 +279,15 @@ func (UnimplementedModelHubServiceServer) TranscribeSpeechStream(grpc.BidiStream
 }
 func (UnimplementedModelHubServiceServer) ListModels(context.Context, *ListModelsRequest) (*ListModelsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListModels not implemented")
+}
+func (UnimplementedModelHubServiceServer) ListModelCalls(context.Context, *ListModelCallsRequest) (*ListModelCallsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListModelCalls not implemented")
+}
+func (UnimplementedModelHubServiceServer) GetModelCall(context.Context, *GetModelCallRequest) (*GetModelCallResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetModelCall not implemented")
+}
+func (UnimplementedModelHubServiceServer) GetModelCallMedia(context.Context, *GetModelCallMediaRequest) (*GetModelCallMediaResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetModelCallMedia not implemented")
 }
 func (UnimplementedModelHubServiceServer) mustEmbedUnimplementedModelHubServiceServer() {}
 func (UnimplementedModelHubServiceServer) testEmbeddedByValue()                         {}
@@ -368,6 +422,60 @@ func _ModelHubService_ListModels_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModelHubService_ListModelCalls_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListModelCallsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModelHubServiceServer).ListModelCalls(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModelHubService_ListModelCalls_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModelHubServiceServer).ListModelCalls(ctx, req.(*ListModelCallsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModelHubService_GetModelCall_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetModelCallRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModelHubServiceServer).GetModelCall(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModelHubService_GetModelCall_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModelHubServiceServer).GetModelCall(ctx, req.(*GetModelCallRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModelHubService_GetModelCallMedia_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetModelCallMediaRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModelHubServiceServer).GetModelCallMedia(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModelHubService_GetModelCallMedia_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModelHubServiceServer).GetModelCallMedia(ctx, req.(*GetModelCallMediaRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ModelHubService_ServiceDesc is the grpc.ServiceDesc for ModelHubService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -390,6 +498,18 @@ var ModelHubService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListModels",
 			Handler:    _ModelHubService_ListModels_Handler,
+		},
+		{
+			MethodName: "ListModelCalls",
+			Handler:    _ModelHubService_ListModelCalls_Handler,
+		},
+		{
+			MethodName: "GetModelCall",
+			Handler:    _ModelHubService_GetModelCall_Handler,
+		},
+		{
+			MethodName: "GetModelCallMedia",
+			Handler:    _ModelHubService_GetModelCallMedia_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package wg_model_hub.v2;
 
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
 import "google/rpc/status.proto";
 
 option go_package = "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2;wg_model_hubv2";
@@ -29,6 +31,12 @@ service ModelHubService {
       returns (stream TranscribeSpeechServerMessage);
   // ListModels 返回当前进程已路由的真实模型 ID，可按产品主用途过滤；不暴露 provider / 密钥。
   rpc ListModels(ListModelsRequest) returns (ListModelsResponse);
+  // ListModelCalls 只读调用账本，按 started_at 倒序。默认不返回评测重放产生的 model_eval 行。
+  rpc ListModelCalls(ListModelCallsRequest) returns (ListModelCallsResponse);
+  // GetModelCall 返回单次调用的输入输出，供评测页展示和换模型重放。
+  rpc GetModelCall(GetModelCallRequest) returns (GetModelCallResponse);
+  // GetModelCallMedia 按 call_id 前缀读取已归档媒体。拒绝账本以外的对象键。
+  rpc GetModelCallMedia(GetModelCallMediaRequest) returns (GetModelCallMediaResponse);
 }
 
 // ModelCategory 是产品目录分类，不是 Generate 的 OutputSpec capability。
@@ -440,6 +448,63 @@ message TranscribeSpeechServerMessage {
 
 message TranscribeSpeechSession {
   string session_id = 1;
+}
+
+// ListModelCallsRequest 的时间按 started_at。include_eval 为真时才包含 business_scene=model_eval。
+message ListModelCallsRequest {
+  google.protobuf.Timestamp from = 1;
+  google.protobuf.Timestamp to = 2;
+  string model = 3;
+  string status = 4;
+  string caller_service = 5;
+  int32 limit = 6;
+  int32 offset = 7;
+  bool include_eval = 8;
+}
+
+message ModelCallSummary {
+  string call_id = 1;
+  google.protobuf.Timestamp started_at = 2;
+  string caller_service = 3;
+  string business_scene = 4;
+  string model = 5;
+  string capability = 6;
+  string status = 7;
+  bool replayable = 8;
+  string replay_block_reason = 9;
+  string input_preview = 10;
+  string output_preview = 11;
+  string input_media_key = 12;
+  string output_media_key = 13;
+}
+
+message ListModelCallsResponse {
+  repeated ModelCallSummary calls = 1;
+  int32 total = 2;
+}
+
+message GetModelCallRequest {
+  string call_id = 1;
+}
+
+message GetModelCallResponse {
+  ModelCallSummary summary = 1;
+  google.protobuf.Struct input = 2;
+  google.protobuf.Struct output = 3;
+  string business_line = 4;
+  string business_subscene = 5;
+  string operation = 6;
+  int64 latency_ms = 7;
+}
+
+message GetModelCallMediaRequest {
+  string call_id = 1;
+  string object_key = 2;
+}
+
+message GetModelCallMediaResponse {
+  string mime_type = 1;
+  bytes data = 2;
 }
 
 message TranscribeSpeechTranscript {

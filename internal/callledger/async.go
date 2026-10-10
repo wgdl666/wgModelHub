@@ -17,6 +17,11 @@ type ObjectStore interface {
 	Put(ctx context.Context, key, contentType string, body []byte) (string, error)
 }
 
+// ObjectGetter 读取已归档媒体。和 Put 分开，避免只负责上传的测试替身必须实现读取。
+type ObjectGetter interface {
+	Get(ctx context.Context, key string) (contentType string, body []byte, err error)
+}
+
 // Blob 是一次调用里需要上传的内联图片或视频。
 type Blob struct {
 	Placeholder string

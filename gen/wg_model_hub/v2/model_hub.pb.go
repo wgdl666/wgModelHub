@@ -10,6 +10,8 @@ import (
 	status "google.golang.org/genproto/googleapis/rpc/status"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	structpb "google.golang.org/protobuf/types/known/structpb"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -3533,6 +3535,539 @@ func (x *TranscribeSpeechSession) GetSessionId() string {
 	return ""
 }
 
+// ListModelCallsRequest 的时间按 started_at。include_eval 为真时才包含 business_scene=model_eval。
+type ListModelCallsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	From          *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=from,proto3" json:"from,omitempty"`
+	To            *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=to,proto3" json:"to,omitempty"`
+	Model         string                 `protobuf:"bytes,3,opt,name=model,proto3" json:"model,omitempty"`
+	Status        string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
+	CallerService string                 `protobuf:"bytes,5,opt,name=caller_service,json=callerService,proto3" json:"caller_service,omitempty"`
+	Limit         int32                  `protobuf:"varint,6,opt,name=limit,proto3" json:"limit,omitempty"`
+	Offset        int32                  `protobuf:"varint,7,opt,name=offset,proto3" json:"offset,omitempty"`
+	IncludeEval   bool                   `protobuf:"varint,8,opt,name=include_eval,json=includeEval,proto3" json:"include_eval,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListModelCallsRequest) Reset() {
+	*x = ListModelCallsRequest{}
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[43]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListModelCallsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListModelCallsRequest) ProtoMessage() {}
+
+func (x *ListModelCallsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[43]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListModelCallsRequest.ProtoReflect.Descriptor instead.
+func (*ListModelCallsRequest) Descriptor() ([]byte, []int) {
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{43}
+}
+
+func (x *ListModelCallsRequest) GetFrom() *timestamppb.Timestamp {
+	if x != nil {
+		return x.From
+	}
+	return nil
+}
+
+func (x *ListModelCallsRequest) GetTo() *timestamppb.Timestamp {
+	if x != nil {
+		return x.To
+	}
+	return nil
+}
+
+func (x *ListModelCallsRequest) GetModel() string {
+	if x != nil {
+		return x.Model
+	}
+	return ""
+}
+
+func (x *ListModelCallsRequest) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *ListModelCallsRequest) GetCallerService() string {
+	if x != nil {
+		return x.CallerService
+	}
+	return ""
+}
+
+func (x *ListModelCallsRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+func (x *ListModelCallsRequest) GetOffset() int32 {
+	if x != nil {
+		return x.Offset
+	}
+	return 0
+}
+
+func (x *ListModelCallsRequest) GetIncludeEval() bool {
+	if x != nil {
+		return x.IncludeEval
+	}
+	return false
+}
+
+type ModelCallSummary struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	CallId            string                 `protobuf:"bytes,1,opt,name=call_id,json=callId,proto3" json:"call_id,omitempty"`
+	StartedAt         *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
+	CallerService     string                 `protobuf:"bytes,3,opt,name=caller_service,json=callerService,proto3" json:"caller_service,omitempty"`
+	BusinessScene     string                 `protobuf:"bytes,4,opt,name=business_scene,json=businessScene,proto3" json:"business_scene,omitempty"`
+	Model             string                 `protobuf:"bytes,5,opt,name=model,proto3" json:"model,omitempty"`
+	Capability        string                 `protobuf:"bytes,6,opt,name=capability,proto3" json:"capability,omitempty"`
+	Status            string                 `protobuf:"bytes,7,opt,name=status,proto3" json:"status,omitempty"`
+	Replayable        bool                   `protobuf:"varint,8,opt,name=replayable,proto3" json:"replayable,omitempty"`
+	ReplayBlockReason string                 `protobuf:"bytes,9,opt,name=replay_block_reason,json=replayBlockReason,proto3" json:"replay_block_reason,omitempty"`
+	InputPreview      string                 `protobuf:"bytes,10,opt,name=input_preview,json=inputPreview,proto3" json:"input_preview,omitempty"`
+	OutputPreview     string                 `protobuf:"bytes,11,opt,name=output_preview,json=outputPreview,proto3" json:"output_preview,omitempty"`
+	InputMediaKey     string                 `protobuf:"bytes,12,opt,name=input_media_key,json=inputMediaKey,proto3" json:"input_media_key,omitempty"`
+	OutputMediaKey    string                 `protobuf:"bytes,13,opt,name=output_media_key,json=outputMediaKey,proto3" json:"output_media_key,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *ModelCallSummary) Reset() {
+	*x = ModelCallSummary{}
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[44]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ModelCallSummary) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ModelCallSummary) ProtoMessage() {}
+
+func (x *ModelCallSummary) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[44]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ModelCallSummary.ProtoReflect.Descriptor instead.
+func (*ModelCallSummary) Descriptor() ([]byte, []int) {
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{44}
+}
+
+func (x *ModelCallSummary) GetCallId() string {
+	if x != nil {
+		return x.CallId
+	}
+	return ""
+}
+
+func (x *ModelCallSummary) GetStartedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.StartedAt
+	}
+	return nil
+}
+
+func (x *ModelCallSummary) GetCallerService() string {
+	if x != nil {
+		return x.CallerService
+	}
+	return ""
+}
+
+func (x *ModelCallSummary) GetBusinessScene() string {
+	if x != nil {
+		return x.BusinessScene
+	}
+	return ""
+}
+
+func (x *ModelCallSummary) GetModel() string {
+	if x != nil {
+		return x.Model
+	}
+	return ""
+}
+
+func (x *ModelCallSummary) GetCapability() string {
+	if x != nil {
+		return x.Capability
+	}
+	return ""
+}
+
+func (x *ModelCallSummary) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *ModelCallSummary) GetReplayable() bool {
+	if x != nil {
+		return x.Replayable
+	}
+	return false
+}
+
+func (x *ModelCallSummary) GetReplayBlockReason() string {
+	if x != nil {
+		return x.ReplayBlockReason
+	}
+	return ""
+}
+
+func (x *ModelCallSummary) GetInputPreview() string {
+	if x != nil {
+		return x.InputPreview
+	}
+	return ""
+}
+
+func (x *ModelCallSummary) GetOutputPreview() string {
+	if x != nil {
+		return x.OutputPreview
+	}
+	return ""
+}
+
+func (x *ModelCallSummary) GetInputMediaKey() string {
+	if x != nil {
+		return x.InputMediaKey
+	}
+	return ""
+}
+
+func (x *ModelCallSummary) GetOutputMediaKey() string {
+	if x != nil {
+		return x.OutputMediaKey
+	}
+	return ""
+}
+
+type ListModelCallsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Calls         []*ModelCallSummary    `protobuf:"bytes,1,rep,name=calls,proto3" json:"calls,omitempty"`
+	Total         int32                  `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListModelCallsResponse) Reset() {
+	*x = ListModelCallsResponse{}
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[45]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListModelCallsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListModelCallsResponse) ProtoMessage() {}
+
+func (x *ListModelCallsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[45]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListModelCallsResponse.ProtoReflect.Descriptor instead.
+func (*ListModelCallsResponse) Descriptor() ([]byte, []int) {
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{45}
+}
+
+func (x *ListModelCallsResponse) GetCalls() []*ModelCallSummary {
+	if x != nil {
+		return x.Calls
+	}
+	return nil
+}
+
+func (x *ListModelCallsResponse) GetTotal() int32 {
+	if x != nil {
+		return x.Total
+	}
+	return 0
+}
+
+type GetModelCallRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	CallId        string                 `protobuf:"bytes,1,opt,name=call_id,json=callId,proto3" json:"call_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetModelCallRequest) Reset() {
+	*x = GetModelCallRequest{}
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[46]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetModelCallRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetModelCallRequest) ProtoMessage() {}
+
+func (x *GetModelCallRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[46]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetModelCallRequest.ProtoReflect.Descriptor instead.
+func (*GetModelCallRequest) Descriptor() ([]byte, []int) {
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{46}
+}
+
+func (x *GetModelCallRequest) GetCallId() string {
+	if x != nil {
+		return x.CallId
+	}
+	return ""
+}
+
+type GetModelCallResponse struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Summary          *ModelCallSummary      `protobuf:"bytes,1,opt,name=summary,proto3" json:"summary,omitempty"`
+	Input            *structpb.Struct       `protobuf:"bytes,2,opt,name=input,proto3" json:"input,omitempty"`
+	Output           *structpb.Struct       `protobuf:"bytes,3,opt,name=output,proto3" json:"output,omitempty"`
+	BusinessLine     string                 `protobuf:"bytes,4,opt,name=business_line,json=businessLine,proto3" json:"business_line,omitempty"`
+	BusinessSubscene string                 `protobuf:"bytes,5,opt,name=business_subscene,json=businessSubscene,proto3" json:"business_subscene,omitempty"`
+	Operation        string                 `protobuf:"bytes,6,opt,name=operation,proto3" json:"operation,omitempty"`
+	LatencyMs        int64                  `protobuf:"varint,7,opt,name=latency_ms,json=latencyMs,proto3" json:"latency_ms,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *GetModelCallResponse) Reset() {
+	*x = GetModelCallResponse{}
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[47]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetModelCallResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetModelCallResponse) ProtoMessage() {}
+
+func (x *GetModelCallResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[47]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetModelCallResponse.ProtoReflect.Descriptor instead.
+func (*GetModelCallResponse) Descriptor() ([]byte, []int) {
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{47}
+}
+
+func (x *GetModelCallResponse) GetSummary() *ModelCallSummary {
+	if x != nil {
+		return x.Summary
+	}
+	return nil
+}
+
+func (x *GetModelCallResponse) GetInput() *structpb.Struct {
+	if x != nil {
+		return x.Input
+	}
+	return nil
+}
+
+func (x *GetModelCallResponse) GetOutput() *structpb.Struct {
+	if x != nil {
+		return x.Output
+	}
+	return nil
+}
+
+func (x *GetModelCallResponse) GetBusinessLine() string {
+	if x != nil {
+		return x.BusinessLine
+	}
+	return ""
+}
+
+func (x *GetModelCallResponse) GetBusinessSubscene() string {
+	if x != nil {
+		return x.BusinessSubscene
+	}
+	return ""
+}
+
+func (x *GetModelCallResponse) GetOperation() string {
+	if x != nil {
+		return x.Operation
+	}
+	return ""
+}
+
+func (x *GetModelCallResponse) GetLatencyMs() int64 {
+	if x != nil {
+		return x.LatencyMs
+	}
+	return 0
+}
+
+type GetModelCallMediaRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	CallId        string                 `protobuf:"bytes,1,opt,name=call_id,json=callId,proto3" json:"call_id,omitempty"`
+	ObjectKey     string                 `protobuf:"bytes,2,opt,name=object_key,json=objectKey,proto3" json:"object_key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetModelCallMediaRequest) Reset() {
+	*x = GetModelCallMediaRequest{}
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[48]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetModelCallMediaRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetModelCallMediaRequest) ProtoMessage() {}
+
+func (x *GetModelCallMediaRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[48]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetModelCallMediaRequest.ProtoReflect.Descriptor instead.
+func (*GetModelCallMediaRequest) Descriptor() ([]byte, []int) {
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{48}
+}
+
+func (x *GetModelCallMediaRequest) GetCallId() string {
+	if x != nil {
+		return x.CallId
+	}
+	return ""
+}
+
+func (x *GetModelCallMediaRequest) GetObjectKey() string {
+	if x != nil {
+		return x.ObjectKey
+	}
+	return ""
+}
+
+type GetModelCallMediaResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	MimeType      string                 `protobuf:"bytes,1,opt,name=mime_type,json=mimeType,proto3" json:"mime_type,omitempty"`
+	Data          []byte                 `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetModelCallMediaResponse) Reset() {
+	*x = GetModelCallMediaResponse{}
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[49]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetModelCallMediaResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetModelCallMediaResponse) ProtoMessage() {}
+
+func (x *GetModelCallMediaResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[49]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetModelCallMediaResponse.ProtoReflect.Descriptor instead.
+func (*GetModelCallMediaResponse) Descriptor() ([]byte, []int) {
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{49}
+}
+
+func (x *GetModelCallMediaResponse) GetMimeType() string {
+	if x != nil {
+		return x.MimeType
+	}
+	return ""
+}
+
+func (x *GetModelCallMediaResponse) GetData() []byte {
+	if x != nil {
+		return x.Data
+	}
+	return nil
+}
+
 type TranscribeSpeechTranscript struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Text            string                 `protobuf:"bytes,1,opt,name=text,proto3" json:"text,omitempty"`
@@ -3550,7 +4085,7 @@ type TranscribeSpeechTranscript struct {
 
 func (x *TranscribeSpeechTranscript) Reset() {
 	*x = TranscribeSpeechTranscript{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[43]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3562,7 +4097,7 @@ func (x *TranscribeSpeechTranscript) String() string {
 func (*TranscribeSpeechTranscript) ProtoMessage() {}
 
 func (x *TranscribeSpeechTranscript) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[43]
+	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3575,7 +4110,7 @@ func (x *TranscribeSpeechTranscript) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TranscribeSpeechTranscript.ProtoReflect.Descriptor instead.
 func (*TranscribeSpeechTranscript) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{43}
+	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *TranscribeSpeechTranscript) GetText() string {
@@ -3645,7 +4180,7 @@ var File_proto_wg_model_hub_v2_model_hub_proto protoreflect.FileDescriptor
 
 const file_proto_wg_model_hub_v2_model_hub_proto_rawDesc = "" +
 	"\n" +
-	"%proto/wg_model_hub/v2/model_hub.proto\x12\x0fwg_model_hub.v2\x1a\x17google/rpc/status.proto\"O\n" +
+	"%proto/wg_model_hub/v2/model_hub.proto\x12\x0fwg_model_hub.v2\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17google/rpc/status.proto\"O\n" +
 	"\x11ListModelsRequest\x12:\n" +
 	"\bcategory\x18\x01 \x01(\x0e2\x1e.wg_model_hub.v2.ModelCategoryR\bcategory\"]\n" +
 	"\tModelInfo\x12\x14\n" +
@@ -3866,7 +4401,57 @@ const file_proto_wg_model_hub_v2_model_hub_proto_rawDesc = "" +
 	"\x04item\"8\n" +
 	"\x17TranscribeSpeechSession\x12\x1d\n" +
 	"\n" +
-	"session_id\x18\x01 \x01(\tR\tsessionId\"\xba\x02\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\"\x99\x02\n" +
+	"\x15ListModelCallsRequest\x12.\n" +
+	"\x04from\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x04from\x12*\n" +
+	"\x02to\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x02to\x12\x14\n" +
+	"\x05model\x18\x03 \x01(\tR\x05model\x12\x16\n" +
+	"\x06status\x18\x04 \x01(\tR\x06status\x12%\n" +
+	"\x0ecaller_service\x18\x05 \x01(\tR\rcallerService\x12\x14\n" +
+	"\x05limit\x18\x06 \x01(\x05R\x05limit\x12\x16\n" +
+	"\x06offset\x18\a \x01(\x05R\x06offset\x12!\n" +
+	"\finclude_eval\x18\b \x01(\bR\vincludeEval\"\xf0\x03\n" +
+	"\x10ModelCallSummary\x12\x17\n" +
+	"\acall_id\x18\x01 \x01(\tR\x06callId\x129\n" +
+	"\n" +
+	"started_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12%\n" +
+	"\x0ecaller_service\x18\x03 \x01(\tR\rcallerService\x12%\n" +
+	"\x0ebusiness_scene\x18\x04 \x01(\tR\rbusinessScene\x12\x14\n" +
+	"\x05model\x18\x05 \x01(\tR\x05model\x12\x1e\n" +
+	"\n" +
+	"capability\x18\x06 \x01(\tR\n" +
+	"capability\x12\x16\n" +
+	"\x06status\x18\a \x01(\tR\x06status\x12\x1e\n" +
+	"\n" +
+	"replayable\x18\b \x01(\bR\n" +
+	"replayable\x12.\n" +
+	"\x13replay_block_reason\x18\t \x01(\tR\x11replayBlockReason\x12#\n" +
+	"\rinput_preview\x18\n" +
+	" \x01(\tR\finputPreview\x12%\n" +
+	"\x0eoutput_preview\x18\v \x01(\tR\routputPreview\x12&\n" +
+	"\x0finput_media_key\x18\f \x01(\tR\rinputMediaKey\x12(\n" +
+	"\x10output_media_key\x18\r \x01(\tR\x0eoutputMediaKey\"g\n" +
+	"\x16ListModelCallsResponse\x127\n" +
+	"\x05calls\x18\x01 \x03(\v2!.wg_model_hub.v2.ModelCallSummaryR\x05calls\x12\x14\n" +
+	"\x05total\x18\x02 \x01(\x05R\x05total\".\n" +
+	"\x13GetModelCallRequest\x12\x17\n" +
+	"\acall_id\x18\x01 \x01(\tR\x06callId\"\xc2\x02\n" +
+	"\x14GetModelCallResponse\x12;\n" +
+	"\asummary\x18\x01 \x01(\v2!.wg_model_hub.v2.ModelCallSummaryR\asummary\x12-\n" +
+	"\x05input\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x05input\x12/\n" +
+	"\x06output\x18\x03 \x01(\v2\x17.google.protobuf.StructR\x06output\x12#\n" +
+	"\rbusiness_line\x18\x04 \x01(\tR\fbusinessLine\x12+\n" +
+	"\x11business_subscene\x18\x05 \x01(\tR\x10businessSubscene\x12\x1c\n" +
+	"\toperation\x18\x06 \x01(\tR\toperation\x12\x1d\n" +
+	"\n" +
+	"latency_ms\x18\a \x01(\x03R\tlatencyMs\"R\n" +
+	"\x18GetModelCallMediaRequest\x12\x17\n" +
+	"\acall_id\x18\x01 \x01(\tR\x06callId\x12\x1d\n" +
+	"\n" +
+	"object_key\x18\x02 \x01(\tR\tobjectKey\"L\n" +
+	"\x19GetModelCallMediaResponse\x12\x1b\n" +
+	"\tmime_type\x18\x01 \x01(\tR\bmimeType\x12\x12\n" +
+	"\x04data\x18\x02 \x01(\fR\x04data\"\xba\x02\n" +
 	"\x1aTranscribeSpeechTranscript\x12\x12\n" +
 	"\x04text\x18\x01 \x01(\tR\x04text\x12\x19\n" +
 	"\bis_final\x18\x02 \x01(\bR\aisFinal\x12$\n" +
@@ -3935,7 +4520,7 @@ const file_proto_wg_model_hub_v2_model_hub_proto_rawDesc = "" +
 	"\x1cGENERATION_TASK_STATE_FAILED\x10\x04*M\n" +
 	"\rAudioEncoding\x12\x1e\n" +
 	"\x1aAUDIO_ENCODING_UNSPECIFIED\x10\x00\x12\x1c\n" +
-	"\x18AUDIO_ENCODING_PCM_S16LE\x10\x012\xc1\x06\n" +
+	"\x18AUDIO_ENCODING_PCM_S16LE\x10\x012\xed\b\n" +
 	"\x0fModelHubService\x12N\n" +
 	"\bGenerate\x12 .wg_model_hub.v2.GenerateRequest\x1a\x1e.wg_model_hub.v2.GenerateEvent0\x01\x12p\n" +
 	"\x13CreateCachedContent\x12+.wg_model_hub.v2.CreateCachedContentRequest\x1a,.wg_model_hub.v2.CreateCachedContentResponse\x12]\n" +
@@ -3945,7 +4530,10 @@ const file_proto_wg_model_hub_v2_model_hub_proto_rawDesc = "" +
 	"\x16SynthesizeSpeechStream\x12(.wg_model_hub.v2.SynthesizeSpeechRequest\x1a).wg_model_hub.v2.SynthesizeSpeechResponse0\x01\x12|\n" +
 	"\x16TranscribeSpeechStream\x12..wg_model_hub.v2.TranscribeSpeechClientMessage\x1a..wg_model_hub.v2.TranscribeSpeechServerMessage(\x010\x01\x12U\n" +
 	"\n" +
-	"ListModels\x12\".wg_model_hub.v2.ListModelsRequest\x1a#.wg_model_hub.v2.ListModelsResponseBBZ@github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2;wg_model_hubv2b\x06proto3"
+	"ListModels\x12\".wg_model_hub.v2.ListModelsRequest\x1a#.wg_model_hub.v2.ListModelsResponse\x12a\n" +
+	"\x0eListModelCalls\x12&.wg_model_hub.v2.ListModelCallsRequest\x1a'.wg_model_hub.v2.ListModelCallsResponse\x12[\n" +
+	"\fGetModelCall\x12$.wg_model_hub.v2.GetModelCallRequest\x1a%.wg_model_hub.v2.GetModelCallResponse\x12j\n" +
+	"\x11GetModelCallMedia\x12).wg_model_hub.v2.GetModelCallMediaRequest\x1a*.wg_model_hub.v2.GetModelCallMediaResponseBBZ@github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2;wg_model_hubv2b\x06proto3"
 
 var (
 	file_proto_wg_model_hub_v2_model_hub_proto_rawDescOnce sync.Once
@@ -3960,7 +4548,7 @@ func file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP() []byte {
 }
 
 var file_proto_wg_model_hub_v2_model_hub_proto_enumTypes = make([]protoimpl.EnumInfo, 9)
-var file_proto_wg_model_hub_v2_model_hub_proto_msgTypes = make([]protoimpl.MessageInfo, 44)
+var file_proto_wg_model_hub_v2_model_hub_proto_msgTypes = make([]protoimpl.MessageInfo, 51)
 var file_proto_wg_model_hub_v2_model_hub_proto_goTypes = []any{
 	(ModelCategory)(0),                    // 0: wg_model_hub.v2.ModelCategory
 	(Role)(0),                             // 1: wg_model_hub.v2.Role
@@ -4014,8 +4602,17 @@ var file_proto_wg_model_hub_v2_model_hub_proto_goTypes = []any{
 	(*TranscribeSpeechStop)(nil),          // 49: wg_model_hub.v2.TranscribeSpeechStop
 	(*TranscribeSpeechServerMessage)(nil), // 50: wg_model_hub.v2.TranscribeSpeechServerMessage
 	(*TranscribeSpeechSession)(nil),       // 51: wg_model_hub.v2.TranscribeSpeechSession
-	(*TranscribeSpeechTranscript)(nil),    // 52: wg_model_hub.v2.TranscribeSpeechTranscript
-	(*status.Status)(nil),                 // 53: google.rpc.Status
+	(*ListModelCallsRequest)(nil),         // 52: wg_model_hub.v2.ListModelCallsRequest
+	(*ModelCallSummary)(nil),              // 53: wg_model_hub.v2.ModelCallSummary
+	(*ListModelCallsResponse)(nil),        // 54: wg_model_hub.v2.ListModelCallsResponse
+	(*GetModelCallRequest)(nil),           // 55: wg_model_hub.v2.GetModelCallRequest
+	(*GetModelCallResponse)(nil),          // 56: wg_model_hub.v2.GetModelCallResponse
+	(*GetModelCallMediaRequest)(nil),      // 57: wg_model_hub.v2.GetModelCallMediaRequest
+	(*GetModelCallMediaResponse)(nil),     // 58: wg_model_hub.v2.GetModelCallMediaResponse
+	(*TranscribeSpeechTranscript)(nil),    // 59: wg_model_hub.v2.TranscribeSpeechTranscript
+	(*status.Status)(nil),                 // 60: google.rpc.Status
+	(*timestamppb.Timestamp)(nil),         // 61: google.protobuf.Timestamp
+	(*structpb.Struct)(nil),               // 62: google.protobuf.Struct
 }
 var file_proto_wg_model_hub_v2_model_hub_proto_depIdxs = []int32{
 	0,  // 0: wg_model_hub.v2.ListModelsRequest.category:type_name -> wg_model_hub.v2.ModelCategory
@@ -4060,7 +4657,7 @@ var file_proto_wg_model_hub_v2_model_hub_proto_depIdxs = []int32{
 	13, // 39: wg_model_hub.v2.SubmitGenerationRequest.request:type_name -> wg_model_hub.v2.GenerateRequest
 	7,  // 40: wg_model_hub.v2.GenerationTask.state:type_name -> wg_model_hub.v2.GenerationTaskState
 	7,  // 41: wg_model_hub.v2.GenerationTaskStatus.state:type_name -> wg_model_hub.v2.GenerationTaskState
-	53, // 42: wg_model_hub.v2.GenerationTaskStatus.error:type_name -> google.rpc.Status
+	60, // 42: wg_model_hub.v2.GenerationTaskStatus.error:type_name -> google.rpc.Status
 	39, // 43: wg_model_hub.v2.GenerationTaskEvent.status:type_name -> wg_model_hub.v2.GenerationTaskStatus
 	35, // 44: wg_model_hub.v2.GenerationTaskEvent.output:type_name -> wg_model_hub.v2.GenerateEvent
 	12, // 45: wg_model_hub.v2.SynthesizeSpeechRequest.business_metadata:type_name -> wg_model_hub.v2.BusinessMetadata
@@ -4074,28 +4671,41 @@ var file_proto_wg_model_hub_v2_model_hub_proto_depIdxs = []int32{
 	45, // 53: wg_model_hub.v2.TranscribeSpeechStart.turn_silence:type_name -> wg_model_hub.v2.TurnSilence
 	46, // 54: wg_model_hub.v2.TranscribeSpeechStart.features:type_name -> wg_model_hub.v2.ASRFeatures
 	51, // 55: wg_model_hub.v2.TranscribeSpeechServerMessage.session:type_name -> wg_model_hub.v2.TranscribeSpeechSession
-	52, // 56: wg_model_hub.v2.TranscribeSpeechServerMessage.transcript:type_name -> wg_model_hub.v2.TranscribeSpeechTranscript
-	13, // 57: wg_model_hub.v2.ModelHubService.Generate:input_type -> wg_model_hub.v2.GenerateRequest
-	23, // 58: wg_model_hub.v2.ModelHubService.CreateCachedContent:input_type -> wg_model_hub.v2.CreateCachedContentRequest
-	36, // 59: wg_model_hub.v2.ModelHubService.SubmitGeneration:input_type -> wg_model_hub.v2.SubmitGenerationRequest
-	37, // 60: wg_model_hub.v2.ModelHubService.GetGeneration:input_type -> wg_model_hub.v2.GetGenerationRequest
-	41, // 61: wg_model_hub.v2.ModelHubService.SynthesizeSpeech:input_type -> wg_model_hub.v2.SynthesizeSpeechRequest
-	41, // 62: wg_model_hub.v2.ModelHubService.SynthesizeSpeechStream:input_type -> wg_model_hub.v2.SynthesizeSpeechRequest
-	43, // 63: wg_model_hub.v2.ModelHubService.TranscribeSpeechStream:input_type -> wg_model_hub.v2.TranscribeSpeechClientMessage
-	9,  // 64: wg_model_hub.v2.ModelHubService.ListModels:input_type -> wg_model_hub.v2.ListModelsRequest
-	35, // 65: wg_model_hub.v2.ModelHubService.Generate:output_type -> wg_model_hub.v2.GenerateEvent
-	24, // 66: wg_model_hub.v2.ModelHubService.CreateCachedContent:output_type -> wg_model_hub.v2.CreateCachedContentResponse
-	38, // 67: wg_model_hub.v2.ModelHubService.SubmitGeneration:output_type -> wg_model_hub.v2.GenerationTask
-	40, // 68: wg_model_hub.v2.ModelHubService.GetGeneration:output_type -> wg_model_hub.v2.GenerationTaskEvent
-	42, // 69: wg_model_hub.v2.ModelHubService.SynthesizeSpeech:output_type -> wg_model_hub.v2.SynthesizeSpeechResponse
-	42, // 70: wg_model_hub.v2.ModelHubService.SynthesizeSpeechStream:output_type -> wg_model_hub.v2.SynthesizeSpeechResponse
-	50, // 71: wg_model_hub.v2.ModelHubService.TranscribeSpeechStream:output_type -> wg_model_hub.v2.TranscribeSpeechServerMessage
-	11, // 72: wg_model_hub.v2.ModelHubService.ListModels:output_type -> wg_model_hub.v2.ListModelsResponse
-	65, // [65:73] is the sub-list for method output_type
-	57, // [57:65] is the sub-list for method input_type
-	57, // [57:57] is the sub-list for extension type_name
-	57, // [57:57] is the sub-list for extension extendee
-	0,  // [0:57] is the sub-list for field type_name
+	59, // 56: wg_model_hub.v2.TranscribeSpeechServerMessage.transcript:type_name -> wg_model_hub.v2.TranscribeSpeechTranscript
+	61, // 57: wg_model_hub.v2.ListModelCallsRequest.from:type_name -> google.protobuf.Timestamp
+	61, // 58: wg_model_hub.v2.ListModelCallsRequest.to:type_name -> google.protobuf.Timestamp
+	61, // 59: wg_model_hub.v2.ModelCallSummary.started_at:type_name -> google.protobuf.Timestamp
+	53, // 60: wg_model_hub.v2.ListModelCallsResponse.calls:type_name -> wg_model_hub.v2.ModelCallSummary
+	53, // 61: wg_model_hub.v2.GetModelCallResponse.summary:type_name -> wg_model_hub.v2.ModelCallSummary
+	62, // 62: wg_model_hub.v2.GetModelCallResponse.input:type_name -> google.protobuf.Struct
+	62, // 63: wg_model_hub.v2.GetModelCallResponse.output:type_name -> google.protobuf.Struct
+	13, // 64: wg_model_hub.v2.ModelHubService.Generate:input_type -> wg_model_hub.v2.GenerateRequest
+	23, // 65: wg_model_hub.v2.ModelHubService.CreateCachedContent:input_type -> wg_model_hub.v2.CreateCachedContentRequest
+	36, // 66: wg_model_hub.v2.ModelHubService.SubmitGeneration:input_type -> wg_model_hub.v2.SubmitGenerationRequest
+	37, // 67: wg_model_hub.v2.ModelHubService.GetGeneration:input_type -> wg_model_hub.v2.GetGenerationRequest
+	41, // 68: wg_model_hub.v2.ModelHubService.SynthesizeSpeech:input_type -> wg_model_hub.v2.SynthesizeSpeechRequest
+	41, // 69: wg_model_hub.v2.ModelHubService.SynthesizeSpeechStream:input_type -> wg_model_hub.v2.SynthesizeSpeechRequest
+	43, // 70: wg_model_hub.v2.ModelHubService.TranscribeSpeechStream:input_type -> wg_model_hub.v2.TranscribeSpeechClientMessage
+	9,  // 71: wg_model_hub.v2.ModelHubService.ListModels:input_type -> wg_model_hub.v2.ListModelsRequest
+	52, // 72: wg_model_hub.v2.ModelHubService.ListModelCalls:input_type -> wg_model_hub.v2.ListModelCallsRequest
+	55, // 73: wg_model_hub.v2.ModelHubService.GetModelCall:input_type -> wg_model_hub.v2.GetModelCallRequest
+	57, // 74: wg_model_hub.v2.ModelHubService.GetModelCallMedia:input_type -> wg_model_hub.v2.GetModelCallMediaRequest
+	35, // 75: wg_model_hub.v2.ModelHubService.Generate:output_type -> wg_model_hub.v2.GenerateEvent
+	24, // 76: wg_model_hub.v2.ModelHubService.CreateCachedContent:output_type -> wg_model_hub.v2.CreateCachedContentResponse
+	38, // 77: wg_model_hub.v2.ModelHubService.SubmitGeneration:output_type -> wg_model_hub.v2.GenerationTask
+	40, // 78: wg_model_hub.v2.ModelHubService.GetGeneration:output_type -> wg_model_hub.v2.GenerationTaskEvent
+	42, // 79: wg_model_hub.v2.ModelHubService.SynthesizeSpeech:output_type -> wg_model_hub.v2.SynthesizeSpeechResponse
+	42, // 80: wg_model_hub.v2.ModelHubService.SynthesizeSpeechStream:output_type -> wg_model_hub.v2.SynthesizeSpeechResponse
+	50, // 81: wg_model_hub.v2.ModelHubService.TranscribeSpeechStream:output_type -> wg_model_hub.v2.TranscribeSpeechServerMessage
+	11, // 82: wg_model_hub.v2.ModelHubService.ListModels:output_type -> wg_model_hub.v2.ListModelsResponse
+	54, // 83: wg_model_hub.v2.ModelHubService.ListModelCalls:output_type -> wg_model_hub.v2.ListModelCallsResponse
+	56, // 84: wg_model_hub.v2.ModelHubService.GetModelCall:output_type -> wg_model_hub.v2.GetModelCallResponse
+	58, // 85: wg_model_hub.v2.ModelHubService.GetModelCallMedia:output_type -> wg_model_hub.v2.GetModelCallMediaResponse
+	75, // [75:86] is the sub-list for method output_type
+	64, // [64:75] is the sub-list for method input_type
+	64, // [64:64] is the sub-list for extension type_name
+	64, // [64:64] is the sub-list for extension extendee
+	0,  // [0:64] is the sub-list for field type_name
 }
 
 func init() { file_proto_wg_model_hub_v2_model_hub_proto_init() }
@@ -4153,7 +4763,7 @@ func file_proto_wg_model_hub_v2_model_hub_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_wg_model_hub_v2_model_hub_proto_rawDesc), len(file_proto_wg_model_hub_v2_model_hub_proto_rawDesc)),
 			NumEnums:      9,
-			NumMessages:   44,
+			NumMessages:   51,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

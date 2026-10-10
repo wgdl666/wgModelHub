@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -80,4 +81,42 @@ func (s *S3) Put(ctx context.Context, key, contentType string, body []byte) (str
 		return "", err
 	}
 	return "s3://" + s.bucket + "/" + key, nil
+}
+
+// Get 按对象键读回已归档媒体。评测页要展示原图，不能把存储凭据交给浏览器。
+func (s *S3) Get(ctx context.Context, key string) (string, []byte, error) {
+	if s == nil || (s.client == nil && s.oss == nil) {
+		return "", nil, fmt.Errorf("object storage is not configured")
+	}
+	key = strings.TrimLeft(strings.TrimSpace(key), "/")
+	if s.oss != nil {
+		result, err := s.oss.GetObject(ctx, &oss.GetObjectRequest{Bucket: oss.Ptr(s.bucket), Key: oss.Ptr(key)})
+		if err != nil {
+			return "", nil, err
+		}
+		defer result.Body.Close()
+		body, err := io.ReadAll(result.Body)
+		if err != nil {
+			return "", nil, err
+		}
+		contentType := ""
+		if result.ContentType != nil {
+			contentType = *result.ContentType
+		}
+		return contentType, body, nil
+	}
+	out, err := s.client.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(key)})
+	if err != nil {
+		return "", nil, err
+	}
+	defer out.Body.Close()
+	body, err := io.ReadAll(out.Body)
+	if err != nil {
+		return "", nil, err
+	}
+	contentType := ""
+	if out.ContentType != nil {
+		contentType = *out.ContentType
+	}
+	return contentType, body, nil
 }
