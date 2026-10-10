@@ -360,6 +360,26 @@ func TestValidateAcceptsVertexAIAPIKeyOnly(t *testing.T) {
 	}
 }
 
+func TestValidateAcceptsVertexProjectAndRejectsBlank(t *testing.T) {
+	cfg := validConfig()
+	cfg.Providers["vertex_nano_banana"] = ProviderConfig{
+		Models:   []string{models.GeminiNanoBanana21},
+		VertexAI: &VertexAIProviderConfig{APIKey: "vertex-express-key", Project: "123"},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	for _, project := range []string{" ", "123/global", "123 456"} {
+		cfg.Providers["vertex_nano_banana"] = ProviderConfig{
+			Models:   []string{models.GeminiNanoBanana21},
+			VertexAI: &VertexAIProviderConfig{APIKey: "vertex-express-key", Project: project},
+		}
+		if err := cfg.Validate(); err == nil {
+			t.Fatalf("project %q must be rejected", project)
+		}
+	}
+}
+
 func TestValidateAcceptsElevenLabsVoiceSettings(t *testing.T) {
 	stability, similarity, style, speed := 0.30, 0.30, 0.50, 0.90
 	cfg := validConfig()

@@ -5,16 +5,21 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"image"
 	"image/color"
 	"image/png"
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
+	genaisdk "google.golang.org/genai"
 )
 
 // 测试用假密钥，仅校验出站头；不得当作真实凭据或写入文档。
@@ -60,10 +65,10 @@ func (t *vertexRecordingTransport) RoundTrip(req *http.Request) (*http.Response,
 }
 
 func TestNewVertexAIRequiresAPIKey(t *testing.T) {
-	if _, err := NewVertexAI(context.Background(), "vertex", ""); err == nil {
+	if _, err := NewVertexAI(context.Background(), "vertex", "", ""); err == nil {
 		t.Fatal("expected empty api_key error")
 	}
-	if _, err := NewVertexAI(context.Background(), "vertex", "  "); err == nil {
+	if _, err := NewVertexAI(context.Background(), "vertex", "  ", ""); err == nil {
 		t.Fatal("expected blank api_key error")
 	}
 }
@@ -77,7 +82,7 @@ func TestNewVertexAIBuildsWithoutADC(t *testing.T) {
 	t.Setenv("GOOGLE_API_KEY", "")
 	t.Setenv("GEMINI_API_KEY", "")
 
-	p, err := NewVertexAI(context.Background(), "vertex", vertexTestAPIKey)
+	p, err := NewVertexAI(context.Background(), "vertex", vertexTestAPIKey, "")
 	if err != nil {
 		t.Fatalf("NewVertexAI without ADC: %v", err)
 	}
@@ -94,7 +99,7 @@ func TestVertexAIGenerateUsesExpressAPIKeyPath(t *testing.T) {
 	t.Setenv("GEMINI_API_KEY", "")
 
 	transport := &vertexRecordingTransport{}
-	p, err := newVertexAI(context.Background(), "vertex", vertexTestAPIKey, &http.Client{Transport: transport})
+	p, err := newVertexAI(context.Background(), "vertex", vertexTestAPIKey, "", &http.Client{Transport: transport})
 	if err != nil {
 		t.Fatalf("newVertexAI: %v", err)
 	}
@@ -157,12 +162,11 @@ func TestVertexAIGenerateImageSendsNanoBananaRequest(t *testing.T) {
 			{"inlineData":{"mimeType":"image/png","data":"` + base64.StdEncoding.EncodeToString(out) + `"}}
 		]},"finishReason":"STOP"}]
 	}`}
-	p, err := newVertexAI(context.Background(), "vertex_nano_banana", vertexTestAPIKey, &http.Client{Transport: transport})
+	// project 在初始化写入。请求阶段不再探测，所以这次生图只有这一次出站。
+	p, err := newVertexAI(context.Background(), "vertex_nano_banana", vertexTestAPIKey, "123", &http.Client{Transport: transport})
 	if err != nil {
 		t.Fatalf("newVertexAI: %v", err)
 	}
-	// 测试直接指定项目编号，避免先打一次区域 404。环境变量里的 project 不得进路径。
-	p.globalProject = "123"
 	ratio := "3:4"
 	size := "2K"
 	event, err := p.GenerateImage(context.Background(), models.GeminiNanoBanana21, &modelhubv2.GenerateRequest{
@@ -313,66 +317,160 @@ func inlineImageBytes(t *testing.T, body map[string]any) []byte {
 	return nil
 }
 
-// 第一次区域短路径 404 必须解析出项目编号，第二次改打 locations/global，且不能采用环境变量里的 project。
-func TestNanoBananaImageRetriesOnGlobalAfterRegionalNotFound(t *testing.T) {
+func TestVertexTextKeepsExpressPathWhenProjectConfigured(t *testing.T) {
+	clearVertexDiscoveryEnv(t)
+	transport := &vertexRecordingTransport{}
+	p, err := newVertexAI(context.Background(), "vertex", vertexTestAPIKey, "123", &http.Client{Transport: transport})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Generate(context.Background(), models.Gemini25Flash, vertexTextRequest()); err != nil {
+		t.Fatal(err)
+	}
+	if transport.calls != 1 || transport.last == nil {
+		t.Fatalf("calls=%d", transport.calls)
+	}
+	path := transport.last.URL.EscapedPath()
+	if strings.Contains(path, "/projects/") || !strings.Contains(path, "/publishers/google/models/"+models.Gemini25Flash+":generateContent") {
+		t.Fatalf("text path=%q", path)
+	}
+}
+
+func TestNanoBananaImageWithoutProjectMakesNoCall(t *testing.T) {
+	transport := &vertexRecordingTransport{}
+	p, err := newVertexAI(context.Background(), "vertex", vertexTestAPIKey, "", &http.Client{Transport: transport})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err = p.GenerateImage(ctx, models.GeminiNanoBanana21, vertexImageRequest("square"))
+	assertVertexProjectConfigError(t, err)
+	if transport.calls != 0 {
+		t.Fatalf("calls=%d", transport.calls)
+	}
+}
+
+func TestGeminiBackendDoesNotUseVertexGlobalPath(t *testing.T) {
+	transport := &vertexRecordingTransport{response: `{
+		"candidates":[{"content":{"role":"model","parts":[{"text":"ok"}]},"finishReason":"STOP"}]
+	}`}
+	client, err := genaisdk.NewClient(context.Background(), &genaisdk.ClientConfig{
+		APIKey:     vertexTestAPIKey,
+		Backend:    genaisdk.BackendGeminiAPI,
+		HTTPClient: &http.Client{Transport: transport},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := &Provider{name: "gemini", client: client}
+	if _, err := p.GenerateImage(context.Background(), models.GeminiNanoBanana21, vertexImageRequest("square")); err != nil {
+		t.Fatal(err)
+	}
+	if transport.calls != 1 || transport.last == nil {
+		t.Fatalf("calls=%d", transport.calls)
+	}
+	if transport.last.URL.Host != "generativelanguage.googleapis.com" {
+		t.Fatalf("host=%q", transport.last.URL.Host)
+	}
+	path := transport.last.URL.EscapedPath()
+	if strings.Contains(path, "/projects/") || strings.Contains(path, "locations/global") {
+		t.Fatalf("path=%q", path)
+	}
+}
+
+func TestMissingVertexProjectDoesNotBlockOnInFlightCall(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	transport := &vertexBlockingTransport{started: started, release: release}
+	p, err := newVertexAI(context.Background(), "vertex", vertexTestAPIKey, "", &http.Client{Transport: transport})
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		_, _ = p.Generate(context.Background(), models.Gemini25Flash, vertexTextRequest())
+	}()
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("text request did not start")
+	}
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := p.GenerateImage(context.Background(), models.GeminiNanoBanana21, vertexImageRequest("square"))
+		errCh <- err
+	}()
+	select {
+	case err := <-errCh:
+		assertVertexProjectConfigError(t, err)
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("missing project waited on the in-flight request")
+	}
+	close(release)
+}
+
+func clearVertexDiscoveryEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", "")
 	t.Setenv("GOOGLE_CLOUD_PROJECT", "should-not-appear-in-path")
 	t.Setenv("GOOGLE_CLOUD_LOCATION", "us-central1")
-	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", "")
-	transport := &vertexScriptTransport{steps: []vertexScriptStep{
-		{status: http.StatusNotFound, body: `{"error":{"code":404,"message":"Publisher model projects/42/locations/us-central1/publishers/google/models/gemini-nano-banana-2.1 was not found","status":"NOT_FOUND"}}`},
-		{status: http.StatusOK, body: `{
-			"candidates":[{"content":{"role":"model","parts":[{"inlineData":{"mimeType":"image/png","data":"` + base64.StdEncoding.EncodeToString(onePixelPNG(t)) + `"}}]},"finishReason":"STOP"}]
-		}`},
-	}}
-	p, err := newVertexAI(context.Background(), "vertex", vertexTestAPIKey, &http.Client{Transport: transport})
-	if err != nil {
-		t.Fatalf("newVertexAI: %v", err)
+	t.Setenv("GOOGLE_API_KEY", "")
+	t.Setenv("GEMINI_API_KEY", "")
+}
+
+func assertVertexProjectConfigError(t *testing.T, err error) {
+	t.Helper()
+	var got *provider.Error
+	if !errors.As(err, &got) || got.Kind != provider.ErrorConfiguration || !provider.IsNotAttempted(err) {
+		t.Fatalf("err=%v", err)
 	}
-	_, err = p.GenerateImage(context.Background(), models.GeminiNanoBanana21, &modelhubv2.GenerateRequest{
+	if !strings.Contains(err.Error(), "vertexai.project") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func vertexTextRequest() *modelhubv2.GenerateRequest {
+	return &modelhubv2.GenerateRequest{
+		Input: &modelhubv2.Input{Items: []*modelhubv2.InputItem{{
+			Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
+				Role:  modelhubv2.Role_ROLE_USER,
+				Parts: []*modelhubv2.ContentPart{{Content: &modelhubv2.ContentPart_Text{Text: "ping"}}},
+			}},
+		}}},
+		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: &modelhubv2.TextOutput{}}},
+	}
+}
+
+func vertexImageRequest(text string) *modelhubv2.GenerateRequest {
+	return &modelhubv2.GenerateRequest{
 		Model: models.GeminiNanoBanana21,
 		Input: &modelhubv2.Input{Items: []*modelhubv2.InputItem{{
 			Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
 				Role:  modelhubv2.Role_ROLE_USER,
-				Parts: []*modelhubv2.ContentPart{{Content: &modelhubv2.ContentPart_Text{Text: "square"}}},
+				Parts: []*modelhubv2.ContentPart{{Content: &modelhubv2.ContentPart_Text{Text: text}}},
 			}},
 		}}},
 		Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Image{Image: &modelhubv2.ImageOutput{}}},
-	})
-	if err != nil {
-		t.Fatalf("GenerateImage: %v", err)
-	}
-	if len(transport.paths) != 2 {
-		t.Fatalf("paths=%v", transport.paths)
-	}
-	if strings.Contains(transport.paths[0], "/projects/") {
-		t.Fatalf("probe path=%q", transport.paths[0])
-	}
-	if !strings.Contains(transport.paths[1], "/projects/42/locations/global/") || strings.Contains(transport.paths[1], "should-not-appear-in-path") {
-		t.Fatalf("global path=%q", transport.paths[1])
 	}
 }
 
-type vertexScriptStep struct {
-	status int
-	body   string
+type vertexBlockingTransport struct {
+	started chan struct{}
+	release chan struct{}
+	once    sync.Once
 }
 
-type vertexScriptTransport struct {
-	steps []vertexScriptStep
-	paths []string
-}
-
-func (t *vertexScriptTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+func (t *vertexBlockingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if req.Body != nil {
 		_, _ = io.ReadAll(req.Body)
 		_ = req.Body.Close()
 	}
-	t.paths = append(t.paths, req.URL.EscapedPath())
-	step := t.steps[len(t.paths)-1]
+	t.once.Do(func() { close(t.started) })
+	<-t.release
 	return &http.Response{
-		StatusCode: step.status,
+		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(step.body)),
+		Body:       io.NopCloser(strings.NewReader(`{"candidates":[{"content":{"parts":[{"text":"ok"}],"role":"model"},"finishReason":"STOP"}]}`)),
 		Request:    req,
 	}, nil
 }

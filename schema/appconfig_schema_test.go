@@ -125,15 +125,16 @@ func TestAppConfigSchemaContract(t *testing.T) {
 		t.Fatalf("ark.endpoint_id type=%v, want string", endpointID["type"])
 	}
 
-	// Vertex Express 契约：只认 api_key；project/location 与 SDK APIKey 互斥，不得再出现在 schema。
+	// api_key 仍必填。project 可选，给 Nano Banana 2.1 的 locations/global。location 固定在代码里，不进 schema。
 	vertex := mustMap(t, definitions["vertexai"])
 	assertStringSet(t, vertex["required"], "api_key")
 	vertexProps := mustMap(t, vertex["properties"])
 	if _, ok := vertexProps["api_key"]; !ok {
 		t.Fatal("vertexai.api_key missing")
 	}
-	if _, ok := vertexProps["project"]; ok {
-		t.Fatal("vertexai must not declare project")
+	project := mustMap(t, vertexProps["project"])
+	if project["type"] != "string" || project["minLength"] != float64(1) {
+		t.Fatalf("vertexai.project=%#v", project)
 	}
 	if _, ok := vertexProps["location"]; ok {
 		t.Fatal("vertexai must not declare location")

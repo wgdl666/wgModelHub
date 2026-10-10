@@ -127,6 +127,7 @@ func providerResourceEqual(previous, next ProviderConfig) bool {
 	right := next
 	left.Models = nil
 	right.Models = nil
+	// vertexai.project 留在比较里：locations/global 客户端在启动时建好，改 project 必须重启。
 	left.VWorldImage = vworldImageWithoutBaseURL(left.VWorldImage)
 	right.VWorldImage = vworldImageWithoutBaseURL(right.VWorldImage)
 	return reflect.DeepEqual(left, right)

@@ -481,6 +481,35 @@ func validConfigWithDualGeminiFlash() Config {
 	return cfg
 }
 
+func TestVertexProjectChangeRequiresRestartButModelHotAddDoesNot(t *testing.T) {
+	initial := validConfig()
+	initial.Providers["vertex_chat"] = ProviderConfig{
+		Models:   []string{models.Gemini20Flash001},
+		VertexAI: &VertexAIProviderConfig{APIKey: "k", Project: "123"},
+	}
+	if err := initial.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	added := cloneConfig(initial)
+	vertex := added.Providers["vertex_chat"]
+	vertex.Models = []string{models.Gemini20Flash001, models.GeminiNanoBanana21}
+	added.Providers["vertex_chat"] = vertex
+	if fields := RestartRequiredFields(initial, added); len(fields) != 0 {
+		t.Fatalf("model hot add must not restart, fields=%v", fields)
+	}
+
+	changed := cloneConfig(initial)
+	copied := *changed.Providers["vertex_chat"].VertexAI
+	copied.Project = "456"
+	vertex = changed.Providers["vertex_chat"]
+	vertex.VertexAI = &copied
+	changed.Providers["vertex_chat"] = vertex
+	fields := RestartRequiredFields(initial, changed)
+	if len(fields) != 1 || fields[0] != "providers" {
+		t.Fatalf("project change fields=%v", fields)
+	}
+}
+
 func cloneConfig(cfg Config) Config {
 	body, err := yaml.Marshal(cfg)
 	if err != nil {

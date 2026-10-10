@@ -122,10 +122,14 @@ type GeminiProviderConfig struct {
 }
 
 // VertexAIProviderConfig 使用 Vertex Express API key。
-// google.golang.org/genai 规定 APIKey 与 Project/Location 互斥；同时设置会在 NewClient 失败。
-// 因此契约只保留 api_key，请求走 aiplatform.googleapis.com + x-goog-api-key，不回退 ADC。
+// 文本走 aiplatform.googleapis.com 的 publishers 短路径，不带 project。
+// Project 只服务 Nano Banana 2.1：该模型只在 locations/global，官方 Express 短路径会落到调用方区域。
+// SDK 不允许 APIKey 与 Project/Location 同时设置，所以 global 客户端另建，密钥仍是这把 api_key，不走 ADC。
+// Location 固定 global，不进配置。缺 project 时该模型在请求时返回配置错误，不探测。
 type VertexAIProviderConfig struct {
 	APIKey string `yaml:"api_key"`
+	// Project 是 Vertex 项目编号或 ID。空表示只走 Express 短路径。
+	Project string `yaml:"project"`
 }
 
 type VolcengineASRProviderConfig struct {
@@ -745,6 +749,12 @@ func validateProvider(name string, provider ProviderConfig) error {
 	case provider.VertexAI != nil:
 		if strings.TrimSpace(provider.VertexAI.APIKey) == "" {
 			return fmt.Errorf("provider %s api_key is required", name)
+		}
+		// project 可选。只配 api_key 的文本 Express 仍合法。
+		// 不按 models 是否含 Nano Banana 2.1 强制 project：模型列表可热添加，客户端在启动时已经建好。
+		project := provider.VertexAI.Project
+		if project != "" && (strings.TrimSpace(project) != project || strings.ContainsAny(project, "/ \t")) {
+			return fmt.Errorf("provider %s vertexai.project is invalid", name)
 		}
 	case provider.Ark != nil:
 		if strings.TrimSpace(provider.Ark.APIKey) == "" {

@@ -133,12 +133,12 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 		return provider.Set{Text: client, Image: client}, nil
 	case providerCfg.VertexAI != nil:
 		cfg := providerCfg.VertexAI
-		client, err := genai.NewVertexAI(ctx, name, cfg.APIKey)
+		client, err := genai.NewVertexAI(ctx, name, cfg.APIKey, cfg.Project)
 		if err != nil {
 			return provider.Set{}, err
 		}
-		// 生图复用同一个 genai 客户端。Image 在启动时挂上，不读可热更新的 models 列表；
-		// 某次图片请求放不放行由 resolve 按当前真实模型判断。
+		// 文本和生图是同一个 Provider。Image 在启动时挂上，不读可热更新的 models。
+		// 配了 vertexai.project 时，Nano Banana 2.1 用初始化建好的 locations/global 客户端；文本仍走 Express。
 		return provider.Set{Text: client, Image: client}, nil
 	case providerCfg.Ark != nil:
 		cfg := providerCfg.Ark
