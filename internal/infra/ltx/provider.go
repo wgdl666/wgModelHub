@@ -14,10 +14,11 @@ import (
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
+	"github.com/wgdl666/wgModelHub/models"
 	"github.com/wgdl666/wgModelHub/protocol"
 )
 
-// upstreamLTXModel 是 LTX /vton 的 multipart model。本 provider 只承接穿搭视频，对外 ID 已是 VWorld_outfit_video_1.0，不能把对外 ID 原样下发，也不兼容旧公开 ID ltx。
+// upstreamLTXModel 只用于旧 LTX 接口；VWorld v2 不下发模型或推理配置。
 const upstreamLTXModel = "ltx"
 
 const (
@@ -57,7 +58,7 @@ func New(name, baseURL, token string, duration float64, fps, seed int, pollInter
 	}, nil
 }
 
-// SubmitVideo 加载首帧并提交 LTX /vton，返回 job_id 供后续 Get/Read 使用。
+// SubmitVideo 为 VWorld 使用最小 v2 接口；旧 LTX 路由保留兼容协议。
 func (p *Provider) SubmitVideo(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (string, error) {
 	if request == nil {
 		return "", provider.NotAttempted(provider.ErrorInvalidArgument, "video request is required")
@@ -75,7 +76,7 @@ func (p *Provider) SubmitVideo(ctx context.Context, model string, request *model
 	if video := request.GetOutput().GetVideo(); video != nil {
 		resolution = video.GetResolution()
 	}
-	return p.submit(ctx, upstreamLTXModel, imageBytes, provider.JoinedText(request.GetInput()), resolution, motionTips, request.GetOutput().GetVideo())
+	return p.submit(ctx, model, imageBytes, provider.JoinedText(request.GetInput()), resolution, motionTips, request.GetOutput().GetVideo())
 }
 
 // videoMotionTips 只读取该模型认识的独立动作参数；缺省时保持旧调用行为。
@@ -96,7 +97,7 @@ func videoMotionTips(raw string) (string, error) {
 	if bytes.Equal(bytes.TrimSpace(value), []byte("null")) || json.Unmarshal(value, &motionTips) != nil {
 		return "", provider.NotAttempted(provider.ErrorInvalidArgument, "video model_traits.motion_tips must be a string")
 	}
-	return strings.TrimSpace(motionTips), nil
+	return motionTips, nil
 }
 
 // GetVideo 单次查询 /jobs/{id}；done/error/进行中分别映射为 Succeeded/Failed/Running。
@@ -109,7 +110,7 @@ func (p *Provider) GetVideo(ctx context.Context, _ string, providerTaskID string
 	switch job["status"] {
 	case "done":
 		return provider.VideoJob{State: provider.VideoJobSucceeded, PollAfterMs: pollMs}, nil
-	case "error":
+	case "error", "cancelled", "interrupted":
 		// 三方错误正文可能包含输入片段，只保留稳定分类，不写入 gRPC status 或遥测。
 		return provider.VideoJob{
 			State:       provider.VideoJobFailed,
@@ -207,25 +208,28 @@ func (p *Provider) submit(ctx context.Context, model string, imageBytes []byte, 
 	if _, err := imagePart.Write(imageBytes); err != nil {
 		return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "write multipart image", err)
 	}
-	duration, fps, seed := p.duration, p.fps, p.seed
-	if video != nil {
-		if video.DurationSeconds != nil {
-			duration = float64(video.GetDurationSeconds())
+	endpoint := "/v2/videos/vton"
+	fields := map[string]string{"prompt": prompt}
+	if model != models.VWorldOutfitVideo10 {
+		// 保留海外旧 LTX 配置；新业务模型的参数由 VMind-Video 统一决定。
+		endpoint = "/vton"
+		duration, fps, seed := p.duration, p.fps, p.seed
+		if video != nil {
+			if video.DurationSeconds != nil {
+				duration = float64(video.GetDurationSeconds())
+			}
+			if video.Fps != nil {
+				fps = int(video.GetFps())
+			}
+			if video.Seed != nil {
+				seed = int(video.GetSeed())
+			}
 		}
-		if video.Fps != nil {
-			fps = int(video.GetFps())
-		}
-		if video.Seed != nil {
-			seed = int(video.GetSeed())
-		}
-	}
-	fields := map[string]string{
-		"prompt":     prompt,
-		"resolution": normalizeResolution(resolution),
-		"duration":   fmt.Sprintf("%g", duration),
-		"fps":        fmt.Sprintf("%d", fps),
-		"seed":       fmt.Sprintf("%d", seed),
-		"model":      model,
+		fields["resolution"] = normalizeResolution(resolution)
+		fields["duration"] = fmt.Sprintf("%g", duration)
+		fields["fps"] = fmt.Sprintf("%d", fps)
+		fields["seed"] = fmt.Sprintf("%d", seed)
+		fields["model"] = upstreamLTXModel
 	}
 	if motionTips != "" {
 		fields["motion_tips"] = motionTips
@@ -248,7 +252,7 @@ func (p *Provider) submit(ctx context.Context, model string, imageBytes []byte, 
 		if err := ctx.Err(); err != nil {
 			return "", err
 		}
-		request, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/vton", bytes.NewReader(payload))
+		request, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+endpoint, bytes.NewReader(payload))
 		if err != nil {
 			return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "create submit request", err)
 		}

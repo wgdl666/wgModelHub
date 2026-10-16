@@ -117,6 +117,8 @@ func TestGetVideoStatusMapping(t *testing.T) {
 	}{
 		{"done", provider.VideoJobSucceeded},
 		{"error", provider.VideoJobFailed},
+		{"cancelled", provider.VideoJobFailed},
+		{"interrupted", provider.VideoJobFailed},
 		{"processing", provider.VideoJobRunning},
 	}
 	for _, tc := range tests {
@@ -346,13 +348,21 @@ func TestSubmitKeepsPerRequestTimingAndZeroSeed(t *testing.T) {
 	}
 }
 
-func TestSubmitVideoSendsUpstreamLTXModelField(t *testing.T) {
+func TestSubmitVideoUsesMinimalV2Contract(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseMultipartForm(1 << 20); err != nil {
 			t.Fatal(err)
 		}
-		if got := r.FormValue("model"); got != upstreamLTXModel {
-			t.Fatalf("upstream model=%q want %q", got, upstreamLTXModel)
+		if r.URL.Path != "/v2/videos/vton" {
+			t.Fatalf("path=%s", r.URL.Path)
+		}
+		for _, field := range []string{"model", "resolution", "duration", "fps", "seed", "audio", "inference_profile"} {
+			if r.Form.Has(field) {
+				t.Errorf("unexpected inference field %s", field)
+			}
+		}
+		if len(r.MultipartForm.File["image"]) != 1 {
+			t.Fatal("missing first frame")
 		}
 		w.Write([]byte(`{"job_id":"mapped"}`))
 	}))
@@ -403,13 +413,13 @@ func TestSubmitSendsTraceIDOnlyWhenSpanIsValid(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.submit(context.Background(), "ltx", []byte("image"), "prompt", "720p", "", nil); err != nil {
+	if _, err := p.submit(context.Background(), models.VWorldOutfitVideo10, []byte("image"), "prompt", "720p", "", nil); err != nil {
 		t.Fatal(err)
 	}
 	tp := sdktrace.NewTracerProvider()
 	ctx, span := tp.Tracer("test").Start(context.Background(), "modelhub.SubmitVideo")
 	defer span.End()
-	if _, err := p.submit(ctx, "ltx", []byte("image"), "prompt", "720p", "", nil); err != nil {
+	if _, err := p.submit(ctx, models.VWorldOutfitVideo10, []byte("image"), "prompt", "720p", "", nil); err != nil {
 		t.Fatal(err)
 	}
 	want := span.SpanContext().TraceID().String()

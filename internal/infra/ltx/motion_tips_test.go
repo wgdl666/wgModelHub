@@ -16,14 +16,14 @@ func TestSubmitVideoMotionTipsMultipart(t *testing.T) {
 	for _, tc := range []struct {
 		name, traits, want string
 	}{
-		{"per outfit", `{"motion_tips":"  缓慢侧转 30°\n保持全身入画  ","other":"ignored"}`, "缓慢侧转 30°\n保持全身入画"},
+		{"per outfit", `{"motion_tips":"  缓慢侧转 30°\n保持全身入画  ","other":"ignored"}`, "  缓慢侧转 30°\n保持全身入画  "},
 		{"legacy", "", ""},
 		{"unrelated traits", `{"other":"ignored"}`, ""},
-		{"blank", `{"motion_tips":"  "}`, ""},
+		{"blank", `{"motion_tips":"  "}`, "  "},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path != "/vton" {
+				if r.URL.Path != "/v2/videos/vton" {
 					t.Errorf("path=%s", r.URL.Path)
 				}
 				if err := r.ParseMultipartForm(1 << 20); err != nil {
@@ -38,7 +38,7 @@ func TestSubmitVideoMotionTipsMultipart(t *testing.T) {
 				if tc.want == "" && len(r.MultipartForm.Value["motion_tips"]) != 0 {
 					t.Error("absent motion tips must not send an empty form field")
 				}
-				if r.FormValue("prompt") != "fixed scene" || r.FormValue("model") != "ltx" {
+				if r.FormValue("prompt") != "fixed scene" || r.Form.Has("model") {
 					t.Errorf("prompt/model changed: %v", r.MultipartForm.Value)
 				}
 				file, _, err := r.FormFile("image")
