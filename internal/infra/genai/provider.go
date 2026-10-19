@@ -23,9 +23,9 @@ const defaultCachedContentTTL = time.Hour
 type Provider struct {
 	name   string
 	client *genaisdk.Client
-	// vertex 区分 Vertex Express 与 Gemini Developer API。后者同模型 ID 不得改走 Vertex global。
+	// vertex 区分 Vertex 与 Gemini Developer API。后者同模型 ID 不得改走 Vertex global。
 	vertex bool
-	// vertexGlobal 只在配置了 vertexai.project 时于初始化创建。Vertex 生图用它；文本继续用 client 的 Express 短路径。
+	// Vertex 生图固定 global；ADC 模式下与文本共用同一客户端和 token 缓存。
 	vertexGlobal *genaisdk.Client
 }
 
@@ -58,13 +58,12 @@ func NewGemini(ctx context.Context, name, apiKey, endpoint, proxyURL string) (*P
 	return &Provider{name: name, client: client}, nil
 }
 
-// NewVertexAI 以 Vertex Express API key 初始化文本客户端。
-// project 非空时同时建好 locations/global 图片客户端。SDK 不允许 APIKey 与 Project/Location 同时设置，
-// 所以 global 客户端不传 APIKey，由 vertexAPIKeyTransport 写入原来的 x-goog-api-key。不使用 ADC。
+// NewVertexAI 按配置选择身份：api_key 非空保留现网 Express；留空则要求 project 并使用运行环境 ADC。
+// ADC 下文本与生图均固定 locations/global；鉴权失败不能回退到环境变量中的 API key。
 func NewVertexAI(ctx context.Context, name, apiKey, project, proxyURL string) (*Provider, error) {
 	httpClient := telemetry.NewHTTPClient()
 	if proxyURL = strings.TrimSpace(proxyURL); proxyURL != "" {
-		// 国内 ACK 直连 Google 会 TLS 超时。代理只包这一对 Vertex 客户端，不改其他供应商。
+		// 国内 ACK 直连 Google 会 TLS 超时；ADC 换 token 与模型请求也必须共用这个代理。
 		parsed, err := url.Parse(proxyURL)
 		if err != nil || parsed.Host == "" {
 			return nil, provider.New(provider.ErrorConfiguration, name+" proxy URL is invalid")
@@ -80,7 +79,14 @@ func NewVertexAI(ctx context.Context, name, apiKey, project, proxyURL string) (*
 // 调用方必须提供带 Transport 的 httpClient；生产路径经 NewVertexAI 传入 telemetry.NewHTTPClient()。
 func newVertexAI(ctx context.Context, name, apiKey, project string, httpClient *http.Client) (*Provider, error) {
 	if strings.TrimSpace(apiKey) == "" {
-		return nil, provider.New(provider.ErrorConfiguration, name+" API key is required")
+		if strings.TrimSpace(project) == "" {
+			return nil, provider.New(provider.ErrorConfiguration, name+" vertexai.project is required for ADC when api_key is empty")
+		}
+		client, err := newADCVertexClient(ctx, name, project, httpClient)
+		if err != nil {
+			return nil, err
+		}
+		return &Provider{name: name, client: client, vertex: true, vertexGlobal: client}, nil
 	}
 	client, err := genaisdk.NewClient(ctx, &genaisdk.ClientConfig{
 		APIKey:     apiKey,
@@ -651,6 +657,11 @@ func toolOutputObject(output *modelhubv2.ToolOutput) map[string]any {
 func (p *Provider) mapError(ctx context.Context, operation string, err error) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
+	}
+	// ADC 在模型出站前已把换 token 的失败脱敏；保留配置错误分类和未调用模型标记。
+	var localError *provider.Error
+	if errors.As(err, &localError) {
+		return localError
 	}
 	var apiError genaisdk.APIError
 	if errors.As(err, &apiError) {

@@ -141,7 +141,7 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 			return provider.Set{}, err
 		}
 		// 文本和生图是同一个 Provider。Image 在启动时挂上，不读可热更新的 models。
-		// 配了 vertexai.project 时，Vertex 生图用初始化建好的 locations/global 客户端；文本仍走 Express。
+		// ADC 时两者共用 global 客户端；显式 API key 时仅文本保留 Express。
 		return provider.Set{Text: client, Image: client}, nil
 	case providerCfg.Ark != nil:
 		cfg := providerCfg.Ark

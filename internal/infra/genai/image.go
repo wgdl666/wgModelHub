@@ -13,7 +13,7 @@ import (
 func (p *Provider) GenerateImage(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
 	// Vertex 生图一律打 locations/global，不再按模型 ID 留在 Express。
 	// Express 短路径不带 location，会按调用方区域解析；gemini-2.5-flash-image 等图片模型不在 asia-southeast1，新加坡开发会 404。
-	// 文本仍走 Express。Gemini Developer API 的 vertex 为 false，同 ID 不要求 project。
+	// ADC 文本也走 global；API key 文本保持 Express。Gemini Developer API 的同 ID 不要求 project。
 	client := p.client
 	if p.vertex {
 		if p.vertexGlobal == nil {

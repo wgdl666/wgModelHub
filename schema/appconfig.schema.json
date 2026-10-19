@@ -161,9 +161,12 @@
     },
     "vertexai": {
       "type": "object",
-      "required": ["api_key"],
+      "anyOf": [
+        { "required": ["api_key"], "properties": { "api_key": { "pattern": "\\S" } } },
+        { "required": ["project"] }
+      ],
       "properties": {
-        "api_key": { "type": "string", "minLength": 1 },
+        "api_key": { "type": "string" },
         "project": { "type": "string", "minLength": 1 },
         "proxy_url": { "type": "string", "minLength": 1 }
       }

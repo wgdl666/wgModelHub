@@ -278,7 +278,7 @@ func TestValidateRejectsPhotoroomWithoutAPIKey(t *testing.T) {
 	}
 }
 
-func TestValidateRejectsVertexAIWithoutAPIKey(t *testing.T) {
+func TestValidateRejectsVertexAIWithoutAPIKeyOrProject(t *testing.T) {
 	cfg := validConfig()
 	cfg.Providers["vertex_chat"] = ProviderConfig{
 		Models:   []string{models.Gemini20Flash001},
@@ -289,7 +289,7 @@ func TestValidateRejectsVertexAIWithoutAPIKey(t *testing.T) {
 	}
 }
 
-func TestValidateRejectsVertexAIBlankAPIKey(t *testing.T) {
+func TestValidateRejectsVertexAIBlankAPIKeyWithoutProject(t *testing.T) {
 	cfg := validConfig()
 	cfg.Providers["vertex_chat"] = ProviderConfig{
 		Models:   []string{models.Gemini20Flash001},
@@ -357,6 +357,25 @@ func TestValidateAcceptsVertexAIAPIKeyOnly(t *testing.T) {
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestValidateVertexADCRequiresExplicitProject(t *testing.T) {
+	for _, tc := range []struct {
+		project string
+		valid   bool
+	}{
+		{"wgdl-489102", true}, {"686930556106", true}, {"", false}, {" ", false}, {"123/global", false},
+	} {
+		t.Run(tc.project, func(t *testing.T) {
+			cfg := validConfig()
+			cfg.Providers["vertex"] = ProviderConfig{
+				Models: []string{models.GeminiNanoBanana21}, VertexAI: &VertexAIProviderConfig{Project: tc.project},
+			}
+			if err := cfg.Validate(); (err == nil) != tc.valid {
+				t.Fatalf("ADC project %q valid=%v error=%v", tc.project, tc.valid, err)
+			}
+		})
 	}
 }
 

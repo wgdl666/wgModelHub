@@ -271,3 +271,21 @@ func TestBuildGoogleRerankUsesADC(t *testing.T) {
 		t.Fatal("must reject unavailable ADC")
 	}
 }
+
+func TestBuildVertexAndGoogleRerankShareADCFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "adc.json")
+	if err := os.WriteFile(path, []byte(`{"type":"authorized_user","client_id":"test","client_secret":"test","refresh_token":"test"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", path)
+	sets, err := Build(context.Background(), config.Config{Providers: map[string]config.ProviderConfig{
+		"vertex": {Models: []string{models.Gemini25Flash, models.GeminiNanoBanana21}, VertexAI: &config.VertexAIProviderConfig{Project: "test-project"}},
+		"rerank": {Models: []string{models.GoogleSemanticRankerDefault005}, GoogleRerank: &config.GoogleRerankProviderConfig{Project: "test-project"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sets["vertex"].Text == nil || sets["vertex"].Image == nil || sets["rerank"].Text == nil {
+		t.Fatal("same ADC file must build Vertex text/image and Google rerank")
+	}
+}

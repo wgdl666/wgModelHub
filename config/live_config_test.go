@@ -566,6 +566,15 @@ func TestVertexProjectChangeRequiresRestartButModelHotAddDoesNot(t *testing.T) {
 	if len(fields) != 1 || fields[0] != "providers" {
 		t.Fatalf("project change fields=%v", fields)
 	}
+
+	adc := cloneConfig(initial)
+	adc.Providers["vertex_chat"].VertexAI.APIKey = ""
+	if err := adc.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if fields := RestartRequiredFields(initial, adc); len(fields) != 1 || fields[0] != "providers" {
+		t.Fatalf("API key to ADC requires restart, fields=%v", fields)
+	}
 }
 
 func cloneConfig(cfg Config) Config {

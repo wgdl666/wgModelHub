@@ -134,16 +134,12 @@ type GoogleRerankProviderConfig struct {
 	ProxyURL string `yaml:"proxy_url"`
 }
 
-// VertexAIProviderConfig 使用 Vertex Express API key。
-// 文本走 aiplatform.googleapis.com 的 publishers 短路径，不带 project。
-// Project 服务全部 Vertex 生图：这些请求打 locations/global。官方 Express 短路径会落到调用方区域。
-// SDK 不允许 APIKey 与 Project/Location 同时设置，所以 global 客户端另建，密钥仍是这把 api_key，不走 ADC。
-// Location 固定 global，不进配置。缺 project 时 Vertex 生图在请求时返回配置错误，不出站。文本仍走 Express。
-// ProxyURL 可选。国内 ACK 直连 aiplatform.googleapis.com 会 TLS 超时，需要复用环境里已有的 HTTP 代理；
-// 留空则直连，美东路演保持这条路径。
+// VertexAIProviderConfig 的 api_key 留空时走 ADC，身份凭据由运行环境提供，可与 google_rerank 共用。
+// ADC 的文本/生图均要求 project，固定 locations/global；代理同时用于换 token 和模型调用。
+// 现网显式 api_key 保留 Express 文本/global 生图；两种模式由配置选择，不做鉴权失败回退。
 type VertexAIProviderConfig struct {
-	APIKey string `yaml:"api_key"`
-	// Project 是 Vertex 项目编号或 ID。空表示 Vertex 生图不可用，文本仍走 Express 短路径。
+	APIKey string `yaml:"api_key,omitempty"`
+	// Project 是 Vertex 项目编号或 ID；ADC 模式必填，API key 模式仅生图需要。
 	Project string `yaml:"project"`
 	// ProxyURL 是已有 HTTP 代理。空表示直连。
 	ProxyURL string `yaml:"proxy_url"`
@@ -858,10 +854,10 @@ func validateProvider(name string, provider ProviderConfig) error {
 			return fmt.Errorf("provider %s api_key is required", name)
 		}
 	case provider.VertexAI != nil:
-		if strings.TrimSpace(provider.VertexAI.APIKey) == "" {
-			return fmt.Errorf("provider %s api_key is required", name)
+		if strings.TrimSpace(provider.VertexAI.APIKey) == "" && provider.VertexAI.Project == "" {
+			return fmt.Errorf("provider %s vertexai.project is required for ADC when api_key is empty", name)
 		}
-		// project 可选。只配 api_key 的文本 Express 仍合法。
+		// API key 文本不要求 project；ADC 的项目必须在 YAML 显式给出，不能从开发者环境中猜测。
 		// 不按 models 是否含 Nano Banana 2.1 强制 project：模型列表可热添加，客户端在启动时已经建好。
 		project := provider.VertexAI.Project
 		if project != "" && (strings.TrimSpace(project) != project || strings.ContainsAny(project, "/ \t")) {

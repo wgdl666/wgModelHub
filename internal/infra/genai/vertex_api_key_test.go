@@ -65,12 +65,12 @@ func (t *vertexRecordingTransport) RoundTrip(req *http.Request) (*http.Response,
 	}, nil
 }
 
-func TestNewVertexAIRequiresAPIKey(t *testing.T) {
+func TestNewVertexAIRequiresProjectWithoutAPIKey(t *testing.T) {
 	if _, err := NewVertexAI(context.Background(), "vertex", "", "", ""); err == nil {
-		t.Fatal("expected empty api_key error")
+		t.Fatal("expected ADC project error")
 	}
 	if _, err := NewVertexAI(context.Background(), "vertex", "  ", "", ""); err == nil {
-		t.Fatal("expected blank api_key error")
+		t.Fatal("expected ADC project error")
 	}
 }
 
