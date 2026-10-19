@@ -30,6 +30,7 @@ func TestCategoryOfKnownIDs(t *testing.T) {
 		{Qwen3VLPlus, CategoryMultimodal},
 		{Qwen3VLEmbedding, CategoryEmbedding},
 		{Qwen37TextRerank, CategoryRerank},
+		{GoogleSemanticRankerDefault005, CategoryRerank},
 		{FacebodyCompareFace, CategoryFaceCompare},
 		{RekognitionDetectFaces, CategoryFaceDetect},
 		{RekognitionFaceLibrary, CategoryFaceLibrary},

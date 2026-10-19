@@ -408,3 +408,13 @@ providers:
 		t.Fatal("two weiguang video instances must be rejected")
 	}
 }
+
+func TestGoogleRerankChannelUsesRankingHost(t *testing.T) {
+	id, err := Of(config.ProviderConfig{GoogleRerank: &config.GoogleRerankProviderConfig{Project: "test-project", ProxyURL: "http://proxy.internal:1081"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id.Host != "discoveryengine.googleapis.com" || id.Channel != "Vertex AI" || id.Protocol != "google_rerank" {
+		t.Fatalf("identity=%+v", id)
+	}
+}

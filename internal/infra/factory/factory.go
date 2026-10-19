@@ -31,6 +31,7 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/infra/fashion"
 	"github.com/wgdl666/wgModelHub/internal/infra/geminivideo"
 	"github.com/wgdl666/wgModelHub/internal/infra/genai"
+	"github.com/wgdl666/wgModelHub/internal/infra/googlererank"
 	"github.com/wgdl666/wgModelHub/internal/infra/humanparser"
 	"github.com/wgdl666/wgModelHub/internal/infra/humanyolo"
 	"github.com/wgdl666/wgModelHub/internal/infra/imageseg"
@@ -335,6 +336,10 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 			return provider.Set{}, err
 		}
 		return provider.Set{Text: client}, nil
+	case providerCfg.GoogleRerank != nil:
+		cfg := providerCfg.GoogleRerank
+		client, err := googlererank.New(name, cfg.Project, cfg.ProxyURL)
+		return provider.Set{Text: client}, err
 	case providerCfg.MixedbreadRerank != nil:
 		cfg := providerCfg.MixedbreadRerank
 		client, err := mixedbreadrerank.New(name, cfg.BaseURL, cfg.APIKey)

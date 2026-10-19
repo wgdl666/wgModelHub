@@ -333,6 +333,13 @@ providers:
     cohere_rerank:
       base_url: https://api.cohere.com
       api_key: "${COHERE_API_KEY}"
+  Vertex_AI_google_rerank:
+    models: [semantic-ranker-default-005]
+    google_rerank:
+      project: "your-google-cloud-project"
+      # ADC 从 GOOGLE_APPLICATION_CREDENTIALS 指向的服务账号/联合身份文件读取，不填 API key/token。
+      # 国内按部署环境填写已有代理；token 交换与 Ranking API 共用该出口。
+      # proxy_url: http://your-existing-proxy:1081
   Mixedbread:
     models: [mixedbread-ai/mxbai-rerank-v3.1-listwise]
     mixedbread_rerank:

@@ -66,11 +66,12 @@ var categories = map[string]Category{
 	CohereEmbedV4:        CategoryEmbedding,
 	CohereEmbedV4Bedrock: CategoryEmbedding,
 
-	Qwen37TextRerank:            CategoryRerank,
-	Qwen3VLRerank:               CategoryRerank,
-	CohereRerankV35:             CategoryRerank,
-	CohereRerankV35Official:     CategoryRerank,
-	MixedbreadRerankV31Listwise: CategoryRerank,
+	Qwen37TextRerank:               CategoryRerank,
+	Qwen3VLRerank:                  CategoryRerank,
+	CohereRerankV35:                CategoryRerank,
+	CohereRerankV35Official:        CategoryRerank,
+	MixedbreadRerankV31Listwise:    CategoryRerank,
+	GoogleSemanticRankerDefault005: CategoryRerank,
 
 	FacebodyCompareFace:     CategoryFaceCompare,
 	RekognitionCompareFaces: CategoryFaceCompare,

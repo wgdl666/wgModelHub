@@ -2,6 +2,8 @@ package factory
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/wgdl666/wgModelHub/config"
@@ -243,5 +245,29 @@ func TestBuildVideoProvidersAcceptZeroPollConfig(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestBuildGoogleRerankUsesADC(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "adc.json")
+	// 凭据解析只建立 token provider；构建阶段不得替测试向真实 Google 换 token。
+	if err := os.WriteFile(path, []byte(`{"type":"authorized_user","client_id":"test","client_secret":"test","refresh_token":"test"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", path)
+	sets, err := Build(context.Background(), config.Config{Providers: map[string]config.ProviderConfig{
+		"google": {Models: []string{models.GoogleSemanticRankerDefault005}, GoogleRerank: &config.GoogleRerankProviderConfig{Project: "test-project"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sets["google"].Text == nil || sets["google"].Image != nil {
+		t.Fatal("google rerank must expose only text Generate")
+	}
+	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", filepath.Join(t.TempDir(), "missing.json"))
+	if _, err := Build(context.Background(), config.Config{Providers: map[string]config.ProviderConfig{
+		"google": {GoogleRerank: &config.GoogleRerankProviderConfig{Project: "test-project"}},
+	}}); err == nil {
+		t.Fatal("must reject unavailable ADC")
 	}
 }
