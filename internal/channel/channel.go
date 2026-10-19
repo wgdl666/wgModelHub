@@ -440,6 +440,9 @@ func endpoint(provider config.ProviderConfig) (protocol, raw string, err error) 
 			return "", "", fmt.Errorf("cohere_rerank base_url is required")
 		}
 		return "cohere_rerank", provider.CohereRerank.BaseURL, nil
+	case provider.GoogleRerank != nil:
+		// OAuth token 交换和出网代理不算模型渠道，目标始终是 Discovery Engine。
+		return "google_rerank", "https://discoveryengine.googleapis.com", nil
 	case provider.MixedbreadRerank != nil:
 		if strings.TrimSpace(provider.MixedbreadRerank.BaseURL) == "" {
 			return "", "", fmt.Errorf("mixedbread_rerank base_url is required")
@@ -575,6 +578,7 @@ var knownHosts = map[string]string{
 	"vg-api.aig-ai.com":                    "AIG VG",
 	"api.ominilink.ai":                     "Ominilink",
 	"generativelanguage.googleapis.com":    "Gemini Developer API",
+	"discoveryengine.googleapis.com":       "Vertex AI",
 	"aiplatform.googleapis.com":            "Vertex AI",
 	"dashscope.aliyuncs.com":               "阿里云百炼",
 	"ark.cn-beijing.volces.com":            "火山方舟",

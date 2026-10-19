@@ -89,6 +89,7 @@
         "bedrock_rerank": { "$ref": "#/definitions/bedrockRerank" },
         "cohere_rerank": { "$ref": "#/definitions/cohereRerank" },
         "mixedbread_rerank": { "$ref": "#/definitions/mixedbreadRerank" },
+        "google_rerank": { "$ref": "#/definitions/googleRerank" },
         "facebody_detect": { "$ref": "#/definitions/facebodyDetect" },
         "facebody_library": { "$ref": "#/definitions/facebodyLibrary" },
         "rekognition_faces": { "$ref": "#/definitions/rekognitionFaces" },
@@ -133,6 +134,7 @@
         { "required": ["bedrock_rerank"] },
         { "required": ["cohere_rerank"] },
         { "required": ["mixedbread_rerank"] },
+        { "required": ["google_rerank"] },
         { "required": ["facebody_detect"] },
         { "required": ["facebody_library"] },
         { "required": ["rekognition_faces"] },
@@ -453,6 +455,14 @@
       "properties": {
         "base_url": { "type": "string", "minLength": 1 },
         "api_key": { "type": "string", "minLength": 1 }
+      }
+    },
+    "googleRerank": {
+      "type": "object",
+      "required": ["project"],
+      "properties": {
+        "project": { "type": "string", "minLength": 1 },
+        "proxy_url": { "type": "string", "minLength": 1 }
       }
     },
     "mixedbreadRerank": {

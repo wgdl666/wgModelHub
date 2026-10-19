@@ -36,7 +36,7 @@ func TestAppConfigSchemaContract(t *testing.T) {
 		"dashscopeVideo", "ominilinkVideo", "geminiVideo", "arkVideo", "photoroom",
 		"minimaxTts", "elevenlabsTts", "segmentPerson", "vworldImage",
 		"humanYolo", "clothYolo", "faceSim", "humanParser", "rekognitionDetect", "facebodyCompare", "rekognitionCompare",
-		"dashscopeEmbedding", "cohereEmbedding", "bedrockEmbedding", "dashscopeRerank", "bedrockRerank", "cohereRerank", "mixedbreadRerank",
+		"dashscopeEmbedding", "cohereEmbedding", "bedrockEmbedding", "dashscopeRerank", "bedrockRerank", "cohereRerank", "mixedbreadRerank", "googleRerank",
 		"facebodyDetect", "facebodyLibrary", "rekognitionFaces", "rekognitionLibrary",
 		"asrAPIKey", "asrDashscope", "asrVolcengine", "asrAliyun", "asrTencent",
 	} {
@@ -75,7 +75,7 @@ func TestAppConfigSchemaContract(t *testing.T) {
 		"cloth_yolo":   false, "facesim": false, "human_yolo": false, "human_parser": false, "rekognition_detect": false,
 		"facebody_compare": false, "rekognition_compare": false,
 		"dashscope_embedding": false, "cohere_embedding": false, "bedrock_embedding": false,
-		"dashscope_rerank": false, "bedrock_rerank": false, "cohere_rerank": false, "mixedbread_rerank": false,
+		"dashscope_rerank": false, "bedrock_rerank": false, "cohere_rerank": false, "mixedbread_rerank": false, "google_rerank": false,
 		"facebody_detect": false, "facebody_library": false,
 		"rekognition_faces": false, "rekognition_library": false,
 	}
@@ -103,7 +103,7 @@ func TestAppConfigSchemaContract(t *testing.T) {
 		"gemini", "vertexai", "ark", "openai", "ltx", "dashscopeVideo",
 		"ominilinkVideo", "geminiVideo", "arkVideo", "photoroom", "segmentPerson", "vworldImage",
 		"humanYolo", "clothYolo", "faceSim", "humanParser", "rekognitionDetect", "facebodyCompare", "rekognitionCompare",
-		"dashscopeEmbedding", "cohereEmbedding", "bedrockEmbedding", "dashscopeRerank", "bedrockRerank", "cohereRerank", "mixedbreadRerank",
+		"dashscopeEmbedding", "cohereEmbedding", "bedrockEmbedding", "dashscopeRerank", "bedrockRerank", "cohereRerank", "mixedbreadRerank", "googleRerank",
 		"facebodyDetect", "facebodyLibrary", "rekognitionFaces", "rekognitionLibrary", "logfire", "database",
 		"asrAPIKey", "asrDashscope", "asrVolcengine", "asrAliyun", "asrTencent",
 	} {

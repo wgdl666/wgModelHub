@@ -109,6 +109,8 @@ type ProviderConfig struct {
 	CohereRerank *CohereRerankProviderConfig `yaml:"cohere_rerank"`
 	// MixedbreadRerank 承接 mixedbread-ai/mxbai-rerank-v3.1-listwise。没有 instruct 字段，query 里的颜色词在供应商内收成主色检索句。
 	MixedbreadRerank *MixedbreadRerankProviderConfig `yaml:"mixedbread_rerank"`
+	// GoogleRerank 走独立 Ranking API，身份来自 ADC，不复用 Vertex Express API key。
+	GoogleRerank *GoogleRerankProviderConfig `yaml:"google_rerank"`
 	// FacebodyDetect 承接 DetectFace，只返回脸框。
 	FacebodyDetect *FacebodyDetectProviderConfig `yaml:"facebody_detect"`
 	// FacebodyLibrary 承接人脸库查重、录脸、删脸。database 是 Facebody 库名。
@@ -122,6 +124,13 @@ type ProviderConfig struct {
 type GeminiProviderConfig struct {
 	APIKey   string `yaml:"api_key"`
 	BaseURL  string `yaml:"base_url"`
+	ProxyURL string `yaml:"proxy_url"`
+}
+
+// GoogleRerankProviderConfig 固定 global Ranking API；服务账号/联合身份由运行环境 ADC 提供。
+type GoogleRerankProviderConfig struct {
+	Project string `yaml:"project"`
+	// 国内 token 交换和排序请求都需要走同一个已有 HTTP 代理。
 	ProxyURL string `yaml:"proxy_url"`
 }
 
@@ -1040,6 +1049,17 @@ func validateProvider(name string, provider ProviderConfig) error {
 		if strings.TrimSpace(item.BaseURL) == "" || strings.TrimSpace(item.APIKey) == "" {
 			return fmt.Errorf("provider %s cohere rerank base_url and api_key are required", name)
 		}
+	case provider.GoogleRerank != nil:
+		item := provider.GoogleRerank
+		if strings.TrimSpace(item.Project) == "" || url.PathEscape(item.Project) != item.Project {
+			return fmt.Errorf("provider %s google_rerank.project is required and must be a project ID or number", name)
+		}
+		if item.ProxyURL != "" {
+			proxy, err := url.Parse(item.ProxyURL)
+			if err != nil || proxy.Host == "" || (proxy.Scheme != "http" && proxy.Scheme != "https") {
+				return fmt.Errorf("provider %s google_rerank.proxy_url is invalid", name)
+			}
+		}
 	case provider.MixedbreadRerank != nil:
 		item := provider.MixedbreadRerank
 		if strings.TrimSpace(item.BaseURL) == "" || strings.TrimSpace(item.APIKey) == "" {
@@ -1186,6 +1206,9 @@ func countConcreteProviders(provider ProviderConfig) int {
 	if provider.MixedbreadRerank != nil {
 		n++
 	}
+	if provider.GoogleRerank != nil {
+		n++
+	}
 	if provider.FacebodyDetect != nil {
 		n++
 	}
@@ -1260,7 +1283,7 @@ func ProviderSupports(provider ProviderConfig, capability string) bool {
 		return capability == CapabilityText || capability == CapabilityImage
 	case provider.ImageSeg != nil, provider.Photoroom != nil, provider.SegmentPerson != nil, provider.VWorldImage != nil:
 		return capability == CapabilityImage
-	case provider.Fashion != nil, provider.ClothYOLO != nil, provider.FaceSim != nil, provider.HumanYOLO != nil, provider.HumanParser != nil, provider.RekognitionDetect != nil, provider.FacebodyCompare != nil, provider.RekognitionCompare != nil, provider.DashScopeEmbedding != nil, provider.CohereEmbedding != nil, provider.BedrockEmbedding != nil, provider.DashScopeRerank != nil, provider.BedrockRerank != nil, provider.CohereRerank != nil, provider.MixedbreadRerank != nil, provider.FacebodyDetect != nil, provider.FacebodyLibrary != nil, provider.RekognitionFaces != nil, provider.RekognitionLibrary != nil:
+	case provider.Fashion != nil, provider.ClothYOLO != nil, provider.FaceSim != nil, provider.HumanYOLO != nil, provider.HumanParser != nil, provider.RekognitionDetect != nil, provider.FacebodyCompare != nil, provider.RekognitionCompare != nil, provider.DashScopeEmbedding != nil, provider.CohereEmbedding != nil, provider.BedrockEmbedding != nil, provider.DashScopeRerank != nil, provider.BedrockRerank != nil, provider.CohereRerank != nil, provider.MixedbreadRerank != nil, provider.GoogleRerank != nil, provider.FacebodyDetect != nil, provider.FacebodyLibrary != nil, provider.RekognitionFaces != nil, provider.RekognitionLibrary != nil:
 		return capability == CapabilityText
 	case provider.VertexAI != nil:
 		// 类型能力不读 models。该列表可热更新，不能用来决定进程里有没有生图客户端。

@@ -170,3 +170,53 @@ go run ./cmd/g6-smoke -image /path/to/portrait.jpg -out artifacts/g6-smoke
 `models.Flux2Klein9B` 当前仅支持带参考图的 image edit（i2i），须绑定独立 OpenAI Images 实例。
 `models.GPTImage2` / `models.GPTImage25Flare` / `models.GPTImage25Sunburst` 走 OpenAI Images API（generations/edits），示例与审计目标实例键都是 `AIG_openai`（`https://api.aig-ai.com/v1`），不能并入 Gemini generateContent 生图实例。
 `models.GeminiNanoBanana21`（`gemini-nano-banana-2.1`）走 Vertex 的现有 Generate 图片链路，示例实例是 `Vertex_AI_nano_banana`。调用方使用 `request.model` 加 `OutputSpec.image`。分辨率传 `1K` / `2K` / `4K`。Vertex 生图一律打 `locations/global`，不按模型 ID 留在 Express。官方 Express 短路径不带 project，会落到调用方区域，所以生图实例必须显式配置 `vertexai.project`；生图从第一次就打 `projects/{project}/locations/global`，密钥仍是原来的 API key，不走 ADC。缺 project 时 Vertex 生图返回配置错误，不出站。文本请求保持无 project 的 Express 短路径。`vertexai.proxy_url` 可空；只在直连 Google 不通的环境填写已有 HTTP 代理。思考推荐 `MINIMAL` / `MEDIUM` / `HIGH`；`LOW` 会原样下发，由上游拒绝。官方不支持 `temperature`，设置了会原样下发并返回上游错误。
+
+## Google 文本精排（Ranking API）
+
+Google 文本精排通过独立 `google_rerank` provider 调用 Discovery Engine
+`rankingConfigs/default_ranking_config:rank`，固定 `locations/global`。它继续使用已有
+`Generate` RPC 和 `output.text`，不经过 Vertex 的 Gemini `generateContent`，也不使用 Express API key。
+
+```yaml
+providers:
+  Vertex_AI_google_rerank:
+    models: [semantic-ranker-default-005, semantic-ranker-fast-005]
+    google_rerank:
+      project: "your-google-cloud-project"
+      # 国内填写已有出口；换 token 和 Ranking API 共用该代理。
+      # proxy_url: http://your-existing-proxy:1081
+```
+
+AppConfig / Nacos 的 `providers.<实例>.models` 控制开放哪些真实模型 ID；调用方通过
+`request.model` 选择其中一个，适配器原样传给 Google。仅调整列表可热更新，不重建客户端。
+例如请求 `semantic-ranker-fast-005` 就调用快速版，未在列表声明的模型在出站前拒绝。
+也已注册 Google 官方的 `semantic-ranker-default@latest`、`semantic-ranker-fast@latest`；
+需要跟随 Google 更新时再将相应 ID 加入列表。列表不设置调用方默认模型，也不将旧 ID 改写为新 ID。
+
+用户消息的文本 part 放 JSON：
+
+```json
+{"query":"白色通勤衬衫","documents":["黑色休闲裤","白色长袖通勤衬衫"],"instruct":"可省略"}
+```
+
+返回文本格式保持 `{"results":[{"index":1,"relevance_score":0.9},{"index":0,"relevance_score":0.1}]}`。
+下标对应输入 `documents`；顺序沿用 Google 的相关性排序，分数由 Google 返回，示例值不代表线上打分。
+Google 不支持 `instruct`，此字段不转发、不拼入 query。每次请求接受 1–1000 段非空文本，
+请求所有候选的分数；记录超长按 Google 模型的 token 限制截断。流式请求发送一段完整结果和唯一的 metadata final。
+
+上线前必须启用 `discoveryengine.googleapis.com`，并给服务身份授予
+`discoveryengine.rankingConfigs.rank` 及配额项目的 `serviceusage.services.use` 权限。
+provider 使用 Google 标准 ADC（Application Default Credentials）自动缓存、刷新 OAuth access token。
+ACK 中应将专用服务账号凭据或 Workload Identity Federation 配置以只读文件挂载，设置
+`GOOGLE_APPLICATION_CREDENTIALS=/path/to/credentials.json`。联合身份文件引用的 Kubernetes token
+也必须挂载并可轮换。凭据文件对容器 UID `10001` 可读；私钥、用户 refresh token、access token
+不得提交仓库，也不填进 Nacos 模型配置。开发可另行执行 `gcloud auth application-default login`；
+普通 `gcloud auth login` 并不会自动为 Go 客户端提供 ADC。
+
+凭据缺失会在启动建立 provider 时返回配置错误；token 交换与模型请求共享取消和总计 20 秒超时。
+API key 不会作为鉴权降级路径。项目、代理或 provider 增删须滚动重启；模型列表/路由仍按现有规则热更新。
+本变更不自动创建云端账号、修改 Nacos 或部署；审核后配置运行身份，再通过 `workspace` 正式发布并验收。
+
+参考：[Google Ranking API](https://docs.cloud.google.com/generative-ai-app-builder/docs/ranking)、
+[ADC](https://docs.cloud.google.com/docs/authentication/application-default-credentials)、
+[Kubernetes 工作负载身份联合](https://docs.cloud.google.com/iam/docs/workload-identity-federation-with-kubernetes)。
