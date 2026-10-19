@@ -98,7 +98,7 @@ func newVertexADCTestProvider(t *testing.T, lifetime int) (*Provider, *vertexADC
 	t.Setenv("GOOGLE_CLOUD_PROJECT", "environment-project")
 	t.Setenv("GOOGLE_CLOUD_LOCATION", "us-central1")
 	transport := &vertexADCTestTransport{testing: t, lifetime: lifetime}
-	p, err := newVertexAI(context.Background(), "vertex", "", "test-project", &http.Client{Transport: transport})
+	p, err := newVertexAI(context.Background(), "vertex", "test-project", &http.Client{Transport: transport})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,12 +178,12 @@ func TestVertexADCErrorsDoNotLeakOrCallModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", path)
-	_, err = NewVertexAI(context.Background(), "vertex", "", "test-project", "")
+	_, err = NewVertexAI(context.Background(), "vertex", "test-project", "")
 	if provider.Kind(err) != provider.ErrorConfiguration || strings.Contains(err.Error(), "private-credential-canary") {
 		t.Fatalf("invalid ADC not sanitized: %v", err)
 	}
 	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", filepath.Join(t.TempDir(), "missing.json"))
-	if _, err := NewVertexAI(context.Background(), "vertex", "", "test-project", ""); provider.Kind(err) != provider.ErrorConfiguration {
+	if _, err := NewVertexAI(context.Background(), "vertex", "test-project", ""); provider.Kind(err) != provider.ErrorConfiguration {
 		t.Fatalf("missing ADC must fail startup: %v", err)
 	}
 }
@@ -212,7 +212,7 @@ func TestVertexADCProxyCoversTokenAndModel(t *testing.T) {
 	}))
 	defer proxy.Close()
 	vertexServiceAccountADC(t, "http://token.fixture.invalid/token")
-	p, err := NewVertexAI(context.Background(), "vertex", "", "test-project", proxy.URL)
+	p, err := NewVertexAI(context.Background(), "vertex", "test-project", proxy.URL)
 	if err != nil {
 		t.Fatal(err)
 	}

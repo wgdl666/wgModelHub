@@ -109,7 +109,7 @@ type ProviderConfig struct {
 	CohereRerank *CohereRerankProviderConfig `yaml:"cohere_rerank"`
 	// MixedbreadRerank 承接 mixedbread-ai/mxbai-rerank-v3.1-listwise。没有 instruct 字段，query 里的颜色词在供应商内收成主色检索句。
 	MixedbreadRerank *MixedbreadRerankProviderConfig `yaml:"mixedbread_rerank"`
-	// GoogleRerank 走独立 Ranking API，身份来自 ADC，不复用 Vertex Express API key。
+	// GoogleRerank 走独立 Ranking API，可与 Vertex 共用运行环境 ADC。
 	GoogleRerank *GoogleRerankProviderConfig `yaml:"google_rerank"`
 	// FacebodyDetect 承接 DetectFace，只返回脸框。
 	FacebodyDetect *FacebodyDetectProviderConfig `yaml:"facebody_detect"`
@@ -134,12 +134,10 @@ type GoogleRerankProviderConfig struct {
 	ProxyURL string `yaml:"proxy_url"`
 }
 
-// VertexAIProviderConfig 的 api_key 留空时走 ADC，身份凭据由运行环境提供，可与 google_rerank 共用。
-// ADC 的文本/生图均要求 project，固定 locations/global；代理同时用于换 token 和模型调用。
-// 现网显式 api_key 保留 Express 文本/global 生图；两种模式由配置选择，不做鉴权失败回退。
+// VertexAIProviderConfig 统一使用运行环境 ADC，可与 google_rerank 共用凭据文件。
+// 文本/生图均要求 project，固定 locations/global；代理同时用于换 token 和模型调用。
 type VertexAIProviderConfig struct {
-	APIKey string `yaml:"api_key,omitempty"`
-	// Project 是 Vertex 项目编号或 ID；ADC 模式必填，API key 模式仅生图需要。
+	// Project 是 Vertex 项目编号或 ID，不能从开发者环境中猜测。
 	Project string `yaml:"project"`
 	// ProxyURL 是已有 HTTP 代理。空表示直连。
 	ProxyURL string `yaml:"proxy_url"`
@@ -854,11 +852,11 @@ func validateProvider(name string, provider ProviderConfig) error {
 			return fmt.Errorf("provider %s api_key is required", name)
 		}
 	case provider.VertexAI != nil:
-		if strings.TrimSpace(provider.VertexAI.APIKey) == "" && provider.VertexAI.Project == "" {
-			return fmt.Errorf("provider %s vertexai.project is required for ADC when api_key is empty", name)
+		if strings.TrimSpace(provider.VertexAI.Project) == "" {
+			return fmt.Errorf("provider %s vertexai.project is required for ADC", name)
 		}
-		// API key 文本不要求 project；ADC 的项目必须在 YAML 显式给出，不能从开发者环境中猜测。
-		// 不按 models 是否含 Nano Banana 2.1 强制 project：模型列表可热添加，客户端在启动时已经建好。
+		// ADC 的项目必须在 YAML 显式给出，不能从开发者环境中猜测。
+		// 模型列表可热添加，不能让 models 决定初始化身份或客户端。
 		project := provider.VertexAI.Project
 		if project != "" && (strings.TrimSpace(project) != project || strings.ContainsAny(project, "/ \t")) {
 			return fmt.Errorf("provider %s vertexai.project is invalid", name)

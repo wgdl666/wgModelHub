@@ -173,7 +173,7 @@ go run ./cmd/g6-smoke -image /path/to/portrait.jpg -out artifacts/g6-smoke
 
 ### Vertex 文本、生图与 Google rerank 统一 ADC
 
-`vertexai.api_key` 留空或省略时使用 ADC，`vertexai.project` 必填。文本、流式文本、缓存创建和生图共用一个 `locations/global` Vertex 客户端，Google SDK 的鉴权库自动获取、缓存和刷新 access token。模型名、输入输出协议、工具和生图参数保持原样。
+Vertex 只使用 ADC，不再支持 `vertexai.api_key`，`vertexai.project` 必填。文本、流式文本、缓存创建和生图共用一个 `locations/global` Vertex 客户端，Google SDK 的鉴权库自动获取、缓存和刷新 access token。模型名、输入输出协议、工具和生图参数保持原样。
 
 ```yaml
 providers:
@@ -188,7 +188,7 @@ providers:
 
 统一身份需要项目启用 `aiplatform.googleapis.com`，并给服务账号授予 `aiplatform.endpoints.predict` 和配额项目的 `serviceusage.services.use`；调用缓存创建 RPC 时还需要 `aiplatform.cachedContents.create`。Google rerank 的 `discoveryengine.rankingConfigs.rank` 不能替代 Vertex 权限。
 
-现网显式配置 `api_key` 的实例继续使用原有 API key：文本保持 Express 短路径，生图仍走项目的 global 端点。迁移到 ADC 时，先提供运行时凭据和权限、更新线上 AppConfig Validator 的 Vertex 规则，再从 provider 配置中删除 `api_key` 并显式配置 `project`，通过正式发布入口滚动重启。仅修改仓库 schema 不会自动更新线上 Validator。身份/项目/代理变化不能热更新；缺凭据会在初始化失败，换 token 失败不会改用环境变量中的 API key。
+这是一次需要同步运行环境的鉴权迁移：发布前先提供运行时凭据和 Vertex 权限，更新线上 AppConfig Validator 的 Vertex 规则，再从所有 Vertex 实例配置中删除 `api_key` 并显式配置 `project`，通过正式发布入口滚动重启。仅修改仓库 schema 不会自动更新线上 Validator。旧的 API key 配置不能继续提供 Vertex 鉴权；没有项目或 ADC 凭据时启动失败。项目/代理变化不能热更新；模型调用不会使用 `GOOGLE_API_KEY` 或 `GEMINI_API_KEY` 环境变量中的 key。
 
 参考：[Vertex ADC](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/start/gcp-auth)、[Vertex IAM 权限](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/access-control)。
 
@@ -196,7 +196,7 @@ providers:
 
 Google 文本精排通过独立 `google_rerank` provider 调用 Discovery Engine
 `rankingConfigs/default_ranking_config:rank`，固定 `locations/global`。它继续使用已有
-`Generate` RPC 和 `output.text`，不经过 Vertex 的 Gemini `generateContent`，也不使用 Express API key。
+`Generate` RPC 和 `output.text`，不经过 Vertex 的 Gemini `generateContent`，身份与 Vertex 一样使用运行环境 ADC。
 
 ```yaml
 providers:

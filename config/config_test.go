@@ -278,39 +278,28 @@ func TestValidateRejectsPhotoroomWithoutAPIKey(t *testing.T) {
 	}
 }
 
-func TestValidateRejectsVertexAIWithoutAPIKeyOrProject(t *testing.T) {
+func TestValidateRejectsVertexAIWithoutProject(t *testing.T) {
 	cfg := validConfig()
 	cfg.Providers["vertex_chat"] = ProviderConfig{
 		Models:   []string{models.Gemini20Flash001},
 		VertexAI: &VertexAIProviderConfig{},
 	}
-	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "api_key") {
-		t.Fatalf("expected api_key error, got %v", err)
-	}
-}
-
-func TestValidateRejectsVertexAIBlankAPIKeyWithoutProject(t *testing.T) {
-	cfg := validConfig()
-	cfg.Providers["vertex_chat"] = ProviderConfig{
-		Models:   []string{models.Gemini20Flash001},
-		VertexAI: &VertexAIProviderConfig{APIKey: "   "},
-	}
-	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "api_key") {
-		t.Fatalf("expected api_key error, got %v", err)
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "vertexai.project") {
+		t.Fatalf("expected project error, got %v", err)
 	}
 }
 
 func TestVertexImageCapabilityFollowsRequestedModel(t *testing.T) {
 	chat := ProviderConfig{
 		Models:   []string{models.Gemini25Flash, models.Gemini20Flash001},
-		VertexAI: &VertexAIProviderConfig{APIKey: "vertex-express-key"},
+		VertexAI: &VertexAIProviderConfig{Project: "test-project"},
 	}
 	if !ProviderSupports(chat, CapabilityText) || !ProviderSupports(chat, CapabilityImage) {
 		t.Fatal("vertex client image capability must not depend on the models list")
 	}
 	mixed := ProviderConfig{
 		Models:   []string{models.Gemini20Flash001, models.GeminiNanoBanana21},
-		VertexAI: &VertexAIProviderConfig{APIKey: "vertex-express-key"},
+		VertexAI: &VertexAIProviderConfig{Project: "test-project"},
 	}
 	if !VertexImageRequestAllowed(mixed, models.GeminiNanoBanana21, CapabilityImage) {
 		t.Fatal("image model request must be allowed")
@@ -326,7 +315,7 @@ func TestVertexImageCapabilityFollowsRequestedModel(t *testing.T) {
 	}
 	image := ProviderConfig{
 		Models:   []string{models.GeminiNanoBanana21},
-		VertexAI: &VertexAIProviderConfig{APIKey: "vertex-express-key"},
+		VertexAI: &VertexAIProviderConfig{Project: "test-project"},
 	}
 	routes := Config{Providers: map[string]ProviderConfig{
 		"vertex_chat":        chat,
@@ -346,17 +335,6 @@ func TestVertexImageCapabilityFollowsRequestedModel(t *testing.T) {
 	}
 	if routes[models.Gemini20Flash001] != "vertex_chat" {
 		t.Fatalf("gemini-2.0 route=%q", routes[models.Gemini20Flash001])
-	}
-}
-
-func TestValidateAcceptsVertexAIAPIKeyOnly(t *testing.T) {
-	cfg := validConfig()
-	cfg.Providers["vertex_chat"] = ProviderConfig{
-		Models:   []string{models.Gemini20Flash001},
-		VertexAI: &VertexAIProviderConfig{APIKey: "vertex-express-key"},
-	}
-	if err := cfg.Validate(); err != nil {
-		t.Fatal(err)
 	}
 }
 
@@ -383,7 +361,7 @@ func TestValidateAcceptsVertexProjectAndRejectsBlank(t *testing.T) {
 	cfg := validConfig()
 	cfg.Providers["vertex_nano_banana"] = ProviderConfig{
 		Models:   []string{models.GeminiNanoBanana21},
-		VertexAI: &VertexAIProviderConfig{APIKey: "vertex-express-key", Project: "123"},
+		VertexAI: &VertexAIProviderConfig{Project: "123"},
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)
@@ -391,7 +369,7 @@ func TestValidateAcceptsVertexProjectAndRejectsBlank(t *testing.T) {
 	for _, project := range []string{" ", "123/global", "123 456"} {
 		cfg.Providers["vertex_nano_banana"] = ProviderConfig{
 			Models:   []string{models.GeminiNanoBanana21},
-			VertexAI: &VertexAIProviderConfig{APIKey: "vertex-express-key", Project: project},
+			VertexAI: &VertexAIProviderConfig{Project: project},
 		}
 		if err := cfg.Validate(); err == nil {
 			t.Fatalf("project %q must be rejected", project)
@@ -399,14 +377,14 @@ func TestValidateAcceptsVertexProjectAndRejectsBlank(t *testing.T) {
 	}
 	cfg.Providers["vertex_nano_banana"] = ProviderConfig{
 		Models:   []string{models.GeminiNanoBanana21},
-		VertexAI: &VertexAIProviderConfig{APIKey: "vertex-express-key", Project: "123", ProxyURL: "http://127.0.0.1:1081"},
+		VertexAI: &VertexAIProviderConfig{Project: "123", ProxyURL: "http://127.0.0.1:1081"},
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)
 	}
 	cfg.Providers["vertex_nano_banana"] = ProviderConfig{
 		Models:   []string{models.GeminiNanoBanana21},
-		VertexAI: &VertexAIProviderConfig{APIKey: "vertex-express-key", Project: "123", ProxyURL: "not a url"},
+		VertexAI: &VertexAIProviderConfig{Project: "123", ProxyURL: "not a url"},
 	}
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("expected invalid proxy")
@@ -538,7 +516,7 @@ providers:
   vertex_chat:
     models: ["gemini-3.5-flash-lite"]
     vertexai:
-      api_key: b
+      project: test-project
 model_routes:
   gemini-3.5-flash-lite:
     default: gemini_main

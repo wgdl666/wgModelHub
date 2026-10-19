@@ -43,7 +43,7 @@ func TestChannelInfoIsScrapedWithoutSecrets(t *testing.T) {
 	}
 
 	if err := publisher.Publish(map[string]config.ProviderConfig{
-		"Vertex_AI": {VertexAI: &config.VertexAIProviderConfig{APIKey: secret}},
+		"Vertex_AI": {VertexAI: &config.VertexAIProviderConfig{Project: "test-project"}},
 	}); err != nil {
 		t.Fatal(err)
 	}

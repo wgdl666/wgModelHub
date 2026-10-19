@@ -11,22 +11,13 @@ import (
 
 // GenerateImage 走 Gemini 多模态生图；Input 中 Message.parts 顺序与 RPC 一致，响应也按供应商返回顺序展开。
 func (p *Provider) GenerateImage(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
-	// Vertex 生图一律打 locations/global，不再按模型 ID 留在 Express。
-	// Express 短路径不带 location，会按调用方区域解析；gemini-2.5-flash-image 等图片模型不在 asia-southeast1，新加坡开发会 404。
-	// ADC 文本也走 global；API key 文本保持 Express。Gemini Developer API 的同 ID 不要求 project。
-	client := p.client
-	if p.vertex {
-		if p.vertexGlobal == nil {
-			return nil, provider.NotAttempted(provider.ErrorConfiguration, "vertex image requires vertexai.project for locations/global")
-		}
-		client = p.vertexGlobal
-	}
+	// Vertex 在初始化时已固定 global 并配置 ADC；生图与文本共用客户端，避免另维护一套鉴权。
 	if err := validateGeminiGenerateInput(request); err != nil {
 		return nil, err
 	}
 	parts := buildImageParts(request)
 	contents := []*genaisdk.Content{genaisdk.NewContentFromParts(parts, genaisdk.RoleUser)}
-	response, err := client.Models.GenerateContent(ctx, model, contents, buildImageConfig(request))
+	response, err := p.client.Models.GenerateContent(ctx, model, contents, buildImageConfig(request))
 	if err != nil {
 		return nil, p.mapError(ctx, "generate image", err)
 	}

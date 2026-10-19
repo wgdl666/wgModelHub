@@ -198,15 +198,20 @@ func TestBuildVWorldImageExposesImageOnly(t *testing.T) {
 }
 
 func TestBuildVertexRegistersImageWithoutReadingModels(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "adc.json")
+	if err := os.WriteFile(path, []byte(`{"type":"authorized_user","client_id":"test","client_secret":"test","refresh_token":"test"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", path)
 	sets, err := Build(context.Background(), config.Config{
 		Providers: map[string]config.ProviderConfig{
 			"vertex_chat": {
 				Models:   []string{models.Gemini20Flash001},
-				VertexAI: &config.VertexAIProviderConfig{APIKey: "k"},
+				VertexAI: &config.VertexAIProviderConfig{Project: "test-project"},
 			},
 			"vertex_nano_banana": {
 				Models:   []string{models.GeminiNanoBanana21},
-				VertexAI: &config.VertexAIProviderConfig{APIKey: "k"},
+				VertexAI: &config.VertexAIProviderConfig{Project: "test-project"},
 			},
 		},
 	})

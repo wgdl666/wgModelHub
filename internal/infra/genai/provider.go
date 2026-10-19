@@ -23,10 +23,6 @@ const defaultCachedContentTTL = time.Hour
 type Provider struct {
 	name   string
 	client *genaisdk.Client
-	// vertex 区分 Vertex 与 Gemini Developer API。后者同模型 ID 不得改走 Vertex global。
-	vertex bool
-	// Vertex 生图固定 global；ADC 模式下与文本共用同一客户端和 token 缓存。
-	vertexGlobal *genaisdk.Client
 }
 
 func NewGemini(ctx context.Context, name, apiKey, endpoint, proxyURL string) (*Provider, error) {
@@ -58,9 +54,8 @@ func NewGemini(ctx context.Context, name, apiKey, endpoint, proxyURL string) (*P
 	return &Provider{name: name, client: client}, nil
 }
 
-// NewVertexAI 按配置选择身份：api_key 非空保留现网 Express；留空则要求 project 并使用运行环境 ADC。
-// ADC 下文本与生图均固定 locations/global；鉴权失败不能回退到环境变量中的 API key。
-func NewVertexAI(ctx context.Context, name, apiKey, project, proxyURL string) (*Provider, error) {
+// NewVertexAI 统一使用运行环境 ADC，文本/生图共用 locations/global 客户端和 token 缓存。
+func NewVertexAI(ctx context.Context, name, project, proxyURL string) (*Provider, error) {
 	httpClient := telemetry.NewHTTPClient()
 	if proxyURL = strings.TrimSpace(proxyURL); proxyURL != "" {
 		// 国内 ACK 直连 Google 会 TLS 超时；ADC 换 token 与模型请求也必须共用这个代理。
@@ -72,71 +67,19 @@ func NewVertexAI(ctx context.Context, name, apiKey, project, proxyURL string) (*
 		transport.Proxy = http.ProxyURL(parsed)
 		httpClient = telemetry.NewHTTPClientWithTransport(transport)
 	}
-	return newVertexAI(ctx, name, apiKey, project, httpClient)
+	return newVertexAI(ctx, name, project, httpClient)
 }
 
-// newVertexAI 与 NewVertexAI 同构造，仅多 HTTPClient 注入点，供测试替换 Transport 断言出站路径/鉴权头。
-// 调用方必须提供带 Transport 的 httpClient；生产路径经 NewVertexAI 传入 telemetry.NewHTTPClient()。
-func newVertexAI(ctx context.Context, name, apiKey, project string, httpClient *http.Client) (*Provider, error) {
-	if strings.TrimSpace(apiKey) == "" {
-		if strings.TrimSpace(project) == "" {
-			return nil, provider.New(provider.ErrorConfiguration, name+" vertexai.project is required for ADC when api_key is empty")
-		}
-		client, err := newADCVertexClient(ctx, name, project, httpClient)
-		if err != nil {
-			return nil, err
-		}
-		return &Provider{name: name, client: client, vertex: true, vertexGlobal: client}, nil
+// 项目是 Vertex 的显式路由配置；校验完成后只建立 ADC 客户端，文本与生图共用。
+func newVertexAI(ctx context.Context, name, project string, httpClient *http.Client) (*Provider, error) {
+	if strings.TrimSpace(project) == "" {
+		return nil, provider.New(provider.ErrorConfiguration, name+" vertexai.project is required for ADC")
 	}
-	client, err := genaisdk.NewClient(ctx, &genaisdk.ClientConfig{
-		APIKey:     apiKey,
-		Backend:    genaisdk.BackendVertexAI,
-		HTTPClient: httpClient,
-	})
-	if err != nil {
-		return nil, provider.Wrap(provider.ErrorConfiguration, "create "+name+" client", err)
-	}
-	result := &Provider{name: name, client: client, vertex: true}
-	project = strings.TrimSpace(project)
-	if project == "" {
-		return result, nil
-	}
-	global, err := newGlobalVertexClient(ctx, name, project, apiKey, httpClient)
+	client, err := newADCVertexClient(ctx, name, project, httpClient)
 	if err != nil {
 		return nil, err
 	}
-	result.vertexGlobal = global
-	return result, nil
-}
-
-// newGlobalVertexClient 把 Vertex 生图固定打到 projects/{project}/locations/global。
-// 官方 Express 短路径不带 project，线上会按调用方区域解析；图片模型不在该区域时会 404。
-func newGlobalVertexClient(ctx context.Context, name, project, apiKey string, httpClient *http.Client) (*genaisdk.Client, error) {
-	wrapped := *httpClient
-	wrapped.Transport = &vertexAPIKeyTransport{base: httpClient.Transport, key: apiKey}
-	client, err := genaisdk.NewClient(ctx, &genaisdk.ClientConfig{
-		Backend:    genaisdk.BackendVertexAI,
-		Project:    project,
-		Location:   "global",
-		HTTPClient: &wrapped,
-	})
-	if err != nil {
-		return nil, provider.Wrap(provider.ErrorConfiguration, "create "+name+" global client", err)
-	}
-	return client, nil
-}
-
-// vertexAPIKeyTransport 只给 locations/global 客户端补 x-goog-api-key。
-// 该客户端不能再设 SDK APIKey，否则与 Project/Location 互斥，NewClient 直接失败。
-type vertexAPIKeyTransport struct {
-	base http.RoundTripper
-	key  string
-}
-
-func (t *vertexAPIKeyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	req = req.Clone(req.Context())
-	req.Header.Set("x-goog-api-key", t.key)
-	return t.base.RoundTrip(req)
+	return &Provider{name: name, client: client}, nil
 }
 
 // CreateCachedContent 把 system + tools 落到 Gemini CachedContent，供后续 Generate 引用。

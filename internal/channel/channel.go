@@ -15,7 +15,7 @@ import (
 
 const (
 	// 与 google.golang.org/genai v1.43.0 在未设置 BaseURL 时的主机一致。
-	// Gemini Developer API 走 generativelanguage；Vertex Express 和 locations/global 都走不带区域前缀的 aiplatform。
+	// Gemini Developer API 走 generativelanguage；Vertex ADC 的 global 客户端走不带区域前缀的 aiplatform。
 	geminiDefaultHost = "generativelanguage.googleapis.com"
 	vertexDefaultHost = "aiplatform.googleapis.com"
 

@@ -69,7 +69,7 @@ func raceService(fast, slow provider.TextProvider) *Service {
 		Database: config.DatabaseConfig{DSN: "postgres://modelhub:modelhub@127.0.0.1:5432/modelhub?sslmode=disable"},
 		Providers: map[string]config.ProviderConfig{
 			"gemini_main": {Models: []string{"gemini-3.5-flash-lite"}, Gemini: &config.GeminiProviderConfig{APIKey: "a"}},
-			"vertex_chat": {Models: []string{"gemini-3.5-flash-lite"}, VertexAI: &config.VertexAIProviderConfig{APIKey: "b"}},
+			"vertex_chat": {Models: []string{"gemini-3.5-flash-lite"}, VertexAI: &config.VertexAIProviderConfig{Project: "test-project"}},
 		},
 		ModelRouteOverrides: map[string]config.ModelRoute{
 			"gemini-3.5-flash-lite": {Default: "gemini_main", Race: []string{"gemini_main", "vertex_chat"}},
