@@ -16,6 +16,24 @@ rpc SynthesizeSpeech(SynthesizeSpeechRequest) returns (SynthesizeSpeechResponse)
 rpc SynthesizeSpeechStream(SynthesizeSpeechRequest) returns (stream SynthesizeSpeechResponse);
 ```
 
+## Cohere 批量查询向量
+
+`Generate` 的 `model=embed-v4.0` 支持显式批量 query：在 `input.model_traits` 中传
+`{"embedding_batch":true,"input_type":"search_query"}` JSON 字符串，并在 `input.items` 中按序放置
+1..96 条 USER message，每条恰好一个非空 text part。批量不接受图片、工具内容或文档模式。
+请求使用 text output，调用方（wgWardrobe 深度推荐）不启用流式输出。
+
+适配器一次提交 Cohere `/v2/embed` 的 `texts[]`，`output_dimension=1024`、`embedding_types=["float"]`。
+结果文本 JSON 为 `{"embeddings":[[...],[...]]}`，顺序对应输入；单元素批次也保留复数键。
+响应必须行数一致、每行1024维且全为有限值，异常整体失败。响应读取上限4 MiB，支持完整96条浮点向量。
+
+只有显式 `embedding_batch=true` 才拆批。普通多段文本仍合成单个输入，以 `{` 开头的商品文本仍走
+`search_document`，图片仍走原图向量路径，均继续返回 `{"embedding":[...]}`。
+未增加 RPC/模型 ID/供应商路由/凭据；原有文本瞬态重试和请求 context 继续生效。
+
+应先发布此协议，再发布调用方并开启 `deep_recommend.batch_embedding_enabled`（Wardrobe 默认关闭，可热更新）。
+关闭调用方开关后可回到单条路径。此能力不适用于 Bedrock 或 DashScope，不自动切换现有向量空间。
+
 ## VWorld/LTX 视频动作参数
 
 `SubmitGeneration` 调用 `VWorld_outfit_video_1.0` 时，调用方可在 `request.input.model_traits` 中传 JSON 字符串 `{"motion_tips":"Slowly turn the body 30 degrees."}`。LTX 适配器读取 `motion_tips`，去除首尾空白后写入 `POST /vton` 的独立 multipart 字段；`image`、`prompt` 和上游 `model=ltx` 保持原协议。
