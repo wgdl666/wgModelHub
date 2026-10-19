@@ -334,7 +334,8 @@ providers:
       base_url: https://api.cohere.com
       api_key: "${COHERE_API_KEY}"
   Vertex_AI_google_rerank:
-    models: [semantic-ranker-default-005]
+    # 按环境保留需要开放的真实 ID；调用方用 request.model 选择，列表可热更新。
+    models: [semantic-ranker-default-005, semantic-ranker-fast-005, 'semantic-ranker-default@latest', 'semantic-ranker-fast@latest']
     google_rerank:
       project: "your-google-cloud-project"
       # ADC 从 GOOGLE_APPLICATION_CREDENTIALS 指向的服务账号/联合身份文件读取，不填 API key/token。

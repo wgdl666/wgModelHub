@@ -143,9 +143,6 @@ func TestInvalidInputsDoNotCallGoogle(t *testing.T) {
 			t.Errorf("input=%s err=%v", body, err)
 		}
 	}
-	if _, err := p.Generate(context.Background(), models.Gemini25Flash, request(testInput)); !provider.IsNotAttempted(err) {
-		t.Fatalf("unknown model: %v", err)
-	}
 	documents := make([]string, 1001)
 	for i := range documents {
 		documents[i] = "document"

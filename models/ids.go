@@ -111,6 +111,11 @@ const (
 	MixedbreadRerankV31Listwise = "mixedbread-ai/mxbai-rerank-v3.1-listwise"
 	// GoogleSemanticRankerDefault005 固定 Google Ranking API 版本，避免 latest 更新后悄悄改变打分。
 	GoogleSemanticRankerDefault005 = "semantic-ranker-default-005"
+	// GoogleSemanticRankerFast005 是同版本的快速版，仍使用相同 Ranking API 协议。
+	GoogleSemanticRankerFast005 = "semantic-ranker-fast-005"
+	// latest 是 Google 官方模型 ID；仅在配置显式开放时跟随供应商更新，不在网关改写。
+	GoogleSemanticRankerDefaultLatest = "semantic-ranker-default@latest"
+	GoogleSemanticRankerFastLatest    = "semantic-ranker-fast@latest"
 	// FacebodyDetectFace 是阿里云 DetectFace。返回人脸框，裁图由调用方本地完成。
 	FacebodyDetectFace = "facebody-detect-face"
 	// RekognitionDetectFaces 是 DetectFaces。与 DetectLabels 人检不能互相替代。
@@ -230,6 +235,9 @@ func All() []string {
 		CohereRerankV35Official,
 		MixedbreadRerankV31Listwise,
 		GoogleSemanticRankerDefault005,
+		GoogleSemanticRankerFast005,
+		GoogleSemanticRankerDefaultLatest,
+		GoogleSemanticRankerFastLatest,
 		FacebodyDetectFace,
 		RekognitionDetectFaces,
 		FacebodyFaceLibrary,

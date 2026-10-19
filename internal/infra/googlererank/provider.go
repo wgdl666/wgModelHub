@@ -17,7 +17,6 @@ import (
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
-	"github.com/wgdl666/wgModelHub/models"
 )
 
 const requestTimeout = 20 * time.Second
@@ -76,9 +75,7 @@ type result struct {
 }
 
 func (p *Provider) Generate(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
-	if model != models.GoogleSemanticRankerDefault005 {
-		return nil, provider.NotAttemptedf(provider.ErrorInvalidArgument, "google rerank does not serve model %q", model)
-	}
+	// 可用模型由当前配置的 models 路由控制；原样下发请求 ID，切换版本或 fast 不应改适配器。
 	var input *modelhubv2.Input
 	if request != nil {
 		input = request.GetInput()

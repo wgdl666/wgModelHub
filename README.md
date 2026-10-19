@@ -173,19 +173,25 @@ go run ./cmd/g6-smoke -image /path/to/portrait.jpg -out artifacts/g6-smoke
 
 ## Google 文本精排（Ranking API）
 
-`semantic-ranker-default-005` 通过独立 `google_rerank` provider 调用 Discovery Engine
+Google 文本精排通过独立 `google_rerank` provider 调用 Discovery Engine
 `rankingConfigs/default_ranking_config:rank`，固定 `locations/global`。它继续使用已有
 `Generate` RPC 和 `output.text`，不经过 Vertex 的 Gemini `generateContent`，也不使用 Express API key。
 
 ```yaml
 providers:
   Vertex_AI_google_rerank:
-    models: [semantic-ranker-default-005]
+    models: [semantic-ranker-default-005, semantic-ranker-fast-005]
     google_rerank:
       project: "your-google-cloud-project"
       # 国内填写已有出口；换 token 和 Ranking API 共用该代理。
       # proxy_url: http://your-existing-proxy:1081
 ```
+
+AppConfig / Nacos 的 `providers.<实例>.models` 控制开放哪些真实模型 ID；调用方通过
+`request.model` 选择其中一个，适配器原样传给 Google。仅调整列表可热更新，不重建客户端。
+例如请求 `semantic-ranker-fast-005` 就调用快速版，未在列表声明的模型在出站前拒绝。
+也已注册 Google 官方的 `semantic-ranker-default@latest`、`semantic-ranker-fast@latest`；
+需要跟随 Google 更新时再将相应 ID 加入列表。列表不设置调用方默认模型，也不将旧 ID 改写为新 ID。
 
 用户消息的文本 part 放 JSON：
 
