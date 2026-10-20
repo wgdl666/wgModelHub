@@ -16,23 +16,47 @@ rpc SynthesizeSpeech(SynthesizeSpeechRequest) returns (SynthesizeSpeechResponse)
 rpc SynthesizeSpeechStream(SynthesizeSpeechRequest) returns (stream SynthesizeSpeechResponse);
 ```
 
-## Cohere 批量查询向量
+## Cohere 批量查询向量与共享并发
 
 `Generate` 的 `model=embed-v4.0` 支持显式批量 query：在 `input.model_traits` 中传
-`{"embedding_batch":true,"input_type":"search_query"}` JSON 字符串，并在 `input.items` 中按序放置
-1..96 条 USER message，每条恰好一个非空 text part。批量不接受图片、工具内容或文档模式。
-请求使用 text output，调用方（wgWardrobe 深度推荐）不启用流式输出。
+`{"embedding_batch":true,"input_type":"search_query"}` JSON 字符串，在 `input.items` 中按序放置 USER message，
+每条恰好一个非空 text part。批量不接受图片、工具内容或文档模式。Wardrobe 去重后一次提交完整逻辑请求，
+不再知道上游96条限制，也不会在超限后拆小重发。
 
-适配器一次提交 Cohere `/v2/embed` 的 `texts[]`，`output_dimension=1024`、`embedding_types=["float"]`。
-结果文本 JSON 为 `{"embeddings":[[...],[...]]}`，顺序对应输入；单元素批次也保留复数键。
-响应必须行数一致、每行1024维且全为有限值，异常整体失败。响应读取上限4 MiB，支持完整96条浮点向量。
+ModelHub 先校验整单条数/原始文本字节预算，再在内部按 `cohere_embedding.max_batch_size` 拆分。
+批次通过同一 Provider 实例的共享出站池执行；批量查询、普通单条文本、录衣单张图片共用
+`max_concurrency` 个名额。一个批量请求最多启动该并发数的工作协程，每批出站时获取共享名额；
+HTTP响应读取/校验结束后归还，重试退避不占名额。没有跨独立请求自动攒批。
 
-只有显式 `embedding_batch=true` 才拆批。普通多段文本仍合成单个输入，以 `{` 开头的商品文本仍走
-`search_document`，图片仍走原图向量路径，均继续返回 `{"embedding":[...]}`。
-未增加 RPC/模型 ID/供应商路由/凭据；原有文本瞬态重试和请求 context 继续生效。
+配置位于每个 Cohere provider 的 `cohere_embedding`：
 
-应先发布此协议，再发布调用方并开启 `deep_recommend.batch_embedding_enabled`（Wardrobe 默认关闭，可热更新）。
-关闭调用方开关后可回到单条路径。此能力不适用于 Bedrock 或 DashScope，不自动切换现有向量空间。
+```yaml
+max_batch_size: 96               # 缺省96，范围1..96；供应商单次请求容量
+max_concurrency: 4               # 缺省4，范围1..64；本Provider实例共享的上游并发
+max_request_texts: 512           # 缺省512，范围1..1024；单个逻辑请求准入上限
+max_request_text_bytes: 1048576  # 缺省1 MiB，最大4 MiB；所有文本的原始UTF-8总字节
+request_timeout_seconds: 30      # 缺省30，范围1..120；排队、各批执行及退避共用整单预算
+```
+
+这些是启动资源，修改后需要重启，热更新会整单拒绝；未配置过的环境采用上述缺省值。
+并发按进程/Provider实例共享，多Pod总量会累加，实例别名或其他Provider也不会自动共用此池。
+512条1024维向量按每个数32字节保守预算约16 MiB，1024条约32 MiB，为64 MiB RPC保留包装空间。
+这是一份逻辑请求的受理限额，超限在出站前拒绝；不能由调用方拆分绕过限额。
+
+每批请求 Cohere `/v2/embed` 的 `texts[]`，维度1024、float；HTTP响应限4 MiB，行数/维度/有限值/null均校验。
+结果按输入位置合并，完整响应限32 MiB；返回文本 JSON 为 `{"embeddings":[[...],[...]]}`，单元素批次也保留复数键。
+500条默认拆为96×5+20，取消、超时或任一批最终失败则取消并等待其余工作协程退出，整单不返回部分结果。
+
+批量请求只在失败分片重试瞬态错误（最多再试3次，退避300/600/900 ms）；成功分片不重算。
+错误保留供应商分类并标记已处理重试，Service外层不再重跑整单。普通单条仍使用原有Service重试边界，
+每次Provider调用也受本实例队列和执行超时约束。`cohere.embedding.batch_request` / `.batch` / `.upstream`
+记录条数、批次数、索引、排队耗时和重试次数，不记录文本、向量或密钥。
+
+只有显式批量标志才拆分输入。普通多段文本仍合成单个输入，以 `{` 开头的商品文本仍走
+`search_document`，图片保留单图路径，均继续返回 `{"embedding":[...]}`。单条文本也受文本字节预算保护。
+未新增RPC、模型ID、凭据或自动切换向量空间；这些能力只接入官方Cohere Provider，Bedrock/DashScope保持原实现。
+应先发布此协议，再发布Wardrobe并开启其默认关闭的 `deep_recommend.batch_embedding_enabled`。
+关闭调用方开关后新冻结恢复单条协议；ModelHub的共享并发/超时仍对Cohere单条调用生效。要撤销这些执行预算，需修改ModelHub配置并重启或回退ModelHub版本。本PR不修改线上配置、不部署。
 
 ## VWorld/LTX 视频动作参数
 

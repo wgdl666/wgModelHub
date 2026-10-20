@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/wgdl666/wgModelHub/config"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/models"
 )
@@ -67,7 +68,7 @@ func TestGeneratePreservesSingleAndExplicitBatchContracts(t *testing.T) {
 				_ = json.NewEncoder(w).Encode(map[string]any{"embeddings": map[string]any{"float": testVectors(len(tc.want))}})
 			}))
 			defer server.Close()
-			p, err := New("cohere", server.URL, "test-key")
+			p, err := New("cohere", &config.CohereEmbeddingProviderConfig{BaseURL: server.URL, APIKey: "test-key"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -98,20 +99,21 @@ func TestGeneratePreservesSingleAndExplicitBatchContracts(t *testing.T) {
 }
 
 func TestPayloadImageAndBatchValidation(t *testing.T) {
+	p, _ := New("cohere", &config.CohereEmbeddingProviderConfig{BaseURL: "http://example.invalid", APIKey: "test"})
 	image := textRequest("")
 	image.Input.Items = []*modelhubv2.InputItem{{Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{Role: modelhubv2.Role_ROLE_USER, Parts: []*modelhubv2.ContentPart{{Content: &modelhubv2.ContentPart_Image{Image: &modelhubv2.Media{MimeType: "image/png", Source: &modelhubv2.Media_Data{Data: []byte("png")}}}}}}}}}
-	payload, batch, err := coherePayload(models.CohereEmbedV4, image)
+	payload, batch, err := p.coherePayload(models.CohereEmbedV4, image)
 	if err != nil || batch || payload["input_type"] != "search_document" || payload["images"].([]string)[0] != "data:image/png;base64,cG5n" {
 		t.Fatalf("image payload=%v batch=%v err=%v", payload, batch, err)
 	}
 	for _, traits := range []string{`{`, `[]`, `null`, `{"embedding_batch":"true"}`, `{"embedding_batch":true}`, `{"embedding_batch":true,"input_type":"search_document"}`} {
-		if _, _, err := coherePayload(models.CohereEmbedV4, textRequest(traits, "coat")); err == nil {
+		if _, _, err := p.coherePayload(models.CohereEmbedV4, textRequest(traits, "coat")); err == nil {
 			t.Errorf("accepted invalid traits %q", traits)
 		}
 	}
 	traits := `{"embedding_batch":true,"input_type":"search_query"}`
 	for _, texts := range [][]string{nil, {" "}, make([]string, 97)} {
-		if _, _, err := coherePayload(models.CohereEmbedV4, textRequest(traits, texts...)); err == nil {
+		if _, _, err := p.coherePayload(models.CohereEmbedV4, textRequest(traits, texts...)); err == nil {
 			t.Errorf("accepted invalid batch length %d", len(texts))
 		}
 	}
@@ -119,16 +121,16 @@ func TestPayloadImageAndBatchValidation(t *testing.T) {
 	for i := range texts {
 		texts[i] = "coat"
 	}
-	if _, _, err := coherePayload(models.CohereEmbedV4, textRequest(traits, texts...)); err != nil {
+	if _, _, err := p.coherePayload(models.CohereEmbedV4, textRequest(traits, texts...)); err != nil {
 		t.Fatal(err)
 	}
 	image.Input.ModelTraits = traits
-	if _, _, err := coherePayload(models.CohereEmbedV4, image); err == nil {
+	if _, _, err := p.coherePayload(models.CohereEmbedV4, image); err == nil {
 		t.Fatal("accepted image in query batch")
 	}
 	multiple := textRequest(traits, "coat")
 	multiple.Input.Items[0].GetMessage().Parts = append(multiple.Input.Items[0].GetMessage().Parts, &modelhubv2.ContentPart{Content: &modelhubv2.ContentPart_Text{Text: "red"}})
-	if _, _, err := coherePayload(models.CohereEmbedV4, multiple); err == nil {
+	if _, _, err := p.coherePayload(models.CohereEmbedV4, multiple); err == nil {
 		t.Fatal("accepted ambiguous multi-part batch item")
 	}
 }
@@ -149,7 +151,7 @@ func TestPostRejectsMalformedCountAndDimensions(t *testing.T) {
 		map[string]any{"embeddings": [][]float64{}},
 	} {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _ = json.NewEncoder(w).Encode(response) }))
-		p, _ := New("cohere", server.URL, "test")
+		p, _ := New("cohere", &config.CohereEmbeddingProviderConfig{BaseURL: server.URL, APIKey: "test"})
 		if _, err := p.post(context.Background(), map[string]any{}, 2); err == nil {
 			t.Errorf("accepted invalid response %v", response)
 		}
@@ -157,7 +159,7 @@ func TestPostRejectsMalformedCountAndDimensions(t *testing.T) {
 	}
 	for _, raw := range []string{`{"embeddings":{"float":[[1e1000]]}}`, `broken`, strings.Repeat(" ", maxResponseBytes+1)} {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(raw)) }))
-		p, _ := New("cohere", server.URL, "test")
+		p, _ := New("cohere", &config.CohereEmbeddingProviderConfig{BaseURL: server.URL, APIKey: "test"})
 		if _, err := p.post(context.Background(), map[string]any{}, 1); err == nil {
 			t.Fatal("accepted malformed/oversized response")
 		}
@@ -176,7 +178,7 @@ func TestPostAcceptsLargeBatchAndCancellation(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"embeddings": rows})
 	}))
 	defer server.Close()
-	p, _ := New("cohere", server.URL, "test")
+	p, _ := New("cohere", &config.CohereEmbeddingProviderConfig{BaseURL: server.URL, APIKey: "test"})
 	if got, err := p.post(context.Background(), map[string]any{}, 96); err != nil || !reflect.DeepEqual(got, rows) {
 		t.Fatalf("large batch failed: %v", err)
 	}
