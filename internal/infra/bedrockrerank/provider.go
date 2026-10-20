@@ -16,6 +16,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/bedrockagentruntime/types"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/infra/rerankinstruction"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
@@ -26,9 +27,11 @@ type rerankAPI interface {
 }
 
 type Provider struct {
-	name   string
-	region string
-	client rerankAPI
+	// Instructions 由启动装配注入；连接不变，模板按请求读取。
+	Instructions rerankinstruction.Resolver
+	name         string
+	region       string
+	client       rerankAPI
 }
 
 func New(ctx context.Context, name, region, roleARN string) (*Provider, error) {
@@ -58,8 +61,10 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 		return nil, provider.Errorf(provider.ErrorInvalidArgument, "bedrock rerank does not serve model %q", model)
 	}
 	var parsed struct {
-		Query     string   `json:"query"`
-		Documents []string `json:"documents"`
+		Query          string   `json:"query"`
+		InstructionKey string   `json:"instruction_key"`
+		Instruct       string   `json:"instruct"`
+		Documents      []string `json:"documents"`
 	}
 	if err := json.Unmarshal([]byte(provider.UserText(requestInput(request))), &parsed); err != nil || strings.TrimSpace(parsed.Query) == "" || len(parsed.Documents) == 0 || len(parsed.Documents) > 100 {
 		return nil, provider.New(provider.ErrorInvalidArgument, "rerank requires a query and 1 to 100 documents")
@@ -73,12 +78,15 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 		sources = append(sources, types.RerankSource{
 			Type: types.RerankSourceTypeInline,
 			InlineDocumentSource: &types.RerankDocument{
-				Type: types.RerankDocumentTypeText,
+				Type:         types.RerankDocumentTypeText,
 				TextDocument: &types.RerankTextDocument{Text: &text},
 			},
 		})
 	}
-	query := parsed.Query
+	query, _, err := p.Instructions.Resolve(parsed.Query, parsed.Instruct, parsed.InstructionKey, false)
+	if err != nil {
+		return nil, err
+	}
 	output, err := p.client.Rerank(ctx, &bedrockagentruntime.RerankInput{
 		Queries: []types.RerankQuery{{Type: types.RerankQueryContentTypeText, TextQuery: &types.RerankTextDocument{Text: &query}}},
 		Sources: sources,

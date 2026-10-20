@@ -1,5 +1,5 @@
 // Package coherererank 把 Cohere 官网 rerank-v3.5 收成 ModelHub 文本结果。
-// 该接口没有 instruct，调用方带上的指令不进入请求。
+// 该接口没有 instruct；新协议将共享指令模板渲染为 Query，旧 instruct 不转发。
 package coherererank
 
 import (
@@ -12,6 +12,7 @@ import (
 	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/infra/rerankinstruction"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
@@ -22,8 +23,10 @@ type httpDoer interface {
 }
 
 type rerankRequest struct {
-	Query     string   `json:"query"`
-	Documents []string `json:"documents"`
+	Query          string   `json:"query"`
+	InstructionKey string   `json:"instruction_key"`
+	Instruct       string   `json:"instruct"`
+	Documents      []string `json:"documents"`
 }
 
 type scored struct {
@@ -32,10 +35,12 @@ type scored struct {
 }
 
 type Provider struct {
-	name     string
-	client   httpDoer
-	endpoint string
-	apiKey   string
+	// Instructions 由启动装配注入；连接不变，模板按请求读取。
+	Instructions rerankinstruction.Resolver
+	name         string
+	client       httpDoer
+	endpoint     string
+	apiKey       string
 }
 
 func New(name, baseURL, apiKey string) (*Provider, error) {
@@ -54,6 +59,10 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 		return nil, provider.Errorf(provider.ErrorInvalidArgument, "cohere rerank does not serve model %q", model)
 	}
 	parsed, err := parseRerank(request)
+	if err != nil {
+		return nil, err
+	}
+	parsed.Query, _, err = p.Instructions.Resolve(parsed.Query, parsed.Instruct, parsed.InstructionKey, false)
 	if err != nil {
 		return nil, err
 	}

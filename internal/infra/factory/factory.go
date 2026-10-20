@@ -44,6 +44,7 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/infra/rekognitioncompare"
 	"github.com/wgdl666/wgModelHub/internal/infra/rekognitiondetect"
 	"github.com/wgdl666/wgModelHub/internal/infra/rekognitionfaces"
+	"github.com/wgdl666/wgModelHub/internal/infra/rerankinstruction"
 	"github.com/wgdl666/wgModelHub/internal/infra/segmentperson"
 	"github.com/wgdl666/wgModelHub/internal/infra/vworldimage"
 	"github.com/wgdl666/wgModelHub/internal/provider"
@@ -54,7 +55,7 @@ func Build(ctx context.Context, cfg config.Config) (map[string]provider.Set, err
 	return build(ctx, cfg, nil)
 }
 
-// BuildLive 与 Build 相同，但薇光生图会在每次请求重读 live 里的 base_url。
+// BuildLive 在请求时重读薇光生图 base_url 与共享精排模板。
 // 其他供应商仍使用启动时的连接参数；那些字段变化继续由 LiveConfig 拒绝。
 func BuildLive(ctx context.Context, live *config.LiveConfig) (map[string]provider.Set, error) {
 	if live == nil {
@@ -64,13 +65,20 @@ func BuildLive(ctx context.Context, live *config.LiveConfig) (map[string]provide
 }
 
 func build(ctx context.Context, cfg config.Config, live *config.LiveConfig) (map[string]provider.Set, error) {
+	// 模板属于可热更新协议配置，和启动时建立的连接生命周期分开。
+	instructions := rerankinstruction.Resolver(func() map[string]config.RerankTemplate {
+		if live != nil {
+			return live.Load().RerankTemplates
+		}
+		return cfg.RerankTemplates
+	})
 	sets := make(map[string]provider.Set, len(cfg.Providers))
 	for name, providerCfg := range cfg.Providers {
 		if config.IsASRProvider(providerCfg) && !config.ASRCredentialsPresent(providerCfg) {
 			// 多环境共用配置模板时，只实例化本区真正有凭据的 ASR，避免空密钥占用模型路由。
 			continue
 		}
-		set, err := buildProvider(ctx, name, providerCfg, live)
+		set, err := buildProvider(ctx, name, providerCfg, live, instructions)
 		if err != nil {
 			return nil, fmt.Errorf("provider %s: %w", name, err)
 		}
@@ -79,7 +87,7 @@ func build(ctx context.Context, cfg config.Config, live *config.LiveConfig) (map
 	return sets, nil
 }
 
-func buildProvider(ctx context.Context, name string, providerCfg config.ProviderConfig, live *config.LiveConfig) (provider.Set, error) {
+func buildProvider(ctx context.Context, name string, providerCfg config.ProviderConfig, live *config.LiveConfig, instructions rerankinstruction.Resolver) (provider.Set, error) {
 	switch {
 	case providerCfg.VolcengineASR != nil:
 		cfg := providerCfg.VolcengineASR
@@ -321,6 +329,7 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 		if err != nil {
 			return provider.Set{}, err
 		}
+		client.Instructions = instructions
 		return provider.Set{Text: client}, nil
 	case providerCfg.BedrockRerank != nil:
 		cfg := providerCfg.BedrockRerank
@@ -328,6 +337,7 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 		if err != nil {
 			return provider.Set{}, err
 		}
+		client.Instructions = instructions
 		return provider.Set{Text: client}, nil
 	case providerCfg.CohereRerank != nil:
 		cfg := providerCfg.CohereRerank
@@ -335,17 +345,23 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 		if err != nil {
 			return provider.Set{}, err
 		}
+		client.Instructions = instructions
 		return provider.Set{Text: client}, nil
 	case providerCfg.GoogleRerank != nil:
 		cfg := providerCfg.GoogleRerank
 		client, err := googlererank.New(name, cfg.Project, cfg.ProxyURL)
-		return provider.Set{Text: client}, err
+		if err != nil {
+			return provider.Set{}, err
+		}
+		client.Instructions = instructions
+		return provider.Set{Text: client}, nil
 	case providerCfg.MixedbreadRerank != nil:
 		cfg := providerCfg.MixedbreadRerank
 		client, err := mixedbreadrerank.New(name, cfg.BaseURL, cfg.APIKey)
 		if err != nil {
 			return provider.Set{}, err
 		}
+		client.Instructions = instructions
 		return provider.Set{Text: client}, nil
 	case providerCfg.FacebodyDetect != nil:
 		cfg := providerCfg.FacebodyDetect

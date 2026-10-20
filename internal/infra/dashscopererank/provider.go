@@ -13,6 +13,7 @@ import (
 	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/infra/rerankinstruction"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
@@ -25,16 +26,19 @@ type httpDoer interface {
 }
 
 type rerankRequest struct {
-	Query     string   `json:"query"`
-	Documents []string `json:"documents"`
-	Instruct  string   `json:"instruct"`
+	Query          string   `json:"query"`
+	InstructionKey string   `json:"instruction_key"`
+	Documents      []string `json:"documents"`
+	Instruct       string   `json:"instruct"`
 }
 
 type Provider struct {
-	name    string
-	client  httpDoer
-	baseURL string
-	apiKey  string
+	// Instructions 由启动装配注入；连接不变，模板按请求读取。
+	Instructions rerankinstruction.Resolver
+	name         string
+	client       httpDoer
+	baseURL      string
+	apiKey       string
 }
 
 func New(name, baseURL, apiKey string) (*Provider, error) {
@@ -53,6 +57,10 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 		return nil, provider.Errorf(provider.ErrorInvalidArgument, "dashscope rerank does not serve model %q", model)
 	}
 	parsed, err := parseRerank(request)
+	if err != nil {
+		return nil, err
+	}
+	parsed.Query, parsed.Instruct, err = p.Instructions.Resolve(parsed.Query, parsed.Instruct, parsed.InstructionKey, true)
 	if err != nil {
 		return nil, err
 	}

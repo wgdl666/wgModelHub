@@ -1,5 +1,14 @@
 # 监听端口由 Pod 环境变量 WG_SERVER_GRPC_PORT / WG_SERVER_PUBLIC_GRPC_PORT / WG_SERVER_HTTP_PORT 注入，不进 Nacos。
 
+# 颜色/look 共享一套语义，不按厂商维护。更新模板可热生效，不重建供应商连接。
+rerank_templates:
+  color:
+    instruct: 'Given a color query, retrieve items whose main color is that color.'
+    query_template: '检索主色为「{{query}}」的单品。'
+  look:
+    instruct: 'Given a look query, retrieve items that satisfy every condition in the query.'
+    query_template: '检索满足外观条件「{{query}}」的单品，单品必须满足查询中的所有条件。'
+
 # 仅视频长任务 Submit/Get 使用；启动不会自动执行 migrations/。
 database:
   dsn: "postgres://modelhub:modelhub@127.0.0.1:5432/modelhub?sslmode=disable"
