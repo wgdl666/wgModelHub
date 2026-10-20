@@ -173,10 +173,3 @@ func Kind(err error) ErrorKind {
 	}
 	return ErrorUnavailable
 }
-
-// RetriesHandledError 表示适配器已在分片边界完成重试，外层不得重跑整个逻辑请求。
-// Unwrap 保留原始供应商分类、取消原因与是否触达上游的事实。
-type RetriesHandledError struct{ Err error }
-
-func (e *RetriesHandledError) Error() string { return e.Err.Error() }
-func (e *RetriesHandledError) Unwrap() error { return e.Err }

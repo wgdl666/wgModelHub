@@ -18,8 +18,10 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// 使用实际 Cohere 适配器穿过 Service 重试边界，确认失败分片不会触发整单重算。
-func TestCohereBatchServiceDoesNotReplaySuccessfulChunks(t *testing.T) {
+// 批量不新增重试策略，瞬态失败仍由既有 Service 机制重试整个逻辑请求。
+func TestCohereBatchUsesExistingServiceRetryPolicy(t *testing.T) {
+	restore := shortenTextRetry(t)
+	defer restore()
 	var mu sync.Mutex
 	counts := map[string]int{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -42,7 +44,7 @@ func TestCohereBatchServiceDoesNotReplaySuccessfulChunks(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"embeddings": map[string]any{"float": [][]float64{make([]float64, 1024)}}})
 	}))
 	defer server.Close()
-	cfg := &config.CohereEmbeddingProviderConfig{BaseURL: server.URL, APIKey: "test", MaxBatchSize: 1, MaxConcurrency: 1}
+	cfg := &config.CohereEmbeddingProviderConfig{BaseURL: server.URL, APIKey: "test", MaxBatchSize: 1}
 	embedder, err := cohereembed.New("cohere", cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -61,7 +63,7 @@ func TestCohereBatchServiceDoesNotReplaySuccessfulChunks(t *testing.T) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if !reflect.DeepEqual(counts, map[string]int{"a": 1, "b": 4}) {
-		t.Fatalf("service replayed completed chunk or advanced after failure: %v", counts)
+	if !reflect.DeepEqual(counts, map[string]int{"a": 4, "b": 4}) {
+		t.Fatalf("unexpected existing retry policy: %v", counts)
 	}
 }

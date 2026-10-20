@@ -352,10 +352,6 @@ func retryableTextProviderError(err error) bool {
 	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return false
 	}
-	var handled *provider.RetriesHandledError
-	if errors.As(err, &handled) {
-		return false
-	}
 	var providerError *provider.Error
 	if !errors.As(err, &providerError) {
 		return false

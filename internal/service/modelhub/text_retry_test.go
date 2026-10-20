@@ -149,18 +149,3 @@ func shortenTextRetry(t *testing.T) func() {
 	textTransientRetryDelay = time.Millisecond
 	return func() { textTransientRetryDelay = previous }
 }
-
-// 分片已自行重试后，外层必须保留原分类并停止整单重跑；适用于流式和非流式入口。
-func TestGenerateTextDoesNotRepeatProviderManagedRetries(t *testing.T) {
-	restore := shortenTextRetry(t)
-	defer restore()
-	for _, streaming := range []bool{false, true} {
-		text := &scriptedText{failures: []error{&provider.RetriesHandledError{Err: provider.New(provider.ErrorUnavailable, "batch retries exhausted")}}}
-		request := textRequest("chat-model", "do")
-		request.Output.Stream = streaming
-		err := textRetryService(text).Generate(request, &generateRecorder{ctx: context.Background()})
-		if err == nil || text.calls != 1 {
-			t.Fatalf("stream=%v err=%v calls=%d", streaming, err, text.calls)
-		}
-	}
-}

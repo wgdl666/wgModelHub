@@ -10,7 +10,6 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -43,47 +42,25 @@ func mustProvider(t *testing.T, cfg config.CohereEmbeddingProviderConfig) *Provi
 	if err != nil {
 		t.Fatal(err)
 	}
-	p.retryDelay = time.Millisecond
 	return p
 }
 func logicalRequest(texts ...string) *modelhubv2.GenerateRequest {
 	return textRequest(`{"embedding_batch":true,"input_type":"search_query"}`, texts...)
 }
-func waitStarted(t *testing.T, ch <-chan struct{}) {
-	t.Helper()
-	select {
-	case <-ch:
-	case <-time.After(3 * time.Second):
-		t.Fatal("upstream did not start")
-	}
-}
 
-func TestBatch500SplitsInsideProviderAndPreservesOrder(t *testing.T) {
+// 大逻辑请求在适配器内依序拆批，不能把调用方一个并发放大成多个上游并发。
+func TestBatch500SplitsSequentiallyAndPreservesOrder(t *testing.T) {
 	p := mustProvider(t, config.CohereEmbeddingProviderConfig{})
-	var mu sync.Mutex
-	sizes := map[int]int{}
-	secondFinished := make(chan struct{})
+	var starts, sizes []int
 	p.client = embeddingDoer(func(r *http.Request) (*http.Response, error) {
 		texts := payloadTexts(r)
 		start, _ := strconv.Atoi(texts[0])
-		mu.Lock()
-		sizes[start] = len(texts)
-		mu.Unlock()
-		// 第二片先返回，保证验证的是输入顺序而非上游完成顺序。
-		if start == 0 {
-			select {
-			case <-secondFinished:
-			case <-r.Context().Done():
-				return nil, r.Context().Err()
-			}
-		}
+		starts = append(starts, start)
+		sizes = append(sizes, len(texts))
 		rows := testVectors(len(texts))
 		for i, text := range texts {
 			n, _ := strconv.Atoi(text)
 			rows[i][0] = float64(n)
-		}
-		if start == 96 {
-			close(secondFinished)
 		}
 		return floatResponse(rows), nil
 	})
@@ -109,26 +86,20 @@ func TestBatch500SplitsInsideProviderAndPreservesOrder(t *testing.T) {
 			t.Fatalf("order changed at %d", i)
 		}
 	}
-	if !reflect.DeepEqual(sizes, map[int]int{0: 96, 96: 96, 192: 96, 288: 96, 384: 96, 480: 20}) {
-		t.Fatalf("upstream batches=%v", sizes)
+	if !reflect.DeepEqual(starts, []int{0, 96, 192, 288, 384, 480}) || !reflect.DeepEqual(sizes, []int{96, 96, 96, 96, 96, 20}) {
+		t.Fatalf("upstream starts=%v sizes=%v", starts, sizes)
 	}
 }
 
-func TestConcurrencyIsSharedAcrossBatchSingleTextAndImage(t *testing.T) {
-	p := mustProvider(t, config.CohereEmbeddingProviderConfig{MaxBatchSize: 1, MaxConcurrency: 2})
-	ctx, cancel := context.WithCancel(context.Background())
+// 不同调用方请求互不占共享名额，普通文本和录衣图片不受批量功能额外限流。
+func TestIndependentRequestsHaveNoSharedConcurrencyGate(t *testing.T) {
+	p := mustProvider(t, config.CohereEmbeddingProviderConfig{MaxBatchSize: 1})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	release := make(chan struct{})
-	started := make(chan struct{}, 16)
-	var active, peak, calls atomic.Int64
+	started := make(chan struct{}, 8)
+	var calls atomic.Int64
 	p.client = embeddingDoer(func(r *http.Request) (*http.Response, error) {
-		current := active.Add(1)
-		defer active.Add(-1)
-		for old := peak.Load(); current > old; old = peak.Load() {
-			if peak.CompareAndSwap(old, current) {
-				break
-			}
-		}
 		calls.Add(1)
 		started <- struct{}{}
 		select {
@@ -140,15 +111,21 @@ func TestConcurrencyIsSharedAcrossBatchSingleTextAndImage(t *testing.T) {
 	})
 	image := textRequest("")
 	image.Input.Items = []*modelhubv2.InputItem{{Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{Role: modelhubv2.Role_ROLE_USER, Parts: []*modelhubv2.ContentPart{{Content: &modelhubv2.ContentPart_Image{Image: &modelhubv2.Media{Source: &modelhubv2.Media_Data{Data: []byte("png")}}}}}}}}}
-	requests := []*modelhubv2.GenerateRequest{logicalRequest("a", "b", "c"), textRequest("", `{"color":"black"}`), image}
+	requests := []*modelhubv2.GenerateRequest{logicalRequest("a", "b"), textRequest("", "coat"), textRequest("", "pants"), textRequest("", `{"color":"black"}`), image}
 	done := make(chan error, len(requests))
 	for _, request := range requests {
 		go func() { _, err := p.Generate(ctx, models.CohereEmbedV4, request); done <- err }()
 	}
-	waitStarted(t, started)
-	waitStarted(t, started)
-	if calls.Load() != 2 || peak.Load() > 2 {
-		t.Fatal("requests bypassed shared gate")
+	for range requests {
+		select {
+		case <-started:
+		case <-ctx.Done():
+			t.Fatal("independent requests blocked by shared gate")
+		}
+	}
+	// 首批完成前，批量请求的第二片尚未开始。
+	if calls.Load() != int64(len(requests)) {
+		t.Fatalf("batch amplified concurrency: calls=%d", calls.Load())
 	}
 	close(release)
 	for range requests {
@@ -156,13 +133,13 @@ func TestConcurrencyIsSharedAcrossBatchSingleTextAndImage(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if calls.Load() != 5 || peak.Load() != 2 {
-		t.Fatalf("calls=%d peak=%d", calls.Load(), peak.Load())
+	if calls.Load() != 6 {
+		t.Fatalf("calls=%d", calls.Load())
 	}
 }
 
-func TestFailedChunkRetriesWithoutRepeatingSuccessfulChunks(t *testing.T) {
-	p := mustProvider(t, config.CohereEmbeddingProviderConfig{MaxBatchSize: 1, MaxConcurrency: 1})
+func TestFailedChunkStopsWithoutProviderRetryOrPartialResult(t *testing.T) {
+	p := mustProvider(t, config.CohereEmbeddingProviderConfig{MaxBatchSize: 1})
 	counts := map[string]int{}
 	p.client = embeddingDoer(func(r *http.Request) (*http.Response, error) {
 		text := payloadTexts(r)[0]
@@ -172,22 +149,9 @@ func TestFailedChunkRetriesWithoutRepeatingSuccessfulChunks(t *testing.T) {
 		}
 		return floatResponse(testVectors(1)), nil
 	})
-	_, err := p.Generate(context.Background(), models.CohereEmbedV4, logicalRequest("a", "b", "c"))
-	var handled *provider.RetriesHandledError
-	if !errors.As(err, &handled) || provider.Kind(err) != provider.ErrorUnavailable {
-		t.Fatalf("lost classification/retry marker: %v", err)
-	}
-	if !reflect.DeepEqual(counts, map[string]int{"a": 1, "b": 4}) {
-		t.Fatalf("repeated success or continued after failure: %v", counts)
-	}
-}
-
-func TestInvalidChunkIsNotRetried(t *testing.T) {
-	p := mustProvider(t, config.CohereEmbeddingProviderConfig{})
-	calls := 0
-	p.client = embeddingDoer(func(r *http.Request) (*http.Response, error) { calls++; return floatResponse([][]float64{{1}}), nil })
-	if _, err := p.Generate(context.Background(), models.CohereEmbedV4, logicalRequest("a")); provider.Kind(err) != provider.ErrorInvalidResponse || calls != 1 {
-		t.Fatalf("err=%v calls=%d", err, calls)
+	event, err := p.Generate(context.Background(), models.CohereEmbedV4, logicalRequest("a", "b", "c"))
+	if provider.Kind(err) != provider.ErrorUnavailable || event != nil || !reflect.DeepEqual(counts, map[string]int{"a": 1, "b": 1}) {
+		t.Fatalf("err=%v event=%v calls=%v", err, event, counts)
 	}
 }
 
@@ -203,53 +167,18 @@ func TestAdmissionLimitsRejectWholeRequestBeforeHTTP(t *testing.T) {
 	}
 }
 
-func TestCanceledQueueDoesNotSendAndSlotIsReleased(t *testing.T) {
-	p := mustProvider(t, config.CohereEmbeddingProviderConfig{MaxBatchSize: 1, MaxConcurrency: 1})
-	occupiedCtx, stopOccupied := context.WithCancel(context.Background())
-	defer stopOccupied()
-	started := make(chan struct{}, 4)
-	var calls atomic.Int64
-	p.client = embeddingDoer(func(r *http.Request) (*http.Response, error) {
-		calls.Add(1)
-		started <- struct{}{}
-		<-r.Context().Done()
-		return nil, r.Context().Err()
-	})
-	done := make(chan error, 1)
-	go func() {
-		_, err := p.Generate(occupiedCtx, models.CohereEmbedV4, textRequest("", "occupy"))
-		done <- err
-	}()
-	waitStarted(t, started)
-	queuedCtx, cancelQueued := context.WithCancel(context.Background())
-	queued := make(chan error, 1)
-	go func() { _, err := p.Generate(queuedCtx, models.CohereEmbedV4, logicalRequest("a", "b")); queued <- err }()
-	cancelQueued()
-	if err := <-queued; !errors.Is(err, context.Canceled) || calls.Load() != 1 {
-		t.Fatalf("queue cancellation dispatched HTTP: %v calls=%d", err, calls.Load())
-	}
-	stopOccupied()
-	<-done
-	p.client = embeddingDoer(func(r *http.Request) (*http.Response, error) { return floatResponse(testVectors(1)), nil })
-	if _, err := p.Generate(context.Background(), models.CohereEmbedV4, logicalRequest("next")); err != nil {
-		t.Fatalf("slot leaked: %v", err)
-	}
-}
-
-func TestBatchDeadlineCancelsInFlightAndStopsRemainingChunks(t *testing.T) {
-	p := mustProvider(t, config.CohereEmbeddingProviderConfig{MaxBatchSize: 1, MaxConcurrency: 1})
-	var calls atomic.Int64
-	p.client = embeddingDoer(func(r *http.Request) (*http.Response, error) {
-		calls.Add(1)
-		<-r.Context().Done()
-		return nil, r.Context().Err()
-	})
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+func TestBatchCancellationStopsRemainingChunksAndPreservesAttempt(t *testing.T) {
+	p := mustProvider(t, config.CohereEmbeddingProviderConfig{MaxBatchSize: 1})
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if _, err := p.Generate(ctx, models.CohereEmbedV4, logicalRequest("a", "b", "c")); !errors.Is(err, context.DeadlineExceeded) || calls.Load() != 1 {
-		t.Fatalf("deadline/remaining chunks: %v calls=%d", err, calls.Load())
-	}
-	if len(p.slots) != 0 {
-		t.Fatal("deadline leaked slot")
+	calls := 0
+	p.client = embeddingDoer(func(r *http.Request) (*http.Response, error) {
+		calls++
+		cancel()
+		return floatResponse(testVectors(1)), nil
+	})
+	event, err := p.Generate(ctx, models.CohereEmbedV4, logicalRequest("a", "b", "c"))
+	if !errors.Is(err, context.Canceled) || provider.IsNotAttempted(err) || calls != 1 || event != nil {
+		t.Fatalf("err=%v calls=%d event=%v", err, calls, event)
 	}
 }

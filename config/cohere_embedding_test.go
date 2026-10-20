@@ -9,12 +9,12 @@ import (
 
 func TestCohereExecutionLimitsDefaultAndValidate(t *testing.T) {
 	defaults := (CohereEmbeddingProviderConfig{}).Resolved()
-	if defaults.MaxBatchSize != 96 || defaults.MaxConcurrency != 4 || defaults.MaxRequestTexts != 512 || defaults.MaxRequestTextBytes != 1<<20 || defaults.RequestTimeoutSeconds != 30 {
+	if defaults.MaxBatchSize != 96 || defaults.MaxRequestTexts != 512 || defaults.MaxRequestTextBytes != 1<<20 {
 		t.Fatalf("defaults=%+v", defaults)
 	}
 	for _, cfg := range []CohereEmbeddingProviderConfig{
-		{MaxBatchSize: 97}, {MaxBatchSize: -1}, {MaxConcurrency: -1}, {MaxConcurrency: 65},
-		{MaxRequestTexts: -1}, {MaxRequestTexts: 1025}, {MaxRequestTextBytes: -1}, {MaxRequestTextBytes: 4<<20 + 1}, {RequestTimeoutSeconds: -1}, {RequestTimeoutSeconds: 121},
+		{MaxBatchSize: 97}, {MaxBatchSize: -1},
+		{MaxRequestTexts: -1}, {MaxRequestTexts: 1025}, {MaxRequestTextBytes: -1}, {MaxRequestTextBytes: 4<<20 + 1},
 	} {
 		if cfg.ValidateExecutionLimits() == nil {
 			t.Errorf("accepted invalid execution limits %+v", cfg)
@@ -30,7 +30,7 @@ func TestCohereLimitsAreWiredAndRequireRestart(t *testing.T) {
 	next := cloneConfig(cfg)
 	next.Providers["cohere"].CohereEmbedding.MaxBatchSize = 32
 	if fields := RestartRequiredFields(cfg, next); !strings.Contains(strings.Join(fields, ","), "providers") {
-		t.Fatalf("limits hot-applied without rebuilding gate: %v", fields)
+		t.Fatalf("limits hot-applied without rebuilding provider: %v", fields)
 	}
 	live := NewLiveConfig(cfg)
 	live.ApplyYAML(mustYAML(t, next))

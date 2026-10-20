@@ -366,12 +366,10 @@ type DashScopeEmbeddingProviderConfig struct {
 type CohereEmbeddingProviderConfig struct {
 	BaseURL string `yaml:"base_url"`
 	APIKey  string `yaml:"api_key"`
-	// 执行资源绑定 Provider 实例；改动须重启，不能只热更新 YAML 而不重建共享并发池。
-	MaxBatchSize          int `yaml:"max_batch_size,omitempty"`
-	MaxConcurrency        int `yaml:"max_concurrency,omitempty"`
-	MaxRequestTexts       int `yaml:"max_request_texts,omitempty"`
-	MaxRequestTextBytes   int `yaml:"max_request_text_bytes,omitempty"`
-	RequestTimeoutSeconds int `yaml:"request_timeout_seconds,omitempty"`
+	// 批量容量绑定 Provider 实例；改动须重启，不在此处管理调用方并发。
+	MaxBatchSize        int `yaml:"max_batch_size,omitempty"`
+	MaxRequestTexts     int `yaml:"max_request_texts,omitempty"`
+	MaxRequestTextBytes int `yaml:"max_request_text_bytes,omitempty"`
 }
 
 type BedrockEmbeddingProviderConfig struct {

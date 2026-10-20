@@ -7,13 +7,10 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"io"
 	"math"
 	"net/http"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/wgdl666/kangaroo/logs"
@@ -35,13 +32,11 @@ type httpDoer interface {
 }
 
 type Provider struct {
-	name       string
-	client     httpDoer
-	endpoint   string
-	apiKey     string
-	limits     config.CohereEmbeddingProviderConfig
-	slots      chan struct{}
-	retryDelay time.Duration
+	name     string
+	client   httpDoer
+	endpoint string
+	apiKey   string
+	limits   config.CohereEmbeddingProviderConfig
 }
 
 func New(name string, cfg *config.CohereEmbeddingProviderConfig) (*Provider, error) {
@@ -58,16 +53,14 @@ func New(name string, cfg *config.CohereEmbeddingProviderConfig) (*Provider, err
 	if err := resolved.ValidateExecutionLimits(); err != nil {
 		return nil, provider.Wrap(provider.ErrorConfiguration, "cohere embedding execution limits", err)
 	}
-	// 并发池跟随 Provider 实例共享，单条录衣和批量查询都在实际 HTTP 边界取名额。
-	return &Provider{name: name, client: telemetry.NewTimedHTTPClient(20 * time.Second), endpoint: baseURL + "/v2/embed", apiKey: apiKey, limits: resolved, slots: make(chan struct{}, resolved.MaxConcurrency), retryDelay: 300 * time.Millisecond}, nil
+	// 仅保存批量容量配置；请求并发与总 deadline 由调用方管理。
+	return &Provider{name: name, client: telemetry.NewTimedHTTPClient(20 * time.Second), endpoint: baseURL + "/v2/embed", apiKey: apiKey, limits: resolved}, nil
 }
 
 func (p *Provider) Generate(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
 	if model != models.CohereEmbedV4 {
 		return nil, provider.Errorf(provider.ErrorInvalidArgument, "cohere embedding does not serve model %q", model)
 	}
-	ctx, cancel := context.WithTimeout(ctx, time.Duration(p.limits.RequestTimeoutSeconds)*time.Second)
-	defer cancel()
 	payload, batch, err := p.coherePayload(model, request)
 	if err != nil {
 		return nil, err
@@ -170,9 +163,6 @@ func (p *Provider) coherePayload(model string, request *modelhubv2.GenerateReque
 	if text == "" {
 		return nil, false, provider.NotAttempted(provider.ErrorInvalidArgument, "embedding requires an image or text")
 	}
-	if len(text) > p.limits.MaxRequestTextBytes {
-		return nil, false, provider.NotAttempted(provider.ErrorInvalidArgument, "embedding exceeds request text byte budget")
-	}
 	inputType := "search_query"
 	if strings.HasPrefix(text, "{") {
 		inputType = "search_document"
@@ -186,20 +176,6 @@ func (p *Provider) post(ctx context.Context, payload any, expected int) ([][]flo
 	if err := ctx.Err(); err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorTimeout, "cohere embedding canceled before request", err)
 	}
-	waitCtx, span := logs.StartSpan(ctx, "cohere.embedding.upstream")
-	defer span.End()
-	waitStarted := time.Now()
-	select {
-	case p.slots <- struct{}{}:
-	case <-ctx.Done():
-		return nil, provider.WrapNotAttempted(provider.ErrorTimeout, "cohere embedding queue canceled", ctx.Err())
-	}
-	defer func() { <-p.slots }()
-	span.SetInt("embedding.queue_wait_ms", int(time.Since(waitStarted).Milliseconds()))
-	if err := ctx.Err(); err != nil {
-		return nil, provider.WrapNotAttempted(provider.ErrorTimeout, "cohere embedding canceled before request", err)
-	}
-	ctx = waitCtx
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorUnavailable, p.name+" encode embedding", err)
@@ -280,93 +256,26 @@ func decodeFloatEmbeddings(raw []byte) ([][]float64, error) {
 	return rows, nil
 }
 
-// embedBatch 在本实例共享并发池下执行逻辑请求；结果按输入位置写回，失败则整单不返回部分向量。
+// embedBatch 顺序拆分一个逻辑请求，不放大调用方并发；完整成功后按输入顺序返回。
 func (p *Provider) embedBatch(ctx context.Context, payload map[string]any) ([][]float64, error) {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	texts := payload["texts"].([]string)
-	batchCount := (len(texts) + p.limits.MaxBatchSize - 1) / p.limits.MaxBatchSize
 	ctx, span := logs.StartSpan(ctx, "cohere.embedding.batch_request")
 	defer span.End()
+	texts := payload["texts"].([]string)
 	span.SetInt("embedding.text_count", len(texts))
-	span.SetInt("embedding.batch_count", batchCount)
-	span.SetInt("embedding.max_concurrency", p.limits.MaxConcurrency)
-	rows := make([][]float64, len(texts))
-	var next atomic.Int64
-	var attempted atomic.Int64
-	var wg sync.WaitGroup
-	var firstErr error
-	var failOnce sync.Once
-	for worker := 0; worker < min(batchCount, p.limits.MaxConcurrency); worker++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for {
-				if ctx.Err() != nil {
-					return
-				}
-				index := int(next.Add(1) - 1)
-				if index >= batchCount {
-					return
-				}
-				start := index * p.limits.MaxBatchSize
-				end := min(start+p.limits.MaxBatchSize, len(texts))
-				batchCtx, batchSpan := logs.StartSpan(ctx, "cohere.embedding.batch")
-				batchSpan.SetInt("embedding.batch_index", index)
-				batchSpan.SetInt("embedding.text_count", end-start)
-				part := map[string]any{"model": payload["model"], "embedding_types": payload["embedding_types"], "output_dimension": vectorDim, "input_type": "search_query", "texts": texts[start:end]}
-				vectors, err := p.postBatchWithRetry(batchCtx, part, end-start, &attempted)
-				if err != nil {
-					telemetry.RecordError(batchCtx, err)
-				}
-				batchSpan.End()
-				if err != nil {
-					failOnce.Do(func() { firstErr = err; cancel() })
-					return
-				}
-				copy(rows[start:end], vectors)
+	span.SetInt("embedding.batch_count", (len(texts)+p.limits.MaxBatchSize-1)/p.limits.MaxBatchSize)
+	rows := make([][]float64, 0, len(texts))
+	for start := 0; start < len(texts); start += p.limits.MaxBatchSize {
+		end := min(start+p.limits.MaxBatchSize, len(texts))
+		part := map[string]any{"model": payload["model"], "embedding_types": payload["embedding_types"], "output_dimension": vectorDim, "input_type": "search_query", "texts": texts[start:end]}
+		vectors, err := p.post(ctx, part, end-start)
+		if err != nil {
+			// 前面已有分片成功时，后续取消不能把整单记成从未触达供应商。
+			if start > 0 && provider.IsNotAttempted(err) {
+				err = &provider.Error{Kind: provider.Kind(err), Message: "cohere batch embedding failed", Err: err}
 			}
-		}()
-	}
-	wg.Wait()
-	if firstErr == nil && ctx.Err() != nil {
-		firstErr = provider.WrapNotAttempted(provider.ErrorTimeout, "cohere batch embedding canceled", ctx.Err())
-	}
-	if firstErr != nil {
-		// 某个分片已尝试调用时，不能因另一分片排队取消而把整单记成未出站。
-		if attempted.Load() > 0 && provider.IsNotAttempted(firstErr) {
-			firstErr = &provider.Error{Kind: provider.Kind(firstErr), Message: "cohere batch embedding failed", Err: firstErr}
+			return nil, err
 		}
-		telemetry.RecordError(ctx, firstErr)
-		return nil, &provider.RetriesHandledError{Err: firstErr}
+		rows = append(rows, vectors...)
 	}
 	return rows, nil
-}
-
-// postBatchWithRetry 只重试当前分片，退避期间归还共享名额；禁止外层重算已成功分片。
-func (p *Provider) postBatchWithRetry(ctx context.Context, payload map[string]any, expected int, attempted *atomic.Int64) ([][]float64, error) {
-	for attempt := 0; ; attempt++ {
-		vectors, err := p.post(ctx, payload, expected)
-		if !provider.IsNotAttempted(err) {
-			attempted.Add(1)
-		}
-		if err == nil {
-			return vectors, nil
-		}
-		if attempt >= 3 || provider.IsNotAttempted(err) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, err
-		}
-		kind := provider.Kind(err)
-		if kind != provider.ErrorRateLimited && kind != provider.ErrorUnavailable {
-			return nil, err
-		}
-		logs.SpanFromContext(ctx).SetInt("embedding.retry_count", attempt+1)
-		timer := time.NewTimer(time.Duration(attempt+1) * p.retryDelay)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return nil, provider.Wrap(provider.ErrorTimeout, "cohere batch embedding retry canceled", ctx.Err())
-		case <-timer.C:
-		}
-	}
 }
