@@ -109,7 +109,7 @@ type ProviderConfig struct {
 	CohereRerank *CohereRerankProviderConfig `yaml:"cohere_rerank"`
 	// MixedbreadRerank 承接 mixedbread-ai/mxbai-rerank-v3.1-listwise。没有 instruct 字段，query 里的颜色词在供应商内收成主色检索句。
 	MixedbreadRerank *MixedbreadRerankProviderConfig `yaml:"mixedbread_rerank"`
-	// GoogleRerank 走独立 Ranking API，身份来自 ADC，不复用 Vertex Express API key。
+	// GoogleRerank 走独立 Ranking API，可与 Vertex 共用运行环境 ADC。
 	GoogleRerank *GoogleRerankProviderConfig `yaml:"google_rerank"`
 	// FacebodyDetect 承接 DetectFace，只返回脸框。
 	FacebodyDetect *FacebodyDetectProviderConfig `yaml:"facebody_detect"`
@@ -134,16 +134,10 @@ type GoogleRerankProviderConfig struct {
 	ProxyURL string `yaml:"proxy_url"`
 }
 
-// VertexAIProviderConfig 使用 Vertex Express API key。
-// 文本走 aiplatform.googleapis.com 的 publishers 短路径，不带 project。
-// Project 服务全部 Vertex 生图：这些请求打 locations/global。官方 Express 短路径会落到调用方区域。
-// SDK 不允许 APIKey 与 Project/Location 同时设置，所以 global 客户端另建，密钥仍是这把 api_key，不走 ADC。
-// Location 固定 global，不进配置。缺 project 时 Vertex 生图在请求时返回配置错误，不出站。文本仍走 Express。
-// ProxyURL 可选。国内 ACK 直连 aiplatform.googleapis.com 会 TLS 超时，需要复用环境里已有的 HTTP 代理；
-// 留空则直连，美东路演保持这条路径。
+// VertexAIProviderConfig 统一使用运行环境 ADC，可与 google_rerank 共用凭据文件。
+// 文本/生图均要求 project，固定 locations/global；代理同时用于换 token 和模型调用。
 type VertexAIProviderConfig struct {
-	APIKey string `yaml:"api_key"`
-	// Project 是 Vertex 项目编号或 ID。空表示 Vertex 生图不可用，文本仍走 Express 短路径。
+	// Project 是 Vertex 项目编号或 ID，不能从开发者环境中猜测。
 	Project string `yaml:"project"`
 	// ProxyURL 是已有 HTTP 代理。空表示直连。
 	ProxyURL string `yaml:"proxy_url"`
@@ -858,11 +852,11 @@ func validateProvider(name string, provider ProviderConfig) error {
 			return fmt.Errorf("provider %s api_key is required", name)
 		}
 	case provider.VertexAI != nil:
-		if strings.TrimSpace(provider.VertexAI.APIKey) == "" {
-			return fmt.Errorf("provider %s api_key is required", name)
+		if strings.TrimSpace(provider.VertexAI.Project) == "" {
+			return fmt.Errorf("provider %s vertexai.project is required for ADC", name)
 		}
-		// project 可选。只配 api_key 的文本 Express 仍合法。
-		// 不按 models 是否含 Nano Banana 2.1 强制 project：模型列表可热添加，客户端在启动时已经建好。
+		// ADC 的项目必须在 YAML 显式给出，不能从开发者环境中猜测。
+		// 模型列表可热添加，不能让 models 决定初始化身份或客户端。
 		project := provider.VertexAI.Project
 		if project != "" && (strings.TrimSpace(project) != project || strings.ContainsAny(project, "/ \t")) {
 			return fmt.Errorf("provider %s vertexai.project is invalid", name)

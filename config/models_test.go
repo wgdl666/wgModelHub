@@ -74,7 +74,6 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 				BaseURL string `yaml:"base_url"`
 			} `yaml:"openai"`
 			VertexAI *struct {
-				APIKey  string `yaml:"api_key"`
 				Project string `yaml:"project"`
 			} `yaml:"vertexai"`
 			VWorldImage *struct {
@@ -243,11 +242,11 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 	if len(nano.Models) != 1 || nano.Models[0] != models.GeminiNanoBanana21 {
 		t.Fatalf("Vertex_AI_nano_banana models=%v, want [%q]", nano.Models, models.GeminiNanoBanana21)
 	}
-	if nano.VertexAI == nil || nano.VertexAI.APIKey != "${VERTEX_API_KEY}" || nano.VertexAI.Project != "${VERTEX_PROJECT}" {
+	if nano.VertexAI == nil || nano.VertexAI.Project != "${VERTEX_PROJECT}" {
 		t.Fatalf("Vertex_AI_nano_banana vertexai=%#v", nano.VertexAI)
 	}
-	if vertexChat.VertexAI == nil || vertexChat.VertexAI.Project != "" {
-		t.Fatalf("Vertex_AI_chat must stay key-only, vertexai=%#v", vertexChat.VertexAI)
+	if vertexChat.VertexAI == nil || vertexChat.VertexAI.Project != "${VERTEX_PROJECT}" {
+		t.Fatalf("Vertex_AI_chat must use ADC, vertexai=%#v", vertexChat.VertexAI)
 	}
 	if _, routed := parsed.ModelRoutes[models.GeminiNanoBanana21]; routed {
 		t.Fatal("single-declared nano banana must not use model_routes")

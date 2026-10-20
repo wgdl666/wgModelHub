@@ -169,13 +169,34 @@ go run ./cmd/g6-smoke -image /path/to/portrait.jpg -out artifacts/g6-smoke
 
 `models.Flux2Klein9B` 当前仅支持带参考图的 image edit（i2i），须绑定独立 OpenAI Images 实例。
 `models.GPTImage2` / `models.GPTImage25Flare` / `models.GPTImage25Sunburst` 走 OpenAI Images API（generations/edits），示例与审计目标实例键都是 `AIG_openai`（`https://api.aig-ai.com/v1`），不能并入 Gemini generateContent 生图实例。
-`models.GeminiNanoBanana21`（`gemini-nano-banana-2.1`）走 Vertex 的现有 Generate 图片链路，示例实例是 `Vertex_AI_nano_banana`。调用方使用 `request.model` 加 `OutputSpec.image`。分辨率传 `1K` / `2K` / `4K`。Vertex 生图一律打 `locations/global`，不按模型 ID 留在 Express。官方 Express 短路径不带 project，会落到调用方区域，所以生图实例必须显式配置 `vertexai.project`；生图从第一次就打 `projects/{project}/locations/global`，密钥仍是原来的 API key，不走 ADC。缺 project 时 Vertex 生图返回配置错误，不出站。文本请求保持无 project 的 Express 短路径。`vertexai.proxy_url` 可空；只在直连 Google 不通的环境填写已有 HTTP 代理。思考推荐 `MINIMAL` / `MEDIUM` / `HIGH`；`LOW` 会原样下发，由上游拒绝。官方不支持 `temperature`，设置了会原样下发并返回上游错误。
+`models.GeminiNanoBanana21`（`gemini-nano-banana-2.1`）走 Vertex 的现有 Generate 图片链路，示例实例是 `Vertex_AI_nano_banana`。调用方使用 `request.model` 加 `OutputSpec.image`。Vertex 生图固定 `locations/global`，必须显式配置 `vertexai.project`，不从上游错误文案中探测项目。分辨率原样传 `1K` / `2K` / `4K`；思考推荐 `MINIMAL` / `MEDIUM` / `HIGH`，`LOW` 和 `temperature` 原样下发，由上游决定是否接受。
+
+### Vertex 文本、生图与 Google rerank 统一 ADC
+
+Vertex 只使用 ADC，不再支持 `vertexai.api_key`，`vertexai.project` 必填。文本、流式文本、缓存创建和生图共用一个 `locations/global` Vertex 客户端，Google SDK 的鉴权库自动获取、缓存和刷新 access token。模型名、输入输出协议、工具和生图参数保持原样。
+
+```yaml
+providers:
+  Vertex_AI:
+    models: [gemini-2.5-flash, gemini-nano-banana-2.1]
+    vertexai:
+      project: "your-google-cloud-project"
+      # proxy_url: http://your-existing-proxy:1081
+```
+
+运行环境设置 `GOOGLE_APPLICATION_CREDENTIALS=/etc/google/credentials.json`，将服务账号或联合身份凭据以只读文件提供给容器 UID `10001`。它可以与下面 `google_rerank` 读取同一份凭据；token 由各自的鉴权库实例缓存，不要求两条链路共用同一条 token 字符串。私钥与 token 不放入 AppConfig/Nacos。`vertexai.proxy_url` 可空；配置后换 token 与模型请求共用该出口。
+
+统一身份需要项目启用 `aiplatform.googleapis.com`，并给服务账号授予 `aiplatform.endpoints.predict` 和配额项目的 `serviceusage.services.use`；调用缓存创建 RPC 时还需要 `aiplatform.cachedContents.create`。Google rerank 的 `discoveryengine.rankingConfigs.rank` 不能替代 Vertex 权限。
+
+这是一次需要同步运行环境的鉴权迁移：发布前先提供运行时凭据和 Vertex 权限，更新线上 AppConfig Validator 的 Vertex 规则，再从所有 Vertex 实例配置中删除 `api_key` 并显式配置 `project`，通过正式发布入口滚动重启。仅修改仓库 schema 不会自动更新线上 Validator。旧的 API key 配置不能继续提供 Vertex 鉴权；没有项目或 ADC 凭据时启动失败。项目/代理变化不能热更新；模型调用不会使用 `GOOGLE_API_KEY` 或 `GEMINI_API_KEY` 环境变量中的 key。
+
+参考：[Vertex ADC](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/start/gcp-auth)、[Vertex IAM 权限](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/access-control)。
 
 ## Google 文本精排（Ranking API）
 
 Google 文本精排通过独立 `google_rerank` provider 调用 Discovery Engine
 `rankingConfigs/default_ranking_config:rank`，固定 `locations/global`。它继续使用已有
-`Generate` RPC 和 `output.text`，不经过 Vertex 的 Gemini `generateContent`，也不使用 Express API key。
+`Generate` RPC 和 `output.text`，不经过 Vertex 的 Gemini `generateContent`，身份与 Vertex 一样使用运行环境 ADC。
 
 ```yaml
 providers:

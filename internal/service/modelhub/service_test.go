@@ -279,7 +279,7 @@ func TestVertexImageHotReloadAddsAndRemovesModel(t *testing.T) {
 		Providers: map[string]config.ProviderConfig{
 			"vertex_chat": {
 				Models:   []string{models.Gemini20Flash001},
-				VertexAI: &config.VertexAIProviderConfig{APIKey: "k"},
+				VertexAI: &config.VertexAIProviderConfig{Project: "test-project"},
 			},
 		},
 	}
@@ -336,7 +336,7 @@ func TestVertexImageHotReloadAddsAndRemovesModel(t *testing.T) {
 	added.Providers = map[string]config.ProviderConfig{
 		"vertex_chat": {
 			Models:   []string{models.Gemini20Flash001, models.GeminiNanoBanana21},
-			VertexAI: &config.VertexAIProviderConfig{APIKey: "k"},
+			VertexAI: &config.VertexAIProviderConfig{Project: "test-project"},
 		},
 	}
 	body, err := yaml.Marshal(added)
@@ -378,7 +378,7 @@ func TestVertexImageHotReloadAddsAndRemovesModel(t *testing.T) {
 	removed.Providers = map[string]config.ProviderConfig{
 		"vertex_chat": {
 			Models:   []string{models.Gemini20Flash001},
-			VertexAI: &config.VertexAIProviderConfig{APIKey: "k"},
+			VertexAI: &config.VertexAIProviderConfig{Project: "test-project"},
 		},
 	}
 	body, err = yaml.Marshal(removed)
@@ -410,11 +410,11 @@ func TestServiceRoutesNanoBananaImageAndKeepsVertexText(t *testing.T) {
 		Providers: map[string]config.ProviderConfig{
 			"vertex_chat": {
 				Models:   []string{models.Gemini20Flash001},
-				VertexAI: &config.VertexAIProviderConfig{APIKey: "k"},
+				VertexAI: &config.VertexAIProviderConfig{Project: "test-project"},
 			},
 			"vertex_nano_banana": {
 				Models:   []string{models.GeminiNanoBanana21},
-				VertexAI: &config.VertexAIProviderConfig{APIKey: "k"},
+				VertexAI: &config.VertexAIProviderConfig{Project: "test-project"},
 			},
 		},
 	}, map[string]provider.Set{

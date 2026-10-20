@@ -125,12 +125,12 @@ func TestAppConfigSchemaContract(t *testing.T) {
 		t.Fatalf("ark.endpoint_id type=%v, want string", endpointID["type"])
 	}
 
-	// api_key 仍必填。project 可选：文本 Express 不需要；Vertex 生图缺它会在请求时失败。location 固定 global，不进 schema。
+	// Vertex 只用 ADC，project 必填；不再声明 api_key。location 固定 global，不进 schema。
 	vertex := mustMap(t, definitions["vertexai"])
-	assertStringSet(t, vertex["required"], "api_key")
+	assertStringSet(t, vertex["required"], "project")
 	vertexProps := mustMap(t, vertex["properties"])
-	if _, ok := vertexProps["api_key"]; !ok {
-		t.Fatal("vertexai.api_key missing")
+	if _, ok := vertexProps["api_key"]; ok {
+		t.Fatal("vertexai must not declare api_key")
 	}
 	project := mustMap(t, vertexProps["project"])
 	if project["type"] != "string" || project["minLength"] != float64(1) {

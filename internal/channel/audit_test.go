@@ -293,7 +293,7 @@ func providerFromAudit(t *testing.T, item auditProvider, row auditRow) config.Pr
 	case "gemini":
 		cfg.Gemini = &config.GeminiProviderConfig{APIKey: "audit", BaseURL: urlFor(explicit), ProxyURL: proxy}
 	case "vertexai":
-		cfg.VertexAI = &config.VertexAIProviderConfig{APIKey: "audit", ProxyURL: proxy}
+		cfg.VertexAI = &config.VertexAIProviderConfig{Project: "test-project", ProxyURL: proxy}
 	case "openai":
 		cfg.OpenAI = &config.OpenAIProviderConfig{APIKey: "audit", BaseURL: urlFor(explicit)}
 	case "ark":

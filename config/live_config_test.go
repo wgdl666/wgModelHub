@@ -543,7 +543,7 @@ func TestVertexProjectChangeRequiresRestartButModelHotAddDoesNot(t *testing.T) {
 	initial := validConfig()
 	initial.Providers["vertex_chat"] = ProviderConfig{
 		Models:   []string{models.Gemini20Flash001},
-		VertexAI: &VertexAIProviderConfig{APIKey: "k", Project: "123"},
+		VertexAI: &VertexAIProviderConfig{Project: "123"},
 	}
 	if err := initial.Validate(); err != nil {
 		t.Fatal(err)
@@ -566,6 +566,7 @@ func TestVertexProjectChangeRequiresRestartButModelHotAddDoesNot(t *testing.T) {
 	if len(fields) != 1 || fields[0] != "providers" {
 		t.Fatalf("project change fields=%v", fields)
 	}
+
 }
 
 func cloneConfig(cfg Config) Config {

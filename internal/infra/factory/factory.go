@@ -136,12 +136,12 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 		return provider.Set{Text: client, Image: client}, nil
 	case providerCfg.VertexAI != nil:
 		cfg := providerCfg.VertexAI
-		client, err := genai.NewVertexAI(ctx, name, cfg.APIKey, cfg.Project, cfg.ProxyURL)
+		client, err := genai.NewVertexAI(ctx, name, cfg.Project, cfg.ProxyURL)
 		if err != nil {
 			return provider.Set{}, err
 		}
 		// 文本和生图是同一个 Provider。Image 在启动时挂上，不读可热更新的 models。
-		// 配了 vertexai.project 时，Vertex 生图用初始化建好的 locations/global 客户端；文本仍走 Express。
+		// 文本与生图统一走 ADC，复用同一个 global 客户端。
 		return provider.Set{Text: client, Image: client}, nil
 	case providerCfg.Ark != nil:
 		cfg := providerCfg.Ark
