@@ -51,6 +51,10 @@ spec:
             # 内网 /healthz+/metrics；与 gRPC 同属 Deployment 拓扑，绝不进外部 LoadBalancer。
             - name: WG_SERVER_HTTP_PORT
               value: "51053"
+            # Vertex 与 Google rerank 共用这份 ADC；私钥只进 Secret，不进 Nacos。
+            # 下次 workspace 全量同步清单时必须保留，否则滚动发布会丢掉身份文件。
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /etc/google/credentials.json
           ports:
             - name: grpc
               containerPort: 50053
@@ -93,10 +97,23 @@ spec:
               mountPath: /etc/wg-model-hub/bootstrap.json
               subPath: bootstrap.json
               readOnly: true
+            # subPath 只挂这一个文件，避免盖住 /etc/google 下的其他内容。
+            # 0444 是为了让非 root 进程 10001 读到 Secret 默认属主 root 的文件。
+            - name: google-adc
+              mountPath: /etc/google/credentials.json
+              subPath: credentials.json
+              readOnly: true
       volumes:
         - name: bootstrap
           configMap:
             name: wg-model-hub-bootstrap
+        - name: google-adc
+          secret:
+            secretName: modelhub-google-adc
+            defaultMode: 0444
+            items:
+              - key: credentials.json
+                path: credentials.json
 ---
 apiVersion: v1
 kind: Service
