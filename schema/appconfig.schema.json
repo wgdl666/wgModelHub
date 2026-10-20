@@ -335,7 +335,8 @@
       "required": ["base_url", "api_key"],
       "properties": {
         "base_url": { "type": "string", "minLength": 1 },
-        "api_key": { "type": "string", "minLength": 1 }
+        "api_key": { "type": "string", "minLength": 1 },
+        "http_timeout": { "type": "string", "description": "Optional positive Go duration; empty defaults to 20s. Requires provider restart." }
       }
     },
     "cohereEmbedding": {

@@ -279,7 +279,11 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 		return provider.Set{Text: client}, nil
 	case providerCfg.DashScopeEmbedding != nil:
 		cfg := providerCfg.DashScopeEmbedding
-		client, err := dashscopeembed.New(name, cfg.BaseURL, cfg.APIKey)
+		timeout, err := cfg.HTTPTimeoutDuration()
+		if err != nil {
+			return provider.Set{}, err
+		}
+		client, err := dashscopeembed.New(name, cfg.BaseURL, cfg.APIKey, timeout)
 		if err != nil {
 			return provider.Set{}, err
 		}

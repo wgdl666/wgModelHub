@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/nacos-group/nacos-sdk-go/v2/clients"
 	"github.com/nacos-group/nacos-sdk-go/v2/common/constant"
@@ -334,6 +335,20 @@ type RekognitionCompareProviderConfig struct {
 type DashScopeEmbeddingProviderConfig struct {
 	BaseURL string `yaml:"base_url"`
 	APIKey  string `yaml:"api_key"`
+	// HTTPTimeout is a startup-bound HTTP request timeout. Empty preserves 20s.
+	HTTPTimeout string `yaml:"http_timeout"`
+}
+
+func (c DashScopeEmbeddingProviderConfig) HTTPTimeoutDuration() (time.Duration, error) {
+	value := strings.TrimSpace(c.HTTPTimeout)
+	if value == "" {
+		return 20 * time.Second, nil
+	}
+	timeout, err := time.ParseDuration(value)
+	if err != nil || timeout <= 0 {
+		return 0, fmt.Errorf("dashscope embedding http_timeout must be a positive duration")
+	}
+	return timeout, nil
 }
 
 type CohereEmbeddingProviderConfig struct {
@@ -988,6 +1003,9 @@ func validateProvider(name string, provider ProviderConfig) error {
 		item := provider.DashScopeEmbedding
 		if strings.TrimSpace(item.BaseURL) == "" || strings.TrimSpace(item.APIKey) == "" {
 			return fmt.Errorf("provider %s dashscope embedding base_url and api_key are required", name)
+		}
+		if _, err := item.HTTPTimeoutDuration(); err != nil {
+			return fmt.Errorf("provider %s: %w", name, err)
 		}
 	case provider.CohereEmbedding != nil:
 		item := provider.CohereEmbedding

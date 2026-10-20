@@ -307,6 +307,7 @@ providers:
     dashscope_embedding:
       base_url: https://dashscope.aliyuncs.com/api/v1
       api_key: "${DASHSCOPE_API_KEY}"
+      # http_timeout: 20s # Optional; omitted preserves 20s. Changing requires restart.
   Cohere_embedding:
     models: [embed-v4.0]
     cohere_embedding:

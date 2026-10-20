@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/models"
@@ -17,7 +18,7 @@ type roundTrip func(*http.Request) (*http.Response, error)
 func (r roundTrip) Do(req *http.Request) (*http.Response, error) { return r(req) }
 
 func TestEmbedTextReturns1024(t *testing.T) {
-	provider, err := New("qwen", "https://dashscope.example/api/v1", "key")
+	provider, err := New("qwen", "https://dashscope.example/api/v1", "key", 20*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}

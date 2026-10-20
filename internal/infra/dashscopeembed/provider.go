@@ -31,16 +31,19 @@ type Provider struct {
 	apiKey   string
 }
 
-func New(name, baseURL, apiKey string) (*Provider, error) {
+func New(name, baseURL, apiKey string, timeout time.Duration) (*Provider, error) {
 	name = strings.TrimSpace(name)
 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	apiKey = strings.TrimSpace(apiKey)
 	if name == "" || baseURL == "" || apiKey == "" {
 		return nil, provider.New(provider.ErrorConfiguration, "dashscope embedding requires base_url and api_key")
 	}
+	if timeout <= 0 {
+		return nil, provider.New(provider.ErrorConfiguration, "dashscope embedding HTTP timeout must be positive")
+	}
 	return &Provider{
 		name:     name,
-		client:   telemetry.NewTimedHTTPClient(20 * time.Second),
+		client:   telemetry.NewTimedHTTPClient(timeout),
 		endpoint: baseURL + "/services/embeddings/multimodal-embedding/multimodal-embedding",
 		apiKey:   apiKey,
 	}, nil
