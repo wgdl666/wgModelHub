@@ -360,6 +360,10 @@ type DashScopeEmbeddingProviderConfig struct {
 type CohereEmbeddingProviderConfig struct {
 	BaseURL string `yaml:"base_url"`
 	APIKey  string `yaml:"api_key"`
+	// 批量容量绑定 Provider 实例；改动须重启，不在此处管理调用方并发。
+	MaxBatchSize        int `yaml:"max_batch_size,omitempty"`
+	MaxRequestTexts     int `yaml:"max_request_texts,omitempty"`
+	MaxRequestTextBytes int `yaml:"max_request_text_bytes,omitempty"`
 }
 
 type BedrockEmbeddingProviderConfig struct {
@@ -1024,6 +1028,9 @@ func validateProvider(name string, provider ProviderConfig) error {
 		item := provider.CohereEmbedding
 		if strings.TrimSpace(item.BaseURL) == "" || strings.TrimSpace(item.APIKey) == "" {
 			return fmt.Errorf("provider %s cohere embedding base_url and api_key are required", name)
+		}
+		if err := item.ValidateExecutionLimits(); err != nil {
+			return fmt.Errorf("provider %s: %w", name, err)
 		}
 	case provider.BedrockEmbedding != nil:
 		if strings.TrimSpace(provider.BedrockEmbedding.Region) == "" || strings.HasPrefix(strings.ToLower(strings.TrimSpace(provider.BedrockEmbedding.Region)), "cn-") {

@@ -16,6 +16,44 @@ rpc SynthesizeSpeech(SynthesizeSpeechRequest) returns (SynthesizeSpeechResponse)
 rpc SynthesizeSpeechStream(SynthesizeSpeechRequest) returns (stream SynthesizeSpeechResponse);
 ```
 
+## Cohere 批量查询向量
+
+`Generate` 的 `model=embed-v4.0` 支持显式批量 query：在 `input.model_traits` 中传
+`{"embedding_batch":true,"input_type":"search_query"}` JSON 字符串，在 `input.items` 中按序放置 USER message，
+每条恰好一个非空 text part。批量不接受图片、工具内容或文档模式。Wardrobe 去重后一次提交完整逻辑请求，
+不感知供应商单批限制，也不在超限后拆小重发。
+
+ModelHub 先校验完整批量请求的条数/原始文本字节数，再按 `cohere_embedding.max_batch_size` 顺序拆批，
+调用 Cohere `/v2/embed` 的 `texts[]`，并按输入顺序合并。500条默认拆为96×5+20，依次调用6次；
+任一批失败就停止，不发布部分结果。一个逻辑请求同一时刻最多执行一个批次，不放大调用方并发。
+不同RPC之间不设共享并发池；请求并发、业务排队及总deadline由调用方管理。
+
+配置位于每个 Cohere provider 的 `cohere_embedding`：
+
+```yaml
+max_batch_size: 96               # 缺省96，范围1..96；供应商单次请求容量
+max_request_texts: 512           # 缺省512，范围1..1024；单个逻辑批量请求准入上限
+max_request_text_bytes: 1048576  # 缺省1 MiB，最大4 MiB；批量文本的原始UTF-8总字节
+```
+
+配置由Provider启动时读取，修改需重启。超出整单条数或文本字节上限时，出站前直接拒绝。
+512条1024维向量按每个数32字节保守估算约16 MiB，最大1024条约32 MiB，为64 MiB RPC保留包装空间。
+每批HTTP响应限4 MiB，完整结果限32 MiB；校验行数、1024维、有限值和null，避免文本与向量错位。
+返回文本 JSON 为 `{"embeddings":[[...],[...]]}`，单元素批次也保留复数键。
+
+Provider不新增分片重试、退避、工作协程或整单超时配置。保留原有单次HTTP 20秒超时及调用方deadline。
+瞬态失败仍由已有Service文本重试机制处理，可能重新执行整个逻辑请求，包括之前成功的分片；
+取消、超时和非瞬态错误遵守原Service规则。这里不承诺分片续算或失败后仅重算失败片。
+`cohere.embedding.batch_request`记录条数、批次数，原有`provider.http`记录每次上游耗时，
+不记录文本、向量或密钥。
+
+只有显式批量标志才拆分输入。普通多段文本仍合成单个输入，以 `{` 开头的商品文本仍走
+`search_document`，图片保留单图路径，继续返回 `{"embedding":[...]}`；单条调用不新增并发和总超时预算。
+批量容量限制只作用于批量输入；`model_traits`若非空仍须是合法JSON对象。
+未新增RPC、模型ID、凭据或自动切换向量空间；只接入官方Cohere Provider，Bedrock/DashScope保持原实现。
+应先发布此协议，再发布Wardrobe并开启其默认关闭的 `deep_recommend.batch_embedding_enabled`。
+关闭调用方开关后新冻结恢复单条协议。本PR不修改线上配置、不部署。
+
 ## VWorld/LTX 视频动作参数
 
 `SubmitGeneration` 调用 `VWorld_outfit_video_1.0` 时，调用方可在 `request.input.model_traits` 中传 JSON 字符串 `{"motion_tips":"Slowly turn the body 30 degrees."}`。LTX 适配器读取 `motion_tips`，去除首尾空白后写入 `POST /vton` 的独立 multipart 字段；`image`、`prompt` 和上游 `model=ltx` 保持原协议。

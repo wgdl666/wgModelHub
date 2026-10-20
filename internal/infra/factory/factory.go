@@ -303,7 +303,7 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 		return provider.Set{Text: client}, nil
 	case providerCfg.CohereEmbedding != nil:
 		cfg := providerCfg.CohereEmbedding
-		client, err := cohereembed.New(name, cfg.BaseURL, cfg.APIKey)
+		client, err := cohereembed.New(name, cfg)
 		if err != nil {
 			return provider.Set{}, err
 		}

@@ -315,6 +315,10 @@ providers:
     cohere_embedding:
       base_url: https://api.cohere.com
       api_key: "${COHERE_API_KEY}"
+      # 批量容量：内部顺序拆批；调用并发由调用方管理。修改这些值需重启。
+      max_batch_size: 96
+      max_request_texts: 512
+      max_request_text_bytes: 1048576
   AWS_Bedrock_Runtime_us-east-1:
     models: ['us.cohere.embed-v4:0']
     bedrock_embedding:
