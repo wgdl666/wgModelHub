@@ -15,6 +15,7 @@ import (
 	"cloud.google.com/go/auth"
 	"cloud.google.com/go/auth/credentials"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/infra/rerankinstruction"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 )
@@ -22,11 +23,13 @@ import (
 const requestTimeout = 20 * time.Second
 
 type Provider struct {
-	name     string
-	project  string
-	endpoint string
-	client   *http.Client
-	tokens   auth.TokenProvider
+	// Instructions 由启动装配注入；连接不变，模板按请求读取。
+	Instructions rerankinstruction.Resolver
+	name         string
+	project      string
+	endpoint     string
+	client       *http.Client
+	tokens       auth.TokenProvider
 }
 
 func New(name, project, proxyURL string) (*Provider, error) {
@@ -60,8 +63,10 @@ func New(name, project, proxyURL string) (*Provider, error) {
 }
 
 type rerankInput struct {
-	Query     string   `json:"query"`
-	Documents []string `json:"documents"`
+	Query          string   `json:"query"`
+	InstructionKey string   `json:"instruction_key"`
+	Instruct       string   `json:"instruct"`
+	Documents      []string `json:"documents"`
 }
 
 type record struct {
@@ -81,13 +86,18 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 		input = request.GetInput()
 	}
 	var parsed rerankInput
-	// Google 没有 instruct 参数，沿用其它纯文本 reranker 的契约：接受但不转发，也不改写 query。
+	// Google 无独立 instruct；新协议由共享模板生成 Query。
 	if err := json.Unmarshal([]byte(provider.UserText(input)), &parsed); err != nil {
 		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "google rerank requires JSON query and documents")
 	}
 	if strings.TrimSpace(parsed.Query) == "" || len(parsed.Documents) == 0 || len(parsed.Documents) > 1000 {
 		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "google rerank requires query and 1 to 1000 documents")
 	}
+	query, _, err := p.Instructions.Resolve(parsed.Query, parsed.Instruct, parsed.InstructionKey, false)
+	if err != nil {
+		return nil, err
+	}
+	parsed.Query = query
 	records := make([]record, len(parsed.Documents))
 	for i, document := range parsed.Documents {
 		if strings.TrimSpace(document) == "" {

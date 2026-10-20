@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/auth"
+	"github.com/wgdl666/wgModelHub/config"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
@@ -252,5 +253,38 @@ func TestADCUsesConfiguredProxyForTokensAndRanking(t *testing.T) {
 	}
 	if tokens.Load() != 1 || ranks.Load() != 2 {
 		t.Fatalf("token cache/proxy: tokens=%d ranks=%d", tokens.Load(), ranks.Load())
+	}
+}
+
+// Google 与 Mixedbread 使用同一份模板语义，Google 请求只包含渲染后的 query。
+func TestInstructionKeyRendersQueryBeforeGoogleCall(t *testing.T) {
+	for _, key := range []string{"color", "look"} {
+		t.Run(key, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var payload map[string]any
+				if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+					t.Error(err)
+				}
+				if payload["query"] != key+"「红色通勤」" {
+					t.Errorf("query=%v", payload["query"])
+				}
+				if _, ok := payload["instruct"]; ok {
+					t.Error("instruct forwarded")
+				}
+				if _, ok := payload["instruction_key"]; ok {
+					t.Error("key forwarded")
+				}
+				w.Write([]byte(`{"records":[{"id":"0","score":0.8}]}`))
+			}))
+			defer server.Close()
+			p := &Provider{project: "test", endpoint: server.URL, client: server.Client(), tokens: tokenFunc(func(context.Context) (*auth.Token, error) { return &auth.Token{Value: "test"}, nil })}
+			p.Instructions = func() map[string]config.RerankTemplate {
+				return map[string]config.RerankTemplate{key: {Instruct: "native", QueryTemplate: key + "「{{query}}」"}}
+			}
+			req := request(`{"query":"红色通勤","documents":["doc"],"instruction_key":"` + key + `"}`)
+			if _, err := p.Generate(context.Background(), models.GoogleSemanticRankerDefault005, req); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }

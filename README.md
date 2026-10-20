@@ -255,12 +255,12 @@ AppConfig / Nacos 的 `providers.<实例>.models` 控制开放哪些真实模型
 用户消息的文本 part 放 JSON：
 
 ```json
-{"query":"白色通勤衬衫","documents":["黑色休闲裤","白色长袖通勤衬衫"],"instruct":"可省略"}
+{"query":"白色通勤衬衫","documents":["黑色休闲裤","白色长袖通勤衬衫"],"instruction_key":"look"}
 ```
 
 返回文本格式保持 `{"results":[{"index":1,"relevance_score":0.9},{"index":0,"relevance_score":0.1}]}`。
 下标对应输入 `documents`；顺序沿用 Google 的相关性排序，分数由 Google 返回，示例值不代表线上打分。
-Google 不支持 `instruct`，此字段不转发、不拼入 query。每次请求接受 1–1000 段非空文本，
+Google 不支持独立 `instruct`，按共享 `rerank_templates[look].query_template` 渲染 Query。每次请求接受 1–1000 段非空文本，
 请求所有候选的分数；记录超长按 Google 模型的 token 限制截断。流式请求发送一段完整结果和唯一的 metadata final。
 
 上线前必须启用 `discoveryengine.googleapis.com`，并给服务身份授予
@@ -279,3 +279,21 @@ API key 不会作为鉴权降级路径。项目、代理或 provider 增删须�
 参考：[Google Ranking API](https://docs.cloud.google.com/generative-ai-app-builder/docs/ranking)、
 [ADC](https://docs.cloud.google.com/docs/authentication/application-default-credentials)、
 [Kubernetes 工作负载身份联合](https://docs.cloud.google.com/iam/docs/workload-identity-federation-with-kubernetes)。
+
+### 共享精排指令模板
+
+调用方在现有 Generate 用户文本 JSON 中传 `query`、`documents`、`instruction_key`（`color` 或 `look`）。真实模型仍由外层 `request.model` 选择，protobuf 不变；ModelHub 不负责竞速、分数门槛或业务验收。
+
+`config/example.modelHub.yaml` 的顶层 `rerank_templates` 同时适用于 Nacos 与 AppConfig：每个键必须配置 `instruct` 和含 `{{query}}` 的 `query_template`，不按厂商分模板。
+
+- Qwen 文本和 VL 支持独立指令：保留原 Query，分别发送 `instruct` / `parameters.instruct`。
+- Google、Mixedbread、Cohere 官网、Bedrock Cohere：将原 Query 替换进 `query_template`，只向下游发送渲染后的 Query。
+- 文档、真实模型 ID 和结果下标不变；内部 `instruction_key` 不发给供应商。原 Query 是文本，不执行其中的模板占位或 JSON。
+
+模板每次请求读取同一份配置快照，可热更新；格式错误整单拒绝并保留旧配置。未知键、缺少模板或同时传 `instruct` 与 `instruction_key` 时在出站前报错，不默认为颜色模板。
+
+迁移先上线 ModelHub 与模板配置，再升级 Wardrobe。无 `instruction_key` 的旧请求保持原行为：Qwen 发送调用方指令，Google/Cohere 丢弃指令，Mixedbread 保留历史主色包装。新协议不再依靠英文指令匹配判断用途，也不会二次包装 Mixedbread look。旧协议待调用方迁移完成后可单独移除。
+
+共享颜色模板采用原始门槛评测问法 `检索主色是「{{query}}」的单品`（无句号），与 Mixedbread 旧主色包装一致。look 使用 Google 已测的统一模板；Mixedbread 旧 look 使用原始短 Query，因此旧 look 门槛须在新模板下重新核验。本分支不改线上模板、业务门槛或竞速配置。
+
+本次按两组 review：Wardrobe `codex/deep-recommend-rerank-race` 负责竞速和业务门槛；参数对齐由 Wardrobe `codex/rerank-instruction-key` 与本仓库 `codex/rerank-instruction-templates` 配套完成。本仓库 AppConfig 只新增 `rerank_templates`，沿用现有 Google/Mixedbread provider 与模型路由。模板不放在 Wardrobe，模型门槛不放在 ModelHub；代码合并提交使用 `[skip ci]` 跳过自动部署；配置示例仍是草案，合并代码不代表已经更新线上 AppConfig。

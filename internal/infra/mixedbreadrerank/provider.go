@@ -1,5 +1,5 @@
 // Package mixedbreadrerank 把 Mixedbread 官网 listwise 精排收成 ModelHub 文本结果。
-// 该接口没有 instruct 字段。上游可传可不传，这里都不转发；query 里的颜色词收成主色检索句。
+// 该接口没有 instruct 字段；新协议按共享模板生成 Query，旧协议保留既有主色包装。
 package mixedbreadrerank
 
 import (
@@ -12,6 +12,7 @@ import (
 	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/infra/rerankinstruction"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
@@ -25,8 +26,10 @@ type httpDoer interface {
 }
 
 type rerankRequest struct {
-	Query     string   `json:"query"`
-	Documents []string `json:"documents"`
+	Query          string   `json:"query"`
+	InstructionKey string   `json:"instruction_key"`
+	Instruct       string   `json:"instruct"`
+	Documents      []string `json:"documents"`
 }
 
 type wireRequest struct {
@@ -43,10 +46,12 @@ type scored struct {
 }
 
 type Provider struct {
-	name     string
-	client   httpDoer
-	endpoint string
-	apiKey   string
+	// Instructions 由启动装配注入；连接不变，模板按请求读取。
+	Instructions rerankinstruction.Resolver
+	name         string
+	client       httpDoer
+	endpoint     string
+	apiKey       string
 }
 
 func New(name, baseURL, apiKey string) (*Provider, error) {
@@ -67,9 +72,17 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 	if err != nil {
 		return nil, err
 	}
+	parsed.Query, _, err = p.Instructions.Resolve(parsed.Query, parsed.Instruct, parsed.InstructionKey, false)
+	if err != nil {
+		return nil, err
+	}
+	// 旧客户端未传 key 时保留既有主色包装；新协议已渲染，不能二次包装 look。
+	if parsed.InstructionKey == "" {
+		parsed.Query = assembleQuery(parsed.Query)
+	}
 	raw, err := p.post(ctx, wireRequest{
 		Model:        model,
-		Query:        assembleQuery(parsed.Query),
+		Query:        parsed.Query,
 		Input:        parsed.Documents,
 		ReturnInput:  false,
 		RewriteQuery: false,

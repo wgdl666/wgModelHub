@@ -107,7 +107,7 @@ type ProviderConfig struct {
 	BedrockRerank *BedrockRerankProviderConfig `yaml:"bedrock_rerank"`
 	// CohereRerank 承接官网 rerank-v3.5。请求不带 instruct。
 	CohereRerank *CohereRerankProviderConfig `yaml:"cohere_rerank"`
-	// MixedbreadRerank 承接 mixedbread-ai/mxbai-rerank-v3.1-listwise。没有 instruct 字段，query 里的颜色词在供应商内收成主色检索句。
+	// MixedbreadRerank 承接 mixedbread-ai/mxbai-rerank-v3.1-listwise；指令键通过共享模板渲染为 query。
 	MixedbreadRerank *MixedbreadRerankProviderConfig `yaml:"mixedbread_rerank"`
 	// GoogleRerank 走独立 Ranking API，可与 Vertex 共用运行环境 ADC。
 	GoogleRerank *GoogleRerankProviderConfig `yaml:"google_rerank"`
@@ -464,6 +464,8 @@ type Config struct {
 		HTTPListenAddress string
 	} `yaml:"-"`
 	Providers map[string]ProviderConfig `yaml:"providers"`
+	// RerankTemplates 按调用方指令键共享模板；每次请求读当前快照，切模型无需改业务请求。
+	RerankTemplates map[string]RerankTemplate `yaml:"rerank_templates"`
 	// ModelRouteOverrides：真实模型 ID -> 路由。字符串值是唯一实例。
 	// 对象值的 default 是不竞速时的实例，race 是请求标明竞速时并发的供应商名单。与 Models 同属路由元数据，可热更新。
 	ModelRouteOverrides map[string]ModelRoute `yaml:"model_routes"`
@@ -654,6 +656,9 @@ func (l *NacosConfigLoader) Close() {
 }
 
 func (c Config) Validate() error {
+	if err := validateRerankTemplates(c.RerankTemplates); err != nil {
+		return err
+	}
 	if strings.TrimSpace(c.Logfire.Token) == "" {
 		return fmt.Errorf("logfire.token is required")
 	}
