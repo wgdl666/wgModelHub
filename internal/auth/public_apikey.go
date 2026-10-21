@@ -3,10 +3,12 @@ package auth
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"strings"
 
 	"github.com/wgdl666/wgModelHub/internal/apikeystore"
+	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -62,6 +64,17 @@ func (s *authenticatedServerStream) Context() context.Context {
 	return s.ctx
 }
 
+// 公网 RPC 的业务 Span 在收包后才开始，单独计时才能区分大包上传和服务端执行。
+func (s *authenticatedServerStream) RecvMsg(message any) error {
+	ctx, span := telemetry.StartSpan(s.ctx, "modelhub.public_receive")
+	defer span.End()
+	err := s.ServerStream.RecvMsg(message)
+	if err != nil && !errors.Is(err, io.EOF) {
+		telemetry.RecordError(ctx, err)
+	}
+	return err
+}
+
 func authenticate(ctx context.Context, keys *apikeystore.Store) (context.Context, error) {
 	if keys == nil {
 		return ctx, status.Error(codes.Unauthenticated, "authentication required")
@@ -74,7 +87,10 @@ func authenticate(ctx context.Context, keys *apikeystore.Store) (context.Context
 	if len(values) == 0 {
 		return ctx, status.Error(codes.Unauthenticated, "authentication required")
 	}
-	principal, err := keys.Authenticate(ctx, values[0])
+	// 不采集 token 或主体资料，只观测公网鉴权查库实际用了多久。
+	authCtx, authSpan := telemetry.StartSpan(ctx, "modelhub.public_auth")
+	principal, err := keys.Authenticate(authCtx, values[0])
+	authSpan.End()
 	if err != nil {
 		if errors.Is(err, apikeystore.ErrInvalid) {
 			// 不区分缺失/过期/吊销/hash 不匹配，避免向公网泄露 Key 状态。

@@ -2,10 +2,12 @@ package telemetry
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptrace"
 	"strings"
 	"sync"
 	"time"
@@ -181,19 +183,44 @@ type traceTransport struct {
 
 func (t *traceTransport) RoundTrip(request *http.Request) (*http.Response, error) {
 	ctx, span := StartSpan(request.Context(), "provider.http")
+	started := time.Now()
 	span.SetAttributes(
 		attribute.String("http.request.method", request.Method),
 		attribute.String("server.address", request.URL.Host),
 	)
+	// 同一上游故障需要区分 DNS、连接、首包与读正文；仅记阶段时间和连接元数据。
+	stage := func(name string, attrs ...attribute.KeyValue) {
+		attrs = append(attrs, attribute.Float64("elapsed_ms", float64(time.Since(started).Microseconds())/1000))
+		span.AddEvent(name, trace.WithAttributes(attrs...))
+	}
+	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+		DNSStart:     func(httptrace.DNSStartInfo) { stage("http.dns.start") },
+		DNSDone:      func(info httptrace.DNSDoneInfo) { stage("http.dns.done", attribute.Bool("failed", info.Err != nil)) },
+		ConnectStart: func(network, _ string) { stage("http.connect.start", attribute.String("network", network)) },
+		ConnectDone: func(network, _ string, err error) {
+			stage("http.connect.done", attribute.String("network", network), attribute.Bool("failed", err != nil))
+		},
+		TLSHandshakeStart: func() { stage("http.tls.start") },
+		TLSHandshakeDone:  func(_ tls.ConnectionState, err error) { stage("http.tls.done", attribute.Bool("failed", err != nil)) },
+		GotConn: func(info httptrace.GotConnInfo) {
+			stage("http.connection.acquired", attribute.Bool("reused", info.Reused), attribute.Bool("was_idle", info.WasIdle))
+		},
+		WroteRequest: func(info httptrace.WroteRequestInfo) {
+			stage("http.request.written", attribute.Bool("failed", info.Err != nil))
+		},
+		GotFirstResponseByte: func() { stage("http.response.first_byte") },
+	})
 	clone := request.Clone(ctx)
 	clone.Header = request.Header.Clone()
 	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(clone.Header))
 	response, err := t.base.RoundTrip(clone)
 	if err != nil {
+		span.SetAttributes(attribute.String("error.phase", "round_trip"))
 		RecordError(ctx, err)
 		span.End()
 		return nil, err
 	}
+	span.SetAttributes(attribute.Float64("http.response.headers_elapsed_ms", float64(time.Since(started).Microseconds())/1000))
 	span.SetAttributes(attribute.Int("http.response.status_code", response.StatusCode))
 	if response.StatusCode >= 400 {
 		span.SetStatus(otelcodes.Error, fmt.Sprintf("HTTP %d", response.StatusCode))
@@ -202,21 +229,28 @@ func (t *traceTransport) RoundTrip(request *http.Request) (*http.Response, error
 		span.End()
 		return response, nil
 	}
-	response.Body = &traceResponseBody{body: response.Body, span: span}
+	response.Body = &traceResponseBody{body: response.Body, span: span, ctx: ctx, headersAt: time.Now()}
 	return response, nil
 }
 
 type traceResponseBody struct {
-	body  io.ReadCloser
-	span  trace.Span
-	once  sync.Once
-	bytes int64
+	body      io.ReadCloser
+	span      trace.Span
+	ctx       context.Context
+	headersAt time.Time
+	once      sync.Once
+	bytes     int64
 }
 
 func (b *traceResponseBody) Read(target []byte) (int, error) {
 	n, err := b.body.Read(target)
 	b.bytes += int64(n)
 	if err != nil {
+		// HTTP 200 只表示响应头已到，读正文超时仍必须在同一出站 Span 上可见。
+		if !errors.Is(err, io.EOF) {
+			b.span.SetAttributes(attribute.String("error.phase", "read_body"))
+			RecordError(b.ctx, err)
+		}
 		b.finish()
 	}
 	return n, err
@@ -224,6 +258,10 @@ func (b *traceResponseBody) Read(target []byte) (int, error) {
 
 func (b *traceResponseBody) Close() error {
 	err := b.body.Close()
+	if err != nil {
+		b.span.SetAttributes(attribute.String("error.phase", "close_body"))
+		RecordError(b.ctx, err)
+	}
 	b.finish()
 	return err
 }
@@ -231,6 +269,7 @@ func (b *traceResponseBody) Close() error {
 func (b *traceResponseBody) finish() {
 	b.once.Do(func() {
 		b.span.SetAttributes(attribute.Int64("http.response.body.size", b.bytes))
+		b.span.SetAttributes(attribute.Float64("http.response.body.duration_ms", float64(time.Since(b.headersAt).Microseconds())/1000))
 		b.span.End()
 	})
 }
