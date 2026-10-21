@@ -2,7 +2,14 @@ package auth
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
+
+	"go.opentelemetry.io/otel"
+	otelcodes "go.opentelemetry.io/otel/codes"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -167,6 +174,54 @@ func TestUnaryInterceptorStoreErrorUnavailable(t *testing.T) {
 type fakeServerStream struct {
 	grpc.ServerStream
 	ctx context.Context
+}
+
+type deadlineReceiveStream struct {
+	grpc.ServerStream
+	ctx context.Context
+}
+
+func (s *deadlineReceiveStream) Context() context.Context { return s.ctx }
+func (s *deadlineReceiveStream) RecvMsg(any) error        { return context.DeadlineExceeded }
+
+// 收包失败必须与鉴权查库分成同级阶段；不能改变原始 gRPC 错误或把 token 采集进 Trace。
+func TestPublicStreamSeparatesAuthenticationAndReceive(t *testing.T) {
+	store, material := openAuthTestStore(t)
+	recorder := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	previous := otel.GetTracerProvider()
+	otel.SetTracerProvider(tp)
+	t.Cleanup(func() { otel.SetTracerProvider(previous) })
+	ctx, root := tp.Tracer("test").Start(context.Background(), "rpc")
+	ctx = metadata.NewIncomingContext(ctx, metadata.Pairs("authorization", material.Bearer))
+	err := StreamServerInterceptor(store)(nil, &deadlineReceiveStream{ctx: ctx}, &grpc.StreamServerInfo{FullMethod: "/wg_model_hub.v2.ModelHubService/Generate"}, func(_ any, stream grpc.ServerStream) error {
+		return stream.RecvMsg(new(any))
+	})
+	root.End()
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("receive error changed: %v", err)
+	}
+	found := map[string]bool{}
+	for _, span := range recorder.Ended() {
+		if span.Name() == "rpc" {
+			continue
+		}
+		found[span.Name()] = true
+		if span.Parent().SpanID() != root.SpanContext().SpanID() {
+			t.Fatalf("stage %s lost RPC parent", span.Name())
+		}
+		if span.Name() == "modelhub.public_receive" && span.Status().Code != otelcodes.Error {
+			t.Fatal("receive deadline not recorded")
+		}
+		for _, attr := range span.Attributes() {
+			if strings.Contains(attr.Value.Emit(), material.Bearer) {
+				t.Fatal("public key leaked into trace")
+			}
+		}
+	}
+	if !found["modelhub.public_auth"] || !found["modelhub.public_receive"] {
+		t.Fatalf("stages=%v", found)
+	}
 }
 
 func (s *fakeServerStream) Context() context.Context {
