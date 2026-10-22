@@ -31,3 +31,8 @@ var ModelCallBusinessSubsceneSQL string
 //
 //go:embed 008_model_call_trace_id.sql
 var ModelCallTraceSQL string
+
+// PrefixCacheSQL registers provider cache names; applied by the migration command.
+//
+//go:embed 009_prefix_cache.sql
+var PrefixCacheSQL string

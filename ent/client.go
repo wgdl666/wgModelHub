@@ -17,6 +17,7 @@ import (
 	"github.com/wgdl666/wgModelHub/ent/generationtask"
 	"github.com/wgdl666/wgModelHub/ent/modelcall"
 	"github.com/wgdl666/wgModelHub/ent/modelhubapikey"
+	"github.com/wgdl666/wgModelHub/ent/prefixcache"
 
 	"github.com/wgdl666/wgModelHub/ent/internal"
 )
@@ -32,6 +33,8 @@ type Client struct {
 	ModelCall *ModelCallClient
 	// ModelhubAPIKey is the client for interacting with the ModelhubAPIKey builders.
 	ModelhubAPIKey *ModelhubAPIKeyClient
+	// PrefixCache is the client for interacting with the PrefixCache builders.
+	PrefixCache *PrefixCacheClient
 }
 
 // NewClient creates a new client configured with the given options.
@@ -46,6 +49,7 @@ func (c *Client) init() {
 	c.GenerationTask = NewGenerationTaskClient(c.config)
 	c.ModelCall = NewModelCallClient(c.config)
 	c.ModelhubAPIKey = NewModelhubAPIKeyClient(c.config)
+	c.PrefixCache = NewPrefixCacheClient(c.config)
 }
 
 type (
@@ -144,6 +148,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		GenerationTask: NewGenerationTaskClient(cfg),
 		ModelCall:      NewModelCallClient(cfg),
 		ModelhubAPIKey: NewModelhubAPIKeyClient(cfg),
+		PrefixCache:    NewPrefixCacheClient(cfg),
 	}, nil
 }
 
@@ -166,6 +171,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		GenerationTask: NewGenerationTaskClient(cfg),
 		ModelCall:      NewModelCallClient(cfg),
 		ModelhubAPIKey: NewModelhubAPIKeyClient(cfg),
+		PrefixCache:    NewPrefixCacheClient(cfg),
 	}, nil
 }
 
@@ -197,6 +203,7 @@ func (c *Client) Use(hooks ...Hook) {
 	c.GenerationTask.Use(hooks...)
 	c.ModelCall.Use(hooks...)
 	c.ModelhubAPIKey.Use(hooks...)
+	c.PrefixCache.Use(hooks...)
 }
 
 // Intercept adds the query interceptors to all the entity clients.
@@ -205,6 +212,7 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 	c.GenerationTask.Intercept(interceptors...)
 	c.ModelCall.Intercept(interceptors...)
 	c.ModelhubAPIKey.Intercept(interceptors...)
+	c.PrefixCache.Intercept(interceptors...)
 }
 
 // Mutate implements the ent.Mutator interface.
@@ -216,6 +224,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.ModelCall.mutate(ctx, m)
 	case *ModelhubAPIKeyMutation:
 		return c.ModelhubAPIKey.mutate(ctx, m)
+	case *PrefixCacheMutation:
+		return c.PrefixCache.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
 	}
@@ -620,13 +630,146 @@ func (c *ModelhubAPIKeyClient) mutate(ctx context.Context, m *ModelhubAPIKeyMuta
 	}
 }
 
+// PrefixCacheClient is a client for the PrefixCache schema.
+type PrefixCacheClient struct {
+	config
+}
+
+// NewPrefixCacheClient returns a client for the PrefixCache from the given config.
+func NewPrefixCacheClient(c config) *PrefixCacheClient {
+	return &PrefixCacheClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `prefixcache.Hooks(f(g(h())))`.
+func (c *PrefixCacheClient) Use(hooks ...Hook) {
+	c.hooks.PrefixCache = append(c.hooks.PrefixCache, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `prefixcache.Intercept(f(g(h())))`.
+func (c *PrefixCacheClient) Intercept(interceptors ...Interceptor) {
+	c.inters.PrefixCache = append(c.inters.PrefixCache, interceptors...)
+}
+
+// Create returns a builder for creating a PrefixCache entity.
+func (c *PrefixCacheClient) Create() *PrefixCacheCreate {
+	mutation := newPrefixCacheMutation(c.config, OpCreate)
+	return &PrefixCacheCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of PrefixCache entities.
+func (c *PrefixCacheClient) CreateBulk(builders ...*PrefixCacheCreate) *PrefixCacheCreateBulk {
+	return &PrefixCacheCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *PrefixCacheClient) MapCreateBulk(slice any, setFunc func(*PrefixCacheCreate, int)) *PrefixCacheCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &PrefixCacheCreateBulk{err: fmt.Errorf("calling to PrefixCacheClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*PrefixCacheCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &PrefixCacheCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for PrefixCache.
+func (c *PrefixCacheClient) Update() *PrefixCacheUpdate {
+	mutation := newPrefixCacheMutation(c.config, OpUpdate)
+	return &PrefixCacheUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *PrefixCacheClient) UpdateOne(_m *PrefixCache) *PrefixCacheUpdateOne {
+	mutation := newPrefixCacheMutation(c.config, OpUpdateOne, withPrefixCache(_m))
+	return &PrefixCacheUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *PrefixCacheClient) UpdateOneID(id string) *PrefixCacheUpdateOne {
+	mutation := newPrefixCacheMutation(c.config, OpUpdateOne, withPrefixCacheID(id))
+	return &PrefixCacheUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for PrefixCache.
+func (c *PrefixCacheClient) Delete() *PrefixCacheDelete {
+	mutation := newPrefixCacheMutation(c.config, OpDelete)
+	return &PrefixCacheDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *PrefixCacheClient) DeleteOne(_m *PrefixCache) *PrefixCacheDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *PrefixCacheClient) DeleteOneID(id string) *PrefixCacheDeleteOne {
+	builder := c.Delete().Where(prefixcache.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &PrefixCacheDeleteOne{builder}
+}
+
+// Query returns a query builder for PrefixCache.
+func (c *PrefixCacheClient) Query() *PrefixCacheQuery {
+	return &PrefixCacheQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypePrefixCache},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a PrefixCache entity by its id.
+func (c *PrefixCacheClient) Get(ctx context.Context, id string) (*PrefixCache, error) {
+	return c.Query().Where(prefixcache.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *PrefixCacheClient) GetX(ctx context.Context, id string) *PrefixCache {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *PrefixCacheClient) Hooks() []Hook {
+	return c.hooks.PrefixCache
+}
+
+// Interceptors returns the client interceptors.
+func (c *PrefixCacheClient) Interceptors() []Interceptor {
+	return c.inters.PrefixCache
+}
+
+func (c *PrefixCacheClient) mutate(ctx context.Context, m *PrefixCacheMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&PrefixCacheCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&PrefixCacheUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&PrefixCacheUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&PrefixCacheDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown PrefixCache mutation op: %q", m.Op())
+	}
+}
+
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		GenerationTask, ModelCall, ModelhubAPIKey []ent.Hook
+		GenerationTask, ModelCall, ModelhubAPIKey, PrefixCache []ent.Hook
 	}
 	inters struct {
-		GenerationTask, ModelCall, ModelhubAPIKey []ent.Interceptor
+		GenerationTask, ModelCall, ModelhubAPIKey, PrefixCache []ent.Interceptor
 	}
 )
 
@@ -636,6 +779,7 @@ var (
 		GenerationTask: tableSchemas[0],
 		ModelCall:      tableSchemas[0],
 		ModelhubAPIKey: tableSchemas[0],
+		PrefixCache:    tableSchemas[0],
 	}
 	tableSchemas = [...]string{"modelhub"}
 )

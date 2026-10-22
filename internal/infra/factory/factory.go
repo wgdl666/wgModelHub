@@ -47,8 +47,19 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/infra/rerankinstruction"
 	"github.com/wgdl666/wgModelHub/internal/infra/segmentperson"
 	"github.com/wgdl666/wgModelHub/internal/infra/vworldimage"
+	"github.com/wgdl666/wgModelHub/internal/prefixcache"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 )
+
+// ConfigurePrefixCache shares the registry across Google clients. Policy is
+// read per call; only text Generate paths use it, not image/video APIs.
+func ConfigurePrefixCache(sets map[string]provider.Set, cache *prefixcache.Manager, live *config.LiveConfig) {
+	for _, set := range sets {
+		if text, ok := set.Text.(*genai.Provider); ok {
+			text.ConfigurePrefixCache(cache, func(model string) bool { return live.Load().ExplicitCache.EnabledFor(model) })
+		}
+	}
+}
 
 // Build 按配置实例化供应商能力；真实模型路由在 service 层完成，这里只负责连接与能力装配。
 func Build(ctx context.Context, cfg config.Config) (map[string]provider.Set, error) {

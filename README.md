@@ -54,6 +54,30 @@ Provider不新增分片重试、退避、工作协程或整单超时配置。保
 应先发布此协议，再发布Wardrobe并开启其默认关闭的 `deep_recommend.batch_embedding_enabled`。
 关闭调用方开关后新冻结恢复单条协议。本PR不修改线上配置、不部署。
 
+## Google 文本自动显式缓存
+
+Nacos/AppConfig 可配置 `explicit_cache.enabled: true`（默认关闭，可通过现有配置加载机制更新）。
+可选 `explicit_cache.models: [gemini-3.7-flash, gemini-3.8-flash]` 限定启用模型；省略或空列表表示不限制 Google 文本模型。
+先通过独立迁移入口创建 `modelhub.prefix_cache`，再开启配置；服务启动不会创建表。
+表只保存 `cache_key`、`cached_content`、`expires_at`，不保存 prompt 或媒体正文。
+
+Gemini/Vertex 的文本 Generate 自动将实际出站的 system instruction、工具定义与工具模式
+作为固定前缀。key 隔离部署区域、调用身份、供应商连接身份和模型；动态内容与输出 Schema
+不进入前缀。调用方继续发送完整请求，无需新增字段。已有手动 `input.cached_content` 和
+明确的 `input.caching.enabled=false` 优先，不进入自动管理。图片、视频和其他供应商不受影响。
+
+无有效缓存时，本次完整调用，后台使用 PostgreSQL 非阻塞事务 advisory lock 按 key
+协调创建，TTL 固定1小时，不自动续期。取得锁后再次查询，避免正常并发重复创建。
+短前缀、明确不支持缓存的模型或暂时失败会在进程内短暂退避；模型范围由可选配置控制。
+数据库不可用仍完整调用。缓存使用在途可能过期：只有明确指向 CachedContent 的
+不存在/过期错误，且尚未发出增量，才作废对应旧 ID、完整补发一次并安排重建。
+普通404、限流、超时、取消和已经输出后的失败不会走该缓存补发路径。
+
+缓存创建成功但记录尚未提交时实例异常退出，可能留下未登记的上游缓存，按1小时 TTL
+自然过期；数据库锁不提供跨 Google/PostgreSQL 的严格一次语义。创建任务有超时与并发上限，
+进程退出会取消后台任务。生成流结束和 usage 继续遵守现有协议，实际命中仍以 cached_tokens
+为准，不把查到注册记录等同于命中。
+
 ## VWorld/LTX 视频动作参数
 
 `SubmitGeneration` 调用 `VWorld_outfit_video_1.0` 时，调用方可在 `request.input.model_traits` 中传 JSON 字符串 `{"motion_tips":"Slowly turn the body 30 degrees."}`。LTX 适配器读取 `motion_tips`，去除首尾空白后写入 `POST /vton` 的独立 multipart 字段；`image`、`prompt` 和上游 `model=ltx` 保持原协议。

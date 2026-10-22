@@ -23,6 +23,7 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/infra/httpserver"
 	"github.com/wgdl666/wgModelHub/internal/infra/objectstore"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
+	"github.com/wgdl666/wgModelHub/internal/prefixcache"
 	"github.com/wgdl666/wgModelHub/internal/publicrpc"
 	"github.com/wgdl666/wgModelHub/internal/service/modelhub"
 	"github.com/wgdl666/wgModelHub/internal/taskstore"
@@ -93,6 +94,9 @@ func main() {
 		fatal("database_connect_failed", err)
 	}
 	defer entClient.Close()
+	prefixCaches := prefixcache.New(ctx, prefixcache.NewPostgres(entClient))
+	defer prefixCaches.Close()
+	factory.ConfigurePrefixCache(providers, prefixCaches, live)
 
 	apiKeys := apikeystore.New(entClient)
 	ledger := callledger.NewPostgres(entClient)

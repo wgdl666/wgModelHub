@@ -10,6 +10,7 @@ type SchemaConfig struct {
 	GenerationTask string // GenerationTask table.
 	ModelCall      string // ModelCall table.
 	ModelhubAPIKey string // ModelhubAPIKey table.
+	PrefixCache    string // PrefixCache table.
 }
 
 type schemaCtxKey struct{}

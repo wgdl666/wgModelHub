@@ -14,3 +14,6 @@ type ModelCall func(*sql.Selector)
 
 // ModelhubAPIKey is the predicate function for modelhubapikey builders.
 type ModelhubAPIKey func(*sql.Selector)
+
+// PrefixCache is the predicate function for prefixcache builders.
+type PrefixCache func(*sql.Selector)

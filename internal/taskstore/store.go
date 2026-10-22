@@ -83,6 +83,7 @@ func Open(ctx context.Context, dsn string) (*ent.Client, error) {
 	return ent.NewClient(ent.Driver(drv), ent.AlternateSchema(ent.SchemaConfig{
 		GenerationTask: "modelhub",
 		ModelCall:      "modelhub",
+		PrefixCache:    "modelhub",
 		ModelhubAPIKey: "",
 	})), nil
 }
