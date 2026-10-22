@@ -63,8 +63,13 @@ func TestGenerateUploadsOriginalImageUsingHTTP1ToHTTP2CapableServer(t *testing.T
 	if err != nil {
 		t.Fatalf("original image upload failed: %v", err)
 	}
-	if !trusted.ForceAttemptHTTP2 || len(trusted.TLSClientConfig.NextProtos) != 1 || trusted.TLSClientConfig.NextProtos[0] != "h2" {
-		t.Fatal("provider changed the shared default transport")
+	control, err := (&http.Client{Transport: trusted}).Get(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer control.Body.Close()
+	if control.ProtoMajor != 2 {
+		t.Fatalf("shared transport lost HTTP/2 support: %s", control.Proto)
 	}
 }
 
