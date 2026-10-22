@@ -82,7 +82,7 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 				Password string `yaml:"password"`
 			} `yaml:"vworld_image"`
 		} `yaml:"providers"`
-		ModelRoutes map[string]string `yaml:"model_routes"`
+		ModelRoutes map[string]ModelRoute `yaml:"model_routes"`
 	}
 	if err := yaml.Unmarshal(raw, &parsed); err != nil {
 		t.Fatal(err)
@@ -104,11 +104,11 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 			continue
 		}
 		selected, ok := parsed.ModelRoutes[model]
-		if !ok {
+		if !ok || selected.Default == "" {
 			t.Fatalf("example yaml multi-binds %s without model_routes", model)
 		}
-		if _, ok := providers[selected]; !ok {
-			t.Fatalf("example model_routes[%s]=%s is not among declaring providers", model, selected)
+		if _, ok := providers[selected.Default]; !ok {
+			t.Fatalf("example model_routes[%s]=%s is not among declaring providers", model, selected.Default)
 		}
 	}
 	known := map[string]struct{}{}
@@ -232,8 +232,22 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 	if !ok {
 		t.Fatal("missing provider Vertex_AI_chat")
 	}
-	if len(vertexChat.Models) != 1 || vertexChat.Models[0] != models.Gemini20Flash001 {
-		t.Fatalf("Vertex_AI_chat models=%v, want [%q]", vertexChat.Models, models.Gemini20Flash001)
+	if len(vertexChat.Models) != 2 || vertexChat.Models[0] != models.Gemini20Flash001 || vertexChat.Models[1] != models.Gemini35FlashLite {
+		t.Fatalf("Vertex_AI_chat models=%v, want [%q %q]", vertexChat.Models, models.Gemini20Flash001, models.Gemini35FlashLite)
+	}
+	vertexRace, ok := parsed.Providers["Vertex_AI_chat_race"]
+	if !ok {
+		t.Fatal("missing provider Vertex_AI_chat_race")
+	}
+	if len(vertexRace.Models) != 1 || vertexRace.Models[0] != models.Gemini35FlashLite {
+		t.Fatalf("Vertex_AI_chat_race models=%v, want [%q]", vertexRace.Models, models.Gemini35FlashLite)
+	}
+	if vertexRace.VertexAI == nil || vertexRace.VertexAI.Project != "${VERTEX_PROJECT}" {
+		t.Fatalf("Vertex_AI_chat_race must use the same ADC project, vertexai=%#v", vertexRace.VertexAI)
+	}
+	lite := parsed.ModelRoutes[models.Gemini35FlashLite]
+	if lite.Default != "Vertex_AI_chat" || len(lite.Race) != 2 || lite.Race[0] != "Vertex_AI_chat" || lite.Race[1] != "Vertex_AI_chat_race" {
+		t.Fatalf("gemini-3.5-flash-lite route=%#v", lite)
 	}
 	nano, ok := parsed.Providers["Vertex_AI_nano_banana"]
 	if !ok {
@@ -251,8 +265,8 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 	if _, routed := parsed.ModelRoutes[models.GeminiNanoBanana21]; routed {
 		t.Fatal("single-declared nano banana must not use model_routes")
 	}
-	if parsed.ModelRoutes[models.Gemini25Flash] != "" {
-		t.Fatalf("gemini-2.5-flash model_routes=%q", parsed.ModelRoutes[models.Gemini25Flash])
+	if parsed.ModelRoutes[models.Gemini25Flash].Default != "" {
+		t.Fatalf("gemini-2.5-flash model_routes=%q", parsed.ModelRoutes[models.Gemini25Flash].Default)
 	}
 
 	// 四候选：Gemini 两个进 Gemini_Developer_API_gemini_main；Qwen3.8 进 阿里云百炼_openai_hub_chat；Claude 用独立 OpenAI-compat 指官方 Anthropic endpoint。
@@ -260,7 +274,7 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 	if !ok {
 		t.Fatal("missing provider Gemini_Developer_API_gemini_main")
 	}
-	for _, want := range []string{models.Gemini38Flash, models.Gemini35FlashLite} {
+	for _, want := range []string{models.Gemini38Flash} {
 		found := false
 		for _, m := range gemini.Models {
 			if m == want {

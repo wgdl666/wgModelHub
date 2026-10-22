@@ -23,8 +23,8 @@ explicit_cache:
 # 字面量清单见 models 包，调用方引用 github.com/wgdl666/wgModelHub/models，禁止在这里发明 alias。
 providers:
   Gemini_Developer_API_gemini_main:
-    # 3.8 与 3.5-flash-lite 与既有 Gemini 文本共用同一官方 Gemini provider 实例。
-    models: [gemini-3.5-flash, gemini-3.1-pro-preview, gemini-2.5-flash, gemini-3.7-flash, gemini-3.8-flash, gemini-3.5-flash-lite]
+    # 3.8 与既有 Gemini 文本共用这一实例。3.5-flash-lite 不放这里：它的签名不能拿去和 Vertex 竞速。
+    models: [gemini-3.5-flash, gemini-3.1-pro-preview, gemini-2.5-flash, gemini-3.7-flash, gemini-3.8-flash]
     gemini:
       api_key: "${GEMINI_API_KEY}"
       proxy_url: ""
@@ -54,7 +54,13 @@ providers:
   # Vertex 文本与生图统一 ADC：不填 api_key；运行环境提供凭据文件，与 google_rerank 共用。
   # GOOGLE_APPLICATION_CREDENTIALS 指向只读凭据文件；文本与生图均固定 locations/global。
   Vertex_AI_chat:
-    models: [gemini-2.0-flash-001]
+    models: [gemini-2.0-flash-001, gemini-3.5-flash-lite]
+    vertexai:
+      project: "${VERTEX_PROJECT}"
+  # 意图竞速的第二路。与 Vertex_AI_chat 同一个项目、同一条 locations/global 路径，签名才能互通。
+  # 竞速名单不能重复同一个实例名，所以单独占一个实例。
+  Vertex_AI_chat_race:
+    models: [gemini-3.5-flash-lite]
     vertexai:
       project: "${VERTEX_PROJECT}"
   # Vertex 生图（含 Nano Banana 2.1 与 gemini-2.5-flash-image）一律打 locations/global。
@@ -455,6 +461,10 @@ providers:
 model_routes:
   gemini-2.5-flash-image: AIG_gemini
   gemini-3.1-flash-image: AIG_gemini
+  # 两路都是同一个 Vertex 项目。非流式走 default，流式按首字竞速。
+  gemini-3.5-flash-lite:
+    default: Vertex_AI_chat
+    race: [Vertex_AI_chat, Vertex_AI_chat_race]
 
 # 账本媒体归档默认关闭；启用时填写 provider: oss 或 s3、bucket、region。
 # OSS 使用阿里云官方 SDK，还需 endpoint、access_key_id、access_key_secret。
