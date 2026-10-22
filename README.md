@@ -78,6 +78,10 @@ Gemini/Vertex 的文本 Generate 自动将实际出站的 system instruction、�
 进程退出会取消后台任务。生成流结束和 usage 继续遵守现有协议，实际命中仍以 cached_tokens
 为准，不把查到注册记录等同于命中。
 
+美东功能分支试发可显式运行 `python3 scripts/ci/aws_exhibition_feature_deploy.py --branch <feature-branch> --commit <40位SHA>`。
+入口核对远端分支 SHA，仅触发 `us-east-2/tomirro-modelhub` 现有托管流水线，不合并 dev。
+运行需有该流水线的启动权限；配置开启与数据库迁移仍分别执行。
+
 ## VWorld/LTX 视频动作参数
 
 `SubmitGeneration` 调用 `VWorld_outfit_video_1.0` 时，调用方可在 `request.input.model_traits` 中传 JSON 字符串 `{"motion_tips":"Slowly turn the body 30 degrees."}`。LTX 适配器读取 `motion_tips`，去除首尾空白后写入 `POST /vton` 的独立 multipart 字段；`image`、`prompt` 和上游 `model=ltx` 保持原协议。
