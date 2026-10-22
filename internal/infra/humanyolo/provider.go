@@ -44,7 +44,15 @@ func New(name, baseURL, username, password string) (*Provider, error) {
 	if username == "" || password == "" {
 		return nil, provider.New(provider.ErrorConfiguration, "human-yolo username and password are required")
 	}
-	client := telemetry.NewHTTPClient()
+	// The supplier's HTTP/2 ingress stalls multipart photo uploads. Keep the
+	// original image and timeout, using an isolated HTTP/1.1 connection pool.
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Protocols = new(http.Protocols)
+	transport.Protocols.SetHTTP1(true)
+	if transport.TLSClientConfig != nil {
+		transport.TLSClientConfig.NextProtos = []string{"http/1.1"}
+	}
+	client := telemetry.NewHTTPClientWithTransport(transport)
 	client.Timeout = timeout
 	return &Provider{
 		name:     name,

@@ -1,6 +1,7 @@
 package humanyolo
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"io"
@@ -11,6 +12,61 @@ import (
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/models"
 )
+
+func TestGenerateUploadsOriginalImageUsingHTTP1ToHTTP2CapableServer(t *testing.T) {
+	image := bytes.Repeat([]byte("original-image"), 100000)
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.ProtoMajor != 1 {
+			http.Error(w, "HTTP/2 upload stalls on the supplier ingress", http.StatusBadGateway)
+			return
+		}
+		if err := r.ParseMultipartForm(2 << 20); err != nil {
+			t.Error(err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		file, _, err := r.FormFile("file")
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer file.Close()
+		got, err := io.ReadAll(file)
+		if err != nil || !bytes.Equal(got, image) {
+			t.Errorf("uploaded image changed: bytes=%d err=%v", len(got), err)
+		}
+		user, pass, ok := r.BasicAuth()
+		if !ok || user != "wgdl" || pass != "secret" || r.URL.Path != "/predict" || r.FormValue("conf") != "0.35" || r.FormValue("iou") != "0.45" {
+			t.Error("supplier request contract changed")
+		}
+		_, _ = io.WriteString(w, `{"success":true,"persons":[]}`)
+	}))
+	server.EnableHTTP2 = true
+	server.StartTLS()
+	defer server.Close()
+
+	previous := http.DefaultTransport
+	trusted := server.Client().Transport.(*http.Transport).Clone()
+	http.DefaultTransport = trusted
+	t.Cleanup(func() { http.DefaultTransport = previous })
+	p, err := New("yolo", server.URL, "wgdl", "secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = p.Generate(context.Background(), models.HumanYOLO, &modelhubv2.GenerateRequest{
+		Input: &modelhubv2.Input{Items: []*modelhubv2.InputItem{{
+			Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
+				Parts: []*modelhubv2.ContentPart{{Content: &modelhubv2.ContentPart_Image{Image: &modelhubv2.Media{Source: &modelhubv2.Media_Data{Data: image}}}}},
+			}},
+		}}},
+	})
+	if err != nil {
+		t.Fatalf("original image upload failed: %v", err)
+	}
+	if !trusted.ForceAttemptHTTP2 || len(trusted.TLSClientConfig.NextProtos) != 1 || trusted.TLSClientConfig.NextProtos[0] != "h2" {
+		t.Fatal("provider changed the shared default transport")
+	}
+}
 
 func TestGeneratePostsPredictWithBasicAuth(t *testing.T) {
 	var gotAuth, gotConf string
