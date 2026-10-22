@@ -31,7 +31,10 @@ func Run(ctx context.Context, db *sql.DB) error {
 		return err
 	}
 	// trace_id 是后加列。正式迁移入口必须带上，否则新代码写入会因缺列失败。
-	return runSQL(ctx, db, migrations.ModelCallTraceSQL)
+	if err := runSQL(ctx, db, migrations.ModelCallTraceSQL); err != nil {
+		return err
+	}
+	return runSQL(ctx, db, migrations.PrefixCacheSQL)
 }
 
 func runSQL(ctx context.Context, db *sql.DB, statement string) (returnErr error) {

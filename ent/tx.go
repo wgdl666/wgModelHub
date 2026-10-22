@@ -18,6 +18,8 @@ type Tx struct {
 	ModelCall *ModelCallClient
 	// ModelhubAPIKey is the client for interacting with the ModelhubAPIKey builders.
 	ModelhubAPIKey *ModelhubAPIKeyClient
+	// PrefixCache is the client for interacting with the PrefixCache builders.
+	PrefixCache *PrefixCacheClient
 
 	// lazily loaded.
 	client     *Client
@@ -152,6 +154,7 @@ func (tx *Tx) init() {
 	tx.GenerationTask = NewGenerationTaskClient(tx.config)
 	tx.ModelCall = NewModelCallClient(tx.config)
 	tx.ModelhubAPIKey = NewModelhubAPIKeyClient(tx.config)
+	tx.PrefixCache = NewPrefixCacheClient(tx.config)
 }
 
 // txDriver wraps the given dialect.Tx with a nop dialect.Driver implementation.

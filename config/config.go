@@ -466,6 +466,9 @@ type Config struct {
 	Providers map[string]ProviderConfig `yaml:"providers"`
 	// RerankTemplates 按调用方指令键共享模板；每次请求读当前快照，切模型无需改业务请求。
 	RerankTemplates map[string]RerankTemplate `yaml:"rerank_templates"`
+	// ExplicitCache controls managed Google prefix caches. Disabled by default;
+	// Models optionally restricts the policy; upstream support is checked by creation.
+	ExplicitCache ExplicitCacheConfig `yaml:"explicit_cache"`
 	// ModelRouteOverrides：真实模型 ID -> 路由。字符串值是唯一实例。
 	// 对象值的 default 是不竞速时的实例，race 是请求标明竞速时并发的供应商名单。与 Models 同属路由元数据，可热更新。
 	ModelRouteOverrides map[string]ModelRoute `yaml:"model_routes"`
@@ -475,6 +478,26 @@ type Config struct {
 	Logfire LogfireConfig `yaml:"logfire"`
 	// ObjectStorage 保存账本里的图片和视频。留空则只记占位 URI，不挡调用。
 	ObjectStorage ObjectStorageConfig `yaml:"object_storage"`
+}
+
+type ExplicitCacheConfig struct {
+	Enabled bool     `yaml:"enabled"`
+	Models  []string `yaml:"models,omitempty"`
+}
+
+func (c ExplicitCacheConfig) EnabledFor(model string) bool {
+	if !c.Enabled {
+		return false
+	}
+	if len(c.Models) == 0 {
+		return true
+	}
+	for _, allowed := range c.Models {
+		if model == allowed {
+			return true
+		}
+	}
+	return false
 }
 
 // DatabaseConfig 只接受 DSN；连接参数由 DSN 自身表达，避免散落多字段半配置。

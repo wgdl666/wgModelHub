@@ -15,6 +15,7 @@ import (
 	"github.com/wgdl666/wgModelHub/ent/generationtask"
 	"github.com/wgdl666/wgModelHub/ent/modelcall"
 	"github.com/wgdl666/wgModelHub/ent/modelhubapikey"
+	"github.com/wgdl666/wgModelHub/ent/prefixcache"
 )
 
 // ent aliases to avoid import conflicts in user's code.
@@ -78,6 +79,7 @@ func checkColumn(t, c string) error {
 			generationtask.Table: generationtask.ValidColumn,
 			modelcall.Table:      modelcall.ValidColumn,
 			modelhubapikey.Table: modelhubapikey.ValidColumn,
+			prefixcache.Table:    prefixcache.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

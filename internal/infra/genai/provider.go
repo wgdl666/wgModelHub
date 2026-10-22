@@ -11,6 +11,7 @@ import (
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
+	"github.com/wgdl666/wgModelHub/internal/prefixcache"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/internal/thinking"
 	"github.com/wgdl666/wgModelHub/models"
@@ -21,8 +22,11 @@ import (
 const defaultCachedContentTTL = time.Hour
 
 type Provider struct {
-	name   string
-	client *genaisdk.Client
+	name          string
+	client        *genaisdk.Client
+	cacheIdentity string
+	cache         *prefixcache.Manager
+	cacheEnabled  func(string) bool
 }
 
 func NewGemini(ctx context.Context, name, apiKey, endpoint, proxyURL string) (*Provider, error) {
@@ -51,7 +55,7 @@ func NewGemini(ctx context.Context, name, apiKey, endpoint, proxyURL string) (*P
 	if err != nil {
 		return nil, provider.Wrap(provider.ErrorConfiguration, "create "+name+" client", err)
 	}
-	return &Provider{name: name, client: client}, nil
+	return &Provider{name: name, client: client, cacheIdentity: cacheIdentity("developer", name, endpoint, apiKey)}, nil
 }
 
 // NewVertexAI 统一使用运行环境 ADC，文本/生图共用 locations/global 客户端和 token 缓存。
@@ -79,7 +83,7 @@ func newVertexAI(ctx context.Context, name, project string, httpClient *http.Cli
 	if err != nil {
 		return nil, err
 	}
-	return &Provider{name: name, client: client}, nil
+	return &Provider{name: name, client: client, cacheIdentity: cacheIdentity("vertex", name, project, "global")}, nil
 }
 
 // CreateCachedContent 把 system + tools 落到 Gemini CachedContent，供后续 Generate 引用。
@@ -131,7 +135,14 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 	if err := requireGeminiContents(contents); err != nil {
 		return nil, err
 	}
-	response, err := p.client.Models.GenerateContent(ctx, model, contents, p.buildConfig(model, request))
+	original := p.buildConfig(model, request)
+	config, cached := p.preparePrefixCache(ctx, model, request, original)
+	response, err := p.client.Models.GenerateContent(ctx, model, contents, config)
+	if cached != nil && ctx.Err() == nil && missingCachedContent(err) {
+		p.cache.Invalidate(ctx, cached)
+		p.schedulePrefixCache(ctx, model, original, cached.Key)
+		response, err = p.client.Models.GenerateContent(ctx, model, contents, original)
+	}
 	if err != nil {
 		return nil, p.mapError(ctx, "generate content", err)
 	}
@@ -147,13 +158,29 @@ func (p *Provider) GenerateStream(ctx context.Context, model string, request *mo
 	if err := requireGeminiContents(contents); err != nil {
 		return nil, err
 	}
+	original := p.buildConfig(model, request)
+	config, cached := p.preparePrefixCache(ctx, model, request, original)
+	final, emitted, err := p.generateStreamOnce(ctx, model, contents, config, emit)
+	if cached != nil && !emitted && ctx.Err() == nil && missingCachedContent(err) {
+		p.cache.Invalidate(ctx, cached)
+		p.schedulePrefixCache(ctx, model, original, cached.Key)
+		final, _, err = p.generateStreamOnce(ctx, model, contents, original, emit)
+	}
+	if err != nil {
+		return nil, p.mapError(ctx, "stream content", err)
+	}
+	return final, nil
+}
+
+func (p *Provider) generateStreamOnce(ctx context.Context, model string, contents []*genaisdk.Content, config *genaisdk.GenerateContentConfig, emit provider.EmitEvent) (*modelhubv2.GenerateEvent, bool, error) {
 	var finishReason string
 	var responseID string
 	var usage *modelhubv2.Usage
+	var emitted bool
 
-	for response, err := range p.client.Models.GenerateContentStream(ctx, model, contents, p.buildConfig(model, request)) {
+	for response, err := range p.client.Models.GenerateContentStream(ctx, model, contents, config) {
 		if err != nil {
-			return nil, p.mapError(ctx, "stream content", err)
+			return nil, emitted, err
 		}
 		for _, candidate := range response.Candidates {
 			if candidate.Content == nil {
@@ -161,8 +188,9 @@ func (p *Provider) GenerateStream(ctx context.Context, model string, request *mo
 			}
 			for _, part := range candidate.Content.Parts {
 				if part.Text != "" && emit != nil {
+					emitted = true
 					if err := emit(provider.TextDeltaEvent(part.Text)); err != nil {
-						return nil, err
+						return nil, emitted, err
 					}
 				}
 				if part.FunctionCall == nil {
@@ -171,8 +199,9 @@ func (p *Provider) GenerateStream(ctx context.Context, model string, request *mo
 				call := convertFunctionCall(part)
 				// Gemini 可能在同一轮合法调用同名函数多次；没有稳定 call ID 时不能按名称去重。
 				if emit != nil {
+					emitted = true
 					if err := emit(provider.ToolCallEvent(call)); err != nil {
-						return nil, err
+						return nil, emitted, err
 					}
 				}
 			}
@@ -183,10 +212,12 @@ func (p *Provider) GenerateStream(ctx context.Context, model string, request *mo
 		if response.ResponseID != "" {
 			responseID = response.ResponseID
 		}
-		usage = convertUsage(response.UsageMetadata)
+		if response.UsageMetadata != nil {
+			usage = convertUsage(response.UsageMetadata)
+		}
 	}
 
-	return provider.MetadataFinalEvent(responseID, finishReason, usage), nil
+	return provider.MetadataFinalEvent(responseID, finishReason, usage), emitted, nil
 }
 
 func (p *Provider) buildContents(request *modelhubv2.GenerateRequest) []*genaisdk.Content {
@@ -384,18 +415,18 @@ func (p *Provider) buildConfig(model string, request *modelhubv2.GenerateRequest
 		if len(cfg.Tools) > 0 {
 			cfg.ToolConfig = &genaisdk.ToolConfig{FunctionCallingConfig: &genaisdk.FunctionCallingConfig{Mode: genaisdk.FunctionCallingConfigModeAuto}}
 		}
-	}
-	if choice := input.GetToolChoice(); choice != nil {
-		switch choice.Mode {
-		case modelhubv2.ToolChoiceMode_TOOL_CHOICE_MODE_NONE:
-			cfg.ToolConfig = &genaisdk.ToolConfig{FunctionCallingConfig: &genaisdk.FunctionCallingConfig{Mode: genaisdk.FunctionCallingConfigModeNone}}
-		case modelhubv2.ToolChoiceMode_TOOL_CHOICE_MODE_REQUIRED:
-			cfg.ToolConfig = &genaisdk.ToolConfig{FunctionCallingConfig: &genaisdk.FunctionCallingConfig{Mode: genaisdk.FunctionCallingConfigModeAny}}
-		case modelhubv2.ToolChoiceMode_TOOL_CHOICE_MODE_FUNCTION:
-			cfg.ToolConfig = &genaisdk.ToolConfig{FunctionCallingConfig: &genaisdk.FunctionCallingConfig{
-				Mode:                 genaisdk.FunctionCallingConfigModeAny,
-				AllowedFunctionNames: []string{choice.FunctionName},
-			}}
+		if choice := input.GetToolChoice(); choice != nil {
+			switch choice.Mode {
+			case modelhubv2.ToolChoiceMode_TOOL_CHOICE_MODE_NONE:
+				cfg.ToolConfig = &genaisdk.ToolConfig{FunctionCallingConfig: &genaisdk.FunctionCallingConfig{Mode: genaisdk.FunctionCallingConfigModeNone}}
+			case modelhubv2.ToolChoiceMode_TOOL_CHOICE_MODE_REQUIRED:
+				cfg.ToolConfig = &genaisdk.ToolConfig{FunctionCallingConfig: &genaisdk.FunctionCallingConfig{Mode: genaisdk.FunctionCallingConfigModeAny}}
+			case modelhubv2.ToolChoiceMode_TOOL_CHOICE_MODE_FUNCTION:
+				cfg.ToolConfig = &genaisdk.ToolConfig{FunctionCallingConfig: &genaisdk.FunctionCallingConfig{
+					Mode:                 genaisdk.FunctionCallingConfigModeAny,
+					AllowedFunctionNames: []string{choice.FunctionName},
+				}}
+			}
 		}
 	}
 	// 保持迁移前行为：业务内容安全判定仍由 Hub/Wardrobe 自己负责。
