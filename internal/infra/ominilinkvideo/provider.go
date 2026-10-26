@@ -93,7 +93,7 @@ func (p *Provider) SubmitVideo(ctx context.Context, model string, request *model
 	return p.createTask(ctx, model, imageURL, prompt, resolution, duration, aspectRatio, references)
 }
 
-// GetVideo 单次 query/{model}/{id}；成功态即使缺 URL 也 Succeeded，空 URL 留 ReadVideoResult 处理。
+// GetVideo 单次查询供应商任务；成功态缺 URL 留 ReadVideoResult 报告无效结果。
 func (p *Provider) GetVideo(ctx context.Context, model, providerTaskID string) (provider.VideoJob, error) {
 	res, err := p.getTask(ctx, model, providerTaskID)
 	if err != nil {
@@ -336,10 +336,17 @@ func normalizeBaseURL(raw string) string {
 }
 
 func (p *Provider) modelCreateURL(model string) string {
+	if ModelFamilyOf(model) == FamilySeedance {
+		// Seedance 已迁到独立 v3 协议；同一供应商的 Kling/Veo 等仍走 v1，不能整体替换 BaseURL。
+		return strings.TrimSuffix(p.baseURL, "/v1") + "/v3/bytedance/api/v3/contents/generations/tasks"
+	}
 	return p.baseURL + "/" + url.PathEscape(strings.TrimSpace(model))
 }
 
 func (p *Provider) modelQueryURL(model, taskID string) string {
+	if ModelFamilyOf(model) == FamilySeedance {
+		return p.modelCreateURL(model) + "/" + url.PathEscape(strings.TrimSpace(taskID))
+	}
 	return fmt.Sprintf("%s/query/%s/%s", p.baseURL, url.PathEscape(strings.TrimSpace(model)), url.PathEscape(strings.TrimSpace(taskID)))
 }
 
@@ -435,7 +442,8 @@ func parseTaskResponse(raw []byte, fallbackTaskID string) (taskPollResult, error
 		msg := firstNonEmpty(stringField(envelope, "message"), code)
 		return taskPollResult{}, provider.Errorf(provider.ErrorUnavailable, "ominilink task failed: %s", msg)
 	}
-	if msg := apiFailureMessage(envelope); msg != "" {
+	// Seedance 的失败任务是业务终态，必须交给 GetVideo 返回 Failed，不能误作可重试的查询错误。
+	if msg := apiFailureMessage(envelope); msg != "" && stringField(envelope, "status") != "failed" {
 		return taskPollResult{}, provider.Errorf(provider.ErrorUnavailable, "ominilink task failed: %s", msg)
 	}
 	taskObj := envelope
@@ -485,7 +493,7 @@ func videoURLFromEnvelope(envelope map[string]any) string {
 			return u
 		}
 	}
-	for _, containerKey := range []string{"response", "data", "result", "output", "Response", "Output"} {
+	for _, containerKey := range []string{"content", "response", "data", "result", "output", "Response", "Output"} {
 		container, ok := envelope[containerKey].(map[string]any)
 		if !ok {
 			continue
@@ -532,6 +540,12 @@ func taskErrorCode(objs ...map[string]any) string {
 	for _, obj := range objs {
 		if obj == nil {
 			continue
+		}
+		// Seedance v3 将失败原因放在 error 对象中，保留 code 便于调用方区分拒绝与生成失败。
+		if detail, ok := obj["error"].(map[string]any); ok {
+			if code := stringField(detail, "code"); code != "" {
+				return code
+			}
 		}
 		if code := stringFieldAny(obj, "error_code", "errorCode", "code", "Code"); code != "" {
 			return code

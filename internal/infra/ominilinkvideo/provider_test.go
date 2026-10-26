@@ -100,11 +100,11 @@ func TestGenerateSeedancePayload(t *testing.T) {
 	var baseURL string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodPost && r.URL.Path == "/v1/"+model:
+		case r.Method == http.MethodPost && r.URL.Path == "/v3/bytedance/api/v3/contents/generations/tasks":
 			_ = json.NewDecoder(r.Body).Decode(&createPayload)
 			_, _ = w.Write([]byte(`{"id":"` + taskID + `"}`))
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/query/"+model+"/"+taskID:
-			_, _ = w.Write([]byte(`{"status":"success","video_url":"` + baseURL + `/vod/out.mp4"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/v3/bytedance/api/v3/contents/generations/tasks/"+taskID:
+			_, _ = w.Write([]byte(`{"status":"succeeded","content":{"video_url":"` + baseURL + `/vod/out.mp4"}}`))
 		case r.URL.Path == "/vod/out.mp4":
 			_, _ = w.Write([]byte("mp4"))
 		default:
@@ -133,7 +133,7 @@ func TestGenerateSeedancePayload(t *testing.T) {
 	if string(gotBytes) != "mp4" || final == nil || !final.GetFinal() || final.GetResponseId() != taskID {
 		t.Fatalf("bytes=%q final=%#v", gotBytes, final)
 	}
-	if createPayload["ratio"] == nil {
+	if createPayload["ratio"] == nil || createPayload["model"] != model {
 		t.Fatalf("payload=%v", createPayload)
 	}
 }
@@ -446,6 +446,9 @@ func TestGetVideoStatusMapping(t *testing.T) {
 // 三张身份图必须按输入顺序完整传递；回归点是原实现静默丢掉第二、三张。
 func TestSeedanceMultipleIdentityReferences(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v3/bytedance/api/v3/contents/generations/tasks" {
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
 		var payload struct {
 			Content []struct {
 				Type  string `json:"type"`
@@ -478,5 +481,29 @@ func TestSeedanceMultipleIdentityReferences(t *testing.T) {
 	p := newTestProvider(server)
 	if id, err := p.SubmitVideo(context.Background(), models.DreaminaSeedance20, request); err != nil || id != "three-view-task" {
 		t.Fatalf("submit %s %v", id, err)
+	}
+}
+
+// 供应商失败终态必须终止业务轮询，保留原因；否则 PawPal 会一直等待直到超时。
+func TestSeedanceV3FailedTask(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/v3/bytedance/api/v3/contents/generations/tasks/failed-task" {
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"id":"failed-task","status":"failed","error":{"code":"ContentPolicyViolation","message":"rejected content"}}`))
+	}))
+	defer server.Close()
+	job, err := newTestProvider(server).GetVideo(context.Background(), models.DreaminaSeedance20Fast, "failed-task")
+	if err != nil || job.State != provider.VideoJobFailed || job.Err == nil || !strings.Contains(job.Err.Error(), "ContentPolicyViolation") {
+		t.Fatalf("job=%+v err=%v", job, err)
+	}
+}
+
+func TestSeedanceVersionedModelResolution(t *testing.T) {
+	for _, model := range []string{models.DreaminaSeedance20Mini, models.DreaminaSeedance20Fast} {
+		resolution, _, _ := NormalizeParams(model, "1080p", 5, "1:1")
+		if resolution != "720p" {
+			t.Fatalf("%s resolution=%s", model, resolution)
+		}
 	}
 }

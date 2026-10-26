@@ -422,12 +422,12 @@ providers:
       api_key: "${DASHSCOPE_API_KEY}"
       base_url: https://dashscope.aliyuncs.com/api/v1
       poll_interval: 3
-  # OminiLink vg-api 视频生成（含 UI 未展示的 Dreamina）。
+  # AIG 视频共享凭据与域名；Seedance 用版本化 ID 走 v3，其余 family 仍由适配器走 v1。
   AIG_VG:
     models:
-      - dreamina-seedance-2-0-mini
-      - dreamina-seedance-2-0
-      - dreamina-seedance-2-0-fast
+      - dreamina-seedance-2-0-mini-260615
+      - dreamina-seedance-2-0-260128
+      - dreamina-seedance-2-0-fast-260128
       - kling-v2-master
       - kling-v2-1-master
       - kling-v2-5-turbo

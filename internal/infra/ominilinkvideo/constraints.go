@@ -3,6 +3,8 @@ package ominilinkvideo
 import (
 	"math"
 	"strings"
+
+	"github.com/wgdl666/wgModelHub/models"
 )
 
 func NormalizeParams(model, resolution string, duration int, aspectRatio string) (res string, dur int, aspect string) {
@@ -87,7 +89,8 @@ func normalizeSeedanceParams(model, resolution string, duration int, aspectRatio
 
 func isSeedanceMiniOrFast(model string) bool {
 	model = normalizeModelID(model)
-	return strings.HasSuffix(model, "-mini") || strings.HasSuffix(model, "-fast")
+	// 版本化 ID 以日期结尾，不能再靠末尾 -fast/-mini 判断规格。
+	return model == models.DreaminaSeedance20Mini || model == models.DreaminaSeedance20Fast
 }
 
 func seedanceRatio(aspectRatio string) string {

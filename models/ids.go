@@ -145,10 +145,10 @@ const (
 	// 火山方舟 Seedance 2.5 官方视频任务 ID。文生/首帧共用，与 Dreamina 2.0 别名不能互换。
 	DoubaoSeedance25 = "doubao-seedance-2-5-260628"
 
-	// OminiLink vg-api 视频生成（含 UI 未展示但 client 已识别的 Dreamina）。
-	DreaminaSeedance20Mini = "dreamina-seedance-2-0-mini"
-	DreaminaSeedance20     = "dreamina-seedance-2-0"
-	DreaminaSeedance20Fast = "dreamina-seedance-2-0-fast"
+	// AIG Seedance v3 必须使用版本化真实模型 ID，旧短名称不再作为别名路由。
+	DreaminaSeedance20Mini = "dreamina-seedance-2-0-mini-260615"
+	DreaminaSeedance20     = "dreamina-seedance-2-0-260128"
+	DreaminaSeedance20Fast = "dreamina-seedance-2-0-fast-260128"
 	KlingV2Master          = "kling-v2-master"
 	KlingV21Master         = "kling-v2-1-master"
 	KlingV25Turbo          = "kling-v2-5-turbo"
