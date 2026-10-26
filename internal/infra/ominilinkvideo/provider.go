@@ -79,7 +79,18 @@ func (p *Provider) SubmitVideo(ctx context.Context, model string, request *model
 		}
 		aspectRatio = videoOut.GetAspectRatio()
 	}
-	return p.createTask(ctx, model, imageURL, prompt, resolution, duration, aspectRatio)
+	// 多图 Seedance 是身份参考任务，不能仅取第一张并伪装成首帧任务。
+	var references []string
+	if ModelFamilyOf(model) == FamilySeedance && len(provider.ImageMedias(request.GetInput())) > 1 {
+		for _, media := range provider.ImageMedias(request.GetInput()) {
+			value, err := p.resolveImageURL(media)
+			if err != nil {
+				return "", err
+			}
+			references = append(references, value)
+		}
+	}
+	return p.createTask(ctx, model, imageURL, prompt, resolution, duration, aspectRatio, references)
 }
 
 // GetVideo 单次 query/{model}/{id}；成功态即使缺 URL 也 Succeeded，空 URL 留 ReadVideoResult 处理。
@@ -133,8 +144,16 @@ func (p *Provider) resolveImageURL(media *modelhubv2.Media) (string, error) {
 	return provider.ResolveImageURL(media)
 }
 
-func (p *Provider) createTask(ctx context.Context, model, imageURL, prompt, resolution string, duration int, aspectRatio string) (string, error) {
+func (p *Provider) createTask(ctx context.Context, model, imageURL, prompt, resolution string, duration int, aspectRatio string, references []string) (string, error) {
 	createURL, body, err := p.buildCreateRequest(ctx, model, imageURL, prompt, resolution, duration, aspectRatio)
+	if len(references) > 1 {
+		resolution, duration, aspectRatio = NormalizeParams(model, resolution, duration, aspectRatio)
+		content := []map[string]any{{"type": "text", "text": strings.TrimSpace(prompt)}}
+		for _, url := range references {
+			content = append(content, map[string]any{"type": "image_url", "image_url": map[string]string{"url": url}, "role": "reference_image"})
+		}
+		body, err = json.Marshal(map[string]any{"model": model, "content": content, "resolution": resolution, "ratio": aspectRatio, "duration": duration, "generate_audio": false, "watermark": false, "return_last_frame": false})
+	}
 	if err != nil {
 		return "", err
 	}

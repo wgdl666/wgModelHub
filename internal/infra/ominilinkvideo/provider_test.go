@@ -442,3 +442,41 @@ func TestGetVideoStatusMapping(t *testing.T) {
 		})
 	}
 }
+
+// 三张身份图必须按输入顺序完整传递；回归点是原实现静默丢掉第二、三张。
+func TestSeedanceMultipleIdentityReferences(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload struct {
+			Content []struct {
+				Type  string `json:"type"`
+				Role  string `json:"role"`
+				Image struct {
+					URL string `json:"url"`
+				} `json:"image_url"`
+			} `json:"content"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		if len(payload.Content) != 4 {
+			t.Fatalf("content count %d", len(payload.Content))
+		}
+		for i, name := range []string{"front", "side", "back"} {
+			item := payload.Content[i+1]
+			if item.Role != "reference_image" || item.Image.URL != "https://cdn.example/"+name+".png" {
+				t.Fatalf("reference %d: %+v", i, item)
+			}
+		}
+		_, _ = w.Write([]byte(`{"id":"three-view-task"}`))
+	}))
+	defer server.Close()
+	request := testGenRequest("https://cdn.example/front.png")
+	message := request.Input.Items[0].GetMessage()
+	for _, name := range []string{"side", "back"} {
+		message.Parts = append(message.Parts, &modelhubv2.ContentPart{Content: &modelhubv2.ContentPart_Image{Image: &modelhubv2.Media{MimeType: "image/png", Source: &modelhubv2.Media_Uri{Uri: "https://cdn.example/" + name + ".png"}}}})
+	}
+	p := newTestProvider(server)
+	if id, err := p.SubmitVideo(context.Background(), models.DreaminaSeedance20, request); err != nil || id != "three-view-task" {
+		t.Fatalf("submit %s %v", id, err)
+	}
+}
