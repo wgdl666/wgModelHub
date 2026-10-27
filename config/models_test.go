@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -214,13 +215,13 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 		t.Fatal("wgdl_image must not use intranet/localhost upstream")
 	}
 
-	// GPT Image 2 / 2.5 复用现网已实测的 AIG OpenAI-compatible Images 实例；不能并入 Gemini 生图。
+	// GPT 文本与图片复用 AIG 凭据，分别由 Chat Completions / Images 分派；不能并入 Gemini 生图。
 	asyncGPT, ok := parsed.Providers["AIG_openai"]
 	if !ok {
 		t.Fatal("missing provider AIG_openai")
 	}
-	wantGPTModels := []string{models.GPTImage2, models.GPTImage25Flare, models.GPTImage25Sunburst}
-	if len(asyncGPT.Models) != 3 || asyncGPT.Models[0] != wantGPTModels[0] || asyncGPT.Models[1] != wantGPTModels[1] || asyncGPT.Models[2] != wantGPTModels[2] {
+	wantGPTModels := []string{models.GPT56Sol, models.GPT56Luna, models.GPT56Terra, models.GPT6Astra, models.GPT6Sol, models.GPT6Luna, models.GPT61Sol, models.GPTImage2, models.GPTImage25Flare, models.GPTImage25Sunburst}
+	if !slices.Equal(asyncGPT.Models, wantGPTModels) {
 		t.Fatalf("AIG_openai models=%v, want %v", asyncGPT.Models, wantGPTModels)
 	}
 	if asyncGPT.OpenAI == nil || asyncGPT.OpenAI.BaseURL != "https://api.aig-ai.com/v1" {

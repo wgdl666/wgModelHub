@@ -8,7 +8,15 @@ const (
 	Qwen37Plus         = "qwen3.7-plus"
 	Qwen38Max          = "qwen3.8-max"
 	GPT54              = "gpt-5.4"
-	KimiK3             = "kimi/kimi-k3"
+	// GPT 新系列保留供应商 /models 返回的完整 ID，不能把版本简称当作模型别名。
+	GPT56Sol   = "gpt-5.6-sol"
+	GPT56Luna  = "gpt-5.6-luna"
+	GPT56Terra = "gpt-5.6-terra"
+	GPT6Astra  = "gpt-6-astra"
+	GPT6Sol    = "gpt-6-sol"
+	GPT6Luna   = "gpt-6-luna"
+	GPT61Sol   = "gpt-6.1-sol"
+	KimiK3     = "kimi/kimi-k3"
 	// Muse 迁移保留原算法模型，避免改变衣橱向量空间或抠图结果。
 	FashionEmbedding       = "fashion-embedding"
 	FashionReranker        = "fashion-reranker"
@@ -188,7 +196,7 @@ const (
 // All 返回当前仓库承认的全部真实模型 ID，顺序稳定便于对照。
 func All() []string {
 	return []string{
-		Gemini35Flash, Gemini31ProPreview, Qwen37Plus, Qwen38Max, GPT54, KimiK3,
+		Gemini35Flash, Gemini31ProPreview, Qwen37Plus, Qwen38Max, GPT54, GPT56Sol, GPT56Luna, GPT56Terra, GPT6Astra, GPT6Sol, GPT6Luna, GPT61Sol, KimiK3,
 		FashionEmbedding, FashionReranker, AliyunSegmentBody, AliyunSegmentHDBody, AliyunSegmentCommodity, AliyunSegmentCommon,
 		Gemini25Flash,
 		Gemini37Flash,

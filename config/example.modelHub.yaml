@@ -244,8 +244,16 @@ providers:
       # base_url 留空：google.golang.org/genai BackendGeminiAPI 默认官方 endpoint。
   # GPT Image 2 / 2.5：实例键是 AIG_openai（api.aig-ai.com OpenAI-compatible Images）；已实测 flare/sunburst generations。不要再复制旧键 async_gpt_image。
   # 无参考图 generations、有参考图 edits；不能并入上方 Gemini generateContent 生图实例，也不能与 FLUX.2 共用。
+  # GPT 文本复用此实例的 Chat Completions；完整模型 ID 已通过供应商清单与文本调用核验。
   AIG_openai:
     models:
+      - gpt-5.6-sol
+      - gpt-5.6-luna
+      - gpt-5.6-terra
+      - gpt-6-astra
+      - gpt-6-sol
+      - gpt-6-luna
+      - gpt-6.1-sol
       - gpt-image-2
       - gpt-image-2.5-flare
       - gpt-image-2.5-sunburst

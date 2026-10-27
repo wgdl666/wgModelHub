@@ -185,7 +185,13 @@ func (p *Provider) buildRequestBody(model string, request *modelhubv2.GenerateRe
 		applyDashScopeSystemCacheControl(messages)
 	}
 	if text != nil && text.MaxOutputTokens != nil {
-		body["max_tokens"] = *text.MaxOutputTokens
+		// 新 GPT 系列把推理与输出合计计入 completion 预算，使用原生字段，避免混入旧模型契约。
+		switch model {
+		case models.GPT56Sol, models.GPT56Luna, models.GPT56Terra, models.GPT6Astra, models.GPT6Sol, models.GPT6Luna, models.GPT61Sol:
+			body["max_completion_tokens"] = *text.MaxOutputTokens
+		default:
+			body["max_tokens"] = *text.MaxOutputTokens
+		}
 	}
 	// optional 已设置时必须原样下发，否则显式 temperature=0 会被误判为“未配置”。
 	if text != nil && text.Temperature != nil {
@@ -272,6 +278,21 @@ func (p *Provider) buildRequestBody(model string, request *modelhubv2.GenerateRe
 func applyTextThinking(body map[string]any, model string, text *modelhubv2.TextOutput) {
 	choice := thinking.FromText(text)
 	switch model {
+	case models.GPT56Sol, models.GPT56Luna, models.GPT56Terra, models.GPT6Astra, models.GPT6Sol, models.GPT6Luna, models.GPT61Sol:
+		// GPT 接受 reasoning_effort，不能下发千问的 enable_thinking / thinking_budget。
+		// 6.1-sol 实测拒绝 none：本系列 DISABLED / MINIMAL 统一收敛到 low，不承诺完全关闭推理；未选档开启用 medium。
+		switch {
+		case choice.Off:
+			body["reasoning_effort"] = "low"
+		case choice.Level == modelhubv2.ThinkingLevel_THINKING_LEVEL_MINIMAL, choice.Level == modelhubv2.ThinkingLevel_THINKING_LEVEL_LOW:
+			body["reasoning_effort"] = "low"
+		case choice.Level == modelhubv2.ThinkingLevel_THINKING_LEVEL_MEDIUM:
+			body["reasoning_effort"] = "medium"
+		case choice.Level == modelhubv2.ThinkingLevel_THINKING_LEVEL_HIGH:
+			body["reasoning_effort"] = "high"
+		case choice.On:
+			body["reasoning_effort"] = "medium"
+		}
 	case models.ClaudeHaiku45:
 		applyClaudeThinking(body, choice)
 	case models.GLM53Flash:
