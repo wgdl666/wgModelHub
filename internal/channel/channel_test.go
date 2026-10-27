@@ -118,7 +118,7 @@ func TestWeiguangExceptionKeepsHost(t *testing.T) {
 		t.Fatalf("segment=%+v", segment)
 	}
 	legacy, err := Of(config.ProviderConfig{
-		Models: []string{"ltx"},
+		Models: []string{"VWorld_outfit_video_1.0"},
 		LTX:    &config.LTXProviderConfig{BaseURL: "https://u847021-9507-702f766a.bjb2.seetacloud.com"},
 	})
 	if err != nil {

@@ -132,7 +132,7 @@ func TestGetVideoStatusMapping(t *testing.T) {
 				t.Fatal(err)
 			}
 			p.client = server.Client()
-			job, err := p.GetVideo(context.Background(), "ltx", "job-1")
+			job, err := p.GetVideo(context.Background(), models.VWorldOutfitVideo10, "job-1")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -166,7 +166,7 @@ func TestReadVideoResultResolvesRelativeVideoURL(t *testing.T) {
 	p.client = server.Client()
 
 	var got []byte
-	err = p.ReadVideoResult(context.Background(), "ltx", "job-1", func(ev *modelhubv2.GenerateEvent) error {
+	err = p.ReadVideoResult(context.Background(), models.VWorldOutfitVideo10, "job-1", func(ev *modelhubv2.GenerateEvent) error {
 		for _, item := range ev.GetItems() {
 			got = append(got, item.GetVideo().GetData()...)
 		}
@@ -204,7 +204,7 @@ func TestReadVideoResultRejectsOversizedVideo(t *testing.T) {
 	}
 	p.client = server.Client()
 
-	err = p.ReadVideoResult(context.Background(), "ltx", "job-1", nil)
+	err = p.ReadVideoResult(context.Background(), models.VWorldOutfitVideo10, "job-1", nil)
 	if err == nil || !strings.Contains(err.Error(), "exceeds") {
 		t.Fatalf("expected oversize error, got %v", err)
 	}
@@ -235,7 +235,7 @@ func TestReadVideoResultAcceptsExactlyMaxVideoSize(t *testing.T) {
 	p.client = server.Client()
 
 	var total int
-	err = p.ReadVideoResult(context.Background(), "ltx", "job-1", func(ev *modelhubv2.GenerateEvent) error {
+	err = p.ReadVideoResult(context.Background(), models.VWorldOutfitVideo10, "job-1", func(ev *modelhubv2.GenerateEvent) error {
 		for _, item := range ev.GetItems() {
 			total += len(item.GetVideo().GetData())
 		}
@@ -291,7 +291,7 @@ func TestReadVideoResultRejectsEmptyBody(t *testing.T) {
 
 	p, _ := New("ltx", server.URL, "", 4, 24, 42, 0.001)
 	p.client = server.Client()
-	err := p.ReadVideoResult(context.Background(), "ltx", "job-1", nil)
+	err := p.ReadVideoResult(context.Background(), models.VWorldOutfitVideo10, "job-1", nil)
 	if err == nil || !strings.Contains(err.Error(), "0 bytes") {
 		t.Fatalf("err=%v", err)
 	}
@@ -314,7 +314,7 @@ func TestReadVideoResultStreamsMultipleChunks(t *testing.T) {
 	p, _ := New("ltx", server.URL, "", 4, 24, 42, 0.001)
 	p.client = server.Client()
 	var chunks int
-	err := p.ReadVideoResult(context.Background(), "ltx", "job-1", func(ev *modelhubv2.GenerateEvent) error {
+	err := p.ReadVideoResult(context.Background(), models.VWorldOutfitVideo10, "job-1", func(ev *modelhubv2.GenerateEvent) error {
 		chunks++
 		return nil
 	})
@@ -326,8 +326,8 @@ func TestReadVideoResultStreamsMultipleChunks(t *testing.T) {
 	}
 }
 
-// 旧模型必须在读取首帧或访问上游之前拒绝；历史任务读取测试继续使用旧 ID。
-func TestSubmitVideoRejectsLegacyModelBeforeHTTP(t *testing.T) {
+// 停用旧模型必须覆盖提交、轮询和下载，且不能访问上游。
+func TestProviderRejectsLegacyModelBeforeHTTP(t *testing.T) {
 	var calls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
@@ -341,6 +341,14 @@ func TestSubmitVideoRejectsLegacyModelBeforeHTTP(t *testing.T) {
 	_, err = p.SubmitVideo(context.Background(), "ltx", &modelhubv2.GenerateRequest{})
 	if err == nil || !strings.Contains(err.Error(), "unsupported video model") {
 		t.Fatalf("error=%v", err)
+	}
+	_, err = p.GetVideo(context.Background(), "ltx", "legacy-job")
+	if err == nil || !strings.Contains(err.Error(), "unsupported video model") {
+		t.Fatalf("GetVideo error=%v", err)
+	}
+	err = p.ReadVideoResult(context.Background(), "ltx", "legacy-job", nil)
+	if err == nil || !strings.Contains(err.Error(), "unsupported video model") {
+		t.Fatalf("ReadVideoResult error=%v", err)
 	}
 	if calls.Load() != 0 {
 		t.Fatalf("unexpected upstream calls: %d", calls.Load())

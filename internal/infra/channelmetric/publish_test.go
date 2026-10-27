@@ -24,7 +24,7 @@ func TestChannelInfoIsScrapedWithoutSecrets(t *testing.T) {
 	secret := "super-secret-key"
 	err = publisher.Publish(map[string]config.ProviderConfig{
 		"gemini_api": {Gemini: &config.GeminiProviderConfig{APIKey: secret, ProxyURL: "http://127.0.0.1:1081"}},
-		"wgdl_video": {LTX: &config.LTXProviderConfig{BaseURL: "https://ltx.example/vton", Token: secret}, Models: []string{"ltx"}},
+		"wgdl_video": {LTX: &config.LTXProviderConfig{BaseURL: "https://ltx.example/vton", Token: secret}, Models: []string{"VWorld_outfit_video_1.0"}},
 	})
 	if err != nil {
 		t.Fatal(err)

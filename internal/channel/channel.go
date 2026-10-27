@@ -317,8 +317,6 @@ func familyKind(model string) string {
 	case model == models.HumanParse:
 		// G7 人体解析归属薇光点亮；只匹配此 ID，避免把旧 human-parser 一并改归属。
 		return "human_parse"
-	case model == "ltx":
-		return "video"
 	case strings.HasPrefix(model, "segment-person-"), strings.HasPrefix(model, "segment-subject-"):
 		return "segment"
 	case strings.HasPrefix(model, "VWorld_"):

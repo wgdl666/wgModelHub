@@ -55,7 +55,7 @@ func New(name, baseURL, token string, duration float64, fps, seed int, pollInter
 }
 
 // SubmitVideo 只受理当前穿搭视频模型，避免旧 ID 意外创建新任务。
-// 历史任务仍通过独立的 GetVideo / ReadVideoResult 读取，不依赖提交协议。
+// 提交、查询和下载使用相同模型边界，旧 ltx 任务不再访问上游。
 func (p *Provider) SubmitVideo(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (string, error) {
 	if model != models.VWorldOutfitVideo10 {
 		return "", provider.NotAttempted(provider.ErrorInvalidArgument, "unsupported video model: "+model)
@@ -97,7 +97,11 @@ func videoMotionTips(raw string) (string, error) {
 }
 
 // GetVideo 单次查询 /jobs/{id}；done/error/进行中分别映射为 Succeeded/Failed/Running。
-func (p *Provider) GetVideo(ctx context.Context, _ string, providerTaskID string) (provider.VideoJob, error) {
+func (p *Provider) GetVideo(ctx context.Context, model string, providerTaskID string) (provider.VideoJob, error) {
+	// 历史旧 ID 即使仍有任务记录，也不再进入供应商查询。
+	if model != models.VWorldOutfitVideo10 {
+		return provider.VideoJob{}, provider.New(provider.ErrorInvalidArgument, "unsupported video model: "+model)
+	}
 	job, err := p.getJob(ctx, providerTaskID)
 	if err != nil {
 		return provider.VideoJob{}, err
@@ -119,7 +123,11 @@ func (p *Provider) GetVideo(ctx context.Context, _ string, providerTaskID string
 }
 
 // ReadVideoResult 解析 job 内 video_url 并带鉴权流式下载，按 1MiB 分块 emit。
-func (p *Provider) ReadVideoResult(ctx context.Context, _ string, providerTaskID string, emit provider.EmitEvent) error {
+func (p *Provider) ReadVideoResult(ctx context.Context, model string, providerTaskID string, emit provider.EmitEvent) error {
+	// 结果读取遵守当前模型目录，避免绕过旧模型停用边界。
+	if model != models.VWorldOutfitVideo10 {
+		return provider.New(provider.ErrorInvalidArgument, "unsupported video model: "+model)
+	}
 	job, err := p.getJob(ctx, providerTaskID)
 	if err != nil {
 		return err
