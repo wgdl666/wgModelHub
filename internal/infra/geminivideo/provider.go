@@ -34,14 +34,13 @@ const (
 )
 
 type Provider struct {
-	vertex          bool
-	vertexOutputURI string
-	name            string
-	apiKey          string
-	baseURL         string
-	authHeader      string
-	pollInterval    time.Duration
-	client          *http.Client
+	vertex       bool
+	name         string
+	apiKey       string
+	baseURL      string
+	authHeader   string
+	pollInterval time.Duration
+	client       *http.Client
 }
 
 func New(name, apiKey, baseURL, authHeader, proxyURL string, pollInterval float64) (*Provider, error) {
@@ -169,7 +168,7 @@ func (p *Provider) GetVideo(ctx context.Context, _ string, providerTaskID string
 	}
 }
 
-// ReadVideoResult 只接受 delivery=uri 的成片：限量落盘、去音轨后流式分块；不接受 inline base64（会整段占内存）。
+// ReadVideoResult 按渠道读取成片：Vertex 解码内联数据，其余渠道下载 URI，再统一去音轨和分块返回。
 func (p *Provider) ReadVideoResult(ctx context.Context, _ string, providerTaskID string, emit provider.EmitEvent) error {
 	interaction, err := p.fetchInteraction(ctx, providerTaskID)
 	if err != nil {
@@ -183,6 +182,9 @@ func (p *Provider) ReadVideoResult(ctx context.Context, _ string, providerTaskID
 	mimeType := videoRef.MIMEType
 	if mimeType == "" {
 		mimeType = videoMIMEType
+	}
+	if p.vertex {
+		return p.readInlineVideo(ctx, videoRef.Data, mimeType, providerTaskID, genElapsed, emit)
 	}
 	uri := strings.TrimSpace(videoRef.URI)
 	if uri == "" {
@@ -378,9 +380,17 @@ func (p *Provider) fetchInteraction(ctx context.Context, interactionID string) (
 		return interactionResponse{}, provider.Wrap(provider.ErrorUnavailable, p.name+" interaction poll failed", err)
 	}
 	defer resp.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
+	limit := int64(64 << 20)
+	if p.vertex {
+		limit = int64(base64.StdEncoding.EncodedLen(protocol.MaxVideoBytes)) + (1 << 20)
+	}
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
 	if err != nil {
-		return interactionResponse{}, provider.Wrap(provider.ErrorUnavailable, p.name+" read interaction poll response", err)
+		return interactionResponse{}, provider.Wrap(provider.ErrorUnavailable, "read interaction response", err)
+	}
+	// 先约束编码响应大小，再解码，避免供应商异常响应导致无界内存增长。
+	if int64(len(raw)) > limit {
+		return interactionResponse{}, provider.New(provider.ErrorInvalidResponse, "interaction response exceeds size limit")
 	}
 	if resp.StatusCode >= 400 {
 		return interactionResponse{}, &pollHTTPError{
@@ -401,6 +411,11 @@ func (p *Provider) readVideoFromURI(ctx context.Context, uri, mimeType, response
 		return err
 	}
 	defer cleanup()
+	return emitSilentVideoFile(ctx, inPath, mimeType, responseID, genElapsed, emit)
+}
+
+// 两个渠道共用静音处理和分块，保持调用方的视频契约一致。
+func emitSilentVideoFile(ctx context.Context, inPath, mimeType, responseID string, genElapsed int64, emit provider.EmitEvent) error {
 	outPath, outCleanup, err := stripAudioFromMP4File(ctx, inPath)
 	if err != nil {
 		return err
@@ -418,12 +433,6 @@ func (p *Provider) readVideoFromURI(ctx context.Context, uri, mimeType, response
 
 // streamDownloadVideoURI 带鉴权流式落盘并限量，供 ReadVideoResult 去音轨前使用。
 func (p *Provider) streamDownloadVideoURI(ctx context.Context, uri string) (path string, cleanup func(), err error) {
-	if p.vertex {
-		uri, err = vertexDownloadURL(uri)
-		if err != nil {
-			return "", nil, err
-		}
-	}
 	fileID := fileIDFromURI(uri)
 	if fileID != "" {
 		if err := p.waitFileActive(ctx, fileID); err != nil {
@@ -627,7 +636,7 @@ func (p *Provider) waitFileActive(ctx context.Context, fileID string) error {
 type videoContent struct {
 	Type     string `json:"type"`
 	MIMEType string `json:"mime_type"`
-	// Data 仅用于反序列化识别供应商是否仍回了 inline；ReadVideoResult 故意不消费它（无生产兼容证据）。
+	// Vertex 省略 GCS 输出后直接返回 base64 成片；Developer API 仍使用 URI。
 	Data string `json:"data"`
 	URI  string `json:"uri"`
 }

@@ -5,8 +5,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -17,20 +19,17 @@ import (
 )
 
 // NewVertex 共用文本/生图的 ADC client，视频单独设置超时，避免改动同步请求的行为。
-func NewVertex(name, project, outputURI string, client *http.Client) *Provider {
+func NewVertex(name, project string, client *http.Client) *Provider {
 	videoClient := *client
 	videoClient.Timeout = defaultHTTPTimeout
-	return &Provider{name: name, baseURL: "https://aiplatform.googleapis.com/v1beta1/projects/" + url.PathEscape(project) + "/locations/global", client: &videoClient, pollInterval: 5 * time.Second, vertex: true, vertexOutputURI: outputURI}
+	return &Provider{name: name, baseURL: "https://aiplatform.googleapis.com/v1beta1/projects/" + url.PathEscape(project) + "/locations/global", client: &videoClient, pollInterval: 5 * time.Second, vertex: true}
 }
 
-// Vertex 使用 response_format 数组和 GCS 输出，不能照搬 Developer API 的 Files 上传协议。
+// Vertex 使用 response_format 数组并直接返回视频字节，不能照搬 Developer API 的 Files 上传协议。
 // 当前业务只需首帧图生视频；编辑请求在出站前明确拒绝，避免误走另一渠道的上传接口。
 func (p *Provider) buildVertexBody(ctx context.Context, model string, request *modelhubv2.GenerateRequest) ([]byte, error) {
 	if model != models.GeminiOmniFlashPreview && model != models.GeminiOmni11FlashPreview {
 		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "Vertex video requires a Gemini Omni model")
-	}
-	if p.vertexOutputURI == "" {
-		return nil, provider.NotAttempted(provider.ErrorConfiguration, "vertexai.video_output_uri is required for Omni video")
 	}
 	if provider.FirstVideoMedia(request.GetInput()) != nil {
 		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "Vertex Omni video editing is not supported")
@@ -66,7 +65,7 @@ func (p *Provider) buildVertexBody(ctx context.Context, model string, request *m
 	if mime == "" {
 		mime = "image/png"
 	}
-	format := map[string]string{"type": "video", "delivery": "uri", "gcs_uri": p.vertexOutputURI}
+	format := map[string]string{"type": "video"}
 	if duration != 0 {
 		format["duration"] = fmt.Sprintf("%ds", duration)
 	}
@@ -87,11 +86,30 @@ func (p *Provider) buildVertexBody(ctx context.Context, model string, request *m
 	})
 }
 
-// GCS 成片按对象下载 API 流式读取；不加载整段 base64，也不把 ADC 发到上游返回的任意地址。
-func vertexDownloadURL(uri string) (string, error) {
-	u, err := url.Parse(uri)
-	if err != nil || u.Scheme != "gs" || u.Host == "" || strings.TrimPrefix(u.Path, "/") == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
-		return "", provider.New(provider.ErrorInvalidResponse, "Vertex Omni returned an invalid GCS video URI")
+// 内联 JSON 已占用编码内存；流式解码到临时文件，避免再分配一份完整视频字节。
+func (p *Provider) readInlineVideo(ctx context.Context, data, mimeType, responseID string, elapsed int64, emit provider.EmitEvent) error {
+	if data == "" {
+		return provider.New(provider.ErrorInvalidResponse, "Vertex video missing inline data")
 	}
-	return "https://storage.googleapis.com/storage/v1/b/" + url.PathEscape(u.Host) + "/o/" + url.PathEscape(strings.TrimPrefix(u.Path, "/")) + "?alt=media", nil
+	tmp, err := os.CreateTemp("", "vertex-video-*.mp4")
+	if err != nil {
+		return provider.Wrap(provider.ErrorUnavailable, "create video temp file", err)
+	}
+	defer os.Remove(tmp.Name())
+	decoded := base64.NewDecoder(base64.StdEncoding, strings.NewReader(data))
+	n, copyErr := io.Copy(tmp, io.LimitReader(decoded, int64(protocol.MaxVideoBytes)+1))
+	closeErr := tmp.Close()
+	if copyErr != nil {
+		return provider.New(provider.ErrorInvalidResponse, "Vertex video contains invalid base64")
+	}
+	if closeErr != nil {
+		return provider.Wrap(provider.ErrorUnavailable, "close video temp file", closeErr)
+	}
+	if n == 0 || n > int64(protocol.MaxVideoBytes) {
+		return provider.New(provider.ErrorInvalidResponse, "Vertex video is empty or exceeds size limit")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return emitSilentVideoFile(ctx, tmp.Name(), mimeType, responseID, elapsed, emit)
 }

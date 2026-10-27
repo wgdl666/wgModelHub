@@ -535,13 +535,10 @@ model_routes:
 	}
 }
 
-func TestVertexOmniRequiresGCSOutput(t *testing.T) {
-	for _, uri := range []string{"", "https://bucket/output", "gs://", "gs://bucket/out?x=y", "gs://bucket/output/"} {
-		cfg := validConfig()
-		cfg.Providers = map[string]ProviderConfig{"vertex": {Models: []string{models.GeminiOmni11FlashPreview}, VertexAI: &VertexAIProviderConfig{Project: "test-project", VideoOutputURI: uri}}}
-		err := cfg.Validate()
-		if (uri == "gs://bucket/output/") != (err == nil) {
-			t.Fatalf("uri=%q err=%v", uri, err)
-		}
+func TestVertexOmniWithoutStorage(t *testing.T) {
+	cfg := validConfig()
+	cfg.Providers = map[string]ProviderConfig{"vertex": {Models: []string{models.GeminiOmni11FlashPreview}, VertexAI: &VertexAIProviderConfig{Project: "test-project"}}}
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
 	}
 }

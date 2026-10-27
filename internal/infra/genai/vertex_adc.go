@@ -32,7 +32,7 @@ func newADCVertexClient(ctx context.Context, name, project string, httpClient *h
 	return client, &authed, nil
 }
 
-// 自带 HTTP client 时 GenAI SDK 不会补鉴权。ADC 缓存/刷新 token，模型 API 与 GCS 下载使用 Bearer。
+// 自带 HTTP client 时 GenAI SDK 不会补鉴权。ADC 缓存/刷新 token，模型 API使用 Bearer。
 type vertexADCTransport struct {
 	base    http.RoundTripper
 	tokens  auth.TokenProvider
@@ -41,7 +41,7 @@ type vertexADCTransport struct {
 
 func (t *vertexADCTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	// 视频首帧和签名下载地址可能在第三方存储，ADC 只能发给 Google API。
-	if req.URL.Scheme != "https" || (req.URL.Host != "aiplatform.googleapis.com" && req.URL.Host != "storage.googleapis.com") {
+	if req.URL.Scheme != "https" || req.URL.Host != "aiplatform.googleapis.com" {
 		return t.base.RoundTrip(req)
 	}
 	token, err := t.tokens.Token(req.Context())

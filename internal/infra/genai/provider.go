@@ -61,7 +61,7 @@ func NewGemini(ctx context.Context, name, apiKey, endpoint, proxyURL string) (*P
 }
 
 // NewVertexAI 统一使用运行环境 ADC，文本/生图/视频共用 locations/global 身份和 token 缓存。
-func NewVertexAI(ctx context.Context, name, project, proxyURL, videoOutputURI string) (*Provider, error) {
+func NewVertexAI(ctx context.Context, name, project, proxyURL string) (*Provider, error) {
 	httpClient := telemetry.NewHTTPClient()
 	if proxyURL = strings.TrimSpace(proxyURL); proxyURL != "" {
 		// 国内 ACK 直连 Google 会 TLS 超时；ADC 换 token 与模型请求也必须共用这个代理。
@@ -73,11 +73,11 @@ func NewVertexAI(ctx context.Context, name, project, proxyURL, videoOutputURI st
 		transport.Proxy = http.ProxyURL(parsed)
 		httpClient = telemetry.NewHTTPClientWithTransport(transport)
 	}
-	return newVertexAI(ctx, name, project, httpClient, videoOutputURI)
+	return newVertexAI(ctx, name, project, httpClient)
 }
 
 // 项目是 Vertex 的显式路由配置；校验完成后建立共用 ADC 的同步客户端与视频客户端。
-func newVertexAI(ctx context.Context, name, project string, httpClient *http.Client, videoOutputURI string) (*Provider, error) {
+func newVertexAI(ctx context.Context, name, project string, httpClient *http.Client) (*Provider, error) {
 	if strings.TrimSpace(project) == "" {
 		return nil, provider.New(provider.ErrorConfiguration, name+" vertexai.project is required for ADC")
 	}
@@ -86,7 +86,7 @@ func newVertexAI(ctx context.Context, name, project string, httpClient *http.Cli
 		return nil, err
 	}
 	// 视频复用同一 ADC token 缓存、代理和 global 项目，不再建立另一套身份。
-	video := geminivideo.NewVertex(name, project, videoOutputURI, authed)
+	video := geminivideo.NewVertex(name, project, authed)
 	return &Provider{name: name, client: client, Video: video, cacheIdentity: cacheIdentity("vertex", name, project, "global")}, nil
 }
 

@@ -98,7 +98,7 @@ func newVertexADCTestProvider(t *testing.T, lifetime int) (*Provider, *vertexADC
 	t.Setenv("GOOGLE_CLOUD_PROJECT", "environment-project")
 	t.Setenv("GOOGLE_CLOUD_LOCATION", "us-central1")
 	transport := &vertexADCTestTransport{testing: t, lifetime: lifetime}
-	p, err := newVertexAI(context.Background(), "vertex", "test-project", &http.Client{Transport: transport}, "")
+	p, err := newVertexAI(context.Background(), "vertex", "test-project", &http.Client{Transport: transport})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,12 +178,12 @@ func TestVertexADCErrorsDoNotLeakOrCallModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", path)
-	_, err = NewVertexAI(context.Background(), "vertex", "test-project", "", "")
+	_, err = NewVertexAI(context.Background(), "vertex", "test-project", "")
 	if provider.Kind(err) != provider.ErrorConfiguration || strings.Contains(err.Error(), "private-credential-canary") {
 		t.Fatalf("invalid ADC not sanitized: %v", err)
 	}
 	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", filepath.Join(t.TempDir(), "missing.json"))
-	if _, err := NewVertexAI(context.Background(), "vertex", "test-project", "", ""); provider.Kind(err) != provider.ErrorConfiguration {
+	if _, err := NewVertexAI(context.Background(), "vertex", "test-project", ""); provider.Kind(err) != provider.ErrorConfiguration {
 		t.Fatalf("missing ADC must fail startup: %v", err)
 	}
 }
@@ -212,7 +212,7 @@ func TestVertexADCProxyCoversTokenAndModel(t *testing.T) {
 	}))
 	defer proxy.Close()
 	vertexServiceAccountADC(t, "http://token.fixture.invalid/token")
-	p, err := NewVertexAI(context.Background(), "vertex", "test-project", proxy.URL, "")
+	p, err := NewVertexAI(context.Background(), "vertex", "test-project", proxy.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,20 +257,15 @@ func TestVertexOmniSubmitPollReadSharesADC(t *testing.T) {
 				t.Fatal(request["model"])
 			}
 			body = `{"id":"job-1","status":"in_progress"}`
-		case req.URL.Host == "storage.googleapis.com":
-			if req.URL.EscapedPath() != "/storage/v1/b/bucket/o/output%2Fclip.mp4" || req.URL.Query().Get("alt") != "media" {
-				t.Fatal(req.URL)
-			}
-			body = "video-bytes"
 		default:
 			if req.URL.Path != "/v1beta1/projects/test-project/locations/global/interactions/job-1" {
 				t.Fatal(req.URL)
 			}
-			body = `{"id":"job-1","status":"completed","steps":[{"type":"model_output","content":[{"type":"video","uri":"gs://bucket/output/clip.mp4","mime_type":"video/mp4"}]}]}`
+			body = `{"id":"job-1","status":"completed","steps":[{"type":"model_output","content":[{"type":"video","data":"dmlkZW8tYnl0ZXM=","mime_type":"video/mp4"}]}]}`
 		}
 		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
 	})
-	p, err := newVertexAI(context.Background(), "vertex", "test-project", &http.Client{Transport: transport}, "gs://bucket/output/")
+	p, err := newVertexAI(context.Background(), "vertex", "test-project", &http.Client{Transport: transport})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,7 +287,7 @@ func TestVertexOmniSubmitPollReadSharesADC(t *testing.T) {
 		}
 		return nil
 	})
-	if err != nil || string(result) != "video-bytes" || calls != 4 || tokenTransport.tokenCalls != 1 {
+	if err != nil || string(result) != "video-bytes" || calls != 3 || tokenTransport.tokenCalls != 1 {
 		t.Fatalf("result=%q calls=%d tokens=%d err=%v", result, calls, tokenTransport.tokenCalls, err)
 	}
 }

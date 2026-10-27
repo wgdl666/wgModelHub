@@ -2,7 +2,11 @@ package geminivideo
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
+	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/provider"
 	"net/http"
 	"strings"
 	"testing"
@@ -11,7 +15,7 @@ import (
 )
 
 func TestVertexRequestAndValidation(t *testing.T) {
-	p := NewVertex("vertex", "project", "gs://bucket/out/", http.DefaultClient)
+	p := NewVertex("vertex", "project", http.DefaultClient)
 	req := testI2VRequest()
 	duration := int32(5)
 	req.GetOutput().GetVideo().DurationSeconds = &duration
@@ -26,7 +30,7 @@ func TestVertexRequestAndValidation(t *testing.T) {
 	}
 	formats := got["response_format"].([]any)
 	format := formats[0].(map[string]any)
-	if format["gcs_uri"] != "gs://bucket/out/" || format["duration"] != "5s" || format["resolution"] != "1080p" || got["background"] != true || got["store"] != true {
+	if format["gcs_uri"] != nil || format["delivery"] != nil || format["duration"] != "5s" || format["resolution"] != "1080p" || got["background"] != true || got["store"] != true {
 		t.Fatalf("request=%s", body)
 	}
 	input := got["input"].([]any)[0].(map[string]any)
@@ -40,24 +44,30 @@ func TestVertexRequestAndValidation(t *testing.T) {
 	if _, err := p.buildVertexBody(context.Background(), models.GeminiOmni11FlashPreview, req); err == nil {
 		t.Fatal("must not silently clamp duration")
 	}
-	duration = 5
-	p.vertexOutputURI = ""
-	if _, err := p.buildVertexBody(context.Background(), models.GeminiOmni11FlashPreview, req); err == nil {
-		t.Fatal("missing GCS must fail before submit")
+	if !strings.HasSuffix(p.interactionsURL(), "/projects/project/locations/global/interactions") {
+		t.Fatal("wrong endpoint")
 	}
 }
 
-func TestVertexDownloadGCSObject(t *testing.T) {
-	got, err := vertexDownloadURL("gs://bucket/nested/a b.mp4")
-	if err != nil || got != "https://storage.googleapis.com/storage/v1/b/bucket/o/nested%2Fa%20b.mp4?alt=media" {
-		t.Fatalf("url=%q err=%v", got, err)
-	}
-	for _, uri := range []string{"gs://bucket/", "https://example.com/video.mp4", "gs://user@bucket/file", "gs://bucket/file?token=secret"} {
-		if _, err := vertexDownloadURL(uri); err == nil {
-			t.Fatalf("accepted invalid URI %q", uri)
+func TestVertexInlineInvalidAndEmitterFailure(t *testing.T) {
+	p := NewVertex("vertex", "project", http.DefaultClient)
+	for _, data := range []string{"", "%%broken%%", "\n"} {
+		err := p.readInlineVideo(context.Background(), data, "video/mp4", "job", 0, nil)
+		if provider.Kind(err) != provider.ErrorInvalidResponse {
+			t.Fatalf("data=%q err=%v", data, err)
 		}
 	}
-	if !strings.HasSuffix(NewVertex("v", "project", "", http.DefaultClient).interactionsURL(), "/projects/project/locations/global/interactions") {
-		t.Fatal("wrong endpoint")
+	// 禁用 ffmpeg，使测试聚焦解码和下游取消传播。
+	t.Setenv("PATH", t.TempDir())
+	stopped := errors.New("consumer stopped")
+	data := base64.StdEncoding.EncodeToString([]byte("video"))
+	err := p.readInlineVideo(context.Background(), data, "video/mp4", "job", 0, func(*modelhubv2.GenerateEvent) error { return stopped })
+	if !errors.Is(err, stopped) {
+		t.Fatalf("emitter error lost: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := p.readInlineVideo(ctx, data, "video/mp4", "job", 0, nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancel lost: %v", err)
 	}
 }

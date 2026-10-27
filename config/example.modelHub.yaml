@@ -78,7 +78,6 @@ providers:
     models: [gemini-omni-1.1-flash-preview]
     vertexai:
       project: "${VERTEX_PROJECT}"
-      video_output_uri: gs://your-video-bucket/modelhub-omni/
   火山方舟_ark_chat:
     models: [doubao-seed-1.6]
     ark:
