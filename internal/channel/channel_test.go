@@ -395,11 +395,11 @@ func TestNewFamilyIDsUseWeiguangException(t *testing.T) {
 }
 
 func TestRewriteRejectsNameCollision(t *testing.T) {
-	// 两份 ltx 都会落到 wgdl_video。渠道可以跨主机合并，实例键不能撞车。
+	// 两份当前 VWorld 视频模型都会落到 wgdl_video；已下线的 ltx ID 不再参与族归类。
 	const original = `
 providers:
   a:
-    models: [ltx]
+    models: [VWorld_outfit_video_1.0]
     ltx:
       base_url: https://a.example
       duration: 1

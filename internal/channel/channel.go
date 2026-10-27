@@ -268,7 +268,7 @@ func splitTokens(value string) []string {
 }
 
 // weiguangInstance 只在模型属于点名的族时返回固定实例键。
-// 族是 VWorld_*、segment-person-*、segment-subject-*，以及海外遗留模型 ID ltx。
+// 族是 VWorld_*、segment-person-*、segment-subject-* 和 human_parse；旧 ltx ID 不再属于该族。
 // VWorld_outfit_video 归视频，其余 VWorld_* 归生图。同前缀的新 ID 走同一条规则。
 // 族确定之后，用协议选择 wgdl_segment_person、wgdl_image 或 wgdl_video。
 func weiguangInstance(provider config.ProviderConfig, protocol string) (string, error) {

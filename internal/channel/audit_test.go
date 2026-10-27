@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -48,6 +49,10 @@ func TestAuditedInstancesMatchChannelAndHaveUniqueNames(t *testing.T) {
 	rows := loadAuditRows(t)
 	byEnv := map[string][]auditRow{}
 	for _, row := range rows {
+		// 保留历史快照原文，但旧 ltx ID 下线后按实际主机归类，不能继续期待薇光点亮别名。
+		if row.Protocol == "ltx" && slices.Equal(row.Models, []string{"ltx"}) {
+			row.Channel = row.Host
+		}
 		byEnv[row.Environment] = append(byEnv[row.Environment], row)
 	}
 	if len(rows) != 114 {
@@ -161,7 +166,11 @@ func assertCorrectedName(t *testing.T, env, old string, row auditRow, got string
 		}
 		return
 	case "ltx":
-		if got != "wgdl_video" {
+		want := "wgdl_video"
+		if slices.Equal(row.Models, []string{"ltx"}) {
+			want = row.Host
+		}
+		if got != want {
 			t.Fatalf("%s %s=%s", env, old, got)
 		}
 		return

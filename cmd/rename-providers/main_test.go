@@ -135,10 +135,11 @@ func TestCLIErrorsOmitConfig(t *testing.T) {
 		t.Fatal("invalid yaml created an output")
 	}
 
+	// 用当前 VWorld ID 制造实例冲突；旧 ltx ID 已不再归入薇光点亮。
 	collision := `
 providers:
   a:
-    models: [ltx]
+    models: [VWorld_outfit_video_1.0]
     ltx:
       base_url: https://a.example
       token: ` + cliSecret + `
