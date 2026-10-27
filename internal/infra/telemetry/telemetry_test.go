@@ -29,7 +29,9 @@ func TestRecordErrorCallerCanceledDoesNotMarkSpanError(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			recorder := tracetest.NewSpanRecorder()
 			tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
-			ctx, span := tp.Tracer("test").Start(context.Background(), "modelhub.Generate")
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			ctx, span := tp.Tracer("test").Start(ctx, "modelhub.Generate")
 
 			RecordError(ctx, tc.err)
 			span.End()
@@ -159,5 +161,36 @@ func TestTraceIDMatchesCurrentSpan(t *testing.T) {
 	defer span.End()
 	if got := TraceID(ctx); got != span.SpanContext().TraceID().String() {
 		t.Fatalf("trace = %q", got)
+	}
+}
+
+// 调用方取消只降低对应取消错误；并发到达的限流与超时仍是故障。
+func TestRecordErrorDoesNotHideRemoteFailure(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		cancel bool
+		err    error
+	}{
+		{"unexpected remote cancel", false, status.Error(grpcodes.Canceled, "remote interrupted")},
+		{"deadline", true, context.DeadlineExceeded},
+		{"429", true, status.Error(grpcodes.ResourceExhausted, "HTTP 429")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			recorder := tracetest.NewSpanRecorder()
+			tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+			defer tp.Shutdown(context.Background())
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			ctx, span := tp.Tracer("test").Start(ctx, "provider.http")
+			if tc.cancel {
+				cancel()
+			}
+			RecordError(ctx, tc.err)
+			span.End()
+			got := recorder.Ended()[0]
+			if got.Status().Code != codes.Error || len(got.Events()) != 1 {
+				t.Fatalf("status=%v events=%v", got.Status(), got.Events())
+			}
+		})
 	}
 }

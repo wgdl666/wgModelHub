@@ -131,15 +131,16 @@ func TraceID(ctx context.Context) string {
 }
 
 // RecordError 把真实失败记到当前 span。上游主动取消（如 wardrobe VTON 三路竞速淘汰）
-// 是正常中断：账本/指标已归 cancelled，这里不得抬成 Error，否则 Logfire/Ops 排障会被噪声淹没。
+// 是正常中断：仅在本地 context 也已取消时降级，避免隐藏远端异常 Canceled。
+// 账本/指标仍保留 cancelled；真实超时和 429 继续标错。
 func RecordError(ctx context.Context, err error) {
 	if err == nil {
 		return
 	}
 	span := trace.SpanFromContext(ctx)
-	if isCallerCanceled(err) {
+	if errors.Is(ctx.Err(), context.Canceled) && isCallerCanceled(err) {
 		span.SetAttributes(attribute.String("outcome", "cancelled"))
-		logs.Default().With("error", err.Error()).CtxWarn(ctx, "modelhub_request_canceled")
+		// HTTP、服务层会重复观察同一次取消；span 已保留终态，不逐层打印 Warning。
 		return
 	}
 	span.RecordError(err)
