@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/wgdl666/wgModelHub/config"
+	"github.com/wgdl666/wgModelHub/models"
 )
 
 const (
@@ -38,10 +39,11 @@ const (
 	instanceSegmentPerson = "wgdl_segment_person"
 	instanceWeiguangImage = "wgdl_image"
 	instanceWeiguangVideo = "wgdl_video"
+	instanceHumanParser   = "wgdl_human_parser"
 )
 
 // Identity 是一个实例的渠道事实。Host 是模型 API 主机，不含端口、路径和代理。
-// instance 只在四类模型族命中时有值。Names 使用 Of 已经算出的实例键。
+// instance 只在薇光点亮模型族命中时有值。Names 使用 Of 已经算出的实例键。
 type Identity struct {
 	Protocol string
 	Host     string
@@ -65,7 +67,7 @@ func Of(provider config.ProviderConfig) (Identity, error) {
 		return Identity{}, err
 	}
 	if instance != "" {
-		// 四类模型跨主机都算薇光点亮。主机仍保留，其他自建服务按自己的主机归渠道。
+		// 薇光点亮模型跨主机都算薇光点亮。主机仍保留，其他自建服务按自己的主机归渠道。
 		channelName = channelWeiguang
 	}
 	return Identity{Protocol: protocol, Host: host, Channel: channelName, instance: instance}, nil
@@ -73,7 +75,7 @@ func Of(provider config.ProviderConfig) (Identity, error) {
 
 // Names 给出本份配置里每个旧实例键应改成的新键。
 // 同一渠道只有一个实例时用渠道 slug。同一渠道多种协议时加协议后缀。
-// 同一协议有多份时，再加能区分用途的尾巴。薇光点亮三个实例固定为 wgdl_*，不用中文键。
+// 同一协议有多份时，再加能区分用途的尾巴。薇光点亮实例固定为 wgdl_*，不用中文键。
 // 重复计算得到同一结果，便于对已经改过的文件再跑一次。
 func Names(providers map[string]config.ProviderConfig) (map[string]string, error) {
 	type groupKey struct {
@@ -275,6 +277,10 @@ func weiguangInstance(provider config.ProviderConfig, protocol string) (string, 
 		return "", err
 	}
 	switch protocol {
+	case "human_parser":
+		if kind == "human_parse" {
+			return instanceHumanParser, nil
+		}
 	case "segment_person":
 		if kind == "segment" {
 			return instanceSegmentPerson, nil
@@ -308,6 +314,9 @@ func weiguangKind(list []string) (string, error) {
 
 func familyKind(model string) string {
 	switch {
+	case model == models.HumanParse:
+		// G7 人体解析归属薇光点亮；只匹配此 ID，避免把旧 human-parser 一并改归属。
+		return "human_parse"
 	case model == "ltx":
 		return "video"
 	case strings.HasPrefix(model, "segment-person-"), strings.HasPrefix(model, "segment-subject-"):

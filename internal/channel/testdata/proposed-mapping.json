@@ -876,11 +876,11 @@
   {
     "environment": "aws-sg-dev",
     "old_instance": "human_parse_g7",
-    "channel": "18.191.134.0",
+    "channel": "薇光点亮",
     "host": "18.191.134.0",
     "host_source": "显式地址",
     "protocol": "human_parser",
-    "proposed_instance": "18.191.134.0",
+    "proposed_instance": "wgdl_human_parser",
     "models": [
       "human_parse"
     ],
@@ -1610,11 +1610,11 @@
   {
     "environment": "us-east-exhibition",
     "old_instance": "human_parse_g7",
-    "channel": "172.31.42.52",
+    "channel": "薇光点亮",
     "host": "172.31.42.52",
     "host_source": "显式地址",
     "protocol": "human_parser",
-    "proposed_instance": "172.31.42.52",
+    "proposed_instance": "wgdl_human_parser",
     "models": [
       "human_parse"
     ],

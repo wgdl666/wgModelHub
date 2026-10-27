@@ -134,8 +134,8 @@ func TestWeiguangExceptionKeepsHost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if parser.Channel != "172.31.42.52" || parser.Host != "172.31.42.52" {
-		t.Fatalf("human parser must stay on its host, got %+v", parser)
+	if parser.Channel != channelWeiguang || parser.Host != "172.31.42.52" {
+		t.Fatalf("human_parse must use Weiguang channel and preserve its host, got %+v", parser)
 	}
 }
 
@@ -200,6 +200,10 @@ func TestWeiguangInstanceNames(t *testing.T) {
 			Models:      []string{models.VWorldOutfit10},
 			VWorldImage: &config.VWorldImageProviderConfig{BaseURL: "https://vmind.example"},
 		},
+		"G7": {
+			Models:      []string{models.HumanParse},
+			HumanParser: &config.HumanParserProviderConfig{BaseURL: "https://g7.example"},
+		},
 		"薇光点亮_video": {
 			Models: []string{models.VWorldOutfitVideo10},
 			LTX:    &config.LTXProviderConfig{BaseURL: "https://ltx.example"},
@@ -209,7 +213,7 @@ func TestWeiguangInstanceNames(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if names["薇光点亮"] != "wgdl_segment_person" || names["薇光点亮_image"] != "wgdl_image" || names["薇光点亮_video"] != "wgdl_video" {
+	if names["薇光点亮"] != "wgdl_segment_person" || names["薇光点亮_image"] != "wgdl_image" || names["薇光点亮_video"] != "wgdl_video" || names["G7"] != "wgdl_human_parser" {
 		t.Fatalf("names=%v", names)
 	}
 }
@@ -309,7 +313,7 @@ model_routes:
 }
 
 func TestSameProtocolWithoutFamilyUsesHost(t *testing.T) {
-	// 协议相同、模型不属于四类族时，渠道和实例键都按主机，不进薇光点亮。
+	// 协议相同、模型不属于薇光点亮模型族时，渠道和实例键都按主机，不进薇光点亮。
 	cases := []config.ProviderConfig{
 		{
 			Models:        []string{"custom-segment-worker"},
@@ -323,7 +327,12 @@ func TestSameProtocolWithoutFamilyUsesHost(t *testing.T) {
 			LTX:    &config.LTXProviderConfig{BaseURL: "https://other-video.example/vton"},
 		},
 	}
-	hosts := []string{"other-segment.example", "other-image.example", "other-video.example"}
+	// 旧版人体解析虽然共用适配器，但不属于本次更正的 human_parse。
+	cases = append(cases, config.ProviderConfig{
+		Models:      []string{models.HumanParser},
+		HumanParser: &config.HumanParserProviderConfig{BaseURL: "https://legacy-parser.example"},
+	})
+	hosts := []string{"other-segment.example", "other-image.example", "other-video.example", "legacy-parser.example"}
 	for i, cfg := range cases {
 		id, err := Of(cfg)
 		if err != nil {

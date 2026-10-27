@@ -127,7 +127,7 @@ const (
 	// HumanParser 是旧自建人体解析 POST /predict。国内和新加坡仍用这个 ID。
 	HumanParser = "human-parser"
 	// HumanParse 是 G7 人体解析 POST /human_parser/predict。
-	// 与 human-parser 不能互换：路径、鉴权和部署面都不同，路演单独切这个 ID。目标 host 单独成渠道，不归入薇光点亮。
+	// 与 human-parser 不能互换：路径、鉴权和部署面都不同，路演单独切这个 ID。渠道归属薇光点亮，仍保留实际目标 host 用于观测。
 	HumanParse = "human_parse"
 
 	// DashScope Wan / HappyHorse / Kling 图生视频。
