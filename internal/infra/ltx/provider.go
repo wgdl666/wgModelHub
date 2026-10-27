@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -17,9 +16,6 @@ import (
 	"github.com/wgdl666/wgModelHub/models"
 	"github.com/wgdl666/wgModelHub/protocol"
 )
-
-// upstreamLTXModel 只用于旧 LTX 接口；VWorld v2 不下发模型或推理配置。
-const upstreamLTXModel = "ltx"
 
 const (
 	videoMIMEType = "video/mp4"
@@ -58,8 +54,12 @@ func New(name, baseURL, token string, duration float64, fps, seed int, pollInter
 	}, nil
 }
 
-// SubmitVideo 为 VWorld 使用最小 v2 接口；旧 LTX 路由保留兼容协议。
+// SubmitVideo 只受理当前穿搭视频模型，避免旧 ID 意外创建新任务。
+// 历史任务仍通过独立的 GetVideo / ReadVideoResult 读取，不依赖提交协议。
 func (p *Provider) SubmitVideo(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (string, error) {
+	if model != models.VWorldOutfitVideo10 {
+		return "", provider.NotAttempted(provider.ErrorInvalidArgument, "unsupported video model: "+model)
+	}
 	if request == nil {
 		return "", provider.NotAttempted(provider.ErrorInvalidArgument, "video request is required")
 	}
@@ -72,11 +72,7 @@ func (p *Provider) SubmitVideo(ctx context.Context, model string, request *model
 	if err != nil {
 		return "", err
 	}
-	resolution := ""
-	if video := request.GetOutput().GetVideo(); video != nil {
-		resolution = video.GetResolution()
-	}
-	return p.submit(ctx, model, imageBytes, provider.JoinedText(request.GetInput()), resolution, motionTips, request.GetOutput().GetVideo())
+	return p.submit(ctx, imageBytes, provider.JoinedText(request.GetInput()), motionTips)
 }
 
 // videoMotionTips 只读取该模型认识的独立动作参数；缺省时保持旧调用行为。
@@ -198,7 +194,7 @@ func (p *Provider) loadFirstFrame(ctx context.Context, media *modelhubv2.Media) 
 	}
 }
 
-func (p *Provider) submit(ctx context.Context, model string, imageBytes []byte, prompt, resolution, motionTips string, video *modelhubv2.VideoOutput) (string, error) {
+func (p *Provider) submit(ctx context.Context, imageBytes []byte, prompt, motionTips string) (string, error) {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	imagePart, err := writer.CreateFormFile("image", "first_frame.png")
@@ -210,27 +206,7 @@ func (p *Provider) submit(ctx context.Context, model string, imageBytes []byte, 
 	}
 	endpoint := "/v2/videos/vton"
 	fields := map[string]string{"prompt": prompt}
-	if model != models.VWorldOutfitVideo10 {
-		// 保留海外旧 LTX 配置；新业务模型的参数由 VMind-Video 统一决定。
-		endpoint = "/vton"
-		duration, fps, seed := p.duration, p.fps, p.seed
-		if video != nil {
-			if video.DurationSeconds != nil {
-				duration = float64(video.GetDurationSeconds())
-			}
-			if video.Fps != nil {
-				fps = int(video.GetFps())
-			}
-			if video.Seed != nil {
-				seed = int(video.GetSeed())
-			}
-		}
-		fields["resolution"] = normalizeResolution(resolution)
-		fields["duration"] = fmt.Sprintf("%g", duration)
-		fields["fps"] = fmt.Sprintf("%d", fps)
-		fields["seed"] = fmt.Sprintf("%d", seed)
-		fields["model"] = upstreamLTXModel
-	}
+	// 新建任务统一走 v2，模型和推理规格由上游固定，不再发送旧 LTX 参数。
 	if motionTips != "" {
 		fields["motion_tips"] = motionTips
 	}
@@ -342,16 +318,6 @@ func (p *Provider) videoURLFromJob(job map[string]any) (string, error) {
 func (p *Provider) setToken(request *http.Request) {
 	if p.token != "" {
 		request.Header.Set("X-Token", p.token)
-	}
-}
-
-func normalizeResolution(value string) string {
-	value = strings.ToLower(strings.TrimSpace(value))
-	switch value {
-	case "480p", "720p", "1080p":
-		return value
-	default:
-		return "720p"
 	}
 }
 

@@ -71,7 +71,7 @@ const (
 	// 提示词和 1024x1536 由上游固定；不能下发本 ID 或 FLUX.2-klein-9B，也不能复用拆衣服/换衣的字段。
 	VWorldBodyModel10 = "VWorld_bodymodel_1.0"
 	// VWorldOutfitVideo10 是薇光点亮穿搭视频的唯一对外模型 ID。
-	// 路由绑 LTX provider；/vton 的 multipart model 仍写 ltx，不能把本 ID 原样下发，也不能再把 ltx 当 request.model。
+	// 路由绑 LTX provider，统一使用 /v2/videos/vton；上游固定模型规格，不下发 model 字段。
 	VWorldOutfitVideo10 = "VWorld_outfit_video_1.0"
 	// PhotoroomSegment 标识官方 Remove Background 产品端点 POST /v1/segment（operationId=remove-background）。
 	// 该 API 没有 request-level model 参数；本常量只用于 ModelHub 路由与 ListModels，禁止下发上游，也不是业务别名。

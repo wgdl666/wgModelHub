@@ -62,7 +62,7 @@ func submitGetRead(ctx context.Context, p provider.VideoProvider, model string, 
 func TestProviderRetriesSubmitOn404(t *testing.T) {
 	var submitCalls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.URL.Path != "/vton" {
+		if request.URL.Path != "/v2/videos/vton" {
 			t.Fatalf("unexpected path %s", request.URL.Path)
 		}
 		if submitCalls.Add(1) == 1 {
@@ -79,7 +79,7 @@ func TestProviderRetriesSubmitOn404(t *testing.T) {
 	}
 	provider.client = server.Client()
 
-	jobID, err := provider.submit(context.Background(), "ltx", []byte("png"), "prompt", "720p", "", nil)
+	jobID, err := provider.submit(context.Background(), []byte("png"), "prompt", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +101,7 @@ func TestProviderDoesNotRetrySubmitOn5xx(t *testing.T) {
 		t.Fatal(err)
 	}
 	p.client = server.Client()
-	_, err = p.submit(context.Background(), "ltx", []byte("png"), "prompt", "720p", "", nil)
+	_, err = p.submit(context.Background(), []byte("png"), "prompt", "")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -268,7 +268,7 @@ func TestSubmitReadsRequestBodyOnEachRetry(t *testing.T) {
 	}
 	p.client = server.Client()
 
-	if _, err := p.submit(context.Background(), "ltx", []byte("frame"), "prompt", "720p", "", nil); err != nil {
+	if _, err := p.submit(context.Background(), []byte("frame"), "prompt", ""); err != nil {
 		t.Fatal(err)
 	}
 	if len(bodies) != 2 || bodies[0] == 0 || bodies[0] != bodies[1] {
@@ -326,25 +326,24 @@ func TestReadVideoResultStreamsMultipleChunks(t *testing.T) {
 	}
 }
 
-func TestSubmitKeepsPerRequestTimingAndZeroSeed(t *testing.T) {
+// 旧模型必须在读取首帧或访问上游之前拒绝；历史任务读取测试继续使用旧 ID。
+func TestSubmitVideoRejectsLegacyModelBeforeHTTP(t *testing.T) {
+	var calls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := r.ParseMultipartForm(1 << 20); err != nil {
-			t.Fatal(err)
-		}
-		if r.FormValue("duration") != "6" || r.FormValue("fps") != "30" || r.FormValue("seed") != "0" {
-			t.Errorf("lost video parameters: %v", r.MultipartForm.Value)
-		}
-		w.Write([]byte(`{"job_id":"timing"}`))
+		calls.Add(1)
+		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer server.Close()
-	p, err := New("ltx", server.URL, "", 4, 24, 42, 1)
+	p, err := New("wgdl_video", server.URL, "", 4, 24, 42, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	duration, fps, seed := int32(6), int32(30), int32(0)
-	_, err = p.submit(context.Background(), "ltx", []byte("image"), "prompt", "720p", "", &modelhubv2.VideoOutput{DurationSeconds: &duration, Fps: &fps, Seed: &seed})
-	if err != nil {
-		t.Fatal(err)
+	_, err = p.SubmitVideo(context.Background(), "ltx", &modelhubv2.GenerateRequest{})
+	if err == nil || !strings.Contains(err.Error(), "unsupported video model") {
+		t.Fatalf("error=%v", err)
+	}
+	if calls.Load() != 0 {
+		t.Fatalf("unexpected upstream calls: %d", calls.Load())
 	}
 }
 
@@ -413,13 +412,13 @@ func TestSubmitSendsTraceIDOnlyWhenSpanIsValid(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.submit(context.Background(), models.VWorldOutfitVideo10, []byte("image"), "prompt", "720p", "", nil); err != nil {
+	if _, err := p.submit(context.Background(), []byte("image"), "prompt", ""); err != nil {
 		t.Fatal(err)
 	}
 	tp := sdktrace.NewTracerProvider()
 	ctx, span := tp.Tracer("test").Start(context.Background(), "modelhub.SubmitVideo")
 	defer span.End()
-	if _, err := p.submit(ctx, models.VWorldOutfitVideo10, []byte("image"), "prompt", "720p", "", nil); err != nil {
+	if _, err := p.submit(ctx, []byte("image"), "prompt", ""); err != nil {
 		t.Fatal(err)
 	}
 	want := span.SpanContext().TraceID().String()
