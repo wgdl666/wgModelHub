@@ -10,7 +10,7 @@ import (
 	genaisdk "google.golang.org/genai"
 )
 
-func newADCVertexClient(ctx context.Context, name, project string, httpClient *http.Client) (*genaisdk.Client, error) {
+func newADCVertexClient(ctx context.Context, name, project string, httpClient *http.Client) (*genaisdk.Client, *http.Client, error) {
 	// 使用原始 HTTP client 换 token，保留代理和观测；不能让已带鉴权的 client 递归获取 token。
 	creds, err := credentials.DetectDefault(&credentials.DetectOptions{
 		Scopes: []string{"https://www.googleapis.com/auth/cloud-platform"},
@@ -18,7 +18,7 @@ func newADCVertexClient(ctx context.Context, name, project string, httpClient *h
 	})
 	if err != nil {
 		// SDK 的凭据解析错误可能携带 JSON/私钥片段，禁止回显原文。
-		return nil, provider.New(provider.ErrorConfiguration, name+" ADC credentials are unavailable or invalid")
+		return nil, nil, provider.New(provider.ErrorConfiguration, name+" ADC credentials are unavailable or invalid")
 	}
 	authed := *httpClient
 	authed.Transport = &vertexADCTransport{base: httpClient.Transport, tokens: creds.TokenProvider, project: project}
@@ -27,12 +27,12 @@ func newADCVertexClient(ctx context.Context, name, project string, httpClient *h
 		Credentials: creds, HTTPClient: &authed,
 	})
 	if err != nil {
-		return nil, provider.New(provider.ErrorConfiguration, "create "+name+" ADC client failed")
+		return nil, nil, provider.New(provider.ErrorConfiguration, "create "+name+" ADC client failed")
 	}
-	return client, nil
+	return client, &authed, nil
 }
 
-// 自带 HTTP client 时 GenAI SDK 不会补鉴权。token 的缓存刷新由 ADC 管理，模型请求只加 Bearer。
+// 自带 HTTP client 时 GenAI SDK 不会补鉴权。ADC 缓存/刷新 token，模型 API 与 GCS 下载使用 Bearer。
 type vertexADCTransport struct {
 	base    http.RoundTripper
 	tokens  auth.TokenProvider
@@ -40,6 +40,10 @@ type vertexADCTransport struct {
 }
 
 func (t *vertexADCTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	// 视频首帧和签名下载地址可能在第三方存储，ADC 只能发给 Google API。
+	if req.URL.Scheme != "https" || (req.URL.Host != "aiplatform.googleapis.com" && req.URL.Host != "storage.googleapis.com") {
+		return t.base.RoundTrip(req)
+	}
 	token, err := t.tokens.Token(req.Context())
 	if err != nil {
 		if req.Body != nil {

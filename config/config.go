@@ -135,8 +135,10 @@ type GoogleRerankProviderConfig struct {
 }
 
 // VertexAIProviderConfig 统一使用运行环境 ADC，可与 google_rerank 共用凭据文件。
-// 文本/生图均要求 project，固定 locations/global；代理同时用于换 token 和模型调用。
+// 文本/生图/Omni 视频均要求 project，固定 locations/global；代理同时用于换 token 和模型调用。
 type VertexAIProviderConfig struct {
+	// VideoOutputURI 是 Omni 成片的 GCS 临时输出前缀，避免将整段 base64 视频装入内存。
+	VideoOutputURI string `yaml:"video_output_uri,omitempty"`
 	// Project 是 Vertex 项目编号或 ID，不能从开发者环境中猜测。
 	Project string `yaml:"project"`
 	// ProxyURL 是已有 HTTP 代理。空表示直连。
@@ -893,6 +895,17 @@ func validateProvider(name string, provider ProviderConfig) error {
 		if project != "" && (strings.TrimSpace(project) != project || strings.ContainsAny(project, "/ \t")) {
 			return fmt.Errorf("provider %s vertexai.project is invalid", name)
 		}
+		if uri := provider.VertexAI.VideoOutputURI; uri != "" {
+			parsed, err := url.Parse(uri)
+			if err != nil || parsed.Scheme != "gs" || parsed.Host == "" || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.User != nil {
+				return fmt.Errorf("provider %s vertexai.video_output_uri must be a gs:// bucket prefix", name)
+			}
+		}
+		for _, model := range provider.Models {
+			if (model == models.GeminiOmniFlashPreview || model == models.GeminiOmni11FlashPreview) && provider.VertexAI.VideoOutputURI == "" {
+				return fmt.Errorf("provider %s vertexai.video_output_uri is required for Omni video", name)
+			}
+		}
 		if proxyURL := provider.VertexAI.ProxyURL; proxyURL != "" {
 			parsed, err := url.Parse(proxyURL)
 			if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") || strings.TrimSpace(proxyURL) != proxyURL {
@@ -1315,8 +1328,8 @@ func ProviderSupports(provider ProviderConfig, capability string) bool {
 	case provider.Fashion != nil, provider.ClothYOLO != nil, provider.FaceSim != nil, provider.HumanYOLO != nil, provider.HumanParser != nil, provider.RekognitionDetect != nil, provider.FacebodyCompare != nil, provider.RekognitionCompare != nil, provider.DashScopeEmbedding != nil, provider.CohereEmbedding != nil, provider.BedrockEmbedding != nil, provider.DashScopeRerank != nil, provider.BedrockRerank != nil, provider.CohereRerank != nil, provider.MixedbreadRerank != nil, provider.GoogleRerank != nil, provider.FacebodyDetect != nil, provider.FacebodyLibrary != nil, provider.RekognitionFaces != nil, provider.RekognitionLibrary != nil:
 		return capability == CapabilityText
 	case provider.VertexAI != nil:
-		// 类型能力不读 models。该列表可热更新，不能用来决定进程里有没有生图客户端。
-		return capability == CapabilityText || capability == CapabilityImage
+		// 类型能力不读 models。该列表可热更新，不能用来决定进程里有没有生图或视频客户端。
+		return capability == CapabilityText || capability == CapabilityImage || capability == CapabilityVideo
 	case provider.Ark != nil:
 		return capability == CapabilityText
 	case provider.LTX != nil:

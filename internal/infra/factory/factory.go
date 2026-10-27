@@ -155,13 +155,12 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 		return provider.Set{Text: client, Image: client}, nil
 	case providerCfg.VertexAI != nil:
 		cfg := providerCfg.VertexAI
-		client, err := genai.NewVertexAI(ctx, name, cfg.Project, cfg.ProxyURL)
+		client, err := genai.NewVertexAI(ctx, name, cfg.Project, cfg.ProxyURL, cfg.VideoOutputURI)
 		if err != nil {
 			return provider.Set{}, err
 		}
-		// 文本和生图是同一个 Provider。Image 在启动时挂上，不读可热更新的 models。
-		// 文本与生图统一走 ADC，复用同一个 global 客户端。
-		return provider.Set{Text: client, Image: client}, nil
+		// 各能力始终注册，模型热切换不会遗漏视频；三条路线共用 ADC 身份。
+		return provider.Set{Text: client, Image: client, Video: client.Video}, nil
 	case providerCfg.Ark != nil:
 		cfg := providerCfg.Ark
 		client, err := ark.New(name, cfg.APIKey, cfg.BaseURL, cfg.EndpointID)

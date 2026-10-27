@@ -61,10 +61,10 @@ func (t *vertexRecordingTransport) RoundTrip(req *http.Request) (*http.Response,
 }
 
 func TestNewVertexAIRequiresProject(t *testing.T) {
-	if _, err := NewVertexAI(context.Background(), "vertex", "", ""); err == nil {
+	if _, err := NewVertexAI(context.Background(), "vertex", "", "", ""); err == nil {
 		t.Fatal("expected ADC project error")
 	}
-	if _, err := NewVertexAI(context.Background(), "vertex", "  ", ""); err == nil {
+	if _, err := NewVertexAI(context.Background(), "vertex", "  ", "", ""); err == nil {
 		t.Fatal("expected ADC project error")
 	}
 }

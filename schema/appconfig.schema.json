@@ -163,6 +163,7 @@
       "type": "object",
       "required": ["project"],
       "properties": {
+        "video_output_uri": { "type": "string", "pattern": "^gs://[^/]+" },
         "project": { "type": "string", "minLength": 1 },
         "proxy_url": { "type": "string", "minLength": 1 }
       }

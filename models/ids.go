@@ -166,7 +166,9 @@ const (
 	Veo31Generate001       = "veo-3.1-generate-001"
 
 	// Gemini Interactions 图生视频与编辑共用同一真实模型 ID。
-	GeminiOmniFlashPreview = "gemini-omni-flash-preview"
+	// Vertex Omni 1.1 保留官方 preview ID，不复用旧版模型别名。
+	GeminiOmni11FlashPreview = "gemini-omni-1.1-flash-preview"
+	GeminiOmniFlashPreview   = "gemini-omni-flash-preview"
 
 	// Minimax 同步 TTS（与线上 wgHub DefaultMinimaxConfig 一致）。
 	Speech28Turbo = "speech-2.8-turbo"
@@ -276,6 +278,7 @@ func All() []string {
 		Veo31FastGenerate001,
 		Veo31Generate001,
 		GeminiOmniFlashPreview,
+		GeminiOmni11FlashPreview,
 		Speech28Turbo,
 		ElevenFlashV25,
 		VolcengineBigModelStreaming,

@@ -98,7 +98,7 @@ func newVertexADCTestProvider(t *testing.T, lifetime int) (*Provider, *vertexADC
 	t.Setenv("GOOGLE_CLOUD_PROJECT", "environment-project")
 	t.Setenv("GOOGLE_CLOUD_LOCATION", "us-central1")
 	transport := &vertexADCTestTransport{testing: t, lifetime: lifetime}
-	p, err := newVertexAI(context.Background(), "vertex", "test-project", &http.Client{Transport: transport})
+	p, err := newVertexAI(context.Background(), "vertex", "test-project", &http.Client{Transport: transport}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,12 +178,12 @@ func TestVertexADCErrorsDoNotLeakOrCallModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", path)
-	_, err = NewVertexAI(context.Background(), "vertex", "test-project", "")
+	_, err = NewVertexAI(context.Background(), "vertex", "test-project", "", "")
 	if provider.Kind(err) != provider.ErrorConfiguration || strings.Contains(err.Error(), "private-credential-canary") {
 		t.Fatalf("invalid ADC not sanitized: %v", err)
 	}
 	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", filepath.Join(t.TempDir(), "missing.json"))
-	if _, err := NewVertexAI(context.Background(), "vertex", "test-project", ""); provider.Kind(err) != provider.ErrorConfiguration {
+	if _, err := NewVertexAI(context.Background(), "vertex", "test-project", "", ""); provider.Kind(err) != provider.ErrorConfiguration {
 		t.Fatalf("missing ADC must fail startup: %v", err)
 	}
 }
@@ -212,7 +212,7 @@ func TestVertexADCProxyCoversTokenAndModel(t *testing.T) {
 	}))
 	defer proxy.Close()
 	vertexServiceAccountADC(t, "http://token.fixture.invalid/token")
-	p, err := NewVertexAI(context.Background(), "vertex", "test-project", proxy.URL)
+	p, err := NewVertexAI(context.Background(), "vertex", "test-project", proxy.URL, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,4 +222,94 @@ func TestVertexADCProxyCoversTokenAndModel(t *testing.T) {
 	if tokenCalls != 1 || connected != "aiplatform.googleapis.com:443" {
 		t.Fatalf("token calls=%d model proxy=%q", tokenCalls, connected)
 	}
+}
+
+// 模拟 ADC 与 Google 两个 API，覆盖 Submit/Get/成片流读取，任何一步漏鉴权都会失败。
+type omniRoundTrip func(*http.Request) (*http.Response, error)
+
+func (f omniRoundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestVertexOmniSubmitPollReadSharesADC(t *testing.T) {
+	vertexServiceAccountADC(t, "https://oauth2.googleapis.com/token")
+	t.Setenv("PATH", t.TempDir())
+	tokenTransport := &vertexADCTestTransport{testing: t, lifetime: 3600}
+	calls := 0
+	transport := omniRoundTrip(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Host == "oauth2.googleapis.com" {
+			return tokenTransport.RoundTrip(req)
+		}
+		calls++
+		if req.Header.Get("Authorization") != "Bearer token-1" || req.Header.Get("X-Goog-User-Project") != "test-project" || req.Header.Get("X-Goog-Api-Key") != "" {
+			t.Fatalf("incorrect ADC headers: %v", req.Header)
+		}
+		body := ""
+		switch {
+		case req.Method == "POST":
+			if req.URL.Path != "/v1beta1/projects/test-project/locations/global/interactions" {
+				t.Fatal(req.URL)
+			}
+			var request map[string]any
+			if err := json.NewDecoder(req.Body).Decode(&request); err != nil {
+				t.Fatal(err)
+			}
+			req.Body.Close()
+			if request["model"] != models.GeminiOmni11FlashPreview {
+				t.Fatal(request["model"])
+			}
+			body = `{"id":"job-1","status":"in_progress"}`
+		case req.URL.Host == "storage.googleapis.com":
+			if req.URL.EscapedPath() != "/storage/v1/b/bucket/o/output%2Fclip.mp4" || req.URL.Query().Get("alt") != "media" {
+				t.Fatal(req.URL)
+			}
+			body = "video-bytes"
+		default:
+			if req.URL.Path != "/v1beta1/projects/test-project/locations/global/interactions/job-1" {
+				t.Fatal(req.URL)
+			}
+			body = `{"id":"job-1","status":"completed","steps":[{"type":"model_output","content":[{"type":"video","uri":"gs://bucket/output/clip.mp4","mime_type":"video/mp4"}]}]}`
+		}
+		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
+	})
+	p, err := newVertexAI(context.Background(), "vertex", "test-project", &http.Client{Transport: transport}, "gs://bucket/output/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := vertexImageRequest("walk naturally")
+	request.Input.Items[0].GetMessage().Parts = append(request.Input.Items[0].GetMessage().Parts, &modelhubv2.ContentPart{Content: &modelhubv2.ContentPart_Image{Image: &modelhubv2.Media{MimeType: "image/png", Source: &modelhubv2.Media_Data{Data: onePixelPNG(t)}}}})
+	request.Output = &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Video{Video: &modelhubv2.VideoOutput{}}}
+	id, err := p.Video.SubmitVideo(context.Background(), models.GeminiOmni11FlashPreview, request)
+	if err != nil || id != "job-1" {
+		t.Fatalf("id=%q err=%v", id, err)
+	}
+	job, err := p.Video.GetVideo(context.Background(), models.GeminiOmni11FlashPreview, id)
+	if err != nil || job.State != provider.VideoJobSucceeded {
+		t.Fatalf("job=%v err=%v", job, err)
+	}
+	var result []byte
+	err = p.Video.ReadVideoResult(context.Background(), models.GeminiOmni11FlashPreview, id, func(event *modelhubv2.GenerateEvent) error {
+		for _, item := range event.GetItems() {
+			result = append(result, item.GetVideo().GetData()...)
+		}
+		return nil
+	})
+	if err != nil || string(result) != "video-bytes" || calls != 4 || tokenTransport.tokenCalls != 1 {
+		t.Fatalf("result=%q calls=%d tokens=%d err=%v", result, calls, tokenTransport.tokenCalls, err)
+	}
+}
+
+func TestVertexADCDoesNotAuthenticateExternalMedia(t *testing.T) {
+	// 外部首帧与重定向不应触发 token 获取，更不能把 ADC 发给媒体域名。
+	base := omniRoundTrip(func(req *http.Request) (*http.Response, error) {
+		if req.Header.Get("Authorization") != "" || req.Header.Get("X-Goog-User-Project") != "" {
+			t.Fatal("ADC leaked to external media")
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("image"))}, nil
+	})
+	tr := &vertexADCTransport{base: base}
+	req, _ := http.NewRequest("GET", "https://media.example.com/first.png", nil)
+	resp, err := tr.RoundTrip(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
 }

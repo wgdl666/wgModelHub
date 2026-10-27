@@ -185,7 +185,7 @@ func providerResourceEqual(previous, next ProviderConfig) bool {
 	right := next
 	left.Models = nil
 	right.Models = nil
-	// vertexai.project 和 proxy_url 留在比较里：客户端在启动时建好，改它们必须重启。
+	// Vertex 的 project、proxy_url、video_output_uri 留在比较里：客户端与输出位置在启动时固定，变更必须重启。
 	left.VWorldImage = vworldImageWithoutBaseURL(left.VWorldImage)
 	right.VWorldImage = vworldImageWithoutBaseURL(right.VWorldImage)
 	return reflect.DeepEqual(left, right)

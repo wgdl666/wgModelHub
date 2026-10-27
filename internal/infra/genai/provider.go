@@ -10,6 +10,7 @@ import (
 	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/infra/geminivideo"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/prefixcache"
 	"github.com/wgdl666/wgModelHub/internal/provider"
@@ -22,6 +23,7 @@ import (
 const defaultCachedContentTTL = time.Hour
 
 type Provider struct {
+	Video         *geminivideo.Provider
 	name          string
 	client        *genaisdk.Client
 	cacheIdentity string
@@ -58,8 +60,8 @@ func NewGemini(ctx context.Context, name, apiKey, endpoint, proxyURL string) (*P
 	return &Provider{name: name, client: client, cacheIdentity: cacheIdentity("developer", name, endpoint, apiKey)}, nil
 }
 
-// NewVertexAI 统一使用运行环境 ADC，文本/生图共用 locations/global 客户端和 token 缓存。
-func NewVertexAI(ctx context.Context, name, project, proxyURL string) (*Provider, error) {
+// NewVertexAI 统一使用运行环境 ADC，文本/生图/视频共用 locations/global 身份和 token 缓存。
+func NewVertexAI(ctx context.Context, name, project, proxyURL, videoOutputURI string) (*Provider, error) {
 	httpClient := telemetry.NewHTTPClient()
 	if proxyURL = strings.TrimSpace(proxyURL); proxyURL != "" {
 		// 国内 ACK 直连 Google 会 TLS 超时；ADC 换 token 与模型请求也必须共用这个代理。
@@ -71,19 +73,21 @@ func NewVertexAI(ctx context.Context, name, project, proxyURL string) (*Provider
 		transport.Proxy = http.ProxyURL(parsed)
 		httpClient = telemetry.NewHTTPClientWithTransport(transport)
 	}
-	return newVertexAI(ctx, name, project, httpClient)
+	return newVertexAI(ctx, name, project, httpClient, videoOutputURI)
 }
 
-// 项目是 Vertex 的显式路由配置；校验完成后只建立 ADC 客户端，文本与生图共用。
-func newVertexAI(ctx context.Context, name, project string, httpClient *http.Client) (*Provider, error) {
+// 项目是 Vertex 的显式路由配置；校验完成后建立共用 ADC 的同步客户端与视频客户端。
+func newVertexAI(ctx context.Context, name, project string, httpClient *http.Client, videoOutputURI string) (*Provider, error) {
 	if strings.TrimSpace(project) == "" {
 		return nil, provider.New(provider.ErrorConfiguration, name+" vertexai.project is required for ADC")
 	}
-	client, err := newADCVertexClient(ctx, name, project, httpClient)
+	client, authed, err := newADCVertexClient(ctx, name, project, httpClient)
 	if err != nil {
 		return nil, err
 	}
-	return &Provider{name: name, client: client, cacheIdentity: cacheIdentity("vertex", name, project, "global")}, nil
+	// 视频复用同一 ADC token 缓存、代理和 global 项目，不再建立另一套身份。
+	video := geminivideo.NewVertex(name, project, videoOutputURI, authed)
+	return &Provider{name: name, client: client, Video: video, cacheIdentity: cacheIdentity("vertex", name, project, "global")}, nil
 }
 
 // CreateCachedContent 把 system + tools 落到 Gemini CachedContent，供后续 Generate 引用。

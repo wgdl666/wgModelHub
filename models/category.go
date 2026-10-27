@@ -138,6 +138,7 @@ var categories = map[string]Category{
 	Veo31FastGenerate001:       CategoryVideoGeneration,
 	Veo31Generate001:           CategoryVideoGeneration,
 	GeminiOmniFlashPreview:     CategoryVideoGeneration,
+	GeminiOmni11FlashPreview:   CategoryVideoGeneration,
 
 	Speech28Turbo:  CategorySpeech,
 	ElevenFlashV25: CategorySpeech,

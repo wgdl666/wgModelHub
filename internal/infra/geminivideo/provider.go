@@ -34,12 +34,14 @@ const (
 )
 
 type Provider struct {
-	name         string
-	apiKey       string
-	baseURL      string
-	authHeader   string
-	pollInterval time.Duration
-	client       *http.Client
+	vertex          bool
+	vertexOutputURI string
+	name            string
+	apiKey          string
+	baseURL         string
+	authHeader      string
+	pollInterval    time.Duration
+	client          *http.Client
 }
 
 func New(name, apiKey, baseURL, authHeader, proxyURL string, pollInterval float64) (*Provider, error) {
@@ -93,6 +95,13 @@ func (p *Provider) SubmitVideo(ctx context.Context, model string, request *model
 	}
 	if strings.TrimSpace(model) == "" {
 		model = models.GeminiOmniFlashPreview
+	}
+	if p.vertex {
+		body, err := p.buildVertexBody(ctx, model, request)
+		if err != nil {
+			return "", err
+		}
+		return p.createInteraction(ctx, body)
 	}
 	prompt := augmentPromptForSilentVideo(provider.JoinedText(request.GetInput()))
 	if strings.TrimSpace(provider.JoinedText(request.GetInput())) == "" {
@@ -270,7 +279,9 @@ func (p *Provider) createInteraction(ctx context.Context, body []byte) (string, 
 		return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "create interaction request", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set(p.authHeader, p.apiKey)
+	if p.authHeader != "" {
+		httpReq.Header.Set(p.authHeader, p.apiKey)
+	}
 	resp, err := p.client.Do(httpReq)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -356,7 +367,9 @@ func (p *Provider) fetchInteraction(ctx context.Context, interactionID string) (
 	if err != nil {
 		return interactionResponse{}, provider.Wrap(provider.ErrorInvalidArgument, "create interaction poll request", err)
 	}
-	httpReq.Header.Set(p.authHeader, p.apiKey)
+	if p.authHeader != "" {
+		httpReq.Header.Set(p.authHeader, p.apiKey)
+	}
 	resp, err := p.client.Do(httpReq)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -405,6 +418,12 @@ func (p *Provider) readVideoFromURI(ctx context.Context, uri, mimeType, response
 
 // streamDownloadVideoURI 带鉴权流式落盘并限量，供 ReadVideoResult 去音轨前使用。
 func (p *Provider) streamDownloadVideoURI(ctx context.Context, uri string) (path string, cleanup func(), err error) {
+	if p.vertex {
+		uri, err = vertexDownloadURL(uri)
+		if err != nil {
+			return "", nil, err
+		}
+	}
 	fileID := fileIDFromURI(uri)
 	if fileID != "" {
 		if err := p.waitFileActive(ctx, fileID); err != nil {
@@ -415,7 +434,9 @@ func (p *Provider) streamDownloadVideoURI(ctx context.Context, uri string) (path
 	if err != nil {
 		return "", nil, err
 	}
-	req.Header.Set(p.authHeader, p.apiKey)
+	if p.authHeader != "" {
+		req.Header.Set(p.authHeader, p.apiKey)
+	}
 	resp, err := p.client.Do(req)
 	if err != nil {
 		return "", nil, provider.Wrap(provider.ErrorUnavailable, "download video", err)
@@ -563,7 +584,9 @@ func (p *Provider) waitFileActive(ctx context.Context, fileID string) error {
 		if err != nil {
 			return err
 		}
-		req.Header.Set(p.authHeader, p.apiKey)
+		if p.authHeader != "" {
+			req.Header.Set(p.authHeader, p.apiKey)
+		}
 		resp, err := p.client.Do(req)
 		if err != nil {
 			return provider.Wrap(provider.ErrorUnavailable, "poll video file", err)

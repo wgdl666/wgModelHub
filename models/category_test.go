@@ -54,6 +54,7 @@ func TestCategoryOfKnownIDs(t *testing.T) {
 		{SegmentSubjectBria, CategorySegment},
 		{VWorldOutfitVideo10, CategoryVideoGeneration},
 		{GeminiOmniFlashPreview, CategoryVideoGeneration},
+		{GeminiOmni11FlashPreview, CategoryVideoGeneration},
 		{Speech28Turbo, CategorySpeech},
 		{ElevenFlashV25, CategorySpeech},
 	}

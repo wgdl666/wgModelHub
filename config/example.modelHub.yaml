@@ -72,6 +72,13 @@ providers:
     models: [gemini-nano-banana-2.1]
     vertexai:
       project: "${VERTEX_PROJECT}"
+  # Vertex Omni 首帧视频：复用 ADC；生成服务需能写入此 GCS 前缀，运行身份需有对象读取权限。
+  # GCS 临时产物由桶生命周期清理；最终业务媒体存储仍由调用方负责。
+  Vertex_AI_video:
+    models: [gemini-omni-1.1-flash-preview]
+    vertexai:
+      project: "${VERTEX_PROJECT}"
+      video_output_uri: gs://your-video-bucket/modelhub-omni/
   火山方舟_ark_chat:
     models: [doubao-seed-1.6]
     ark:

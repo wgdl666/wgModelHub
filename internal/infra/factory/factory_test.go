@@ -218,10 +218,10 @@ func TestBuildVertexRegistersImageWithoutReadingModels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// models 可热更新，启动时不能按当时的列表决定要不要挂 Image。
+	// models 可热更新，启动时不能按当时的列表决定要不要挂 Image/Video。
 	for _, name := range []string{"vertex_chat", "vertex_nano_banana"} {
 		set := sets[name]
-		if set.Text == nil || set.Image == nil || set.Video != nil {
+		if set.Text == nil || set.Image == nil || set.Video == nil {
 			t.Fatalf("%s set=%#v", name, set)
 		}
 	}
