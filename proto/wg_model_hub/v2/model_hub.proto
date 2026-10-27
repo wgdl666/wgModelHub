@@ -9,13 +9,10 @@ import "google/rpc/status.proto";
 option go_package = "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2;wg_model_hubv2";
 
 // ModelHubService：Generate 承接文本/图片；视频长任务只走 Submit/Get（已移除迁移期 Generate(video)）。
-// CreateCachedContent 仅服务 Gemini 等显式前缀缓存。
 // SynthesizeSpeech 是独立 unary TTS：一次请求返回完整音频或 gRPC error，不进入 OutputSpec。
 // capability 由 OutputSpec oneof 或 Speech RPC 决定，真实供应商模型 ID 经 request.model 路由到唯一 provider 实例。
 service ModelHubService {
   rpc Generate(GenerateRequest) returns (stream GenerateEvent);
-  // 将会话级 system + 工具定义落到供应商 CachedContent，供后续 Generate.input.cached_content 引用。
-  rpc CreateCachedContent(CreateCachedContentRequest) returns (CreateCachedContentResponse);
   // SubmitGeneration 第一阶段只接受 output.video；幂等键为 (x-wg-caller-service, request_id)。
   rpc SubmitGeneration(SubmitGenerationRequest) returns (GenerationTask);
   // GetGeneration 按调用查询任务；PENDING/RUNNING/FAILED 只回一个 status 事件，SUCCEEDED 先 status 再流式 output。
@@ -182,29 +179,12 @@ message Input {
   // 文本 Generate 省略本字段时，ModelHub 默认写入 enabled=true；显式 enabled=false 可关闭。
   // 是否实际命中仍以 usage.cached_tokens > 0 为准，请求开启不等于命中。
   CachingConfig caching = 5;
-  // Gemini 显式 CachedContent 资源名；与 Ark previous_response_id / caching.enabled 互不替代。
-  // 引用时 system/tools 已在 cache 内，调用方不应再按屏裁剪 tools，也不应重复下发 system。
-  string cached_content = 6;
+  // 缓存资源由 ModelHub 自动管理；已删除的调用方字段不得复用。
+  reserved 6;
+  reserved "cached_content";
   // 模型特性。JSON 字符串，不是提示词，也不进文本 part。
   // 各模型只读自己认识的键。体模读 gender，只允许 male、female。
   string model_traits = 7;
-}
-
-// CreateCachedContentRequest 只缓存会话级稳定前缀：system_instruction + tools。
-message CreateCachedContentRequest {
-  string model = 1;
-  string system_instruction = 2;
-  repeated Tool tools = 3;
-  // TTL 秒数；0 表示由供应商/实现默认（常见 1h）。
-  int64 ttl_seconds = 4;
-  string display_name = 5;
-  BusinessMetadata business_metadata = 6;
-}
-
-message CreateCachedContentResponse {
-  // 供应商返回的资源名，原样填回后续 GenerateRequest.input.cached_content。
-  string cached_content = 1;
-  int64 expire_at_unix = 2;
 }
 
 enum ThinkingMode {

@@ -15,65 +15,35 @@ const TTL = time.Hour
 // Manager only registers/reuses resources. It does not renew them or persist
 // prompts. Bounded workers retain the current request's static input in memory.
 type Manager struct {
-	store   Store
-	ctx     context.Context
-	cancel  context.CancelFunc
-	jobs    chan struct{}
-	wg      sync.WaitGroup
-	mu      sync.Mutex
-	closed  bool
-	running map[string]bool
-	blocked map[string]time.Time
+	store  Store
+	ctx    context.Context
+	cancel context.CancelFunc
+	jobs   chan struct{}
+	wg     sync.WaitGroup
+	mu     sync.Mutex
 }
 
 func New(ctx context.Context, store Store) *Manager {
 	ctx, cancel := context.WithCancel(ctx)
-	return &Manager{store: store, ctx: ctx, cancel: cancel, jobs: make(chan struct{}, 8), running: make(map[string]bool), blocked: make(map[string]time.Time)}
+	return &Manager{store: store, ctx: ctx, cancel: cancel, jobs: make(chan struct{}, 8)}
 }
 
 func (m *Manager) Close() {
 	m.mu.Lock()
-	m.closed = true
 	m.cancel()
 	m.mu.Unlock()
 	m.wg.Wait()
 }
 
-func (m *Manager) Suppressed(key string) bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.blocked[key].After(time.Now())
-}
-
-func (m *Manager) Suppress(key string, duration time.Duration) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if len(m.blocked) >= 4096 {
-		for k, until := range m.blocked {
-			if !until.After(time.Now()) {
-				delete(m.blocked, k)
-			}
-		}
-		// Bounded diagnostic cooldowns; evicting one only allows a future retry.
-		if len(m.blocked) >= 4096 {
-			for k := range m.blocked {
-				delete(m.blocked, k)
-				break
-			}
-		}
-	}
-	m.blocked[key] = time.Now().Add(duration)
-}
-
 func (m *Manager) Lookup(ctx context.Context, key string) *Entry {
-	if m.Suppressed(key) || m.ctx.Err() != nil {
+	if m.ctx.Err() != nil {
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
 	defer cancel()
 	entry, err := m.store.Get(ctx, key)
 	if err != nil {
-		logs.Default().WarnContext(ctx, "modelhub_prefix_cache_store_failed", "operation", "lookup")
+		logs.Default().WarnContext(ctx, "modelhub_prefix_cache_store_failed", "operation", "lookup", "error", err)
 		return nil
 	}
 	if entry.Usable(time.Now()) {
@@ -90,14 +60,13 @@ func (m *Manager) Invalidate(ctx context.Context, entry *Entry) {
 	})
 	if err != nil {
 		// The full-prompt fallback is still usable during a registry outage.
-		m.Suppress(entry.Key, time.Minute)
-		logs.Default().WarnContext(ctx, "modelhub_prefix_cache_store_failed", "operation", "invalidate")
+		logs.Default().WarnContext(ctx, "modelhub_prefix_cache_store_failed", "operation", "invalidate", "error", err)
 	}
 }
 
 func (m *Manager) ScheduleCreate(key string, create func(context.Context) (*Entry, error)) {
 	m.mu.Lock()
-	if m.closed || m.ctx.Err() != nil || m.running[key] || m.blocked[key].After(time.Now()) {
+	if m.ctx.Err() != nil {
 		m.mu.Unlock()
 		return
 	}
@@ -107,16 +76,12 @@ func (m *Manager) ScheduleCreate(key string, create func(context.Context) (*Entr
 		m.mu.Unlock()
 		return
 	}
-	m.running[key] = true
 	m.wg.Add(1)
 	m.mu.Unlock()
 	go func() {
-		defer m.wg.Done()
 		defer func() {
-			m.mu.Lock()
-			delete(m.running, key)
-			m.mu.Unlock()
 			<-m.jobs
+			m.wg.Done()
 		}()
 		ctx, cancel := context.WithTimeout(m.ctx, 25*time.Second)
 		defer cancel()
@@ -130,23 +95,15 @@ func (m *Manager) ScheduleCreate(key string, create func(context.Context) (*Entr
 			if err != nil {
 				return err
 			}
-			if entry == nil {
-				return nil
-			}
 			if !entry.Usable(time.Now()) {
-				m.Suppress(key, time.Minute)
 				return nil
 			}
 			entry.Key = key
 			return store.Put(ctx, entry)
 		})
 		if err != nil {
-			if !m.Suppressed(key) {
-				m.Suppress(key, time.Minute)
-			}
-			// Provider errors can contain request fragments: log no raw error text.
 			if m.ctx.Err() == nil {
-				logs.Default().WarnContext(ctx, "modelhub_prefix_cache_create_failed", "key", key)
+				logs.Default().WarnContext(ctx, "modelhub_prefix_cache_create_failed", "key", key, "error", err)
 			}
 		}
 	}()

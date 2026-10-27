@@ -8,7 +8,6 @@ import (
 	"errors"
 	"os"
 	"strings"
-	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/callledger"
@@ -36,7 +35,7 @@ func (p *Provider) ConfigurePrefixCache(cache *prefixcache.Manager, enabled func
 	p.cacheEnabled = enabled
 }
 
-func (p *Provider) prefixKey(ctx context.Context, model string, config *genaisdk.GenerateContentConfig) (string, string) {
+func (p *Provider) prefixKey(ctx context.Context, model string, config *genaisdk.GenerateContentConfig) string {
 	region := strings.ToLower(strings.TrimSpace(os.Getenv("XX_WG_REGION")))
 	if region == "" {
 		region = "cn"
@@ -45,13 +44,13 @@ func (p *Provider) prefixKey(ctx context.Context, model string, config *genaisdk
 	prefix := staticPrefix{SystemInstruction: config.SystemInstruction, Tools: config.Tools, ToolConfig: config.ToolConfig}
 	encoded, err := json.Marshal(prefix)
 	if err != nil {
-		return "", ""
+		return ""
 	}
-	return cacheIdentity(scope, string(encoded)), scope
+	return cacheIdentity(scope, string(encoded))
 }
 
 func (p *Provider) preparePrefixCache(ctx context.Context, model string, request *modelhubv2.GenerateRequest, original *genaisdk.GenerateContentConfig) (*genaisdk.GenerateContentConfig, *prefixcache.Entry) {
-	if p.cache == nil || p.cacheEnabled == nil || !p.cacheEnabled(model) || original.CachedContent != "" || ctx.Err() != nil {
+	if p.cache == nil || p.cacheEnabled == nil || !p.cacheEnabled(model) || ctx.Err() != nil {
 		return original, nil
 	}
 	if caching := request.GetInput().GetCaching(); caching != nil && !caching.Enabled {
@@ -60,8 +59,8 @@ func (p *Provider) preparePrefixCache(ctx context.Context, model string, request
 	if original.SystemInstruction == nil && len(original.Tools) == 0 {
 		return original, nil
 	}
-	key, scope := p.prefixKey(ctx, model, original)
-	if key == "" || p.cache.Suppressed(scope) {
+	key := p.prefixKey(ctx, model, original)
+	if key == "" {
 		return original, nil
 	}
 	if entry := p.cache.Lookup(ctx, key); entry != nil {
@@ -80,15 +79,11 @@ func (p *Provider) schedulePrefixCache(ctx context.Context, model string, origin
 	if ctx.Err() != nil {
 		return
 	}
-	_, scope := p.prefixKey(ctx, model, original)
-	if p.cache.Suppressed(scope) {
-		return
-	}
 	// Only static, already-converted fields are retained. Dynamic messages/media
 	// and the caller's canceled request context are not held by the background job.
 	prefix := staticPrefix{SystemInstruction: original.SystemInstruction, Tools: original.Tools, ToolConfig: original.ToolConfig}
 	p.cache.ScheduleCreate(key, func(createCtx context.Context) (*prefixcache.Entry, error) {
-		if p.cacheEnabled == nil || !p.cacheEnabled(model) || p.cache.Suppressed(scope) {
+		if p.cacheEnabled == nil || !p.cacheEnabled(model) {
 			return nil, nil
 		}
 		cached, err := p.client.Caches.Create(createCtx, model, &genaisdk.CreateCachedContentConfig{
@@ -98,15 +93,6 @@ func (p *Provider) schedulePrefixCache(ctx context.Context, model string, origin
 			ToolConfig:        prefix.ToolConfig,
 		})
 		if err != nil {
-			var apiError genaisdk.APIError
-			if errors.As(err, &apiError) {
-				message := strings.ToLower(apiError.Message)
-				if apiError.Code == 400 && strings.Contains(message, "too small") {
-					p.cache.Suppress(key, time.Hour)
-				} else if (apiError.Code == 400 || apiError.Code == 404) && strings.Contains(message, "cach") && (strings.Contains(message, "not supported") || strings.Contains(message, "does not support") || strings.Contains(message, "unsupported")) {
-					p.cache.Suppress(scope, time.Hour)
-				}
-			}
 			return nil, err
 		}
 		if cached == nil || cached.Name == "" || cached.ExpireTime.IsZero() {

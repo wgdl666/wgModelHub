@@ -22,6 +22,7 @@ import (
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
+	genaisdk "google.golang.org/genai"
 )
 
 // 临时 RSA 凭据只用于本地 token 服务，测试不依赖开发者登录或线上 Google 账号。
@@ -134,13 +135,17 @@ func TestVertexADCTextStreamImageAndCacheShareToken(t *testing.T) {
 	if !strings.HasSuffix(transport.last.URL.Path, "/models/"+models.GeminiNanoBanana21+":generateContent") {
 		t.Fatalf("image path=%s", transport.last.URL.Path)
 	}
+	// 自动前缀缓存通过同一 SDK 客户端创建，复用已有 ADC token。
 	transport.response = `{"name":"projects/test-project/locations/global/cachedContents/test-cache"}`
-	cache, err := p.CreateCachedContent(context.Background(), models.Gemini25Flash, &modelhubv2.CreateCachedContentRequest{SystemInstruction: "test system"})
-	if err != nil || cache.GetCachedContent() == "" {
+	cache, err := p.client.Caches.Create(context.Background(), models.Gemini25Flash, &genaisdk.CreateCachedContentConfig{
+		TTL:               time.Hour,
+		SystemInstruction: genaisdk.NewContentFromText("test system", genaisdk.RoleUser),
+	})
+	if err != nil || cache == nil || cache.Name == "" {
 		t.Fatalf("cache=%v err=%v", cache, err)
 	}
 	if !strings.HasSuffix(transport.last.URL.Path, "/cachedContents") || transport.calls != 4 || transport.tokenCalls != 1 {
-		t.Fatalf("path=%s models=%d tokens=%d", transport.last.URL.Path, transport.calls, transport.tokenCalls)
+		t.Fatalf("models=%d tokens=%d", transport.calls, transport.tokenCalls)
 	}
 }
 

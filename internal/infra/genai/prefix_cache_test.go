@@ -3,6 +3,7 @@ package genai
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -23,11 +24,12 @@ import (
 
 // The same registry/locks can be shared by independent managers in tests.
 type prefixMemoryStore struct {
-	mu        sync.Mutex
-	entries   map[string]*prefixcache.Entry
-	locked    map[int64]bool
-	puts      chan *prefixcache.Entry
-	readError error
+	mu              sync.Mutex
+	entries         map[string]*prefixcache.Entry
+	locked          map[int64]bool
+	puts            chan *prefixcache.Entry
+	readError       error
+	invalidateError error
 }
 
 func newPrefixMemoryStore() *prefixMemoryStore {
@@ -59,6 +61,9 @@ func (s *prefixMemoryStore) Put(_ context.Context, entry *prefixcache.Entry) err
 func (s *prefixMemoryStore) Invalidate(_ context.Context, key, name string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.invalidateError != nil {
+		return s.invalidateError
+	}
 	if old := s.entries[key]; old != nil && old.Name == name {
 		delete(s.entries, key)
 	}
@@ -207,11 +212,11 @@ func TestManagedPrefixKeyUsesStaticFieldsAndIsolation(t *testing.T) {
 	p := &Provider{cacheIdentity: cacheIdentity("developer", "credential-1")}
 	r := prefixRequest()
 	base := p.buildConfig(r.Model, r)
-	key, _ := p.prefixKey(context.Background(), r.Model, base)
+	key := p.prefixKey(context.Background(), r.Model, base)
 	changed := proto.Clone(r).(*modelhubv2.GenerateRequest)
 	changed.Input.Items[1].GetMessage().Parts[0] = &modelhubv2.ContentPart{Content: &modelhubv2.ContentPart_Text{Text: "different dynamic contents"}}
 	changed.Output.GetText().ResponseFormat = &modelhubv2.ResponseFormat{Type: modelhubv2.ResponseFormatType_RESPONSE_FORMAT_TYPE_JSON_SCHEMA, JsonSchema: []byte(`{"type":"object"}`)}
-	if got, _ := p.prefixKey(context.Background(), r.Model, p.buildConfig(r.Model, changed)); got != key {
+	if got := p.prefixKey(context.Background(), r.Model, p.buildConfig(r.Model, changed)); got != key {
 		t.Fatal("dynamic/output fields must not invalidate the static prefix")
 	}
 	for _, change := range []func(*modelhubv2.GenerateRequest){
@@ -225,33 +230,33 @@ func TestManagedPrefixKeyUsesStaticFieldsAndIsolation(t *testing.T) {
 	} {
 		changed := proto.Clone(r).(*modelhubv2.GenerateRequest)
 		change(changed)
-		if got, _ := p.prefixKey(context.Background(), r.Model, p.buildConfig(r.Model, changed)); got == key {
+		if got := p.prefixKey(context.Background(), r.Model, p.buildConfig(r.Model, changed)); got == key {
 			t.Fatal("static change reused the old key")
 		}
 	}
 	other := &Provider{cacheIdentity: cacheIdentity("vertex", "project-1")}
-	if got, _ := other.prefixKey(context.Background(), r.Model, base); got == key {
+	if got := other.prefixKey(context.Background(), r.Model, base); got == key {
 		t.Fatal("cross-provider cache key collision")
 	}
-	if got, _ := p.prefixKey(context.Background(), models.Gemini37Flash, base); got == key {
+	if got := p.prefixKey(context.Background(), models.Gemini37Flash, base); got == key {
 		t.Fatal("cross-model cache key collision")
 	}
 	caller := metadata.NewIncomingContext(context.Background(), metadata.Pairs("x-wg-caller-service", "another-caller"))
-	if got, _ := p.prefixKey(caller, r.Model, base); got == key {
+	if got := p.prefixKey(caller, r.Model, base); got == key {
 		t.Fatal("cross-caller cache key collision")
 	}
 	public := auth.ContextWithPublicPrincipal(caller, "principal-1", "key-1")
-	publicKey, _ := p.prefixKey(public, r.Model, base)
+	publicKey := p.prefixKey(public, r.Model, base)
 	rotated := auth.ContextWithPublicPrincipal(caller, "principal-1", "key-2")
-	if got, _ := p.prefixKey(rotated, r.Model, base); got != publicKey {
+	if got := p.prefixKey(rotated, r.Model, base); got != publicKey {
 		t.Fatal("public client key rotation must preserve the same principal scope")
 	}
 	otherPublic := auth.ContextWithPublicPrincipal(caller, "principal-2", "key-1")
-	if got, _ := p.prefixKey(otherPublic, r.Model, base); got == publicKey {
+	if got := p.prefixKey(otherPublic, r.Model, base); got == publicKey {
 		t.Fatal("cross-principal cache key collision")
 	}
 	t.Setenv("XX_WG_REGION", "SG")
-	if got, _ := p.prefixKey(context.Background(), r.Model, base); got == key {
+	if got := p.prefixKey(context.Background(), r.Model, base); got == key {
 		t.Fatal("cross-region cache key collision")
 	}
 }
@@ -284,7 +289,7 @@ func TestManagedPrefixMissingResourceFallsBackOnce(t *testing.T) {
 				writePrefixResponse(w, false)
 			})
 			req := prefixRequest()
-			key, _ := p.prefixKey(context.Background(), req.Model, p.buildConfig(req.Model, req))
+			key := p.prefixKey(context.Background(), req.Model, p.buildConfig(req.Model, req))
 			store.Put(context.Background(), &prefixcache.Entry{Key: key, Name: "cachedContents/missing", ExpiresAt: time.Now().Add(time.Hour)})
 			var err error
 			if stream {
@@ -306,6 +311,47 @@ func TestManagedPrefixMissingResourceFallsBackOnce(t *testing.T) {
 	}
 }
 
+func TestManagedPrefixInvalidationFailureRetriesOnNextRequest(t *testing.T) {
+	var calls atomic.Int32
+	p, _, store := prefixTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		body := decodePrefixBody(t, r)
+		if strings.HasSuffix(r.URL.Path, "/cachedContents") {
+			w.WriteHeader(429)
+			fmt.Fprint(w, `{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","message":"temporary"}}`)
+			return
+		}
+		calls.Add(1)
+		if body["cachedContent"] != nil {
+			w.WriteHeader(404)
+			fmt.Fprint(w, `{"error":{"code":404,"status":"NOT_FOUND","message":"cached content not found"}}`)
+			return
+		}
+		writePrefixResponse(w, false)
+	})
+	req := prefixRequest()
+	key := p.prefixKey(context.Background(), req.Model, p.buildConfig(req.Model, req))
+	store.Put(context.Background(), &prefixcache.Entry{Key: key, Name: "cachedContents/missing", ExpiresAt: time.Now().Add(time.Hour)})
+	store.invalidateError = errors.New("registry unavailable")
+	if _, err := p.Generate(context.Background(), req.Model, req); err != nil {
+		t.Fatal(err)
+	}
+	if entry, _ := store.Get(context.Background(), key); entry == nil {
+		t.Fatal("failed invalidation unexpectedly removed the record")
+	}
+	store.mu.Lock()
+	store.invalidateError = nil
+	store.mu.Unlock()
+	if _, err := p.Generate(context.Background(), req.Model, req); err != nil {
+		t.Fatal(err)
+	}
+	if entry, _ := store.Get(context.Background(), key); entry != nil {
+		t.Fatal("next request did not retry deleting the stale record")
+	}
+	if calls.Load() != 4 {
+		t.Fatalf("generation calls=%d want cached attempt plus full input on each request", calls.Load())
+	}
+}
+
 func TestManagedPrefixDoesNotReplayAfterStreamOutput(t *testing.T) {
 	var calls atomic.Int32
 	p, _, store := prefixTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
@@ -316,7 +362,7 @@ func TestManagedPrefixDoesNotReplayAfterStreamOutput(t *testing.T) {
 		fmt.Fprint(w, "{\"error\":{\"code\":404,\"status\":\"NOT_FOUND\",\"message\":\"cached content expired\"}}\n\n")
 	})
 	req := prefixRequest()
-	key, _ := p.prefixKey(context.Background(), req.Model, p.buildConfig(req.Model, req))
+	key := p.prefixKey(context.Background(), req.Model, p.buildConfig(req.Model, req))
 	store.Put(context.Background(), &prefixcache.Entry{Key: key, Name: "cachedContents/partial", ExpiresAt: time.Now().Add(time.Hour)})
 	var emitted int
 	_, err := p.GenerateStream(context.Background(), req.Model, req, func(*modelhubv2.GenerateEvent) error { emitted++; return nil })
@@ -344,15 +390,6 @@ func TestCachedContentErrorsAreNarrowlyClassified(t *testing.T) {
 	}
 }
 
-func TestManualCachedContentNeverRepeatsToolConfig(t *testing.T) {
-	r := prefixRequest()
-	r.Input.CachedContent = "cachedContents/manual"
-	cfg := (&Provider{}).buildConfig(r.Model, r)
-	if cfg.CachedContent != r.Input.CachedContent || cfg.SystemInstruction != nil || cfg.Tools != nil || cfg.ToolConfig != nil {
-		t.Fatal("manual cache reference repeated cache-owned fields")
-	}
-}
-
 func waitForPrefixCondition(t *testing.T, condition func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
@@ -364,14 +401,18 @@ func waitForPrefixCondition(t *testing.T, condition func() bool) {
 	}
 }
 
-func TestManagedPrefixUnsupportedAndShortInputsBackOff(t *testing.T) {
+func TestManagedPrefixCreationErrorsRetryOnLaterRequests(t *testing.T) {
 	for _, unsupported := range []bool{false, true} {
 		t.Run(fmt.Sprint("unsupported=", unsupported), func(t *testing.T) {
 			var cacheCalls atomic.Int32
-			p, manager, _ := prefixTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+			p, _, store := prefixTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
 				decodePrefixBody(t, r)
 				if strings.HasSuffix(r.URL.Path, "/cachedContents") {
-					cacheCalls.Add(1)
+					if cacheCalls.Add(1) > 1 {
+						w.Header().Set("Content-Type", "application/json")
+						fmt.Fprintf(w, `{"name":"cachedContents/retried","expireTime":%q}`, time.Now().Add(time.Hour).UTC().Format(time.RFC3339Nano))
+						return
+					}
 					message := "Cached content is too small. min_total_token_count=4096"
 					if unsupported {
 						message = "Explicit caching is not supported for this model"
@@ -383,29 +424,26 @@ func TestManagedPrefixUnsupportedAndShortInputsBackOff(t *testing.T) {
 				writePrefixResponse(w, false)
 			})
 			req := prefixRequest()
-			key, scope := p.prefixKey(context.Background(), req.Model, p.buildConfig(req.Model, req))
 			if _, err := p.Generate(context.Background(), req.Model, req); err != nil {
 				t.Fatal(err)
 			}
-			blocked := key
-			if unsupported {
-				blocked = scope
+			waitForPrefixCondition(t, func() bool {
+				if _, err := p.Generate(context.Background(), req.Model, req); err != nil {
+					t.Fatal(err)
+				}
+				return cacheCalls.Load() >= 2
+			})
+			if entry := awaitPrefixPut(t, store); entry.Name != "cachedContents/retried" {
+				t.Fatalf("retried cache was not registered: %+v", entry)
 			}
-			waitForPrefixCondition(t, func() bool { return manager.Suppressed(blocked) })
-			if unsupported {
-				req.Input.Items[0].GetMessage().Parts[0] = &modelhubv2.ContentPart{Content: &modelhubv2.ContentPart_Text{Text: "Another fixed prefix"}}
-			}
-			if _, err := p.Generate(context.Background(), req.Model, req); err != nil {
-				t.Fatal(err)
-			}
-			if cacheCalls.Load() != 1 {
-				t.Fatalf("repeated unsupported/short cache creation: %d", cacheCalls.Load())
+			if cacheCalls.Load() != 2 {
+				t.Fatalf("cache creation calls=%d want one failure and one success", cacheCalls.Load())
 			}
 		})
 	}
 }
 
-func TestManagedPrefixBypassesDisabledAndManualRequests(t *testing.T) {
+func TestManagedPrefixBypassesDisabledRequests(t *testing.T) {
 	var cacheCalls atomic.Int32
 	p, _, _ := prefixTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
 		body := decodePrefixBody(t, r)
@@ -424,13 +462,8 @@ func TestManagedPrefixBypassesDisabledAndManualRequests(t *testing.T) {
 	if _, err := p.Generate(context.Background(), req.Model, req); err != nil {
 		t.Fatal(err)
 	}
-	req.Input.Caching = nil
-	req.Input.CachedContent = "cachedContents/manual"
-	if _, err := p.Generate(context.Background(), req.Model, req); err != nil {
-		t.Fatal(err)
-	}
 	if cacheCalls.Load() != 0 {
-		t.Fatal("disabled/manual request scheduled managed cache creation")
+		t.Fatal("disabled request scheduled managed cache creation")
 	}
 }
 
@@ -469,7 +502,7 @@ func TestManagedPrefixPreservesPlanningJSONSchema(t *testing.T) {
 	req := prefixRequest()
 	req.Input.Tools, req.Input.ToolChoice = nil, nil
 	req.Output.GetText().ResponseFormat = &modelhubv2.ResponseFormat{Type: modelhubv2.ResponseFormatType_RESPONSE_FORMAT_TYPE_JSON_SCHEMA, JsonSchema: schema}
-	key, _ := p.prefixKey(context.Background(), req.Model, p.buildConfig(req.Model, req))
+	key := p.prefixKey(context.Background(), req.Model, p.buildConfig(req.Model, req))
 	store.Put(context.Background(), &prefixcache.Entry{Key: key, Name: "cachedContents/planning", ExpiresAt: time.Now().Add(time.Hour)})
 	final, err := p.Generate(context.Background(), req.Model, req)
 	if err != nil || len(final.GetItems()) != 1 || final.GetItems()[0].GetText() != `{"outfits":[]}` {

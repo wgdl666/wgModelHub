@@ -78,6 +78,26 @@ func TestSynthesizeSpeechProtoContract(t *testing.T) {
 	}
 }
 
+func TestPrefixCacheIsManagedInsideModelHub(t *testing.T) {
+	file := modelhubv2.File_proto_wg_model_hub_v2_model_hub_proto
+	service := file.Services().ByName("ModelHubService")
+	if service.Methods().ByName("CreateCachedContent") != nil {
+		t.Fatal("caller-owned cache creation RPC must not be exposed")
+	}
+	for _, name := range []protoreflect.Name{"CreateCachedContentRequest", "CreateCachedContentResponse"} {
+		if file.Messages().ByName(name) != nil {
+			t.Fatalf("caller-owned cache message %s still exposed", name)
+		}
+	}
+	input := (&modelhubv2.Input{}).ProtoReflect().Descriptor()
+	if input.Fields().ByName("cached_content") != nil || input.Fields().ByNumber(6) != nil {
+		t.Fatal("callers must send complete input instead of cache resource names")
+	}
+	if !input.ReservedRanges().Has(6) || !input.ReservedNames().Has("cached_content") {
+		t.Fatal("removed cache field number and name must stay reserved")
+	}
+}
+
 func assertField(t *testing.T, desc protoreflect.MessageDescriptor, number protoreflect.FieldNumber, name protoreflect.Name, kind protoreflect.Kind) {
 	t.Helper()
 	field := desc.Fields().ByNumber(number)

@@ -375,38 +375,6 @@ func waitTextTransientRetry(ctx context.Context, attempt int) error {
 	}
 }
 
-// CreateCachedContent 将 system+tools 前缀落到支持显式缓存的 TextProvider（当前为 Gemini）。
-func (s *Service) CreateCachedContent(ctx context.Context, request *modelhubv2.CreateCachedContentRequest) (*modelhubv2.CreateCachedContentResponse, error) {
-	ctx, span := telemetry.StartSpan(ctx, "modelhub.CreateCachedContent")
-	defer span.End()
-	if request == nil || strings.TrimSpace(request.GetModel()) == "" {
-		err := provider.NotAttempted(provider.ErrorInvalidArgument, "model is required")
-		statusErr := provider.ToStatus(err)
-		telemetry.RecordError(ctx, statusErr)
-		return nil, statusErr
-	}
-	binding, err := s.resolve(request.GetModel(), config.CapabilityText)
-	if err != nil {
-		statusErr := provider.ToStatus(err)
-		telemetry.RecordError(ctx, statusErr)
-		return nil, statusErr
-	}
-	creator, ok := binding.set.Text.(provider.CachedContentCreator)
-	if !ok || creator == nil {
-		err := provider.Errorf(provider.ErrorConfiguration, "model %s does not support explicit cached content", request.GetModel())
-		statusErr := provider.ToStatus(err)
-		telemetry.RecordError(ctx, statusErr)
-		return nil, statusErr
-	}
-	resp, err := creator.CreateCachedContent(ctx, binding.model, request)
-	if err != nil {
-		statusErr := provider.ToStatus(err)
-		telemetry.RecordError(ctx, statusErr)
-		return nil, statusErr
-	}
-	return resp, nil
-}
-
 // SynthesizeSpeech 同步一次性 TTS：路由到 Speech capability，成功仅表示完整音频已收集。
 func (s *Service) SynthesizeSpeech(ctx context.Context, request *modelhubv2.SynthesizeSpeechRequest) (*modelhubv2.SynthesizeSpeechResponse, error) {
 	ctx, span := telemetry.StartSpan(ctx, "modelhub.SynthesizeSpeech")

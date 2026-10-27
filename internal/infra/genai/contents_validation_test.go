@@ -205,18 +205,6 @@ func TestRequireGeminiContentsAcceptsValidShapes(t *testing.T) {
 				}},
 			}}}},
 		},
-		{
-			name: "cached_prefix_with_user",
-			req: &modelhubv2.GenerateRequest{Input: &modelhubv2.Input{
-				CachedContent: "cachedContents/session-1",
-				Items: []*modelhubv2.InputItem{{
-					Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
-						Role:  modelhubv2.Role_ROLE_USER,
-						Parts: []*modelhubv2.ContentPart{{Content: &modelhubv2.ContentPart_Text{Text: "continue"}}},
-					}},
-				}},
-			}},
-		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
