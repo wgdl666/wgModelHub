@@ -21,7 +21,7 @@ import (
 const (
 	// legacyPredictPath 是国内/新加坡 human-parser 的旧入口，不能改成 G7 路径。
 	legacyPredictPath = "/predict"
-	// g7PredictPath 是 G7 人体解析。HTTP 200 仍可能 success=false，必须另判。该 host 不归入薇光点亮。
+	// g7PredictPath 是 G7 人体解析。HTTP 200 仍可能 success=false，必须另判。human_parse 渠道归属薇光点亮。
 	g7PredictPath = "/human_parser/predict"
 	timeout       = 120 * time.Second
 	// responseLimit 盖住 2048 边长分割图的 base64。超过说明上游没按像素上限返回。
