@@ -76,7 +76,8 @@ type sendFailRecorder struct {
 	err error
 }
 
-func (r *sendFailRecorder) Context() context.Context { return r.ctx }
+func (r *sendFailRecorder) Context() context.Context     { return r.ctx }
+func (r *sendFailRecorder) SendHeader(metadata.MD) error { return nil }
 func (r *sendFailRecorder) Send(*modelhubv2.GenerateEvent) error {
 	return r.err
 }
@@ -87,7 +88,8 @@ type slowSendRecorder struct {
 	delay time.Duration
 }
 
-func (r *slowSendRecorder) Context() context.Context { return r.ctx }
+func (r *slowSendRecorder) Context() context.Context     { return r.ctx }
+func (r *slowSendRecorder) SendHeader(metadata.MD) error { return nil }
 func (r *slowSendRecorder) Send(*modelhubv2.GenerateEvent) error {
 	time.Sleep(r.delay)
 	return nil

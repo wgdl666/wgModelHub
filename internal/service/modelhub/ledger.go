@@ -8,7 +8,20 @@ import (
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/callledger"
 	"github.com/wgdl666/wgModelHub/internal/provider"
+	"github.com/wgdl666/wgModelHub/protocol"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 )
+
+// announceCall 在账本记录打开后立刻把 call_id 作为响应头发出，不等第一条事件。
+// 竞速里落败的一路会被调用方取消，晚发就拿不到；没开账本（tracked 为 nil）时不发，避免给出查不到的编号。
+// 发送失败只说明调用方已经断开，不影响本次调用本身。
+func announceCall(stream grpc.ServerStream, tracked *callledger.Call, callID string) {
+	if stream == nil || tracked == nil || callID == "" {
+		return
+	}
+	_ = stream.SendHeader(metadata.Pairs(protocol.CallIDMetadataKey, callID))
+}
 
 func (s *Service) shouldRecord(err error) bool {
 	// 未触达供应商（本地拒识）不落账本；成功路径 err=nil 必须记录。

@@ -173,6 +173,7 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 	var outBlobs []callledger.Blob
 	tracked := s.track(ctx, &rec, inBlobs)
 	defer s.endTrack(tracked, &rec, &providerErr, &outBlobs)
+	announceCall(stream, tracked, rec.CallID)
 	// 应用文本缓存策略（普通缺省开启 / endpoint-bound Ark 隐式自动）；返回实际生效遥测模式。
 	// 实例改名后 binding.provider 是新键，类型和 endpoint 以当前配置为准，不读启动快照。
 	providerCfg, _ := s.providerConfig(binding.provider)
@@ -447,6 +448,7 @@ func (s *Service) generateImage(ctx context.Context, binding binding, request *m
 	var outBlobs []callledger.Blob
 	tracked := s.track(ctx, &rec, inBlobs)
 	defer s.endTrack(tracked, &rec, &providerErr, &outBlobs)
+	announceCall(stream, tracked, rec.CallID)
 	callStarted = time.Now()
 	event, err := binding.set.Image.GenerateImage(ctx, binding.model, request)
 	callFinished := time.Now()

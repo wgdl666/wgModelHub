@@ -17,4 +17,7 @@ const (
 
 	// CallerMetadataKey 是 SubmitGeneration 幂等命名空间与来源归因用的 gRPC metadata 键；不做鉴权。
 	CallerMetadataKey = "x-wg-caller-service"
+	// CallIDMetadataKey 是 Generate 响应头里的调用账本 call_id。账本记录一打开就发出，
+	// 调用方中途取消也能拿到，用它把一次模型调用精确挂回自己的业务步骤。没开账本时不发。
+	CallIDMetadataKey = "x-wg-model-call-id"
 )

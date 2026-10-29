@@ -13,6 +13,7 @@ import (
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"gopkg.in/yaml.v3"
 )
@@ -162,6 +163,9 @@ type generateRecorder struct {
 }
 
 func (r *generateRecorder) Context() context.Context { return r.ctx }
+
+// SendHeader 吞掉账本 call_id 响应头；真实 gRPC 流会把它发给调用方。
+func (r *generateRecorder) SendHeader(metadata.MD) error { return nil }
 
 func (r *generateRecorder) Send(event *modelhubv2.GenerateEvent) error {
 	r.events = append(r.events, event)
