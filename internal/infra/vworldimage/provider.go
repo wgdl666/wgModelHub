@@ -124,12 +124,27 @@ func (p *Provider) generateGarmentExtraction(ctx context.Context, request *model
 	if err != nil {
 		return nil, err
 	}
-	fields := map[string]string{"garment_name": meta.Name, "garment_role": meta.GarmentRole}
+	fields := map[string]string{"garment_name": meta.Name}
+	// 拆衣服接口的 garment_role 是可选枚举，空串会被当成非法值拒掉；没给角色就不发这个字段，缺不缺由上游判定。
+	if meta.GarmentRole != "" {
+		fields["garment_role"] = meta.GarmentRole
+	}
 	uploads := []imageUpload{{data: source, mimeType: mime, filename: "source.png"}}
 	path := productGenerationPath
-	// Route by the supplied parser payload, without inferring roles or checking taxonomy.
-	if len(images) == 2 || meta.ParseLabels != nil {
+	// Route by the supplied bbox or parser payload, without inferring roles or checking taxonomy.
+	if len(images) == 2 || meta.ParseLabels != nil || meta.BBox != nil {
 		path = garmentExtractionPath
+		if meta.BBox != nil {
+			// 坐标是否归一化、是否越界由上游按 bbox_format 判定；这里只原样转成 JSON 数组。
+			bbox, err := json.Marshal(meta.BBox)
+			if err != nil {
+				return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, "encode bbox", err)
+			}
+			fields["bbox"] = string(bbox)
+			if meta.BBoxFormat != "" {
+				fields["bbox_format"] = meta.BBoxFormat
+			}
+		}
 		if meta.ParseLabels != nil {
 			labels, err := json.Marshal(meta.ParseLabels)
 			if err != nil {
@@ -305,6 +320,9 @@ type garmentMeta struct {
 	Name        string            `json:"garment_name"`
 	GarmentRole string            `json:"garment_role"`
 	ParseLabels map[string]string `json:"parse_labels"`
+	// BBox 是人物图上这件衣服的 [x1,y1,x2,y2]。给了 bbox 就走 garment_extraction，不需要解析标签图。
+	BBox       []float64 `json:"bbox"`
+	BBoxFormat string    `json:"bbox_format"`
 }
 
 // Decode the transport envelope only; role/name/label validation belongs to VMind-Image.
