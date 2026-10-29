@@ -113,6 +113,13 @@ func TestAppConfigSchemaContract(t *testing.T) {
 				continue
 			}
 			property := mustMap(t, raw)
+			// 免鉴权是显式布尔开关，不能用字符串绕过启动校验。
+			if definitionName == "openai" && field == "no_auth" {
+				if property["type"] != "boolean" {
+					t.Errorf("openai.no_auth must be boolean")
+				}
+				continue
+			}
 			if property["type"] != "string" {
 				t.Errorf("%s.%s type=%v, want string", definitionName, field, property["type"])
 			}

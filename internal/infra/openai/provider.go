@@ -33,9 +33,7 @@ type Provider struct {
 }
 
 func New(name, apiKey, baseURL, upstreamModel string) (*Provider, error) {
-	if strings.TrimSpace(apiKey) == "" {
-		return nil, provider.New(provider.ErrorConfiguration, name+" API key is required")
-	}
+	// 启动配置已校验鉴权模式；显式免鉴权的内网实例允许空 key，不发送伪 Bearer。
 	if strings.TrimSpace(baseURL) == "" {
 		baseURL = DefaultBaseURL
 	}
@@ -616,7 +614,9 @@ func (p *Provider) doRequest(ctx context.Context, body map[string]any) (io.ReadC
 		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" create request failed", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
+	if p.apiKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
+	}
 	resp, err := p.client.Do(httpReq)
 	if err != nil {
 		if ctx.Err() != nil {

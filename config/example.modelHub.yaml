@@ -22,6 +22,12 @@ explicit_cache:
 # 每个 provider 实例声明其承载的真实模型 ID；同一模型可被多个实例声明，但必须由顶层 model_routes 显式选定当前走哪一个。
 # 字面量清单见 models 包，调用方引用 github.com/wgdl666/wgModelHub/models，禁止在这里发明 alias。
 providers:
+  # 仅美东路演添加此实例；内网免鉴权，新增连接资源须随发布滚动重启。
+  wgdl_gemma:
+    models: [gemma-4-26B-A4B-it]
+    openai:
+      base_url: "http://gemma.model3.wgdl.internal/v1"
+      no_auth: true
   Gemini_Developer_API_gemini_main:
     # 3.8 与既有 Gemini 文本共用这一实例。3.5-flash-lite 不放这里：它的签名不能拿去和 Vertex 竞速。
     models: [gemini-3.5-flash, gemini-3.1-pro-preview, gemini-2.5-flash, gemini-3.7-flash, gemini-3.8-flash]

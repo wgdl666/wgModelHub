@@ -52,6 +52,8 @@ var categories = map[string]Category{
 	DeepSeekV4Flash:  CategoryLLM,
 	DeepSeekV41Flash: CategoryLLM,
 	QwenFlash:        CategoryLLM,
+	// 本次只接入 Gemma 对话；图像输入能力待实际服务验证后再开放分类。
+	Gemma426BA4BIT: CategoryLLM,
 
 	Gemini25Flash:     CategoryMultimodal,
 	Gemini37Flash:     CategoryMultimodal,

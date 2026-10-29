@@ -178,9 +178,13 @@
     },
     "openai": {
       "type": "object",
-      "required": ["api_key"],
+      "oneOf": [
+        { "required": ["api_key"], "properties": { "api_key": { "minLength": 1 }, "no_auth": { "enum": [false] } } },
+        { "required": ["no_auth", "base_url"], "properties": { "no_auth": { "enum": [true] }, "api_key": { "enum": [""] }, "base_url": { "minLength": 1 } } }
+      ],
       "properties": {
-        "api_key": { "type": "string", "minLength": 1 },
+        "no_auth": { "type": "boolean" },
+        "api_key": { "type": "string" },
         "base_url": { "type": "string" },
         "upstream_model": { "type": "string" }
       }

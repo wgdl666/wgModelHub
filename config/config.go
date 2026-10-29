@@ -202,6 +202,8 @@ type ArkProviderConfig struct {
 
 // OpenAIProviderConfig 覆盖 OpenAI-compatible HTTP 端；文本实例与 GPT Image（AIG_openai 上的 2 / 2.5）都走这里（按实例绑定 models）。
 type OpenAIProviderConfig struct {
+	// NoAuth 仅供明确免鉴权的内网服务；不能与 api_key 同时配置，避免误丢凭据。
+	NoAuth  bool   `yaml:"no_auth"`
 	APIKey  string `yaml:"api_key"`
 	BaseURL string `yaml:"base_url"`
 	// UpstreamModel 可选。对外 request.model 仍是 models 包常量；只改 Chat Completions 的 model 字段。
@@ -908,7 +910,11 @@ func validateProvider(name string, provider ProviderConfig) error {
 			return fmt.Errorf("provider %s endpoint_id requires exactly one model", name)
 		}
 	case provider.OpenAI != nil:
-		if strings.TrimSpace(provider.OpenAI.APIKey) == "" {
+		if provider.OpenAI.NoAuth {
+			if provider.OpenAI.APIKey != "" || strings.TrimSpace(provider.OpenAI.BaseURL) == "" {
+				return fmt.Errorf("provider %s no_auth requires explicit base_url and no api_key", name)
+			}
+		} else if strings.TrimSpace(provider.OpenAI.APIKey) == "" {
 			return fmt.Errorf("provider %s api_key is required", name)
 		}
 		// upstream_model 把一个对外 ID 改写成单一上游部署；多个模型共用会无法判断改写对象。
