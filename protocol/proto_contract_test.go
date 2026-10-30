@@ -7,8 +7,9 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
+// 协议测试使用当前生成代码的文件描述符；protoc 的导入根目录不带 proto/ 前缀。
 func TestListModelsProtoContract(t *testing.T) {
-	desc := modelhubv2.File_proto_wg_model_hub_v2_model_hub_proto.Services().ByName("ModelHubService")
+	desc := modelhubv2.File_wg_model_hub_v2_model_hub_proto.Services().ByName("ModelHubService")
 	if desc == nil {
 		t.Fatal("ModelHubService missing")
 	}
@@ -44,7 +45,7 @@ func TestListModelsProtoContract(t *testing.T) {
 }
 
 func TestSynthesizeSpeechProtoContract(t *testing.T) {
-	desc := modelhubv2.File_proto_wg_model_hub_v2_model_hub_proto.Services().ByName("ModelHubService")
+	desc := modelhubv2.File_wg_model_hub_v2_model_hub_proto.Services().ByName("ModelHubService")
 	if desc == nil {
 		t.Fatal("ModelHubService missing")
 	}
@@ -79,7 +80,7 @@ func TestSynthesizeSpeechProtoContract(t *testing.T) {
 }
 
 func TestPrefixCacheIsManagedInsideModelHub(t *testing.T) {
-	file := modelhubv2.File_proto_wg_model_hub_v2_model_hub_proto
+	file := modelhubv2.File_wg_model_hub_v2_model_hub_proto
 	service := file.Services().ByName("ModelHubService")
 	if service.Methods().ByName("CreateCachedContent") != nil {
 		t.Fatal("caller-owned cache creation RPC must not be exposed")
