@@ -378,6 +378,8 @@ func endpoint(provider config.ProviderConfig) (protocol, raw string, err error) 
 		return "soniox_asr", firstNonEmpty(provider.SonioxASR.URL, "wss://"+sonioxDefaultHost+"/transcribe-websocket"), nil
 	case provider.Photoroom != nil:
 		return "photoroom", firstNonEmpty(provider.Photoroom.BaseURL, "https://"+photoroomDefaultHost), nil
+	case provider.LensCorrection != nil:
+		return "lens_distortion_correction", provider.LensCorrection.BaseURL, nil
 	case provider.SegmentPerson != nil:
 		if strings.TrimSpace(provider.SegmentPerson.BaseURL) == "" {
 			return "", "", fmt.Errorf("segment_person base_url is required")

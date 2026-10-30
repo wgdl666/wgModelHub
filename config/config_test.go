@@ -534,3 +534,27 @@ model_routes:
 		t.Fatalf("race=%v", race)
 	}
 }
+
+// 两个环境端点均由配置选择；新增适配器仅支持图片，地址变更仍需重启。
+func TestLensCorrectionConfiguration(t *testing.T) {
+	for _, base := range []string{"https://mirror-lens.model.wgdl.tech", "http://172.31.43.7:18280/lens_distortion_correction"} {
+		cfg := validConfig()
+		p := ProviderConfig{Models: []string{models.LensDistortionCorrection}, LensCorrection: &LensCorrectionProviderConfig{BaseURL: base}}
+		cfg.Providers["lens"] = p
+		if err := cfg.Validate(); err != nil {
+			t.Fatal(err)
+		}
+		if !ProviderSupports(p, CapabilityImage) || ProviderSupports(p, CapabilityText) {
+			t.Fatal("wrong lens capability")
+		}
+	}
+	cfg := validConfig()
+	cfg.Providers["lens"] = ProviderConfig{Models: []string{models.LensDistortionCorrection}, LensCorrection: &LensCorrectionProviderConfig{}}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("missing lens URL accepted")
+	}
+	cfg.Providers["lens"] = ProviderConfig{Models: []string{models.LensDistortionCorrection}, LensCorrection: &LensCorrectionProviderConfig{BaseURL: "https://lens.example"}, OpenAI: &OpenAIProviderConfig{APIKey: "key"}}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("two adapters accepted")
+	}
+}

@@ -35,6 +35,7 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/infra/humanparser"
 	"github.com/wgdl666/wgModelHub/internal/infra/humanyolo"
 	"github.com/wgdl666/wgModelHub/internal/infra/imageseg"
+	"github.com/wgdl666/wgModelHub/internal/infra/lenscorrection"
 	"github.com/wgdl666/wgModelHub/internal/infra/ltx"
 	"github.com/wgdl666/wgModelHub/internal/infra/minimaxtts"
 	"github.com/wgdl666/wgModelHub/internal/infra/mixedbreadrerank"
@@ -402,6 +403,12 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 			return provider.Set{}, err
 		}
 		return provider.Set{Text: client}, nil
+	case providerCfg.LensCorrection != nil:
+		client, err := lenscorrection.New(name, providerCfg.LensCorrection.BaseURL)
+		if err != nil {
+			return provider.Set{}, err
+		}
+		return provider.Set{Image: client}, nil
 	case providerCfg.SegmentPerson != nil:
 		cfg := providerCfg.SegmentPerson
 		client, err := segmentperson.NewWithMethods(name, cfg.BaseURL, cfg.Username, cfg.Password, cfg.Method, cfg.PersonMethod, cfg.SubjectMethod)

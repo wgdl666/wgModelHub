@@ -289,6 +289,11 @@ providers:
       api_key: "${PHOTOROOM_API_KEY}"
       base_url: https://sdk.photoroom.com
       proxy_url: ""
+  # 镜头校正独立服务；国内用此地址，美东路演用 aws-exhibition-lens.providers.yaml 的 VPC 前缀。
+  wgdl_lens_correction:
+    models: [lens-distortion-correction]
+    lens_distortion_correction:
+      base_url: https://mirror-lens.model.wgdl.tech
   # 国内自建抠图。两个模型 ID 分别对应人物 /api/segment 与商品主体 /api/segment_subject。
   # username/password 可成对省略（匿名）；method 是上游算法名，不是模型 ID。
   wgdl_segment_person:

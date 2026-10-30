@@ -23,6 +23,8 @@ const (
 	CategoryHumanParser Category = "human_parser"
 	// CategorySegment 是抠图。透明图出，不是文生图。
 	CategorySegment Category = "segment"
+	// 确定性校正和裁切不属于抠图或生成模型。
+	CategoryImageProcessing Category = "image_processing"
 	// CategoryASR 是持续上行音频的实时识别；不能复用只做下行合成的 CategorySpeech。
 	CategoryASR Category = "asr"
 )
@@ -94,26 +96,27 @@ var categories = map[string]Category{
 	FacebodyFaceLibrary:    CategoryFaceLibrary,
 	RekognitionFaceLibrary: CategoryFaceLibrary,
 
-	Gemini3ProImage:         CategoryImageGeneration,
-	Gemini25FlashImage:      CategoryImageGeneration,
-	Gemini31FlashImage:      CategoryImageGeneration,
-	GeminiNanoBanana21:      CategoryImageGeneration,
-	GPTImage2:               CategoryImageGeneration,
-	GPTImage25Flare:         CategoryImageGeneration,
-	GPTImage25Sunburst:      CategoryImageGeneration,
-	Flux2Klein9B:            CategoryImageGeneration,
-	VWorldWardrobe10:        CategoryImageGeneration,
-	VWorldOutfit10:          CategoryImageGeneration,
-	VWorldBodyModel10:       CategoryImageGeneration,
-	PhotoroomSegment:        CategorySegment,
-	SegmentPersonBria:       CategorySegment,
-	SegmentSubjectBria:      CategorySegment,
-	HumanYOLO:               CategoryPersonDetect,
-	ClothYOLO:               CategoryClothDetect,
-	FaceSim:                 CategoryFaceCompare,
-	RekognitionDetectLabels: CategoryPersonDetect,
-	HumanParser:             CategoryHumanParser,
-	HumanParse:              CategoryHumanParser,
+	Gemini3ProImage:          CategoryImageGeneration,
+	Gemini25FlashImage:       CategoryImageGeneration,
+	Gemini31FlashImage:       CategoryImageGeneration,
+	GeminiNanoBanana21:       CategoryImageGeneration,
+	GPTImage2:                CategoryImageGeneration,
+	GPTImage25Flare:          CategoryImageGeneration,
+	GPTImage25Sunburst:       CategoryImageGeneration,
+	Flux2Klein9B:             CategoryImageGeneration,
+	VWorldWardrobe10:         CategoryImageGeneration,
+	VWorldOutfit10:           CategoryImageGeneration,
+	VWorldBodyModel10:        CategoryImageGeneration,
+	PhotoroomSegment:         CategorySegment,
+	SegmentPersonBria:        CategorySegment,
+	LensDistortionCorrection: CategoryImageProcessing,
+	SegmentSubjectBria:       CategorySegment,
+	HumanYOLO:                CategoryPersonDetect,
+	ClothYOLO:                CategoryClothDetect,
+	FaceSim:                  CategoryFaceCompare,
+	RekognitionDetectLabels:  CategoryPersonDetect,
+	HumanParser:              CategoryHumanParser,
+	HumanParse:               CategoryHumanParser,
 
 	VWorldOutfitVideo10:        CategoryVideoGeneration,
 	Wan22I2VFlash:              CategoryVideoGeneration,
@@ -172,7 +175,7 @@ func (c Category) Public() bool {
 	switch c {
 	case CategoryLLM, CategoryMultimodal, CategoryImageGeneration, CategoryVideoGeneration, CategorySpeech,
 		CategoryEmbedding, CategoryRerank, CategoryFaceCompare, CategoryFaceDetect, CategoryFaceLibrary,
-		CategoryPersonDetect, CategoryClothDetect, CategoryHumanParser, CategorySegment:
+		CategoryPersonDetect, CategoryClothDetect, CategoryHumanParser, CategorySegment, CategoryImageProcessing:
 		return true
 	case CategoryASR:
 		return true

@@ -80,6 +80,8 @@ type ProviderConfig struct {
 	Photoroom *PhotoroomProviderConfig `yaml:"photoroom"`
 	// SegmentPerson 承接国内自建人物/商品主体抠图；与 Photoroom 分实例，靠 models 列表切换。
 	SegmentPerson *SegmentPersonProviderConfig `yaml:"segment_person"`
+	// 镜头校正独立部署，调用方不能注入地址。
+	LensCorrection *LensCorrectionProviderConfig `yaml:"lens_distortion_correction"`
 	// VWorldImage 承接薇光点亮公网拆衣服/虚拟换衣/体模；实例键固定 wgdl_image，与 SeeTacloud FLUX.2 实例分绑，禁止共用。
 	VWorldImage *VWorldImageProviderConfig `yaml:"vworld_image"`
 	// HumanYOLO 承接自建人体检测。和 Rekognition、人体解析分实例。
@@ -295,6 +297,11 @@ type SegmentPersonProviderConfig struct {
 	Method        string `yaml:"method"`
 	PersonMethod  string `yaml:"person_method"`
 	SubjectMethod string `yaml:"subject_method"`
+}
+
+// LensCorrectionProviderConfig 的 base_url 保留环境前缀，适配器统一追加 /correct。
+type LensCorrectionProviderConfig struct {
+	BaseURL string `yaml:"base_url"`
 }
 
 // VWorldImageProviderConfig 承接薇光点亮公网生图入口。
@@ -996,6 +1003,11 @@ func validateProvider(name string, provider ProviderConfig) error {
 		if strings.TrimSpace(provider.Photoroom.APIKey) == "" {
 			return fmt.Errorf("provider %s api_key is required", name)
 		}
+	case provider.LensCorrection != nil:
+		endpoint, err := url.Parse(strings.TrimSpace(provider.LensCorrection.BaseURL))
+		if err != nil || endpoint.Host == "" || (endpoint.Scheme != "http" && endpoint.Scheme != "https") || endpoint.RawQuery != "" || endpoint.Fragment != "" || endpoint.User != nil {
+			return fmt.Errorf("provider %s lens_distortion_correction requires HTTP(S) base_url without credentials or query", name)
+		}
 	case provider.SegmentPerson != nil:
 		segment := provider.SegmentPerson
 		if strings.TrimSpace(segment.BaseURL) == "" || (strings.TrimSpace(segment.Method) == "" && (strings.TrimSpace(segment.PersonMethod) == "" || strings.TrimSpace(segment.SubjectMethod) == "")) {
@@ -1193,6 +1205,9 @@ func countConcreteProviders(provider ProviderConfig) int {
 	if provider.Photoroom != nil {
 		n++
 	}
+	if provider.LensCorrection != nil {
+		n++
+	}
 	if provider.SegmentPerson != nil {
 		n++
 	}
@@ -1316,7 +1331,7 @@ func ProviderSupports(provider ProviderConfig, capability string) bool {
 	switch {
 	case provider.Gemini != nil, provider.OpenAI != nil:
 		return capability == CapabilityText || capability == CapabilityImage
-	case provider.ImageSeg != nil, provider.Photoroom != nil, provider.SegmentPerson != nil, provider.VWorldImage != nil:
+	case provider.ImageSeg != nil, provider.Photoroom != nil, provider.LensCorrection != nil, provider.SegmentPerson != nil, provider.VWorldImage != nil:
 		return capability == CapabilityImage
 	case provider.Fashion != nil, provider.ClothYOLO != nil, provider.FaceSim != nil, provider.HumanYOLO != nil, provider.HumanParser != nil, provider.RekognitionDetect != nil, provider.FacebodyCompare != nil, provider.RekognitionCompare != nil, provider.DashScopeEmbedding != nil, provider.CohereEmbedding != nil, provider.BedrockEmbedding != nil, provider.DashScopeRerank != nil, provider.BedrockRerank != nil, provider.CohereRerank != nil, provider.MixedbreadRerank != nil, provider.GoogleRerank != nil, provider.FacebodyDetect != nil, provider.FacebodyLibrary != nil, provider.RekognitionFaces != nil, provider.RekognitionLibrary != nil:
 		return capability == CapabilityText

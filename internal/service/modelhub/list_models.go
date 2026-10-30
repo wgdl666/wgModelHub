@@ -74,6 +74,8 @@ func catalogFilter(category modelhubv2.ModelCategory) (func(models.Category) boo
 		return func(c models.Category) bool { return c == models.CategoryPersonDetect }, nil
 	case modelhubv2.ModelCategory_MODEL_CATEGORY_HUMAN_PARSER:
 		return func(c models.Category) bool { return c == models.CategoryHumanParser }, nil
+	case modelhubv2.ModelCategory_MODEL_CATEGORY_IMAGE_PROCESSING:
+		return func(c models.Category) bool { return c == models.CategoryImageProcessing }, nil
 	case modelhubv2.ModelCategory_MODEL_CATEGORY_SEGMENT:
 		return func(c models.Category) bool { return c == models.CategorySegment }, nil
 	case modelhubv2.ModelCategory_MODEL_CATEGORY_ASR:
@@ -111,6 +113,8 @@ func protoCategory(category models.Category) modelhubv2.ModelCategory {
 		return modelhubv2.ModelCategory_MODEL_CATEGORY_PERSON_DETECT
 	case models.CategoryHumanParser:
 		return modelhubv2.ModelCategory_MODEL_CATEGORY_HUMAN_PARSER
+	case models.CategoryImageProcessing:
+		return modelhubv2.ModelCategory_MODEL_CATEGORY_IMAGE_PROCESSING
 	case models.CategorySegment:
 		return modelhubv2.ModelCategory_MODEL_CATEGORY_SEGMENT
 	case models.CategoryASR:

@@ -60,6 +60,8 @@ enum ModelCategory {
   MODEL_CATEGORY_ASR = 14;
   // Clothing boxes are separate from person detection.
   MODEL_CATEGORY_CLOTH_DETECT = 15;
+  // 确定性图片处理，例如镜头校正和裁切。
+  MODEL_CATEGORY_IMAGE_PROCESSING = 16;
 }
 
 message ListModelsRequest {

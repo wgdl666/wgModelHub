@@ -294,3 +294,14 @@ func TestBuildVertexAndGoogleRerankShareADCFile(t *testing.T) {
 		t.Fatal("same ADC file must build Vertex text/image and Google rerank")
 	}
 }
+
+func TestBuildLensCorrectionImageOnly(t *testing.T) {
+	sets, err := Build(context.Background(), config.Config{Providers: map[string]config.ProviderConfig{"lens": {Models: []string{models.LensDistortionCorrection}, LensCorrection: &config.LensCorrectionProviderConfig{BaseURL: "http://172.31.43.7:18280/lens_distortion_correction"}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	set := sets["lens"]
+	if set.Image == nil || set.Text != nil || set.Video != nil || set.Speech != nil {
+		t.Fatalf("unexpected capabilities: %+v", set)
+	}
+}

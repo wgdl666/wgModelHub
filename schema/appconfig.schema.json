@@ -73,6 +73,7 @@
         "deepgram_asr": { "$ref": "#/definitions/asrAPIKey" },
         "soniox_asr": { "$ref": "#/definitions/asrAPIKey" },
         "photoroom": { "$ref": "#/definitions/photoroom" },
+        "lens_distortion_correction": { "$ref": "#/definitions/lensCorrection" },
         "segment_person": { "$ref": "#/definitions/segmentPerson" },
         "vworld_image": { "$ref": "#/definitions/vworldImage" },
         "human_yolo": { "$ref": "#/definitions/humanYolo" },
@@ -118,6 +119,7 @@
         { "required": ["deepgram_asr"] },
         { "required": ["soniox_asr"] },
         { "required": ["photoroom"] },
+        { "required": ["lens_distortion_correction"] },
         { "required": ["segment_person"] },
         { "required": ["vworld_image"] },
         { "required": ["human_yolo"] },
@@ -273,6 +275,11 @@
         "style": { "type": "number", "minimum": 0, "maximum": 1 },
         "speed": { "type": "number", "minimum": 0.25, "maximum": 4 }
       }
+    },
+    "lensCorrection": {
+      "type": "object",
+      "required": ["base_url"],
+      "properties": { "base_url": { "type": "string", "minLength": 1 } }
     },
     "segmentPerson": {
       "type": "object",

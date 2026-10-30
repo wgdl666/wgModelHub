@@ -68,7 +68,7 @@ func TestAppConfigSchemaContract(t *testing.T) {
 		"gemini": false, "vertexai": false, "ark": false, "openai": false,
 		"ltx": false, "dashscope_video": false, "ominilink_video": false,
 		"gemini_video": false, "ark_video": false, "minimax_tts": false,
-		"elevenlabs_tts": false, "photoroom": false, "segment_person": false,
+		"elevenlabs_tts": false, "photoroom": false, "segment_person": false, "lens_distortion_correction": false,
 		"volcengine_asr": false, "aliyun_asr": false, "fun_asr": false, "qwen_asr": false,
 		"tencent_asr": false, "assemblyai_asr": false, "deepgram_asr": false, "soniox_asr": false,
 		"vworld_image": false,

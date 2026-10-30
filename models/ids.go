@@ -89,6 +89,8 @@ const (
 	// SegmentPersonBria 是国内自建人物抠图 POST /api/segment。
 	// 上游 method 在供应商配置里；本常量只选端点，不下发上游，也不能拿去替代商品主体抠图。
 	SegmentPersonBria = "segment-person-bria"
+	// LensDistortionCorrection 标识镜头校正 /correct 产品端点，只路由、不下发 model。
+	LensDistortionCorrection = "lens-distortion-correction"
 	// SegmentSubjectBria 是国内自建商品主体抠图 POST /api/segment_subject。
 	// 平铺/人台衣物不能走人物端点，所以和 SegmentPersonBria 分两个真实模型 ID。
 	SegmentSubjectBria = "segment-subject-bria"
@@ -231,6 +233,7 @@ func All() []string {
 		VWorldBodyModel10,
 		PhotoroomSegment,
 		SegmentPersonBria,
+		LensDistortionCorrection,
 		SegmentSubjectBria,
 		HumanYOLO, ClothYOLO, FaceSim,
 		RekognitionDetectLabels,

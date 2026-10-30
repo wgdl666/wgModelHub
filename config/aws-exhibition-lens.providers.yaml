@@ -1,0 +1,6 @@
+# 仅为该环境的 provider 配置片段，须并入完整配置后随新适配器发布；不自动修改现网。
+providers:
+  wgdl_lens_correction:
+    models: [lens-distortion-correction]
+    lens_distortion_correction:
+      base_url: http://172.31.43.7:18280/lens_distortion_correction
