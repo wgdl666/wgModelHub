@@ -216,7 +216,7 @@ providers:
       secret_id: "${TENCENT_ASR_SECRET_ID}"
       secret_key: "${TENCENT_ASR_SECRET_KEY}"
   AssemblyAI:
-    models: [universal-3-5-pro]
+    models: [universal-3-5-pro, universal-3-6-pro]
     assemblyai_asr:
       api_key: "${ASSEMBLYAI_API_KEY}"
       url: wss://streaming.assemblyai.com/v3/ws
