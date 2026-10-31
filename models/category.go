@@ -160,6 +160,7 @@ var categories = map[string]Category{
 	Qwen3ASRFlashRealtime:        CategoryASR,
 	Tencent16KZH:                 CategoryASR,
 	AssemblyAIUniversalStreaming: CategoryASR,
+	AssemblyAIUniversal36Pro:     CategoryASR,
 	DeepgramNova3:                CategoryASR,
 	SonioxSTTRTV5:                CategoryASR,
 }

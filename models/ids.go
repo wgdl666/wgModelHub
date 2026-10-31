@@ -193,8 +193,10 @@ const (
 	Qwen3ASRFlashRealtime        = "qwen3-asr-flash-realtime-2026-02-10"
 	Tencent16KZH                 = "16k_zh"
 	AssemblyAIUniversalStreaming = "universal-3-5-pro"
-	DeepgramNova3                = "nova-3"
-	SonioxSTTRTV5                = "stt-rt-v5"
+	// 3.6 与 3.5 使用同一实时协议；保留独立 ID，便于按配置切换和对照。
+	AssemblyAIUniversal36Pro = "universal-3-6-pro"
+	DeepgramNova3            = "nova-3"
+	SonioxSTTRTV5            = "stt-rt-v5"
 )
 
 // All 返回当前仓库承认的全部真实模型 ID，顺序稳定便于对照。
@@ -297,6 +299,7 @@ func All() []string {
 		Qwen3ASRFlashRealtime,
 		Tencent16KZH,
 		AssemblyAIUniversalStreaming,
+		AssemblyAIUniversal36Pro,
 		DeepgramNova3,
 		SonioxSTTRTV5,
 	}
