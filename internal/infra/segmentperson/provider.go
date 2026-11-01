@@ -8,8 +8,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"image"
-	_ "image/png"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -99,9 +97,8 @@ func (p *Provider) GenerateImage(ctx context.Context, model string, request *mod
 	if err != nil {
 		return nil, err
 	}
-	if err := validatePNG(raw); err != nil {
-		return nil, err
-	}
+	// 抠图结果按上游 PNG 契约原样转交；像素解码留给调用方实际处理图片时完成，避免网关重复解码。
+	// doSegment 仍负责 HTTP、JSON、Base64 和非空响应检查。
 	return &modelhubv2.GenerateEvent{
 		Final: true,
 		Items: []*modelhubv2.OutputItem{{
@@ -213,12 +210,4 @@ func (p *Provider) doSegment(ctx context.Context, endpoint string, imageBytes []
 		return nil, provider.New(provider.ErrorInvalidResponse, p.name+" response is missing refined_png_b64")
 	}
 	return cutout, nil
-}
-
-func validatePNG(raw []byte) error {
-	decoded, format, err := image.Decode(bytes.NewReader(raw))
-	if err != nil || format != "png" || decoded.Bounds().Dx() <= 0 || decoded.Bounds().Dy() <= 0 {
-		return provider.New(provider.ErrorInvalidResponse, "segment-person returned an invalid PNG")
-	}
-	return nil
 }
