@@ -6,8 +6,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"image"
-	_ "image/png"
 	"io"
 	"net/http"
 	"net/url"
@@ -112,21 +110,17 @@ func (p *Provider) GenerateImage(ctx context.Context, model string, request *mod
 	if err := json.NewDecoder(io.LimitReader(response.Body, int64(base64.StdEncoding.EncodedLen(protocol.MaxMediaBytes)+(1<<20)))).Decode(&payload); err != nil {
 		return nil, provider.New(provider.ErrorInvalidResponse, "invalid lens correction response JSON")
 	}
-	pngBytes, err := base64.StdEncoding.DecodeString(strings.TrimSpace(payload.ImageBase64))
-	if err != nil || len(pngBytes) == 0 || len(pngBytes) > protocol.MaxMediaBytes || payload.ContentType != "image/png" {
-		return nil, provider.New(provider.ErrorInvalidResponse, "lens correction response is missing a valid PNG payload")
-	}
-	cfg, format, err := image.DecodeConfig(bytes.NewReader(pngBytes))
-	if err != nil || format != "png" || cfg.Width <= 0 || cfg.Height <= 0 || cfg.Width != payload.OutWidth || cfg.Height != payload.OutHeight || payload.Bytes != len(pngBytes) {
-		return nil, provider.New(provider.ErrorInvalidResponse, "lens correction PNG dimensions or byte count mismatch")
+	imageBytes, err := base64.StdEncoding.DecodeString(strings.TrimSpace(payload.ImageBase64))
+	if err != nil || len(imageBytes) == 0 || len(imageBytes) > protocol.MaxMediaBytes {
+		return nil, provider.New(provider.ErrorInvalidResponse, "lens correction response is missing a valid Base64 image payload")
 	}
 	metadata, err := json.Marshal(payload.diagnostics)
 	if err != nil {
 		return nil, provider.Wrap(provider.ErrorInvalidResponse, "encode lens correction diagnostics", err)
 	}
-	// 图片与诊断按顺序回传；不把服务端缩放再做一次，也不记录媒体正文。
+	// 上游 Base64 解码后原样透传字节和 MIME，不解码图片或限定 PNG；诊断由上游提供。
 	return &modelhubv2.GenerateEvent{Final: true, Items: []*modelhubv2.OutputItem{
-		{Item: &modelhubv2.OutputItem_Image{Image: &modelhubv2.Media{MimeType: "image/png", Source: &modelhubv2.Media_Data{Data: pngBytes}}}},
+		{Item: &modelhubv2.OutputItem_Image{Image: &modelhubv2.Media{MimeType: payload.ContentType, Source: &modelhubv2.Media_Data{Data: imageBytes}}}},
 		{Item: &modelhubv2.OutputItem_Text{Text: string(metadata)}},
 	}}, nil
 }

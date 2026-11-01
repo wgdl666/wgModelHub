@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"image"
+	"image/jpeg"
 	"image/png"
 	"net/http"
 	"net/http/httptest"
@@ -146,5 +147,27 @@ func TestCancellationPropagates(t *testing.T) {
 	cancel()
 	if _, err := p.GenerateImage(ctx, models.LensDistortionCorrection, req); !errors.Is(err, context.Canceled) {
 		t.Fatalf("error=%v", err)
+	}
+}
+
+// 模型以 Base64 返回 JPEG，适配层只解码 Base64 并透传 MIME 和诊断。
+func TestJPEGBase64PassThrough(t *testing.T) {
+	var encoded bytes.Buffer
+	if err := jpeg.Encode(&encoded, image.NewRGBA(image.Rect(0, 0, 4, 3)), nil); err != nil {
+		t.Fatal(err)
+	}
+	data := encoded.Bytes()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"image_base64": base64.StdEncoding.EncodeToString(data), "content_type": "image/jpeg", "bytes": len(data), "out_width": 4, "out_height": 3})
+	}))
+	defer server.Close()
+	p, _ := New("lens", server.URL)
+	_, req := fixture(t)
+	event, err := p.GenerateImage(context.Background(), models.LensDistortionCorrection, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(event.Items[0].GetImage().GetData(), data) || event.Items[0].GetImage().GetMimeType() != "image/jpeg" {
+		t.Fatal("JPEG bytes or MIME changed")
 	}
 }
