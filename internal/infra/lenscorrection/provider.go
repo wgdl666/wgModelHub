@@ -1,4 +1,4 @@
-// Package lenscorrection 只适配镜头校正 HTTP 契约；对象存储、处理标记和业务重试归调用方。
+// Package lenscorrection 适配镜头校正 HTTP 契约并对暂时性传输故障有限重试；对象存储、处理标记和业务任务重试归调用方。
 package lenscorrection
 
 import (
@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/wgdl666/kangaroo/logs"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
@@ -85,23 +87,55 @@ func (p *Provider) GenerateImage(ctx context.Context, model string, request *mod
 	if err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, "encode lens correction request", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.endpoint, bytes.NewReader(body))
-	if err != nil {
-		return nil, provider.WrapNotAttempted(provider.ErrorConfiguration, "create lens correction request", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	response, err := p.client.Do(req)
-	if err != nil {
+	// 校正不创建业务资产，可复用同一原图重试；总预算仍为 60 秒，避免三次调用放大等待时间。
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	var response *http.Response
+	for attempt := 1; ; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.endpoint, bytes.NewReader(body))
+		if err != nil {
+			return nil, provider.WrapNotAttempted(provider.ErrorConfiguration, "create lens correction request", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		response, err = p.client.Do(req)
 		if ctx.Err() != nil {
+			if response != nil {
+				response.Body.Close()
+			}
 			return nil, ctx.Err()
 		}
-		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" lens correction request failed", err)
+		if err == nil && response.StatusCode == http.StatusOK {
+			break
+		}
+		statusCode := 0
+		retryable := err != nil
+		var callErr error
+		if err != nil {
+			callErr = provider.Wrap(provider.ErrorUnavailable, p.name+" lens correction request failed", err)
+		} else {
+			statusCode = response.StatusCode
+			// 错误正文可能回显 Base64，不读取或记录；重试前释放响应体。
+			response.Body.Close()
+			callErr = provider.FromHTTPDetail(p.name, statusCode, "lens correction upstream rejected request")
+			retryable = statusCode == 429 || statusCode == 500 || statusCode == 502 || statusCode == 503 || statusCode == 504
+		}
+		if !retryable || attempt == 3 {
+			return nil, callErr
+		}
+		// 包含首次最多三次；短暂退避可被取消，不重试参数错误或成功响应的解析错误。
+		logs.Default().WarnContext(ctx, "modelhub_lens_correction_retry", "provider", p.name, "attempt", attempt, "status_code", statusCode)
+		timer := time.NewTimer(time.Duration(attempt) * 200 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
 	}
 	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		// 错误正文可能回显 Base64，禁止进入日志或 RPC 错误文本。
-		return nil, provider.FromHTTPDetail(p.name, response.StatusCode, "lens correction upstream rejected request")
-	}
 	var payload struct {
 		ImageBase64 string `json:"image_base64"`
 		diagnostics
