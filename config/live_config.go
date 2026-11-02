@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 
 	"github.com/wgdl666/kangaroo/logs"
+	"github.com/wgdl666/wgModelHub/models"
 	"gopkg.in/yaml.v3"
 )
 
@@ -76,6 +77,23 @@ func ParseAndValidateYAML(content string) (Config, error) {
 			return Config{}, fmt.Errorf("Nacos YAML config contains multiple documents")
 		}
 		return Config{}, err
+	}
+	// 过渡期先在内存中读取旧配置为新 ID；最终配置切换后随迁移代码一起撤掉。
+	for name, p := range cfg.Providers {
+		for i, id := range p.Models {
+			p.Models[i] = models.MigrationVMindID(id)
+		}
+		cfg.Providers[name] = p
+	}
+	for id, route := range cfg.ModelRouteOverrides {
+		canonical := models.MigrationVMindID(id)
+		if canonical != id {
+			if _, exists := cfg.ModelRouteOverrides[canonical]; exists {
+				return Config{}, fmt.Errorf("duplicate migration route %s", canonical)
+			}
+			delete(cfg.ModelRouteOverrides, id)
+			cfg.ModelRouteOverrides[canonical] = route
+		}
 	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err

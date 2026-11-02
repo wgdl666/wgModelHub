@@ -89,7 +89,7 @@ type ProviderConfig struct {
 	ClothYOLO *ClothYOLOProviderConfig `yaml:"cloth_yolo"`
 	FaceSim   *FaceSimProviderConfig   `yaml:"facesim"`
 	// HumanParser 承接人体解析，输出分割 JSON 而不是检测框。
-	// 同一结构服务两个 ID：human-parser 走旧 /predict，human_parse 走 G7 /human_parser/predict。
+	// 同一结构服务两个 ID：human-parser 走旧 /predict，Vmind_human_parse_v1.0 走 G7 /human_parser/predict。
 	HumanParser *HumanParserProviderConfig `yaml:"human_parser"`
 	// RekognitionDetect 承接 DetectLabels 人检。Region 不能是 cn-*。
 	RekognitionDetect *RekognitionDetectProviderConfig `yaml:"rekognition_detect"`

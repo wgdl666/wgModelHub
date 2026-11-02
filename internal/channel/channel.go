@@ -268,8 +268,8 @@ func splitTokens(value string) []string {
 }
 
 // weiguangInstance 只在模型属于点名的族时返回固定实例键。
-// 族是 VWorld_*、segment-person-*、segment-subject-* 和 human_parse；旧 ltx ID 不再属于该族。
-// VWorld_outfit_video 归视频，其余 VWorld_* 归生图。同前缀的新 ID 走同一条规则。
+// 新模型统一为 Vmind_*；保留旧名称的渠道归因以读取历史审计快照，不提供旧 ID 请求路由。
+// Vmind 的解析、抠图和视频先按各自规则识别，其余归生图；旧 VWorld_* 仍用于历史归因。
 // 族确定之后，用协议选择 wgdl_segment_person、wgdl_image 或 wgdl_video。
 func weiguangInstance(provider config.ProviderConfig, protocol string) (string, error) {
 	kind, err := weiguangKind(provider.Models)
@@ -314,12 +314,12 @@ func weiguangKind(list []string) (string, error) {
 
 func familyKind(model string) string {
 	switch {
-	case model == models.HumanParse:
+	case model == models.HumanParse, model == "human_parse":
 		// G7 人体解析归属薇光点亮；只匹配此 ID，避免把旧 human-parser 一并改归属。
 		return "human_parse"
-	case strings.HasPrefix(model, "segment-person-"), strings.HasPrefix(model, "segment-subject-"):
+	case strings.HasPrefix(model, "Vmind_segment_person_"), strings.HasPrefix(model, "Vmind_segment_subject_"), strings.HasPrefix(model, "segment-person-"), strings.HasPrefix(model, "segment-subject-"):
 		return "segment"
-	case strings.HasPrefix(model, "VWorld_"):
+	case strings.HasPrefix(model, "Vmind_"), strings.HasPrefix(model, "VWorld_"):
 		if strings.Contains(model, "outfit_video") {
 			return "video"
 		}

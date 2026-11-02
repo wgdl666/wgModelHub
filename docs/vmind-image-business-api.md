@@ -4,11 +4,11 @@ The adapter uses VMind-Image's minimal multipart business API. Model IDs and Gen
 
 | Model / inputs | Upstream path | Text fields | Upload fields |
 |---|---|---|---|
-| VWorld_wardrobe-1.0, one product image | /v2/images/product_generation | garment_name, garment_role | image |
-| VWorld_wardrobe-1.0, parser payload | /v2/images/garment_extraction | garment_name, garment_role, parse_labels | image, parse_mask |
-| VWorld_wardrobe-1.0, bbox | /v2/images/garment_extraction | garment_name, bbox, optional bbox_format, optional garment_role | image |
-| VWorld_outfit_1.0 | /v2/images/vton | prompt | person_image, garment_image |
-| VWorld_bodymodel_1.0 | /v2/images/body_model | gender | image |
+| Vmind_wardrobe_v1.0, one product image | /v2/images/product_generation | garment_name, garment_role | image |
+| Vmind_wardrobe_v1.0, parser payload | /v2/images/garment_extraction | garment_name, garment_role, parse_labels | image, parse_mask |
+| Vmind_wardrobe_v1.0, bbox | /v2/images/garment_extraction | garment_name, bbox, optional bbox_format, optional garment_role | image |
+| Vmind_outfit_v1.0 | /v2/images/vton | prompt | person_image, garment_image |
+| Vmind_bodymodel_v1.0 | /v2/images/body_model | gender | image |
 
 A valid active span adds trace_id. Product metadata comes from the existing JSON text part; `bbox` is `[x1,y1,x2,y2]` on the person image (all values in 0–1 are normalized, otherwise pixels, unless `bbox_format` is `pixel_xyxy` or `normalized_xyxy`) and is forwarded as a JSON array string. An empty `garment_role` is omitted rather than sent as an empty enum value; gender comes from input.model_traits. VTON preserves text-part content and person/garment order. Response decoding remains b64_json → image bytes.
 

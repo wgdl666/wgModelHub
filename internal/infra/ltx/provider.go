@@ -98,7 +98,11 @@ func videoMotionTips(raw string) (string, error) {
 
 // GetVideo 单次查询 /jobs/{id}；done/error/进行中分别映射为 Succeeded/Failed/Running。
 func (p *Provider) GetVideo(ctx context.Context, model string, providerTaskID string) (provider.VideoJob, error) {
-	// 历史旧 ID 即使仍有任务记录，也不再进入供应商查询。
+	// 历史已受理视频保存旧 ID；只允许查询旧任务，不能因此重新开放旧 ID 提交。
+	if model == "VWorld_outfit_video_1.0" {
+		model = models.VWorldOutfitVideo10
+	}
+	// 更早的 ltx ID 已下线，仍拒绝进入供应商查询。
 	if model != models.VWorldOutfitVideo10 {
 		return provider.VideoJob{}, provider.New(provider.ErrorInvalidArgument, "unsupported video model: "+model)
 	}
@@ -124,6 +128,10 @@ func (p *Provider) GetVideo(ctx context.Context, model string, providerTaskID st
 
 // ReadVideoResult 解析 job 内 video_url 并带鉴权流式下载，按 1MiB 分块 emit。
 func (p *Provider) ReadVideoResult(ctx context.Context, model string, providerTaskID string, emit provider.EmitEvent) error {
+	// 历史成片仍需按原 task_id 下载；保持持久任务字段和幂等哈希不变。
+	if model == "VWorld_outfit_video_1.0" {
+		model = models.VWorldOutfitVideo10
+	}
 	// 结果读取遵守当前模型目录，避免绕过旧模型停用边界。
 	if model != models.VWorldOutfitVideo10 {
 		return provider.New(provider.ErrorInvalidArgument, "unsupported video model: "+model)

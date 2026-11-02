@@ -434,3 +434,42 @@ func TestSubmitSendsTraceIDOnlyWhenSpanIsValid(t *testing.T) {
 		t.Fatalf("traces=%v want [\"\" %s]", traces, want)
 	}
 }
+
+// 改名不能让已受理的视频失去结果读取能力，也不能在 provider 层重新开放旧 ID 提交。
+func TestHistoricalVWorldVideoCanStillBeRead(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/jobs/old-job" {
+			_ = json.NewEncoder(w).Encode(map[string]string{"status": "done", "video_url": "/result.mp4"})
+			return
+		}
+		if r.URL.Path == "/result.mp4" {
+			_, _ = w.Write([]byte("historical-video"))
+			return
+		}
+		t.Errorf("unexpected path %s", r.URL.Path)
+	}))
+	defer server.Close()
+	p, err := New("ltx", server.URL, "", 4, 24, 42, 0.001)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.client = server.Client()
+	const old = "VWorld_outfit_video_1.0"
+	job, err := p.GetVideo(context.Background(), old, "old-job")
+	if err != nil || job.State != provider.VideoJobSucceeded {
+		t.Fatalf("job=%+v err=%v", job, err)
+	}
+	var data []byte
+	err = p.ReadVideoResult(context.Background(), old, "old-job", func(ev *modelhubv2.GenerateEvent) error {
+		for _, item := range ev.Items {
+			data = append(data, item.GetVideo().GetData()...)
+		}
+		return nil
+	})
+	if err != nil || string(data) != "historical-video" {
+		t.Fatalf("video=%q err=%v", data, err)
+	}
+	if _, err := p.SubmitVideo(context.Background(), old, &modelhubv2.GenerateRequest{}); err == nil {
+		t.Fatal("legacy submit accepted")
+	}
+}

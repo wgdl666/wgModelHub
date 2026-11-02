@@ -118,7 +118,7 @@ func TestWeiguangExceptionKeepsHost(t *testing.T) {
 		t.Fatalf("segment=%+v", segment)
 	}
 	legacy, err := Of(config.ProviderConfig{
-		Models: []string{"VWorld_outfit_video_1.0"},
+		Models: []string{"Vmind_outfit_video_v1.0"},
 		LTX:    &config.LTXProviderConfig{BaseURL: "https://u847021-9507-702f766a.bjb2.seetacloud.com"},
 	})
 	if err != nil {
@@ -399,14 +399,14 @@ func TestRewriteRejectsNameCollision(t *testing.T) {
 	const original = `
 providers:
   a:
-    models: [VWorld_outfit_video_1.0]
+    models: [Vmind_outfit_video_v1.0]
     ltx:
       base_url: https://a.example
       duration: 1
       fps: 1
       poll_interval: 1
   b:
-    models: [VWorld_outfit_video_1.0]
+    models: [Vmind_outfit_video_v1.0]
     ltx:
       base_url: https://b.example
       duration: 1

@@ -71,29 +71,30 @@ const (
 	GPTImage25Sunburst = "gpt-image-2.5-sunburst"
 	// Flux2Klein9B 当前 SeeTacloud 部署只开放 image edit / 多图 i2i，不能当文生图用。
 	Flux2Klein9B = "FLUX.2-klein-9B"
+	// 薇光点亮对外模型 ID 统一用 Vmind 与版本后缀；Go 常量名保留，避免无关调用代码改名。
 	// VWorldWardrobe10 是薇光点亮拆衣服（garment_extraction + cloth_gen）。
 	// 与 SeeTacloud 的 Flux2Klein9B 分实例；上游兼容 model 字段仍写 FLUX.2-klein-9B，不能把本 ID 原样下发。
 	// OOTD 可再带一张与人物图同尺寸的人体解析标签图；录衣只有一张原图，不能补一张空标签图。
-	VWorldWardrobe10 = "VWorld_wardrobe-1.0"
+	VWorldWardrobe10 = "Vmind_wardrobe_v1.0"
 	// VWorldOutfit10 是薇光点亮虚拟换衣（edits + vton）。尺寸固定 768x1024，禁止走 OpenAI 3:4 换算。
-	VWorldOutfit10 = "VWorld_outfit_1.0"
+	VWorldOutfit10 = "Vmind_outfit_v1.0"
 	// VWorldBodyModel10 是薇光点亮体模生图 POST /v1/images/body_model，LoRA 固定 body_model。
 	// 提示词和 1024x1536 由上游固定；不能下发本 ID 或 FLUX.2-klein-9B，也不能复用拆衣服/换衣的字段。
-	VWorldBodyModel10 = "VWorld_bodymodel_1.0"
+	VWorldBodyModel10 = "Vmind_bodymodel_v1.0"
 	// VWorldOutfitVideo10 是薇光点亮穿搭视频的唯一对外模型 ID。
 	// 路由绑 LTX provider，统一使用 /v2/videos/vton；上游固定模型规格，不下发 model 字段。
-	VWorldOutfitVideo10 = "VWorld_outfit_video_1.0"
+	VWorldOutfitVideo10 = "Vmind_outfit_video_v1.0"
 	// PhotoroomSegment 标识官方 Remove Background 产品端点 POST /v1/segment（operationId=remove-background）。
 	// 该 API 没有 request-level model 参数；本常量只用于 ModelHub 路由与 ListModels，禁止下发上游，也不是业务别名。
 	PhotoroomSegment = "photoroom-segment"
 	// SegmentPersonBria 是国内自建人物抠图 POST /api/segment。
 	// 上游 method 在供应商配置里；本常量只选端点，不下发上游，也不能拿去替代商品主体抠图。
-	SegmentPersonBria = "segment-person-bria"
+	SegmentPersonBria = "Vmind_segment_person_bria_v1.0"
 	// LensDistortionCorrection 标识镜头校正 /correct 产品端点，只路由、不下发 model。
 	LensDistortionCorrection = "lens-distortion-correction"
 	// SegmentSubjectBria 是国内自建商品主体抠图 POST /api/segment_subject。
 	// 平铺/人台衣物不能走人物端点，所以和 SegmentPersonBria 分两个真实模型 ID。
-	SegmentSubjectBria = "segment-subject-bria"
+	SegmentSubjectBria = "Vmind_segment_subject_bria_v1.0"
 	// HumanYOLO 是自建人体检测 POST /predict。置信度和 IoU 属于该服务契约，不下发成调用方参数。
 	HumanYOLO = "human-yolo"
 	ClothYOLO = "cloth-yolo"
@@ -140,7 +141,7 @@ const (
 	HumanParser = "human-parser"
 	// HumanParse 是 G7 人体解析 POST /human_parser/predict。
 	// 与 human-parser 不能互换：路径、鉴权和部署面都不同，路演单独切这个 ID。渠道归属薇光点亮，仍保留实际目标 host 用于观测。
-	HumanParse = "human_parse"
+	HumanParse = "Vmind_human_parse_v1.0"
 
 	// DashScope Wan / HappyHorse / Kling 图生视频。
 	Wan22I2VFlash              = "wan2.2-i2v-flash"

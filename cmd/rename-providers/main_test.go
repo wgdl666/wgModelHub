@@ -139,7 +139,7 @@ func TestCLIErrorsOmitConfig(t *testing.T) {
 	collision := `
 providers:
   a:
-    models: [VWorld_outfit_video_1.0]
+    models: [Vmind_outfit_video_v1.0]
     ltx:
       base_url: https://a.example
       token: ` + cliSecret + `
@@ -147,7 +147,7 @@ providers:
       fps: 1
       poll_interval: 1
   b:
-    models: [VWorld_outfit_video_1.0]
+    models: [Vmind_outfit_video_v1.0]
     ltx:
       base_url: https://b.example
       token: ` + cliSecret + `-b

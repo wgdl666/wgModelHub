@@ -85,7 +85,7 @@ Gemini/Vertex 的文本 Generate 自动将实际出站的 system instruction、�
 
 ## VWorld/LTX 视频动作参数
 
-`SubmitGeneration` 调用 `VWorld_outfit_video_1.0` 时，调用方可在 `request.input.model_traits` 中传 JSON 字符串 `{"motion_tips":"Slowly turn the body 30 degrees."}`。LTX 适配器读取 `motion_tips`，去除首尾空白后写入 `POST /vton` 的独立 multipart 字段；`image`、`prompt` 和上游 `model=ltx` 保持原协议。
+`SubmitGeneration` 调用 `Vmind_outfit_video_v1.0` 时，调用方可在 `request.input.model_traits` 中传 JSON 字符串 `{"motion_tips":"Slowly turn the body 30 degrees."}`。LTX 适配器读取 `motion_tips`，去除首尾空白后写入 `POST /vton` 的独立 multipart 字段；`image`、`prompt` 和上游 `model=ltx` 保持原协议。
 
 该参数可省略；缺失、空串或仅空白时不发送表单字段。非法 JSON、非对象或非字符串值在出站前拒绝；其他模型特性键忽略。ModelHub 只透传调用方的动作文本，不追加业务动作规则，也不把它合并到 `prompt`。动作内容参与已有请求哈希：同一 caller/request_id 改动作会返回 `ALREADY_EXISTS`。
 
@@ -215,14 +215,14 @@ Nacos 热更新；实例增删或凭据/端点等资源参数变化须滚动重�
 
 | 服务 | ModelHub ID | G6 路径 | 输出 |
 | --- | --- | --- | --- |
-| HumanParser | `human-parser`、`human_parse` | `/human-parser/human_parser/predict` | 解析 JSON |
-| SegmentPerson | `segment-person-bria` | `/segment-person/api/segment` | PNG，人像 Portrait |
-| SegmentPerson | `segment-subject-bria` | `/segment-person/api/segment_subject` | PNG，主体 BRIA |
+| HumanParser | `human-parser`、`Vmind_human_parse_v1.0` | `/human-parser/human_parser/predict` | 解析 JSON |
+| SegmentPerson | `Vmind_segment_person_bria_v1.0` | `/segment-person/api/segment` | PNG，人像 Portrait |
+| SegmentPerson | `Vmind_segment_subject_bria_v1.0` | `/segment-person/api/segment_subject` | PNG，主体 BRIA |
 | HumanYolo | `human-yolo` | `/human-yolo/predict` | 检测 JSON |
 | ClothYolo | `cloth-yolo` | `/cloth-yolo/predict` | 检测 JSON |
 | FaceSim | `facesim` | `/facesim/compare` | 比对 JSON |
 
-人像 ID 是历史调用 ID，实际算法由 `segment_person.person_method: person-birefnet-portrait` 选择；主体用 `subject_method: person-bria-rmbg`。原有 `method` 仍可作为兼容回退。旧 `human-parser` provider 的 base URL 包含 `/human_parser`，新 `human_parse` provider 则只包含服务前缀，两者最终请求同一预测接口。
+人像 ID 是历史调用 ID，实际算法由 `segment_person.person_method: person-birefnet-portrait` 选择；主体用 `subject_method: person-bria-rmbg`。原有 `method` 仍可作为兼容回退。旧 `human-parser` provider 的 base URL 包含 `/human_parser`，新 `Vmind_human_parse_v1.0` provider 则只包含服务前缀，两者最终请求同一预测接口。
 
 这些上游可省略用户名和密码；配置 Basic Auth 时必须两项同时填写。FaceSim 输入两张图片，`similarity` 保持 0–1，`cosine_similarity` 保留上游带符号的余弦分数。ClothYolo 是独立服装检测能力，不参与人像抠图过滤。
 

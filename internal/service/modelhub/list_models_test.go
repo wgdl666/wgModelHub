@@ -6,6 +6,7 @@ import (
 
 	"github.com/wgdl666/wgModelHub/config"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -227,4 +228,22 @@ func sameStrings(got, want []string) bool {
 		}
 	}
 	return true
+}
+
+func TestVMindMigrationResolvesOldVideoWithoutListingOldID(t *testing.T) {
+	s := listModelsTestService()
+	s.providers = map[string]provider.Set{"video": {Video: &fakeVideo{}}}
+	bound, err := s.resolve("VWorld_outfit_video_1.0", config.CapabilityVideo)
+	if err != nil || bound.model != models.VWorldOutfitVideo10 {
+		t.Fatalf("bound=%+v err=%v", bound, err)
+	}
+	resp, err := s.ListModels(context.Background(), &modelhubv2.ListModelsRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range resp.Models {
+		if item.Model == "VWorld_outfit_video_1.0" {
+			t.Fatal("legacy ID leaked into catalog")
+		}
+	}
 }

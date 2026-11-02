@@ -114,7 +114,7 @@ func (p *Provider) GenerateImage(ctx context.Context, model string, request *mod
 func (p *Provider) generateGarmentExtraction(ctx context.Context, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
 	images := provider.ImageMedias(request.GetInput())
 	if len(images) < 1 || len(images) > 2 {
-		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "VWorld_wardrobe-1.0 requires source image and optionally parser mask")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "Vmind_wardrobe_v1.0 requires source image and optionally parser mask")
 	}
 	source, mime, err := inlineImage(images[0])
 	if err != nil {
@@ -174,7 +174,7 @@ func (p *Provider) generateGarmentExtraction(ctx context.Context, request *model
 func (p *Provider) generateVTON(ctx context.Context, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
 	images := provider.ImageMedias(request.GetInput())
 	if len(images) != 2 {
-		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "VWorld_outfit_1.0 requires person image then garment collage")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "Vmind_outfit_v1.0 requires person image then garment collage")
 	}
 	uploads := make([]imageUpload, 0, 2)
 	for index, media := range images {
@@ -204,7 +204,7 @@ func (p *Provider) generateVTON(ctx context.Context, request *modelhubv2.Generat
 func (p *Provider) generateBodyModel(ctx context.Context, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
 	images := provider.ImageMedias(request.GetInput())
 	if len(images) != 1 {
-		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "VWorld_bodymodel_1.0 requires exactly one person image")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "Vmind_bodymodel_v1.0 requires exactly one person image")
 	}
 	gender, err := bodyModelGender(request.GetInput().GetModelTraits())
 	if err != nil {
@@ -329,7 +329,7 @@ type garmentMeta struct {
 func parseGarmentMeta(text string) (garmentMeta, error) {
 	var meta garmentMeta
 	if err := json.Unmarshal([]byte(text), &meta); err != nil {
-		return meta, provider.WrapNotAttempted(provider.ErrorInvalidArgument, "VWorld_wardrobe-1.0 text part must be JSON metadata", err)
+		return meta, provider.WrapNotAttempted(provider.ErrorInvalidArgument, "Vmind_wardrobe_v1.0 text part must be JSON metadata", err)
 	}
 	return meta, nil
 }
