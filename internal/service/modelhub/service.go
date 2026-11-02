@@ -16,7 +16,6 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/internal/taskstore"
-	"github.com/wgdl666/wgModelHub/models"
 	"github.com/wgdl666/wgModelHub/protocol"
 )
 
@@ -504,8 +503,6 @@ type binding struct {
 
 // resolve 用真实模型 ID 找到唯一 provider，并校验该实例能力与 OutputSpec 一致；model 原样下发供应商。
 func (s *Service) resolve(model, capability string) (binding, error) {
-	// 滚动迁移窗口接住尚未升级的调用方，路由和下游只使用新 ID；验收后撤掉。
-	model = models.MigrationVMindID(model)
 	routes := map[string]string(nil)
 	if s.live != nil {
 		routes = s.live.Load().ModelRoutes()

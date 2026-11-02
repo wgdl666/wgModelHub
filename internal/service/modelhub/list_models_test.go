@@ -230,10 +230,14 @@ func sameStrings(got, want []string) bool {
 	return true
 }
 
-func TestVMindMigrationResolvesOldVideoWithoutListingOldID(t *testing.T) {
+// 迁移完成后只接受目录中的新 ID，旧视频任务的读取兼容由 provider 独立处理。
+func TestVMindResolvesCanonicalVideoOnly(t *testing.T) {
 	s := listModelsTestService()
 	s.providers = map[string]provider.Set{"video": {Video: &fakeVideo{}}}
-	bound, err := s.resolve("VWorld_outfit_video_1.0", config.CapabilityVideo)
+	if _, err := s.resolve("VWorld_outfit_video_1.0", config.CapabilityVideo); err == nil {
+		t.Fatal("retired ID must not route new requests")
+	}
+	bound, err := s.resolve(models.VWorldOutfitVideo10, config.CapabilityVideo)
 	if err != nil || bound.model != models.VWorldOutfitVideo10 {
 		t.Fatalf("bound=%+v err=%v", bound, err)
 	}

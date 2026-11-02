@@ -590,22 +590,3 @@ func mustYAML(t *testing.T, cfg Config) string {
 	}
 	return string(content)
 }
-
-// 同一次滚动发布必须先能加载旧配置，再无重启接受等价的新配置。
-func TestVMindMigrationConfig(t *testing.T) {
-	cfg := validConfig()
-	cfg.Providers["segment"] = ProviderConfig{Models: []string{"segment-person-bria", "segment-subject-bria"}, SegmentPerson: &SegmentPersonProviderConfig{BaseURL: "https://segment.example", Method: "bria"}}
-	cfg.ModelRouteOverrides = map[string]ModelRoute{"segment-person-bria": {Default: "segment"}}
-	parsed, err := ParseAndValidateYAML(mustYAML(t, cfg))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if parsed.ModelRoutes()[models.SegmentPersonBria] != "segment" || parsed.ModelRoutes()["segment-person-bria"] != "" {
-		t.Fatal("migration route not canonical")
-	}
-	lc := NewLiveConfig(parsed)
-	lc.ApplyYAML(mustYAML(t, parsed))
-	if lc.Load().ModelRoutes()[models.SegmentSubjectBria] != "segment" {
-		t.Fatal("new configuration changed routing")
-	}
-}
