@@ -516,17 +516,42 @@ func TestGenerateTextOutcomes(t *testing.T) {
 	}
 }
 
+// gRPC 的流关闭定时器可先调用 cancel，使已到截止时间的 Context.Err 仍为 Canceled。
+type canceledDeadlineContext struct {
+	context.Context
+	deadline time.Time
+}
+
+func (c canceledDeadlineContext) Deadline() (time.Time, bool) { return c.deadline, true }
+
 func TestGenerateTextDeadlineWithCanceledSend(t *testing.T) {
-	for _, timedOut := range []bool{false, true} {
-		t.Run(strconv.FormatBool(timedOut), func(t *testing.T) {
+	for _, tc := range []struct {
+		name                       string
+		expired, transportCanceled bool
+	}{
+		{name: "no_deadline"},
+		{name: "context_deadline", expired: true},
+		{name: "grpc_close_after_deadline", expired: true, transportCanceled: true},
+		{name: "caller_cancel_before_deadline", transportCanceled: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			scrape := installMetricScraper(t)
 			ctx := context.Background()
 			want := "cancelled"
-			if timedOut {
+			if tc.expired {
 				var cancel context.CancelFunc
 				ctx, cancel = context.WithDeadline(ctx, time.Now().Add(-time.Second))
 				defer cancel()
 				want = "failed"
+			}
+			if tc.transportCanceled {
+				cancelled, cancel := context.WithCancel(context.Background())
+				cancel()
+				deadline := time.Now().Add(time.Hour)
+				if tc.expired {
+					deadline = time.Now().Add(-time.Second)
+				}
+				ctx = canceledDeadlineContext{Context: cancelled, deadline: deadline}
 			}
 			service := newTestService(config.Config{Providers: map[string]config.ProviderConfig{
 				"ark": {Models: []string{"chat-model"}, Ark: &config.ArkProviderConfig{APIKey: "k"}},

@@ -184,8 +184,8 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 	llmmetric.RecordRequest(ctx, labels)
 	defer func() {
 		outcomeErr := retErr
-		// HTTP/2 截止后 Send 可能只返回 Canceled；请求自身已超时就计失败，不能排除出成功率分母。
-		if retErr != nil && ctx.Err() == context.DeadlineExceeded {
+		// gRPC 的流关闭定时器可能先把 ctx 标成 Canceled；按实际截止时间识别超时，不能排除出成功率分母。
+		if deadline, ok := ctx.Deadline(); retErr != nil && ok && !time.Now().Before(deadline) {
 			outcomeErr = context.DeadlineExceeded
 		}
 		labels.Outcome = llmmetric.MapOutcome(outcomeErr)
