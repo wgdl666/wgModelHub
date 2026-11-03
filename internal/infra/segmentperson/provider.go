@@ -8,12 +8,16 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"strings"
+	"syscall"
 	"time"
 
+	"github.com/wgdl666/kangaroo/logs"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
@@ -179,20 +183,52 @@ func (p *Provider) doSegment(ctx context.Context, endpoint string, imageBytes []
 	if err := writer.Close(); err != nil {
 		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" finish segment request", err)
 	}
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+endpoint, &body)
-	if err != nil {
-		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" create segment request", err)
-	}
-	httpReq.Header.Set("content-type", writer.FormDataContentType())
-	if p.username != "" {
-		httpReq.SetBasicAuth(p.username, p.password)
-	}
-	response, err := p.client.Do(httpReq)
-	if err != nil {
+	// 抠图没有持久化副作用，瞬时连接故障允许最多三次请求；业务流程重跑仍由调用方负责。
+	// 每次重建请求体，避免 broken pipe 后复用已消耗的 multipart 流。
+	var response *http.Response
+	for attempt := 1; attempt <= 3; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+endpoint, bytes.NewReader(body.Bytes()))
+		if err != nil {
+			return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" create segment request", err)
+		}
+		httpReq.Header.Set("content-type", writer.FormDataContentType())
+		if p.username != "" {
+			httpReq.SetBasicAuth(p.username, p.password)
+		}
+		response, err = p.client.Do(httpReq)
 		if ctx.Err() != nil {
+			if response != nil {
+				response.Body.Close()
+			}
 			return nil, ctx.Err()
 		}
-		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" segment request failed", err)
+		retryable := transientConnectionError(err)
+		statusCode := 0
+		if err == nil {
+			statusCode = response.StatusCode
+			retryable = statusCode == 429 || statusCode == 500 || statusCode == 502 || statusCode == 503 || statusCode == 504
+		}
+		if !retryable || attempt == 3 {
+			if err != nil {
+				return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" segment request failed", err)
+			}
+			break
+		}
+		if response != nil {
+			response.Body.Close()
+		}
+		logs.Default().WarnContext(ctx, "modelhub_segment_retry", "provider", p.name, "endpoint", endpoint, "attempt", attempt, "status_code", statusCode)
+		// 退避共用调用方期限；取消、超时不能继续消耗算法资源。
+		timer := time.NewTimer(time.Duration(attempt) * 300 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
@@ -210,4 +246,16 @@ func (p *Provider) doSegment(ctx context.Context, endpoint string, imageBytes []
 		return nil, provider.New(provider.ErrorInvalidResponse, p.name+" response is missing refined_png_b64")
 	}
 	return cutout, nil
+}
+
+// 只重试明确的连接中断，避免把参数、证书、DNS 配置和超时错误当作瞬时故障。
+func transientConnectionError(err error) bool {
+	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	var networkError net.Error
+	if errors.As(err, &networkError) && networkError.Timeout() {
+		return false
+	}
+	return errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, net.ErrClosed) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)
 }
