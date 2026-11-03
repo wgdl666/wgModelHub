@@ -19,8 +19,8 @@ func imageMime(image *modelhubv2.Media) string {
 	return "image/jpeg"
 }
 
-func embeddingEvent(vector []float64) (*modelhubv2.GenerateEvent, error) {
-	body, err := json.Marshal(map[string]any{"embedding": vector})
+func embeddingEvent(key string, value any) (*modelhubv2.GenerateEvent, error) {
+	body, err := json.Marshal(map[string]any{key: value})
 	if err != nil {
 		return nil, provider.Wrap(provider.ErrorUnavailable, "encode embedding", err)
 	}

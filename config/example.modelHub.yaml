@@ -351,6 +351,9 @@ providers:
     dashscope_embedding:
       base_url: https://dashscope.aliyuncs.com/api/v1
       api_key: "${DASHSCOPE_API_KEY}"
+      max_batch_size: 20
+      max_request_texts: 512
+      max_request_text_bytes: 1048576
   Cohere_embedding:
     models: [embed-v4.0]
     cohere_embedding:

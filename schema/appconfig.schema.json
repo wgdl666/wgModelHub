@@ -432,7 +432,10 @@
       "required": ["base_url", "api_key"],
       "properties": {
         "base_url": { "type": "string", "minLength": 1 },
-        "api_key": { "type": "string", "minLength": 1 }
+        "api_key": { "type": "string", "minLength": 1 },
+        "max_batch_size": { "type": "integer", "minimum": 0, "maximum": 20 },
+        "max_request_texts": { "type": "integer", "minimum": 0, "maximum": 1024 },
+        "max_request_text_bytes": { "type": "integer", "minimum": 0, "maximum": 4194304 }
       }
     },
     "cohereEmbedding": {
@@ -440,7 +443,10 @@
       "required": ["base_url", "api_key"],
       "properties": {
         "base_url": { "type": "string", "minLength": 1 },
-        "api_key": { "type": "string", "minLength": 1 }
+        "api_key": { "type": "string", "minLength": 1 },
+        "max_batch_size": { "type": "integer", "minimum": 0, "maximum": 96 },
+        "max_request_texts": { "type": "integer", "minimum": 0, "maximum": 1024 },
+        "max_request_text_bytes": { "type": "integer", "minimum": 0, "maximum": 4194304 }
       }
     },
     "bedrockEmbedding": {

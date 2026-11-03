@@ -108,40 +108,11 @@ func (p *Provider) coherePayload(model string, request *modelhubv2.GenerateReque
 		input = request.GetInput()
 	}
 	base := map[string]any{"model": model, "embedding_types": []string{"float"}, "output_dimension": vectorDim}
-	// 显式标记才按条目拆批；普通多段文本仍按原协议合成一个向量。
-	var traits struct {
-		Batch     bool   `json:"embedding_batch"`
-		InputType string `json:"input_type"`
+	texts, err := provider.EmbeddingBatchTexts(input, p.limits.MaxRequestTexts, p.limits.MaxRequestTextBytes)
+	if err != nil {
+		return nil, false, err
 	}
-	if raw := strings.TrimSpace(input.GetModelTraits()); raw != "" {
-		if err := json.Unmarshal([]byte(raw), &traits); err != nil || raw == "null" {
-			return nil, false, provider.NotAttempted(provider.ErrorInvalidArgument, "invalid embedding model_traits")
-		}
-	}
-	if traits.Batch {
-		if traits.InputType != "search_query" {
-			return nil, false, provider.NotAttempted(provider.ErrorInvalidArgument, "batch embedding requires input_type search_query")
-		}
-		if len(input.GetItems()) == 0 || len(input.GetItems()) > p.limits.MaxRequestTexts {
-			return nil, false, provider.NotAttempted(provider.ErrorInvalidArgument, "batch embedding exceeds request text count budget")
-		}
-		texts := make([]string, 0, len(input.GetItems()))
-		textBytes := 0
-		for _, item := range input.GetItems() {
-			message := item.GetMessage()
-			if message.GetRole() != modelhubv2.Role_ROLE_USER || len(message.GetParts()) != 1 || len(message.GetToolCalls()) != 0 {
-				return nil, false, provider.NotAttempted(provider.ErrorInvalidArgument, "batch embedding requires one user text per item")
-			}
-			text := strings.TrimSpace(message.GetParts()[0].GetText())
-			if text == "" {
-				return nil, false, provider.NotAttempted(provider.ErrorInvalidArgument, "batch embedding requires non-empty text parts")
-			}
-			textBytes += len(message.GetParts()[0].GetText())
-			if textBytes > p.limits.MaxRequestTextBytes {
-				return nil, false, provider.NotAttempted(provider.ErrorInvalidArgument, "batch embedding exceeds request text byte budget")
-			}
-			texts = append(texts, text)
-		}
+	if texts != nil {
 		base["input_type"] = "search_query"
 		base["texts"] = texts
 		return base, true, nil

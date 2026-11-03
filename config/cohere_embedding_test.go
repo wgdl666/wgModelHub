@@ -42,3 +42,13 @@ func TestCohereLimitsAreWiredAndRequireRestart(t *testing.T) {
 		t.Fatal("top-level validation omitted execution limits")
 	}
 }
+
+func TestDashScopeEmbeddingExecutionLimits(t *testing.T) {
+	defaults := (DashScopeEmbeddingProviderConfig{}).Resolved()
+	if defaults.MaxBatchSize != 20 || defaults.MaxRequestTexts != 512 || defaults.MaxRequestTextBytes != 1<<20 {
+		t.Fatalf("unexpected defaults: %+v", defaults)
+	}
+	if err := (DashScopeEmbeddingProviderConfig{MaxBatchSize: 21}).ValidateExecutionLimits(); err == nil {
+		t.Fatal("accepted a batch larger than the DashScope limit")
+	}
+}
