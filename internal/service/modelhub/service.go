@@ -183,7 +183,12 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 	// 文本能力已路由成功：真实供应商调用前计一次 request。
 	llmmetric.RecordRequest(ctx, labels)
 	defer func() {
-		labels.Outcome = llmmetric.MapOutcome(retErr)
+		outcomeErr := retErr
+		// HTTP/2 截止后 Send 可能只返回 Canceled；请求自身已超时就计失败，不能排除出成功率分母。
+		if retErr != nil && ctx.Err() == context.DeadlineExceeded {
+			outcomeErr = context.DeadlineExceeded
+		}
+		labels.Outcome = llmmetric.MapOutcome(outcomeErr)
 		llmmetric.RecordTerminal(ctx, labels, time.Since(metricStarted))
 	}()
 

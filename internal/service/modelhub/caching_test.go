@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wgdl666/wgModelHub/config"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
@@ -18,6 +19,8 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/infra/metricserver"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func TestTextCachingMode(t *testing.T) {
@@ -508,6 +511,36 @@ func TestGenerateTextOutcomes(t *testing.T) {
 			}
 			if metricSum(t, body, "wg_modelhub_llm_usage_reports_total") != 0 {
 				t.Fatal("failed request must not record usage")
+			}
+		})
+	}
+}
+
+func TestGenerateTextDeadlineWithCanceledSend(t *testing.T) {
+	for _, timedOut := range []bool{false, true} {
+		t.Run(strconv.FormatBool(timedOut), func(t *testing.T) {
+			scrape := installMetricScraper(t)
+			ctx := context.Background()
+			want := "cancelled"
+			if timedOut {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithDeadline(ctx, time.Now().Add(-time.Second))
+				defer cancel()
+				want = "failed"
+			}
+			service := newTestService(config.Config{Providers: map[string]config.ProviderConfig{
+				"ark": {Models: []string{"chat-model"}, Ark: &config.ArkProviderConfig{APIKey: "k"}},
+			}}, map[string]provider.Set{"ark": {Text: &usageText{}}}, nil)
+			request := textRequest("chat-model", "do")
+			request.Output.Stream = true
+			// 线上 HTTP/2 截止后 Send 仍可能只报 Canceled；必须结合请求上下文区分超时与主动取消。
+			err := service.Generate(request, &sendFailRecorder{ctx: ctx, err: status.Error(codes.Canceled, "context canceled")})
+			if status.Code(err) != codes.Canceled {
+				t.Fatalf("unexpected send error: %v", err)
+			}
+			body := scrape()
+			if metricSum(t, body, "wg_modelhub_llm_terminals_total") != 1 || metricValue(t, body, "wg_modelhub_llm_terminals_total", map[string]string{"outcome": want}) != 1 {
+				t.Fatalf("want one %s terminal\n%s", want, body)
 			}
 		})
 	}
