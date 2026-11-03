@@ -2,12 +2,14 @@ package modelhub
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/wgdl666/wgModelHub/config"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/callledger"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 )
 
@@ -81,9 +83,13 @@ func raceService(fast, slow provider.TextProvider) *Service {
 }
 
 func TestRaceUsesFirstTokenAndCancelsLoser(t *testing.T) {
+	scrape := installMetricScraper(t)
 	fast := &delayText{delay: 20 * time.Millisecond, text: "fast"}
 	slow := &delayText{delay: 2 * time.Second, text: "slow"}
 	service := raceService(fast, slow)
+	ledger := &callledger.Memory{}
+	service.ledger = ledger
+	service.ledgerGo = func(fn func()) { fn() }
 	request := textRequest("gemini-3.5-flash-lite", "hi")
 	request.Output.Stream = true
 	stream := &generateRecorder{ctx: context.Background()}
@@ -103,6 +109,51 @@ func TestRaceUsesFirstTokenAndCancelsLoser(t *testing.T) {
 	}
 	if !slow.wasCanceled() {
 		t.Fatal("slow provider must be canceled after the fast first token")
+	}
+	if len(ledger.Records) != 1 || ledger.Records[0].Provider != "vertex_chat" || ledger.Records[0].Status != callledger.StatusSucceeded {
+		t.Fatalf("ledger must retain actual winner: %+v", ledger.Records)
+	}
+	// 非默认分支获胜也只记入口的一次成功；落败取消不能污染逻辑请求成功率。
+	body := scrape()
+	for _, metric := range []string{"wg_modelhub_llm_requests_total", "wg_modelhub_llm_terminals_total", "wg_modelhub_llm_ttft_seconds_count"} {
+		if metricSum(t, body, metric) != 1 || metricValue(t, body, metric, map[string]string{"provider": "gemini_main"}) != 1 {
+			t.Fatalf("race split logical metric %s: %s", metric, body)
+		}
+	}
+	if metricValue(t, body, "wg_modelhub_llm_terminals_total", map[string]string{"outcome": "succeeded"}) != 1 {
+		t.Fatal(body)
+	}
+}
+
+func TestRaceTerminalCountsOnceWithoutWinner(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		err     error
+		outcome string
+	}{
+		{"all_failed", errors.New("provider failed"), "failed"},
+		{"caller_cancelled", context.Canceled, "cancelled"},
+		{"deadline", context.DeadlineExceeded, "failed"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			scrape := installMetricScraper(t)
+			ctx := context.Background()
+			if tc.err == context.Canceled {
+				cancelled, cancel := context.WithCancel(ctx)
+				cancel()
+				ctx = cancelled
+			}
+			service := raceService(&errText{err: tc.err}, &errText{err: tc.err})
+			request := textRequest("gemini-3.5-flash-lite", "hi")
+			request.Output.Stream = true
+			if err := service.Generate(request, &generateRecorder{ctx: ctx}); err == nil {
+				t.Fatal("expected terminal error")
+			}
+			body := scrape()
+			if metricSum(t, body, "wg_modelhub_llm_terminals_total") != 1 || metricValue(t, body, "wg_modelhub_llm_terminals_total", map[string]string{"provider": "gemini_main", "outcome": tc.outcome}) != 1 {
+				t.Fatal(body)
+			}
+		})
 	}
 }
 

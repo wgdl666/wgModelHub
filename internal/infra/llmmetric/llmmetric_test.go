@@ -34,7 +34,10 @@ func TestMapOutcome(t *testing.T) {
 	if got := llmmetric.MapOutcome(context.Canceled); got != llmmetric.OutcomeCancelled {
 		t.Fatalf("context canceled=%q", got)
 	}
-	if got := llmmetric.MapOutcome(status.Error(codes.DeadlineExceeded, "deadline")); got != llmmetric.OutcomeCancelled {
+	if got := llmmetric.MapOutcome(context.DeadlineExceeded); got != llmmetric.OutcomeFailed {
+		t.Fatalf("context deadline=%q", got)
+	}
+	if got := llmmetric.MapOutcome(status.Error(codes.DeadlineExceeded, "deadline")); got != llmmetric.OutcomeFailed {
 		t.Fatalf("deadline=%q", got)
 	}
 	if got := llmmetric.MapOutcome(status.Error(codes.Canceled, "canceled")); got != llmmetric.OutcomeCancelled {

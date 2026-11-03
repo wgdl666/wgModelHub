@@ -54,6 +54,7 @@ type recorder struct {
 var current atomic.Pointer[recorder]
 
 // Labels 只允许 model/provider/stream 与必要的 outcome；禁止 ID 与正文。
+// Provider 是逻辑路由入口；race 的赢家写账本/trace，不拆分一次请求的指标归属。
 type Labels struct {
 	Model    string
 	Provider string
@@ -241,16 +242,16 @@ func ClassifyCache(cachingMode string, usage *modelhubv2.Usage) string {
 	return CacheUnknown
 }
 
-// MapOutcome：Canceled / DeadlineExceeded 归 cancelled，其余非 nil 错误归 failed。
+// MapOutcome：主动取消单列；超时仍是失败，不能在成功率排除取消时被一并隐藏。
 func MapOutcome(err error) string {
 	if err == nil {
 		return OutcomeSucceeded
 	}
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+	if errors.Is(err, context.Canceled) {
 		return OutcomeCancelled
 	}
 	switch status.Code(err) {
-	case codes.Canceled, codes.DeadlineExceeded:
+	case codes.Canceled:
 		return OutcomeCancelled
 	default:
 		return OutcomeFailed

@@ -489,7 +489,7 @@ func TestGenerateTextOutcomes(t *testing.T) {
 		{name: "failed", err: errors.New("boom"), outcome: "failed"},
 		// 真实契约：供应商侧 context 取消/超时经 ToStatus 后再 MapOutcome；不伪造裸 gRPC status。
 		{name: "cancelled", err: context.Canceled, outcome: "cancelled"},
-		{name: "deadline", err: context.DeadlineExceeded, outcome: "cancelled"},
+		{name: "deadline", err: context.DeadlineExceeded, outcome: "failed"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
