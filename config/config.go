@@ -469,7 +469,7 @@ type Config struct {
 	Server struct {
 		ListenAddress       string
 		PublicListenAddress string
-		// HTTPListenAddress 仅承载 /healthz 与 /metrics；拓扑端口由 WG_SERVER_HTTP_PORT 注入。
+		// HTTPListenAddress 承载内网监控接口，端口由 WG_SERVER_HTTP_PORT 注入。
 		HTTPListenAddress string
 	} `yaml:"-"`
 	Providers map[string]ProviderConfig `yaml:"providers"`

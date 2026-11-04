@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"net"
 	"net/http"
+	"net/http/pprof"
+	"os"
 	"time"
 
 	"github.com/wgdl666/kangaroo/logs"
 )
 
-// Server 仅提供内网 /healthz 与 /metrics，不承载业务 RPC 或调试 API。
+// Server 提供内网健康检查、指标和按需启用的堆采样。
 type Server struct {
 	metricsHandler http.Handler
 	server         *http.Server
@@ -26,6 +28,10 @@ func (s *Server) Start(addr string) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", handleHealth)
 	mux.Handle("/metrics", s.metricsHandler)
+	// 堆采样只在排查环境启用，复用现有内网监控端口。
+	if os.Getenv("WG_HEAP_PROFILE_ENABLED") == "1" {
+		mux.Handle("GET /debug/pprof/heap", pprof.Handler("heap"))
+	}
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
