@@ -337,6 +337,46 @@ func TestVertexTextKeepsExpressPathWhenProjectConfigured(t *testing.T) {
 	}
 }
 
+func TestVertexImagesUseExplicitGlobalForEveryImageModel(t *testing.T) {
+	for _, model := range []string{models.Gemini25FlashImage, models.Gemini31FlashImage, models.Gemini3ProImage, models.GeminiNanoBanana21} {
+		t.Run(model, func(t *testing.T) {
+			clearVertexDiscoveryEnv(t)
+			transport := &vertexRecordingTransport{}
+			p, err := newVertexAI(context.Background(), "vertex", vertexTestAPIKey, "123", &http.Client{Transport: transport})
+			if err != nil {
+				t.Fatal(err)
+			}
+			request := vertexImageRequest("square")
+			request.Model = model
+			if _, err := p.GenerateImage(context.Background(), model, request); err != nil {
+				t.Fatal(err)
+			}
+			want := "/v1beta1/projects/123/locations/global/publishers/google/models/" + model + ":generateContent"
+			if transport.last == nil || transport.last.URL.Path != want {
+				t.Fatalf("outbound request=%v, want explicit global path %q", transport.last, want)
+			}
+			if transport.calls != 1 || transport.last.Header.Get("x-goog-api-key") != vertexTestAPIKey {
+				t.Fatalf("expected one request authenticated with the configured API key")
+			}
+		})
+	}
+}
+
+func TestVertexFlashImageWithoutProjectMakesNoCall(t *testing.T) {
+	transport := &vertexRecordingTransport{}
+	p, err := newVertexAI(context.Background(), "vertex", vertexTestAPIKey, "", &http.Client{Transport: transport})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := vertexImageRequest("square")
+	request.Model = models.Gemini25FlashImage
+	_, err = p.GenerateImage(context.Background(), request.Model, request)
+	assertVertexProjectConfigError(t, err)
+	if transport.calls != 0 {
+		t.Fatalf("missing project made %d upstream calls", transport.calls)
+	}
+}
+
 func TestNanoBananaImageWithoutProjectMakesNoCall(t *testing.T) {
 	transport := &vertexRecordingTransport{}
 	p, err := newVertexAI(context.Background(), "vertex", vertexTestAPIKey, "", &http.Client{Transport: transport})
