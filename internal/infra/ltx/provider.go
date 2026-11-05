@@ -220,9 +220,9 @@ func (p *Provider) submit(ctx context.Context, imageBytes []byte, prompt, motion
 	if _, err := imagePart.Write(imageBytes); err != nil {
 		return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "write multipart image", err)
 	}
-	endpoint := "/v2/videos/vton"
+	endpoint := "/vton"
 	fields := map[string]string{"prompt": prompt}
-	// 新建任务统一走 v2，模型和推理规格由上游固定，不再发送旧 LTX 参数。
+	// 当前视频网关只提供 /vton；保留服务端模型与推理默认值，避免与网关规格漂移。
 	if motionTips != "" {
 		fields["motion_tips"] = motionTips
 	}
