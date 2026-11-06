@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wgdl666/wgModelHub/config"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
@@ -18,6 +19,8 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/infra/metricserver"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func TestTextCachingMode(t *testing.T) {
@@ -489,7 +492,7 @@ func TestGenerateTextOutcomes(t *testing.T) {
 		{name: "failed", err: errors.New("boom"), outcome: "failed"},
 		// 真实契约：供应商侧 context 取消/超时经 ToStatus 后再 MapOutcome；不伪造裸 gRPC status。
 		{name: "cancelled", err: context.Canceled, outcome: "cancelled"},
-		{name: "deadline", err: context.DeadlineExceeded, outcome: "cancelled"},
+		{name: "deadline", err: context.DeadlineExceeded, outcome: "failed"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -508,6 +511,61 @@ func TestGenerateTextOutcomes(t *testing.T) {
 			}
 			if metricSum(t, body, "wg_modelhub_llm_usage_reports_total") != 0 {
 				t.Fatal("failed request must not record usage")
+			}
+		})
+	}
+}
+
+// gRPC 的流关闭定时器可先调用 cancel，使已到截止时间的 Context.Err 仍为 Canceled。
+type canceledDeadlineContext struct {
+	context.Context
+	deadline time.Time
+}
+
+func (c canceledDeadlineContext) Deadline() (time.Time, bool) { return c.deadline, true }
+
+func TestGenerateTextDeadlineWithCanceledSend(t *testing.T) {
+	for _, tc := range []struct {
+		name                       string
+		expired, transportCanceled bool
+	}{
+		{name: "no_deadline"},
+		{name: "context_deadline", expired: true},
+		{name: "grpc_close_after_deadline", expired: true, transportCanceled: true},
+		{name: "caller_cancel_before_deadline", transportCanceled: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			scrape := installMetricScraper(t)
+			ctx := context.Background()
+			want := "cancelled"
+			if tc.expired {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithDeadline(ctx, time.Now().Add(-time.Second))
+				defer cancel()
+				want = "failed"
+			}
+			if tc.transportCanceled {
+				cancelled, cancel := context.WithCancel(context.Background())
+				cancel()
+				deadline := time.Now().Add(time.Hour)
+				if tc.expired {
+					deadline = time.Now().Add(-time.Second)
+				}
+				ctx = canceledDeadlineContext{Context: cancelled, deadline: deadline}
+			}
+			service := newTestService(config.Config{Providers: map[string]config.ProviderConfig{
+				"ark": {Models: []string{"chat-model"}, Ark: &config.ArkProviderConfig{APIKey: "k"}},
+			}}, map[string]provider.Set{"ark": {Text: &usageText{}}}, nil)
+			request := textRequest("chat-model", "do")
+			request.Output.Stream = true
+			// 线上 HTTP/2 截止后 Send 仍可能只报 Canceled；必须结合请求上下文区分超时与主动取消。
+			err := service.Generate(request, &sendFailRecorder{ctx: ctx, err: status.Error(codes.Canceled, "context canceled")})
+			if status.Code(err) != codes.Canceled {
+				t.Fatalf("unexpected send error: %v", err)
+			}
+			body := scrape()
+			if metricSum(t, body, "wg_modelhub_llm_terminals_total") != 1 || metricValue(t, body, "wg_modelhub_llm_terminals_total", map[string]string{"outcome": want}) != 1 {
+				t.Fatalf("want one %s terminal\n%s", want, body)
 			}
 		})
 	}

@@ -127,6 +127,30 @@ func TestPostgresUpsertFreezesTerminalLatencyAndStatus(t *testing.T) {
 	}
 }
 
+func TestPostgresResultPersistsRaceWinner(t *testing.T) {
+	store := openLedgerStore(t)
+	ctx := context.Background()
+	rec := Record{CallID: "race-call", Operation: OperationGenerateText, Capability: CapabilityText, Model: "m", Provider: "default", Status: StatusPending, StartedAt: time.Now()}
+	if err := store.Record(ctx, rec); err != nil {
+		t.Fatal(err)
+	}
+	rec.Status, rec.Provider = StatusSucceeded, "winner"
+	if err := store.UpdateResult(ctx, rec); err != nil {
+		t.Fatal(err)
+	}
+	// 晚到的 pending 和重复终态都不能把已经确认的赢家改回默认实例。
+	for _, status := range []string{StatusPending, StatusSucceeded} {
+		rec.Status, rec.Provider = status, "default"
+		if err := store.UpdateResult(ctx, rec); err != nil {
+			t.Fatal(err)
+		}
+	}
+	row, err := store.client.ModelCall.Get(ctx, rec.CallID)
+	if err != nil || row.Provider != "winner" || row.Status != StatusSucceeded {
+		t.Fatalf("winner not retained: row=%v err=%v", row, err)
+	}
+}
+
 func TestPostgresConcurrentFirstWritesKeepOneRow(t *testing.T) {
 	store := openLedgerStore(t)
 	ctx := context.Background()

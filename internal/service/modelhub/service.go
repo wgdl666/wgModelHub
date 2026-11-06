@@ -183,7 +183,12 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 	// 文本能力已路由成功：真实供应商调用前计一次 request。
 	llmmetric.RecordRequest(ctx, labels)
 	defer func() {
-		labels.Outcome = llmmetric.MapOutcome(retErr)
+		outcomeErr := retErr
+		// gRPC 的流关闭定时器可能先把 ctx 标成 Canceled；按实际截止时间识别超时，不能排除出成功率分母。
+		if deadline, ok := ctx.Deadline(); retErr != nil && ok && !time.Now().Before(deadline) {
+			outcomeErr = context.DeadlineExceeded
+		}
+		labels.Outcome = llmmetric.MapOutcome(outcomeErr)
 		llmmetric.RecordTerminal(ctx, labels, time.Since(metricStarted))
 	}()
 
@@ -197,10 +202,10 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 			if event == nil || event.GetFinal() {
 				return nil
 			}
-			// 竞速在首字出现时才知道赢家；指标和账本从这一刻改记赢家，不再记 default。
+			// 账本保留真实赢家；逻辑调用指标始终归属路由入口，与 request 使用同一标签。
+			// 否则同供应商的 race 分支会拆成不同成功率，且请求数与终态数无法对应。
 			if raced, ok := binding.set.Text.(*raceText); ok {
 				if winner := raced.winner(); winner != "" {
-					labels.Provider = winner
 					rec.Provider = winner
 				}
 			}

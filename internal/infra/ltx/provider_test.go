@@ -385,8 +385,8 @@ func TestSubmitVideoUsesModelKeyJSONContract(t *testing.T) {
 	var submittedKey string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		payload, images := decodeGatewayRequest(t, r)
-		if r.URL.Path != "/v1/gateway/requests/"+models.VWorldOutfitVideo10 {
-			t.Fatalf("path=%s", r.URL.Path)
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/gateway/requests/"+models.VWorldOutfitVideo10 {
+			t.Fatalf("request=%s %s", r.Method, r.URL.Path)
 		}
 		for _, field := range []string{"model", "resolution", "duration", "fps", "seed", "audio", "inference_profile"} {
 			if _, exists := payload.Input[field]; exists {
