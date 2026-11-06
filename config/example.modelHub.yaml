@@ -273,14 +273,13 @@ providers:
       api_key: "${FLUX2_KLEIN_API_KEY}"
       base_url: https://uu847021-9507-702f766a.bjb2.seetacloud.com:8443/flux2/v1
   # 薇光点亮公网 FLUX：拆衣服 Vmind_wardrobe_v1.0、虚拟换衣 Vmind_outfit_v1.0、体模 Vmind_bodymodel_v1.0。
-  # 体模走 /v1/images/body_model，提示词和 1024x1536 由上游固定，与拆衣服/换衣不能共用请求字段。
-  # Basic Auth；不要写内网 10.200.* 或本机 127.0.0.1，也不要并入上方 SeeTacloud FLUX.2 实例。
+  # 调用方只提交带版本的模型标识和业务输入；操作与后端路径由网关解析。
+  # Bearer 使用网关凭据；不要并入上方 SeeTacloud FLUX.2 实例。
   wgdl_image:
     models: [Vmind_wardrobe_v1.0, Vmind_outfit_v1.0, Vmind_bodymodel_v1.0]
     vworld_image:
       base_url: https://vmind-image.model.wgdl.tech
-      username: wgdl
-      password: "${VWORLD_IMAGE_PASSWORD}"
+      token: "${VMIND_GATEWAY_TOKEN}"
   # Photoroom Remove Background：官方 POST /v1/segment；models 常量仅作路由，不发上游。
   # proxy_url 未配置时保持原有默认 HTTP transport 行为；CN 等需经出口代理访问官方 SDK 时再填（与 Gemini 同语义，属连接资源，变更须重启）。
   Photoroom:
@@ -413,12 +412,12 @@ providers:
     rekognition_library:
       region: us-east-2
       collection: wg-face-identity-us
-  # 穿搭视频对外 ID 是 Vmind_outfit_video_v1.0；LTX /vton 的 multipart model 仍写 ltx。
+  # 穿搭视频只通过带版本的模型标识提交到网关，不传后端路径或额外版本。
   wgdl_video:
     models: [Vmind_outfit_video_v1.0]
     ltx:
       base_url: https://ltx.example
-      token: "${LTX_TOKEN}"
+      token: "${VMIND_GATEWAY_TOKEN}"
       duration: 4
       fps: 24
       seed: 42

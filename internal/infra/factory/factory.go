@@ -424,7 +424,7 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 			// 闭包按供应商名读当前配置。只换 base_url 时下一次生图走新地址，不必滚动重启。
 			providerName := name
 			fallback := cfg.BaseURL
-			client, err = vworldimage.NewResolving(name, cfg.Username, cfg.Password, func() string {
+			client, err = vworldimage.NewResolving(name, cfg.Token, func() string {
 				current, ok := live.Load().Providers[providerName]
 				if !ok || current.VWorldImage == nil {
 					return fallback
@@ -432,7 +432,7 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 				return current.VWorldImage.BaseURL
 			})
 		} else {
-			client, err = vworldimage.New(name, cfg.BaseURL, cfg.Username, cfg.Password)
+			client, err = vworldimage.New(name, cfg.BaseURL, cfg.Token)
 		}
 		if err != nil {
 			return provider.Set{}, err

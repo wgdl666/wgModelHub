@@ -78,9 +78,8 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 				Project string `yaml:"project"`
 			} `yaml:"vertexai"`
 			VWorldImage *struct {
-				BaseURL  string `yaml:"base_url"`
-				Username string `yaml:"username"`
-				Password string `yaml:"password"`
+				BaseURL string `yaml:"base_url"`
+				Token   string `yaml:"token"`
 			} `yaml:"vworld_image"`
 		} `yaml:"providers"`
 		ModelRoutes map[string]ModelRoute `yaml:"model_routes"`
@@ -197,7 +196,7 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 		t.Fatalf("flux2 openai.base_url=%v, want SeeTacloud flux2/v1", flux2.OpenAI)
 	}
 
-	// 薇光点亮公网 FLUX 必须独立实例；密码只允许环境变量占位，禁止写内网调试口。
+	// 薇光点亮公网 FLUX 必须独立实例；网关凭据只允许环境变量占位，禁止写内网调试口。
 	vworld, ok := parsed.Providers["wgdl_image"]
 	if !ok {
 		t.Fatal("missing provider wgdl_image")
@@ -207,8 +206,7 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 	}
 	if vworld.VWorldImage == nil ||
 		vworld.VWorldImage.BaseURL != "https://vmind-image.model.wgdl.tech" ||
-		vworld.VWorldImage.Username != "wgdl" ||
-		vworld.VWorldImage.Password != "${VWORLD_IMAGE_PASSWORD}" {
+		vworld.VWorldImage.Token != "${VMIND_GATEWAY_TOKEN}" {
 		t.Fatalf("wgdl_image config=%#v", vworld.VWorldImage)
 	}
 	if strings.Contains(vworld.VWorldImage.BaseURL, "10.200.") || strings.Contains(vworld.VWorldImage.BaseURL, "127.0.0.1") {

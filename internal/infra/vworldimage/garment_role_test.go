@@ -17,14 +17,9 @@ func TestRegistrationForwardsExplicitRoleWithoutCrop(t *testing.T) {
 	calls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
-		if err := r.ParseMultipartForm(8 << 20); err != nil {
-			t.Fatal(err)
-		}
-		if r.FormValue("garment_name") != "Black Embellished Sandals" || r.FormValue("garment_role") != "shoes" || r.Form.Has("use_crop") {
-			t.Fatalf("fields: %#v", r.Form)
-		}
-		if r.Form.Has("prompt") || r.Form.Has("parse_mask") || r.Form.Has("parse_labels") {
-			t.Fatal("registration must retain server prompt and no parser crop")
+		payload, images := decodeGatewayRequest(t, r)
+		if payload.Input["garment_name"] != "Black Embellished Sandals" || payload.Input["garment_role"] != "shoes" || len(payload.Input) != 2 || len(images) != 1 {
+			t.Fatalf("unexpected business input: %#v", payload.Input)
 		}
 		json.NewEncoder(w).Encode(map[string]any{"data": []map[string]string{{"b64_json": base64.StdEncoding.EncodeToString(pngBytes(t))}}})
 	}))
@@ -54,13 +49,9 @@ func TestExplicitRolesPassThroughToModelService(t *testing.T) {
 			calls := 0
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				calls++
-				if err := r.ParseMultipartForm(8 << 20); err != nil {
-					t.Error(err)
-					w.WriteHeader(500)
-					return
-				}
-				if r.FormValue("garment_role") != tc.role {
-					t.Errorf("role=%q, want %q", r.FormValue("garment_role"), tc.role)
+				payload, _ := decodeGatewayRequest(t, r)
+				if payload.Input["garment_role"] != tc.role {
+					t.Errorf("role=%v, want %q", payload.Input["garment_role"], tc.role)
 				}
 				// Upstream owns validation, and the gateway propagates its error.
 				w.WriteHeader(http.StatusBadRequest)

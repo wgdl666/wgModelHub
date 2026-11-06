@@ -178,9 +178,8 @@ func TestBuildVWorldImageExposesImageOnly(t *testing.T) {
 			"vworld_flux_image": {
 				Models: []string{models.VWorldWardrobe10, models.VWorldOutfit10},
 				VWorldImage: &config.VWorldImageProviderConfig{
-					BaseURL:  "https://vmind-image.model.wgdl.tech",
-					Username: "wgdl",
-					Password: "secret",
+					BaseURL: "https://vmind-image.model.wgdl.tech",
+					Token:   "secret",
 				},
 			},
 		},

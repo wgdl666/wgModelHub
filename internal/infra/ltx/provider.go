@@ -5,13 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"mime/multipart"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
+	"github.com/wgdl666/wgModelHub/internal/infra/vmindgateway"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
 	"github.com/wgdl666/wgModelHub/protocol"
@@ -35,6 +36,9 @@ type Provider struct {
 func New(name, baseURL, token string, duration float64, fps, seed int, pollInterval float64) (*Provider, error) {
 	if strings.TrimSpace(baseURL) == "" {
 		return nil, provider.New(provider.ErrorConfiguration, name+" base_url is required")
+	}
+	if strings.TrimSpace(token) == "" {
+		return nil, provider.New(provider.ErrorConfiguration, name+" gateway token is required")
 	}
 	if duration <= 0 || fps <= 0 || pollInterval <= 0 {
 		return nil, provider.New(provider.ErrorConfiguration, name+" LTX timing configuration is incomplete")
@@ -72,7 +76,7 @@ func (p *Provider) SubmitVideo(ctx context.Context, model string, request *model
 	if err != nil {
 		return "", err
 	}
-	return p.submit(ctx, imageBytes, provider.JoinedText(request.GetInput()), motionTips)
+	return p.submit(ctx, imageBytes, firstFrame.GetMimeType(), provider.JoinedText(request.GetInput()), motionTips)
 }
 
 // videoMotionTips 只读取该模型认识的独立动作参数；缺省时保持旧调用行为。
@@ -96,12 +100,8 @@ func videoMotionTips(raw string) (string, error) {
 	return motionTips, nil
 }
 
-// GetVideo 单次查询 /jobs/{id}；done/error/进行中分别映射为 Succeeded/Failed/Running。
+// GetVideo 只查询网关四态任务；视频入队即返回，排队与处理都继续异步查询。
 func (p *Provider) GetVideo(ctx context.Context, model string, providerTaskID string) (provider.VideoJob, error) {
-	// 历史已受理视频保存旧 ID；只允许查询旧任务，不能因此重新开放旧 ID 提交。
-	if model == "VWorld_outfit_video_1.0" {
-		model = models.VWorldOutfitVideo10
-	}
 	// 更早的 ltx ID 已下线，仍拒绝进入供应商查询。
 	if model != models.VWorldOutfitVideo10 {
 		return provider.VideoJob{}, provider.New(provider.ErrorInvalidArgument, "unsupported video model: "+model)
@@ -111,27 +111,25 @@ func (p *Provider) GetVideo(ctx context.Context, model string, providerTaskID st
 		return provider.VideoJob{}, err
 	}
 	pollMs := int32(p.pollInterval / time.Millisecond)
-	switch job["status"] {
-	case "done":
+	switch job["state"] {
+	case "succeeded":
 		return provider.VideoJob{State: provider.VideoJobSucceeded, PollAfterMs: pollMs}, nil
-	case "error", "cancelled", "interrupted":
+	case "failed":
 		// 三方错误正文可能包含输入片段，只保留稳定分类，不写入 gRPC status 或遥测。
 		return provider.VideoJob{
 			State:       provider.VideoJobFailed,
 			PollAfterMs: pollMs,
 			Err:         provider.Errorf(provider.ErrorUnavailable, "%s job failed", p.name),
 		}, nil
-	default:
+	case "queued", "processing":
 		return provider.VideoJob{State: provider.VideoJobRunning, PollAfterMs: pollMs}, nil
+	default:
+		return provider.VideoJob{}, provider.New(provider.ErrorInvalidResponse, p.name+" returned an invalid task state")
 	}
 }
 
-// ReadVideoResult 解析 job 内 video_url 并带鉴权流式下载，按 1MiB 分块 emit。
+// ReadVideoResult 读取网关成功结果的 result.video_url，带鉴权流式下载并按 1MiB 分块 emit。
 func (p *Provider) ReadVideoResult(ctx context.Context, model string, providerTaskID string, emit provider.EmitEvent) error {
-	// 历史成片仍需按原 task_id 下载；保持持久任务字段和幂等哈希不变。
-	if model == "VWorld_outfit_video_1.0" {
-		model = models.VWorldOutfitVideo10
-	}
 	// 结果读取遵守当前模型目录，避免绕过旧模型停用边界。
 	if model != models.VWorldOutfitVideo10 {
 		return provider.New(provider.ErrorInvalidArgument, "unsupported video model: "+model)
@@ -210,36 +208,28 @@ func (p *Provider) loadFirstFrame(ctx context.Context, media *modelhubv2.Media) 
 	}
 }
 
-func (p *Provider) submit(ctx context.Context, imageBytes []byte, prompt, motionTips string) (string, error) {
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
-	imagePart, err := writer.CreateFormFile("image", "first_frame.png")
-	if err != nil {
-		return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "create multipart image", err)
+func (p *Provider) submit(ctx context.Context, imageBytes []byte, mimeType, prompt, motionTips string) (string, error) {
+	// 提交和限流重试共用 120 秒，成片下载继续受调用方上下文管理。
+	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
+	defer cancel()
+	endpoint := "/v1/gateway/requests/" + models.VWorldOutfitVideo10
+	input := map[string]any{
+		"prompt": prompt,
+		"images": []vmindgateway.Image{{MIMEType: mimeType, Data: imageBytes}},
 	}
-	if _, err := imagePart.Write(imageBytes); err != nil {
-		return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "write multipart image", err)
-	}
-	endpoint := "/v2/videos/vton"
-	fields := map[string]string{"prompt": prompt}
-	// 新建任务统一走 v2，模型和推理规格由上游固定，不再发送旧 LTX 参数。
 	if motionTips != "" {
-		fields["motion_tips"] = motionTips
+		input["motion_tips"] = motionTips
 	}
-	// 穿搭视频和生图一样：上游只认表单参数，不认 traceparent。轮询和下载不带这个字段。
-	if traceID := telemetry.TraceID(ctx); traceID != "" {
-		fields["trace_id"] = traceID
+	// 追踪信息独立于业务输入，不参与模型操作选择或幂等输入比较。
+	payload, err := json.Marshal(vmindgateway.Request{
+		Input:    input,
+		Metadata: vmindgateway.Metadata{TraceID: telemetry.TraceID(ctx)},
+	})
+	if err != nil {
+		return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "encode gateway input", err)
 	}
-	for name, value := range fields {
-		if err := writer.WriteField(name, value); err != nil {
-			return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "write multipart field", err)
-		}
-	}
-	if err := writer.Close(); err != nil {
-		return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "close multipart body", err)
-	}
-	contentType := writer.FormDataContentType()
-	payload := append([]byte(nil), body.Bytes()...)
+	// 同一次受理的限流重试保持身份，网关已入队时也只能取得原任务。
+	idempotencyKey := uuid.NewString()
 	for attempt := 1; attempt <= 3; attempt++ {
 		if err := ctx.Err(); err != nil {
 			return "", err
@@ -248,8 +238,9 @@ func (p *Provider) submit(ctx context.Context, imageBytes []byte, prompt, motion
 		if err != nil {
 			return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "create submit request", err)
 		}
-		request.Header.Set("Content-Type", contentType)
+		request.Header.Set("Content-Type", "application/json")
 		p.setToken(request)
+		request.Header.Set("Idempotency-Key", idempotencyKey)
 		response, err := p.client.Do(request)
 		if err != nil {
 			if ctx.Err() != nil {
@@ -257,25 +248,29 @@ func (p *Provider) submit(ctx context.Context, imageBytes []byte, prompt, motion
 			}
 			return "", provider.Wrap(provider.ErrorUnavailable, p.name+" submit failed", err)
 		}
-		if response.StatusCode >= 200 && response.StatusCode < 300 {
+		if response.StatusCode == http.StatusAccepted {
 			var result struct {
-				JobID string `json:"job_id"`
+				IdempotencyKey string `json:"idempotency_key"`
 			}
 			decodeErr := json.NewDecoder(response.Body).Decode(&result)
 			response.Body.Close()
 			if decodeErr != nil {
 				return "", provider.Wrap(provider.ErrorInvalidResponse, p.name+" decode submit response", decodeErr)
 			}
-			if result.JobID == "" {
-				return "", provider.New(provider.ErrorInvalidResponse, p.name+" submit returned no job_id")
+			if result.IdempotencyKey != idempotencyKey {
+				return "", provider.New(provider.ErrorInvalidResponse, p.name+" submit returned a different idempotency_key")
 			}
-			return result.JobID, nil
+			// 持久化原提交幂等 ID 供后续查询，不使用网关或后端另发的任务 ID。
+			return idempotencyKey, nil
+		}
+		if response.StatusCode >= 200 && response.StatusCode < 300 {
+			response.Body.Close()
+			return "", provider.New(provider.ErrorInvalidResponse, p.name+" submit must return 202 Accepted")
 		}
 		raw, _ := io.ReadAll(io.LimitReader(response.Body, 2048))
 		response.Body.Close()
-		// 404/429 明确未受理可重试；5xx 可能已受理，禁止自动重提。
-		retryable := response.StatusCode == http.StatusNotFound ||
-			response.StatusCode == http.StatusTooManyRequests
+		// 新网关只有队列满的 429 可在同一身份下重试；未知模型和执行结果不明都直接返回。
+		retryable := response.StatusCode == http.StatusTooManyRequests
 		if !retryable || attempt == 3 {
 			return "", provider.FromHTTPDetail(p.name, response.StatusCode, string(raw))
 		}
@@ -290,14 +285,15 @@ func (p *Provider) submit(ctx context.Context, imageBytes []byte, prompt, motion
 	return "", provider.New(provider.ErrorUnavailable, p.name+" submit exhausted retry budget")
 }
 
-// getJob 单次 GET /jobs/{id}，供 GetVideo 与 ReadVideoResult 共用，不在此层 sleep 轮询。
-func (p *Provider) getJob(ctx context.Context, jobID string) (map[string]any, error) {
+// getJob 单次查询网关任务账本，供状态查询与成片读取共用，不在此层 sleep 轮询。
+func (p *Provider) getJob(ctx context.Context, idempotencyKey string) (map[string]any, error) {
 	// 轮询发生在 Submit 成功之后，create poll 失败不得标整次生成为 NotAttempted。
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, p.baseURL+"/jobs/"+jobID, nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, p.baseURL+"/v1/gateway/requests", nil)
 	if err != nil {
 		return nil, provider.Wrap(provider.ErrorInvalidArgument, "create poll request", err)
 	}
 	p.setToken(request)
+	request.Header.Set("Idempotency-Key", idempotencyKey)
 	response, err := p.client.Do(request)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -321,7 +317,11 @@ func (p *Provider) getJob(ctx context.Context, jobID string) (map[string]any, er
 }
 
 func (p *Provider) videoURLFromJob(job map[string]any) (string, error) {
-	target, _ := job["video_url"].(string)
+	if job["state"] != "succeeded" {
+		return "", provider.New(provider.ErrorInvalidResponse, p.name+" video result is not ready")
+	}
+	result, _ := job["result"].(map[string]any)
+	target, _ := result["video_url"].(string)
 	if target == "" {
 		return "", provider.New(provider.ErrorInvalidResponse, p.name+" job returned no video_url")
 	}
@@ -333,7 +333,7 @@ func (p *Provider) videoURLFromJob(job map[string]any) (string, error) {
 
 func (p *Provider) setToken(request *http.Request) {
 	if p.token != "" {
-		request.Header.Set("X-Token", p.token)
+		request.Header.Set("Authorization", "Bearer "+p.token)
 	}
 }
 

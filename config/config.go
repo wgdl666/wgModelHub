@@ -304,12 +304,10 @@ type LensCorrectionProviderConfig struct {
 	BaseURL string `yaml:"base_url"`
 }
 
-// VWorldImageProviderConfig 承接薇光点亮公网生图入口。
-// 密码只来自受保护配置/环境变量；不要写内网 10.200.* 或本机 127.0.0.1 调试口。
+// VWorldImageProviderConfig 只连接持久任务网关，后端路径与模型服务凭据由网关持有。
 type VWorldImageProviderConfig struct {
-	BaseURL  string `yaml:"base_url"`
-	Username string `yaml:"username"`
-	Password string `yaml:"password"`
+	BaseURL string `yaml:"base_url"`
+	Token   string `yaml:"token"`
 }
 
 // HumanYOLOProviderConfig 是自建检测服务的地址和 Basic Auth。阈值在供应商代码里，不进 YAML。
@@ -940,6 +938,7 @@ func validateProvider(name string, provider ProviderConfig) error {
 	case provider.LTX != nil:
 		ltx := provider.LTX
 		if strings.TrimSpace(ltx.BaseURL) == "" ||
+			strings.TrimSpace(ltx.Token) == "" ||
 			ltx.Duration <= 0 ||
 			ltx.FPS <= 0 ||
 			ltx.PollInterval <= 0 {
@@ -1018,8 +1017,8 @@ func validateProvider(name string, provider ProviderConfig) error {
 		}
 	case provider.VWorldImage != nil:
 		vworld := provider.VWorldImage
-		if strings.TrimSpace(vworld.BaseURL) == "" || strings.TrimSpace(vworld.Username) == "" || strings.TrimSpace(vworld.Password) == "" {
-			return fmt.Errorf("provider %s vworld_image base_url, username and password are required", name)
+		if strings.TrimSpace(vworld.BaseURL) == "" || strings.TrimSpace(vworld.Token) == "" {
+			return fmt.Errorf("provider %s vworld_image base_url and gateway token are required", name)
 		}
 	case provider.HumanYOLO != nil:
 		yolo := provider.HumanYOLO
