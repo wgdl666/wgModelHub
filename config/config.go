@@ -362,6 +362,10 @@ type RekognitionCompareProviderConfig struct {
 type DashScopeEmbeddingProviderConfig struct {
 	BaseURL string `yaml:"base_url"`
 	APIKey  string `yaml:"api_key"`
+	// 百炼单次 HTTP 与整个 ModelHub RPC 的容量分别限制。
+	MaxBatchSize        int `yaml:"max_batch_size,omitempty"`
+	MaxRequestTexts     int `yaml:"max_request_texts,omitempty"`
+	MaxRequestTextBytes int `yaml:"max_request_text_bytes,omitempty"`
 }
 
 type CohereEmbeddingProviderConfig struct {
@@ -1068,6 +1072,9 @@ func validateProvider(name string, provider ProviderConfig) error {
 		item := provider.DashScopeEmbedding
 		if strings.TrimSpace(item.BaseURL) == "" || strings.TrimSpace(item.APIKey) == "" {
 			return fmt.Errorf("provider %s dashscope embedding base_url and api_key are required", name)
+		}
+		if err := item.ValidateExecutionLimits(); err != nil {
+			return fmt.Errorf("provider %s: %w", name, err)
 		}
 	case provider.CohereEmbedding != nil:
 		item := provider.CohereEmbedding

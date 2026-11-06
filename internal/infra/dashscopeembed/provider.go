@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wgdl666/kangaroo/logs"
+	"github.com/wgdl666/wgModelHub/config"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
@@ -29,12 +31,20 @@ type Provider struct {
 	client   httpDoer
 	endpoint string
 	apiKey   string
+	limits   config.DashScopeEmbeddingProviderConfig
 }
 
-func New(name, baseURL, apiKey string) (*Provider, error) {
+func New(name string, cfg *config.DashScopeEmbeddingProviderConfig) (*Provider, error) {
+	if cfg == nil {
+		return nil, provider.New(provider.ErrorConfiguration, "dashscope embedding config is required")
+	}
+	limits := cfg.Resolved()
+	if err := limits.ValidateExecutionLimits(); err != nil {
+		return nil, provider.Wrap(provider.ErrorConfiguration, "dashscope embedding execution limits", err)
+	}
 	name = strings.TrimSpace(name)
-	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
-	apiKey = strings.TrimSpace(apiKey)
+	baseURL := strings.TrimRight(strings.TrimSpace(limits.BaseURL), "/")
+	apiKey := strings.TrimSpace(limits.APIKey)
 	if name == "" || baseURL == "" || apiKey == "" {
 		return nil, provider.New(provider.ErrorConfiguration, "dashscope embedding requires base_url and api_key")
 	}
@@ -43,6 +53,7 @@ func New(name, baseURL, apiKey string) (*Provider, error) {
 		client:   telemetry.NewTimedHTTPClient(20 * time.Second),
 		endpoint: baseURL + "/services/embeddings/multimodal-embedding/multimodal-embedding",
 		apiKey:   apiKey,
+		limits:   limits,
 	}, nil
 }
 
@@ -50,20 +61,66 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 	if model != models.Qwen3VLEmbedding {
 		return nil, provider.Errorf(provider.ErrorInvalidArgument, "dashscope embedding does not serve model %q", model)
 	}
+	texts, err := provider.EmbeddingBatchTexts(request.GetInput(), p.limits.MaxRequestTexts, p.limits.MaxRequestTextBytes)
+	if err != nil {
+		return nil, err
+	}
+	if texts != nil {
+		return p.embedBatch(ctx, model, texts)
+	}
 	content, err := embedContent(request)
 	if err != nil {
 		return nil, err
 	}
-	payload := map[string]any{
-		"model":      model,
-		"input":      map[string]any{"contents": []map[string]string{content}},
-		"parameters": map[string]any{"dimension": vectorDim, "output_type": "dense"},
-	}
-	vector, err := p.post(ctx, payload)
+	rows, err := p.post(ctx, model, []map[string]string{content}, false)
 	if err != nil {
 		return nil, err
 	}
-	return embeddingEvent(vector)
+	if len(rows) == 0 || len(rows[0].Embedding) != vectorDim {
+		return nil, provider.New(provider.ErrorInvalidResponse, "dashscope embedding must return 1024 floats")
+	}
+	return embeddingEvent("embedding", rows[0].Embedding)
+}
+
+func (p *Provider) embedBatch(ctx context.Context, model string, texts []string) (*modelhubv2.GenerateEvent, error) {
+	ctx, span := logs.StartSpan(ctx, "dashscope.embedding.batch_request")
+	defer span.End()
+	batchSize := p.limits.MaxBatchSize
+	span.SetInt("embedding.text_count", len(texts))
+	span.SetInt("embedding.batch_count", (len(texts)+batchSize-1)/batchSize)
+
+	vectors := make([][]float64, len(texts))
+	for start := 0; start < len(texts); start += batchSize {
+		if err := ctx.Err(); err != nil {
+			if start == 0 {
+				return nil, provider.WrapNotAttempted(provider.ErrorTimeout, "dashscope embedding canceled before request", err)
+			}
+			return nil, provider.Wrap(provider.ErrorTimeout, "dashscope embedding canceled between batches", err)
+		}
+		end := min(start+batchSize, len(texts))
+		contents := make([]map[string]string, 0, end-start)
+		for _, text := range texts[start:end] {
+			contents = append(contents, map[string]string{"text": text})
+		}
+		rows, err := p.post(ctx, model, contents, true)
+		if err != nil {
+			return nil, err
+		}
+		if len(rows) != len(contents) {
+			return nil, provider.Errorf(provider.ErrorInvalidResponse, "dashscope embedding count is %d, want %d", len(rows), len(contents))
+		}
+		// 百炼的 index 是当前分片的位置，不能依赖响应数组顺序。
+		for _, row := range rows {
+			if row.Index == nil || *row.Index < 0 || *row.Index >= len(contents) || vectors[start+*row.Index] != nil {
+				return nil, provider.New(provider.ErrorInvalidResponse, "dashscope embedding returned an invalid or duplicate index")
+			}
+			if len(row.Embedding) != vectorDim {
+				return nil, provider.Errorf(provider.ErrorInvalidResponse, "dashscope embedding dimension is %d, want %d", len(row.Embedding), vectorDim)
+			}
+			vectors[start+*row.Index] = row.Embedding
+		}
+	}
+	return embeddingEvent("embeddings", vectors)
 }
 
 func (p *Provider) GenerateStream(ctx context.Context, model string, request *modelhubv2.GenerateRequest, emit provider.EmitEvent) (*modelhubv2.GenerateEvent, error) {
@@ -93,7 +150,21 @@ func embedContent(request *modelhubv2.GenerateRequest) (map[string]string, error
 	return map[string]string{"text": text}, nil
 }
 
-func (p *Provider) post(ctx context.Context, payload any) ([]float64, error) {
+type embeddingRow struct {
+	Index     *int      `json:"index"`
+	Embedding []float64 `json:"embedding"`
+}
+
+func (p *Provider) post(ctx context.Context, model string, contents []map[string]string, batch bool) ([]embeddingRow, error) {
+	parameters := map[string]any{"dimension": vectorDim, "output_type": "dense"}
+	if batch {
+		parameters["enable_fusion"] = false
+	}
+	payload := map[string]any{
+		"model":      model,
+		"input":      map[string]any{"contents": contents},
+		"parameters": parameters,
+	}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" encode embedding", err)
@@ -118,9 +189,7 @@ func (p *Provider) post(ctx context.Context, payload any) ([]float64, error) {
 	}
 	var decoded struct {
 		Output *struct {
-			Embeddings []struct {
-				Embedding []float64 `json:"embedding"`
-			} `json:"embeddings"`
+			Embeddings []embeddingRow `json:"embeddings"`
 		} `json:"output"`
 		Code    string `json:"code"`
 		Message string `json:"message"`
@@ -131,8 +200,8 @@ func (p *Provider) post(ctx context.Context, payload any) ([]float64, error) {
 	if decoded.Code != "" {
 		return nil, provider.Errorf(provider.ErrorUnavailable, "%s embedding %s", p.name, decoded.Code)
 	}
-	if decoded.Output == nil || len(decoded.Output.Embeddings) == 0 || len(decoded.Output.Embeddings[0].Embedding) != vectorDim {
-		return nil, provider.New(provider.ErrorInvalidResponse, "dashscope embedding must return 1024 floats")
+	if decoded.Output == nil {
+		return nil, provider.New(provider.ErrorInvalidResponse, "dashscope embedding response has no output")
 	}
-	return decoded.Output.Embeddings[0].Embedding, nil
+	return decoded.Output.Embeddings, nil
 }

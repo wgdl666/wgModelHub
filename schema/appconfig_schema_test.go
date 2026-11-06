@@ -99,6 +99,19 @@ func TestAppConfigSchemaContract(t *testing.T) {
 		}
 	}
 
+	batchSizeLimits := map[string]float64{"dashscopeEmbedding": 20, "cohereEmbedding": 96}
+	for definitionName, maxBatchSize := range batchSizeLimits {
+		properties := mustMap(t, mustMap(t, definitions[definitionName])["properties"])
+		for field, max := range map[string]float64{
+			"max_batch_size": maxBatchSize, "max_request_texts": 1024, "max_request_text_bytes": 4 << 20,
+		} {
+			property := mustMap(t, properties[field])
+			if property["type"] != "integer" || property["minimum"] != float64(0) || property["maximum"] != max {
+				t.Errorf("%s.%s has unexpected limits: %v", definitionName, field, property)
+			}
+		}
+	}
+
 	for _, definitionName := range []string{
 		"gemini", "vertexai", "ark", "openai", "ltx", "dashscopeVideo",
 		"ominilinkVideo", "geminiVideo", "arkVideo", "photoroom", "segmentPerson", "vworldImage",
@@ -119,6 +132,12 @@ func TestAppConfigSchemaContract(t *testing.T) {
 					t.Errorf("openai.no_auth must be boolean")
 				}
 				continue
+			}
+			if _, ok := batchSizeLimits[definitionName]; ok {
+				switch field {
+				case "max_batch_size", "max_request_texts", "max_request_text_bytes":
+					continue
+				}
 			}
 			if property["type"] != "string" {
 				t.Errorf("%s.%s type=%v, want string", definitionName, field, property["type"])
