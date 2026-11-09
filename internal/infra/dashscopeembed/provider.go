@@ -5,6 +5,7 @@ package dashscopeembed
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -41,9 +42,25 @@ func New(name, baseURL, apiKey string, timeout time.Duration) (*Provider, error)
 	if timeout <= 0 {
 		return nil, provider.New(provider.ErrorConfiguration, "dashscope embedding HTTP timeout must be positive")
 	}
+	// Large inline-image uploads to DashScope's HTTP/2 ingress stall from
+	// the US runtime. Isolate HTTP/1.1 here; other providers keep their pool.
+	base := http.DefaultTransport
+	if standard, ok := base.(*http.Transport); ok {
+		transport := standard.Clone()
+		transport.Protocols = new(http.Protocols)
+		transport.Protocols.SetHTTP1(true)
+		transport.ForceAttemptHTTP2 = false
+		transport.TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{}
+		if transport.TLSClientConfig != nil {
+			transport.TLSClientConfig.NextProtos = []string{"http/1.1"}
+		}
+		base = transport
+	}
+	client := telemetry.NewHTTPClientWithTransport(base)
+	client.Timeout = timeout
 	return &Provider{
 		name:     name,
-		client:   telemetry.NewTimedHTTPClient(timeout),
+		client:   client,
 		endpoint: baseURL + "/services/embeddings/multimodal-embedding/multimodal-embedding",
 		apiKey:   apiKey,
 	}, nil
