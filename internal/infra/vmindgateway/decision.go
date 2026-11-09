@@ -80,9 +80,22 @@ func (c *Client) predict(ctx context.Context, input *modelhubv2.Input) (string, 
 		return "", provider.NotAttemptedf(provider.ErrorInvalidArgument, "Decision requires a preset task or a custom prompt with optional options")
 	}
 
+	// Decision 在推理前校验文件扩展名，按图片内容生成文件名，避免依赖调用方填写的 MIME。
+	var filename string
+	switch http.DetectContentType(image) {
+	case "image/jpeg":
+		filename = "image.jpg"
+	case "image/png":
+		filename = "image.png"
+	case "image/webp":
+		filename = "image.webp"
+	default:
+		return "", provider.NotAttemptedf(provider.ErrorInvalidArgument, "Decision requires a JPEG, PNG or WebP image")
+	}
+
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
-	file, err := writer.CreateFormFile("image", "image")
+	file, err := writer.CreateFormFile("image", filename)
 	if err != nil {
 		return "", provider.WrapNotAttempted(provider.ErrorUnavailable, "build Decision image field", err)
 	}

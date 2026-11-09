@@ -31,6 +31,7 @@ func newTestService(cfg config.Config, providers map[string]provider.Set, tasks 
 }
 
 func TestVMindModelsUseModelGatewayAfterModelListReload(t *testing.T) {
+	decisionPNG := []byte("\x89PNG\r\n\x1a\n")
 	const decisionResult = `{"prediction":{"label":"标准商品图","probability":0.8},"options":[],"timings_ms":{"total":2}}`
 	t.Setenv("MODEL_GATEWAY_API_TOKEN", "test-gateway-token")
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -40,7 +41,7 @@ func TestVMindModelsUseModelGatewayAfterModelListReload(t *testing.T) {
 			return
 		}
 		if r.URL.Path == "/v1/decision/predict" {
-			image, _, err := r.FormFile("image")
+			image, header, err := r.FormFile("image")
 			if err != nil {
 				t.Error(err)
 				w.WriteHeader(http.StatusBadRequest)
@@ -48,8 +49,9 @@ func TestVMindModelsUseModelGatewayAfterModelListReload(t *testing.T) {
 			}
 			defer image.Close()
 			raw, err := io.ReadAll(image)
-			if err != nil || !bytes.Equal(raw, []byte{1, 2, 3}) || r.FormValue("task") != "image_type" || r.FormValue("prompt") != "" {
-				t.Error("Decision must receive the inline image and preset task as multipart fields")
+			if err != nil || header.Filename != "image.png" || !bytes.Equal(raw, decisionPNG) ||
+				r.FormValue("task") != "image_type" || r.FormValue("prompt") != "" {
+				t.Error("Decision must receive the PNG with its required file extension and preset task")
 				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
@@ -137,7 +139,11 @@ func TestVMindModelsUseModelGatewayAfterModelListReload(t *testing.T) {
 
 	decision := textRequest(models.VMindDecisionV1, "")
 	decision.Input.ModelTraits = `{"task":"image_type"}`
-	decision.Input.Items[0].GetMessage().Parts = message.Parts[1:]
+	decision.Input.Items[0].GetMessage().Parts = []*modelhubv2.ContentPart{{
+		Content: &modelhubv2.ContentPart_Image{Image: &modelhubv2.Media{
+			MimeType: "image/png", Source: &modelhubv2.Media_Data{Data: decisionPNG},
+		}},
+	}}
 	stream = &generateRecorder{ctx: ctx}
 	if err := service.Generate(decision, stream); err != nil {
 		t.Fatal(err)
