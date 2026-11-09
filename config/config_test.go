@@ -236,7 +236,7 @@ func TestProviderSupportsSegmentPersonImageOnly(t *testing.T) {
 }
 
 func TestProviderSupportsVWorldImageOnly(t *testing.T) {
-	vworld := ProviderConfig{VWorldImage: &VWorldImageProviderConfig{BaseURL: "https://vmind-image.model.wgdl.tech", Token: "secret"}}
+	vworld := ProviderConfig{VWorldImage: &VWorldImageProviderConfig{BaseURL: "https://vmind-image.model.wgdl.tech", Username: "wgdl", Password: "secret"}}
 	if !ProviderSupports(vworld, CapabilityImage) {
 		t.Fatal("vworld_image should support image")
 	}
@@ -249,10 +249,10 @@ func TestValidateRejectsVWorldImageWithoutPassword(t *testing.T) {
 	cfg := validConfig()
 	cfg.Providers["vworld_flux_image"] = ProviderConfig{
 		Models:      []string{models.VWorldWardrobe10},
-		VWorldImage: &VWorldImageProviderConfig{BaseURL: "https://vmind-image.model.wgdl.tech"},
+		VWorldImage: &VWorldImageProviderConfig{BaseURL: "https://vmind-image.model.wgdl.tech", Username: "wgdl"},
 	}
-	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "token") {
-		t.Fatalf("expected token error, got %v", err)
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "password") {
+		t.Fatalf("expected password error, got %v", err)
 	}
 }
 

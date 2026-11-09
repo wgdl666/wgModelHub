@@ -239,8 +239,9 @@ func TestLiveConfigAppliesVWorldBaseURL(t *testing.T) {
 	initial.Providers["vworld_flux_image"] = ProviderConfig{
 		Models: []string{models.VWorldWardrobe10},
 		VWorldImage: &VWorldImageProviderConfig{
-			BaseURL: "https://vmind-image.model.wgdl.tech",
-			Token:   "secret",
+			BaseURL:  "https://vmind-image.model.wgdl.tech",
+			Username: "wgdl",
+			Password: "secret",
 		},
 	}
 	if err := initial.Validate(); err != nil {
@@ -260,7 +261,7 @@ func TestLiveConfigAppliesVWorldBaseURL(t *testing.T) {
 	}
 	lc.ApplyYAML(mustYAML(t, next))
 	got := lc.Load().Providers["vworld_flux_image"].VWorldImage
-	if got == nil || got.BaseURL != "http://172.31.43.7:18280" || got.Token != "secret" {
+	if got == nil || got.BaseURL != "http://172.31.43.7:18280" || got.Password != "secret" {
 		t.Fatalf("applied vworld=%#v", got)
 	}
 }
@@ -270,8 +271,9 @@ func TestLiveConfigRejectsVWorldCredentialChange(t *testing.T) {
 	initial.Providers["vworld_flux_image"] = ProviderConfig{
 		Models: []string{models.VWorldWardrobe10},
 		VWorldImage: &VWorldImageProviderConfig{
-			BaseURL: "https://vmind-image.model.wgdl.tech",
-			Token:   "secret",
+			BaseURL:  "https://vmind-image.model.wgdl.tech",
+			Username: "wgdl",
+			Password: "secret",
 		},
 	}
 	if err := initial.Validate(); err != nil {
@@ -281,7 +283,7 @@ func TestLiveConfigRejectsVWorldCredentialChange(t *testing.T) {
 	next := cloneConfig(initial)
 	vworld := next.Providers["vworld_flux_image"]
 	copied := *vworld.VWorldImage
-	copied.Token = "changed"
+	copied.Password = "changed"
 	vworld.VWorldImage = &copied
 	next.Providers["vworld_flux_image"] = vworld
 
@@ -289,8 +291,8 @@ func TestLiveConfigRejectsVWorldCredentialChange(t *testing.T) {
 		t.Fatalf("fields=%v", fields)
 	}
 	lc.ApplyYAML(mustYAML(t, next))
-	if lc.Load().Providers["vworld_flux_image"].VWorldImage.Token != "secret" {
-		t.Fatal("credential change must keep previous token")
+	if lc.Load().Providers["vworld_flux_image"].VWorldImage.Password != "secret" {
+		t.Fatal("credential change must keep previous password")
 	}
 }
 

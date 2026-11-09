@@ -13,24 +13,11 @@ import (
 	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
-	"github.com/wgdl666/wgModelHub/internal/infra/vmindgateway"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
 	"github.com/wgdl666/wgModelHub/protocol"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
-
-// 网关只确认调用方幂等身份，不再分配或返回另一个视频任务 ID。
-func acceptGatewayRequest(t *testing.T, w http.ResponseWriter, r *http.Request) string {
-	t.Helper()
-	key := r.Header.Get("Idempotency-Key")
-	if key == "" {
-		t.Error("missing idempotency key")
-	}
-	w.WriteHeader(http.StatusAccepted)
-	_ = json.NewEncoder(w).Encode(map[string]string{"idempotency_key": key, "state": "queued"})
-	return key
-}
 
 // submitGetRead 仅测试复用：走正式 Submit→Get→ReadResult；无 deadline 时加 5s 上限，避免无界轮询。
 func submitGetRead(ctx context.Context, p provider.VideoProvider, model string, request *modelhubv2.GenerateRequest, emit provider.EmitEvent) error {
@@ -72,26 +59,17 @@ func submitGetRead(ctx context.Context, p provider.VideoProvider, model string, 
 	}
 }
 
-func TestProviderRetriesRateLimitedSubmitWithSameIdentity(t *testing.T) {
+func TestProviderRetriesSubmitOn404(t *testing.T) {
 	var submitCalls atomic.Int32
-	var firstKey string
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.URL.Path != "/v1/gateway/requests/"+models.VWorldOutfitVideo10 {
+		if request.URL.Path != "/vton" {
 			t.Fatalf("unexpected path %s", request.URL.Path)
 		}
-		if request.URL.RawQuery != "" || request.Header.Get("Authorization") != "Bearer token" {
-			t.Error("expected authenticated model-key-only request")
-		}
-		key := request.Header.Get("Idempotency-Key")
-		if key == "" || (firstKey != "" && firstKey != key) {
-			t.Error("idempotency key changed during submit retry")
-		}
-		firstKey = key
 		if submitCalls.Add(1) == 1 {
-			http.Error(writer, "queue full", http.StatusTooManyRequests)
+			http.Error(writer, "temporary", http.StatusNotFound)
 			return
 		}
-		acceptGatewayRequest(t, writer, request)
+		_ = json.NewEncoder(writer).Encode(map[string]string{"job_id": "job-1"})
 	}))
 	defer server.Close()
 
@@ -101,11 +79,11 @@ func TestProviderRetriesRateLimitedSubmitWithSameIdentity(t *testing.T) {
 	}
 	provider.client = server.Client()
 
-	jobID, err := provider.submit(context.Background(), []byte("png"), "image/png", "prompt", "")
+	jobID, err := provider.submit(context.Background(), []byte("png"), "prompt", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if submitCalls.Load() != 2 || jobID != firstKey {
+	if submitCalls.Load() != 2 || jobID != "job-1" {
 		t.Fatalf("calls=%d job=%s", submitCalls.Load(), jobID)
 	}
 }
@@ -123,7 +101,7 @@ func TestProviderDoesNotRetrySubmitOn5xx(t *testing.T) {
 		t.Fatal(err)
 	}
 	p.client = server.Client()
-	_, err = p.submit(context.Background(), []byte("png"), "image/png", "prompt", "")
+	_, err = p.submit(context.Background(), []byte("png"), "prompt", "")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -137,21 +115,19 @@ func TestGetVideoStatusMapping(t *testing.T) {
 		status string
 		want   provider.VideoJobState
 	}{
-		{"succeeded", provider.VideoJobSucceeded},
-		{"failed", provider.VideoJobFailed},
-		{"queued", provider.VideoJobRunning},
+		{"done", provider.VideoJobSucceeded},
+		{"error", provider.VideoJobFailed},
+		{"cancelled", provider.VideoJobFailed},
+		{"interrupted", provider.VideoJobFailed},
 		{"processing", provider.VideoJobRunning},
 	}
 	for _, tc := range tests {
 		t.Run(tc.status, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path != "/v1/gateway/requests" || r.URL.RawQuery != "" || r.Header.Get("Idempotency-Key") != "job-1" {
-					t.Error("lookup must use only the original idempotency key")
-				}
-				_ = json.NewEncoder(w).Encode(map[string]string{"state": tc.status})
+				_ = json.NewEncoder(w).Encode(map[string]string{"status": tc.status})
 			}))
 			defer server.Close()
-			p, err := New("ltx", server.URL, "token", 4, 24, 42, 0.001)
+			p, err := New("ltx", server.URL, "", 4, 24, 42, 0.001)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -167,22 +143,14 @@ func TestGetVideoStatusMapping(t *testing.T) {
 	}
 }
 
-func TestGetVideoRejectsLegacyState(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]string{"status": "done"})
-	}))
-	defer server.Close()
-	p, _ := New("ltx", server.URL, "token", 4, 24, 42, 1)
-	if _, err := p.GetVideo(context.Background(), models.VWorldOutfitVideo10, "key"); err == nil {
-		t.Fatal("legacy status accepted")
-	}
-}
-
 func TestReadVideoResultResolvesRelativeVideoURL(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
-		case "/v1/gateway/requests":
-			_ = json.NewEncoder(writer).Encode(map[string]any{"state": "succeeded", "result": map[string]string{"video_url": "/assets/result.mp4"}})
+		case "/jobs/job-1":
+			_ = json.NewEncoder(writer).Encode(map[string]string{
+				"status":    "done",
+				"video_url": "/assets/result.mp4",
+			})
 		case "/assets/result.mp4":
 			_, _ = writer.Write([]byte("video-bytes"))
 		default:
@@ -191,7 +159,7 @@ func TestReadVideoResultResolvesRelativeVideoURL(t *testing.T) {
 	}))
 	defer server.Close()
 
-	p, err := New("ltx", server.URL, "token", 4, 24, 42, 0.001)
+	p, err := New("ltx", server.URL, "", 4, 24, 42, 0.001)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,8 +184,11 @@ func TestReadVideoResultRejectsOversizedVideo(t *testing.T) {
 	var serverURL string
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
-		case "/v1/gateway/requests":
-			_ = json.NewEncoder(writer).Encode(map[string]any{"state": "succeeded", "result": map[string]string{"video_url": serverURL + "/big.mp4"}})
+		case "/jobs/job-1":
+			_ = json.NewEncoder(writer).Encode(map[string]string{
+				"status":    "done",
+				"video_url": serverURL + "/big.mp4",
+			})
 		case "/big.mp4":
 			_, _ = writer.Write(make([]byte, protocol.MaxVideoBytes+1))
 		default:
@@ -227,7 +198,7 @@ func TestReadVideoResultRejectsOversizedVideo(t *testing.T) {
 	defer server.Close()
 	serverURL = server.URL
 
-	p, err := New("ltx", server.URL, "token", 4, 24, 42, 0.001)
+	p, err := New("ltx", server.URL, "", 4, 24, 42, 0.001)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,8 +214,11 @@ func TestReadVideoResultAcceptsExactlyMaxVideoSize(t *testing.T) {
 	var serverURL string
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
-		case "/v1/gateway/requests":
-			_ = json.NewEncoder(writer).Encode(map[string]any{"state": "succeeded", "result": map[string]string{"video_url": serverURL + "/exact.mp4"}})
+		case "/jobs/job-1":
+			_ = json.NewEncoder(writer).Encode(map[string]string{
+				"status":    "done",
+				"video_url": serverURL + "/exact.mp4",
+			})
 		case "/exact.mp4":
 			_, _ = writer.Write(make([]byte, protocol.MaxVideoBytes))
 		default:
@@ -254,7 +228,7 @@ func TestReadVideoResultAcceptsExactlyMaxVideoSize(t *testing.T) {
 	defer server.Close()
 	serverURL = server.URL
 
-	p, err := New("ltx", server.URL, "token", 4, 24, 42, 0.001)
+	p, err := New("ltx", server.URL, "", 4, 24, 42, 0.001)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,17 +258,17 @@ func TestSubmitReadsRequestBodyOnEachRetry(t *testing.T) {
 			http.Error(writer, "retry", http.StatusTooManyRequests)
 			return
 		}
-		acceptGatewayRequest(t, writer, request)
+		_ = json.NewEncoder(writer).Encode(map[string]string{"job_id": "job-2"})
 	}))
 	defer server.Close()
 
-	p, err := New("ltx", server.URL, "token", 4, 24, 42, 0.001)
+	p, err := New("ltx", server.URL, "", 4, 24, 42, 0.001)
 	if err != nil {
 		t.Fatal(err)
 	}
 	p.client = server.Client()
 
-	if _, err := p.submit(context.Background(), []byte("frame"), "image/png", "prompt", ""); err != nil {
+	if _, err := p.submit(context.Background(), []byte("frame"), "prompt", ""); err != nil {
 		t.Fatal(err)
 	}
 	if len(bodies) != 2 || bodies[0] == 0 || bodies[0] != bodies[1] {
@@ -306,8 +280,8 @@ func TestReadVideoResultRejectsEmptyBody(t *testing.T) {
 	var serverURL string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/v1/gateway/requests":
-			_ = json.NewEncoder(w).Encode(map[string]any{"state": "succeeded", "result": map[string]string{"video_url": serverURL + "/empty.mp4"}})
+		case "/jobs/job-1":
+			_ = json.NewEncoder(w).Encode(map[string]string{"status": "done", "video_url": serverURL + "/empty.mp4"})
 		case "/empty.mp4":
 			// zero bytes
 		}
@@ -315,7 +289,7 @@ func TestReadVideoResultRejectsEmptyBody(t *testing.T) {
 	defer server.Close()
 	serverURL = server.URL
 
-	p, _ := New("ltx", server.URL, "token", 4, 24, 42, 0.001)
+	p, _ := New("ltx", server.URL, "", 4, 24, 42, 0.001)
 	p.client = server.Client()
 	err := p.ReadVideoResult(context.Background(), models.VWorldOutfitVideo10, "job-1", nil)
 	if err == nil || !strings.Contains(err.Error(), "0 bytes") {
@@ -328,8 +302,8 @@ func TestReadVideoResultStreamsMultipleChunks(t *testing.T) {
 	var serverURL string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/v1/gateway/requests":
-			_ = json.NewEncoder(w).Encode(map[string]any{"state": "succeeded", "result": map[string]string{"video_url": serverURL + "/chunked.mp4"}})
+		case "/jobs/job-1":
+			_ = json.NewEncoder(w).Encode(map[string]string{"status": "done", "video_url": serverURL + "/chunked.mp4"})
 		case "/chunked.mp4":
 			_, _ = w.Write(payload)
 		}
@@ -337,7 +311,7 @@ func TestReadVideoResultStreamsMultipleChunks(t *testing.T) {
 	defer server.Close()
 	serverURL = server.URL
 
-	p, _ := New("ltx", server.URL, "token", 4, 24, 42, 0.001)
+	p, _ := New("ltx", server.URL, "", 4, 24, 42, 0.001)
 	p.client = server.Client()
 	var chunks int
 	err := p.ReadVideoResult(context.Background(), models.VWorldOutfitVideo10, "job-1", func(ev *modelhubv2.GenerateEvent) error {
@@ -360,7 +334,7 @@ func TestProviderRejectsLegacyModelBeforeHTTP(t *testing.T) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer server.Close()
-	p, err := New("wgdl_video", server.URL, "token", 4, 24, 42, 1)
+	p, err := New("wgdl_video", server.URL, "", 4, 24, 42, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -381,25 +355,26 @@ func TestProviderRejectsLegacyModelBeforeHTTP(t *testing.T) {
 	}
 }
 
-func TestSubmitVideoUsesModelKeyJSONContract(t *testing.T) {
-	var submittedKey string
+func TestSubmitVideoUsesVtonGatewayContract(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		payload, images := decodeGatewayRequest(t, r)
-		if r.Method != http.MethodPost || r.URL.Path != "/v1/gateway/requests/"+models.VWorldOutfitVideo10 {
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			t.Fatal(err)
+		}
+		if r.Method != http.MethodPost || r.URL.Path != "/vton" {
 			t.Fatalf("request=%s %s", r.Method, r.URL.Path)
 		}
 		for _, field := range []string{"model", "resolution", "duration", "fps", "seed", "audio", "inference_profile"} {
-			if _, exists := payload.Input[field]; exists {
+			if r.Form.Has(field) {
 				t.Errorf("unexpected inference field %s", field)
 			}
 		}
-		if len(images) != 1 || string(images[0].Data) != "png" {
+		if len(r.MultipartForm.File["image"]) != 1 {
 			t.Fatal("missing first frame")
 		}
-		submittedKey = acceptGatewayRequest(t, w, r)
+		w.Write([]byte(`{"job_id":"mapped"}`))
 	}))
 	defer server.Close()
-	p, err := New("ltx_video", server.URL, "token", 4, 24, 42, 1)
+	p, err := New("ltx_video", server.URL, "", 4, 24, 42, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -422,7 +397,7 @@ func TestSubmitVideoUsesModelKeyJSONContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if id != submittedKey {
+	if id != "mapped" {
 		t.Fatalf("job=%s", id)
 	}
 }
@@ -430,22 +405,28 @@ func TestSubmitVideoUsesModelKeyJSONContract(t *testing.T) {
 func TestSubmitSendsTraceIDOnlyWhenSpanIsValid(t *testing.T) {
 	var traces []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		payload, _ := decodeGatewayRequest(t, r)
-		traces = append(traces, payload.Metadata.TraceID)
-		acceptGatewayRequest(t, w, r)
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			t.Fatal(err)
+		}
+		if r.Form.Has("trace_id") {
+			traces = append(traces, r.FormValue("trace_id"))
+		} else {
+			traces = append(traces, "")
+		}
+		_, _ = w.Write([]byte(`{"job_id":"traced"}`))
 	}))
 	defer server.Close()
-	p, err := New("ltx", server.URL, "token", 4, 24, 42, 1)
+	p, err := New("ltx", server.URL, "", 4, 24, 42, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.submit(context.Background(), []byte("image"), "image/png", "prompt", ""); err != nil {
+	if _, err := p.submit(context.Background(), []byte("image"), "prompt", ""); err != nil {
 		t.Fatal(err)
 	}
 	tp := sdktrace.NewTracerProvider()
 	ctx, span := tp.Tracer("test").Start(context.Background(), "modelhub.SubmitVideo")
 	defer span.End()
-	if _, err := p.submit(ctx, []byte("image"), "image/png", "prompt", ""); err != nil {
+	if _, err := p.submit(ctx, []byte("image"), "prompt", ""); err != nil {
 		t.Fatal(err)
 	}
 	want := span.SpanContext().TraceID().String()
@@ -454,47 +435,41 @@ func TestSubmitSendsTraceIDOnlyWhenSpanIsValid(t *testing.T) {
 	}
 }
 
-// 新契约只接受规范模型标识，历史名称不再映射到新模型。
-func TestHistoricalModelIDIsRejected(t *testing.T) {
-	var calls atomic.Int32
+// 改名不能让已受理的视频失去结果读取能力，也不能在 provider 层重新开放旧 ID 提交。
+func TestHistoricalVWorldVideoCanStillBeRead(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls.Add(1)
-		w.WriteHeader(http.StatusInternalServerError)
+		if r.URL.Path == "/jobs/old-job" {
+			_ = json.NewEncoder(w).Encode(map[string]string{"status": "done", "video_url": "/result.mp4"})
+			return
+		}
+		if r.URL.Path == "/result.mp4" {
+			_, _ = w.Write([]byte("historical-video"))
+			return
+		}
+		t.Errorf("unexpected path %s", r.URL.Path)
 	}))
 	defer server.Close()
-	p, err := New("ltx", server.URL, "token", 4, 24, 42, 1)
+	p, err := New("ltx", server.URL, "", 4, 24, 42, 0.001)
 	if err != nil {
 		t.Fatal(err)
 	}
+	p.client = server.Client()
 	const old = "VWorld_outfit_video_1.0"
-	if _, err := p.GetVideo(context.Background(), old, "job"); err == nil {
-		t.Fatal("old model accepted by status lookup")
+	job, err := p.GetVideo(context.Background(), old, "old-job")
+	if err != nil || job.State != provider.VideoJobSucceeded {
+		t.Fatalf("job=%+v err=%v", job, err)
 	}
-	if err := p.ReadVideoResult(context.Background(), old, "job", nil); err == nil {
-		t.Fatal("old model accepted by download")
+	var data []byte
+	err = p.ReadVideoResult(context.Background(), old, "old-job", func(ev *modelhubv2.GenerateEvent) error {
+		for _, item := range ev.Items {
+			data = append(data, item.GetVideo().GetData()...)
+		}
+		return nil
+	})
+	if err != nil || string(data) != "historical-video" {
+		t.Fatalf("video=%q err=%v", data, err)
 	}
-	if calls.Load() != 0 {
-		t.Fatalf("old model reached backend: %d", calls.Load())
+	if _, err := p.SubmitVideo(context.Background(), old, &modelhubv2.GenerateRequest{}); err == nil {
+		t.Fatal("legacy submit accepted")
 	}
-}
-
-func decodeGatewayRequest(t *testing.T, r *http.Request) (vmindgateway.Request, []vmindgateway.Image) {
-	t.Helper()
-	if r.Header.Get("Content-Type") != "application/json" {
-		t.Fatalf("content-type=%s", r.Header.Get("Content-Type"))
-	}
-	var payload vmindgateway.Request
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		t.Fatal(err)
-	}
-	raw, err := json.Marshal(payload.Input["images"])
-	if err != nil {
-		t.Fatal(err)
-	}
-	var images []vmindgateway.Image
-	if err := json.Unmarshal(raw, &images); err != nil {
-		t.Fatal(err)
-	}
-	delete(payload.Input, "images")
-	return payload, images
 }
