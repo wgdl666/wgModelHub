@@ -17,7 +17,25 @@
       "type": "object",
       "additionalProperties": false,
       "patternProperties": {
-        "^\\S(?:.*\\S)?$": { "type": "string", "minLength": 1 }
+        "^\\S(?:.*\\S)?$": {
+          "oneOf": [
+            { "type": "string", "minLength": 1 },
+            {
+              "type": "object",
+              "required": ["default"],
+              "additionalProperties": false,
+              "properties": {
+                "default": { "type": "string", "minLength": 1 },
+                "race": {
+                  "type": "array",
+                  "minItems": 2,
+                  "uniqueItems": true,
+                  "items": { "type": "string", "minLength": 1 }
+                }
+              }
+            }
+          ]
+        }
       }
     },
     "logfire": { "$ref": "#/definitions/logfire" }
@@ -58,6 +76,7 @@
         "ark": { "$ref": "#/definitions/ark" },
         "openai": { "$ref": "#/definitions/openai" },
         "ltx": { "$ref": "#/definitions/ltx" },
+        "model_gateway": { "$ref": "#/definitions/modelGateway" },
         "dashscope_video": { "$ref": "#/definitions/dashscopeVideo" },
         "ominilink_video": { "$ref": "#/definitions/ominilinkVideo" },
         "gemini_video": { "$ref": "#/definitions/geminiVideo" },
@@ -104,6 +123,7 @@
         { "required": ["ark"] },
         { "required": ["openai"] },
         { "required": ["ltx"] },
+        { "required": ["model_gateway"] },
         { "required": ["dashscope_video"] },
         { "required": ["ominilink_video"] },
         { "required": ["gemini_video"] },
@@ -201,6 +221,25 @@
         "fps": { "type": "integer", "minimum": 0, "exclusiveMinimum": true },
         "seed": { "type": "integer" },
         "poll_interval": { "type": "number", "minimum": 0, "exclusiveMinimum": true }
+      }
+    },
+    "modelGateway": {
+      "type": "object",
+      "required": ["base_url", "poll_interval", "result_storage"],
+      "additionalProperties": false,
+      "properties": {
+        "base_url": { "type": "string", "pattern": "^https?://" },
+        "poll_interval": { "type": "number", "minimum": 0, "exclusiveMinimum": true },
+        "result_storage": {
+          "type": "object",
+          "required": ["provider", "region", "bucket"],
+          "additionalProperties": false,
+          "properties": {
+            "provider": { "enum": ["s3"] },
+            "region": { "type": "string", "minLength": 1 },
+            "bucket": { "type": "string", "minLength": 1 }
+          }
+        }
       }
     },
     "dashscopeVideo": {

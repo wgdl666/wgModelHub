@@ -66,7 +66,7 @@ func TestAppConfigSchemaContract(t *testing.T) {
 	wantKinds := map[string]bool{
 		"fashion": false, "image_seg": false,
 		"gemini": false, "vertexai": false, "ark": false, "openai": false,
-		"ltx": false, "dashscope_video": false, "ominilink_video": false,
+		"ltx": false, "model_gateway": false, "dashscope_video": false, "ominilink_video": false,
 		"gemini_video": false, "ark_video": false, "minimax_tts": false,
 		"elevenlabs_tts": false, "photoroom": false, "segment_person": false, "lens_distortion_correction": false,
 		"volcengine_asr": false, "aliyun_asr": false, "fun_asr": false, "qwen_asr": false,
@@ -97,6 +97,19 @@ func TestAppConfigSchemaContract(t *testing.T) {
 		if !found {
 			t.Errorf("provider kind %q missing from oneOf", kind)
 		}
+	}
+
+	// 路演 AppConfig 只配置路由和 S3 对象位置，调用凭据由 Secret 注入。
+	gatewayProperty := mustMap(t, mustMap(t, provider["properties"])["model_gateway"])
+	if gatewayProperty["$ref"] != "#/definitions/modelGateway" {
+		t.Fatal("model_gateway must use the gateway schema")
+	}
+	gateway := mustMap(t, definitions["modelGateway"])
+	assertStringSet(t, gateway["required"], "base_url", "poll_interval", "result_storage")
+	storage := mustMap(t, mustMap(t, gateway["properties"])["result_storage"])
+	assertStringSet(t, storage["required"], "provider", "region", "bucket")
+	if gateway["additionalProperties"] != false || storage["additionalProperties"] != false {
+		t.Fatal("model_gateway and result_storage must reject extra fields")
 	}
 
 	for _, definitionName := range []string{

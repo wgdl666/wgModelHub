@@ -1,14 +1,14 @@
 # VWorld image v2 forwarding
 
-## 国内 Go 网关
+## Go modelGateway
 
-为国内配置单独的 `vmind_gateway` 供应商实例，在 `model_routes` 选择该实例后，新请求使用 Go 网关。保留已受理视频记录引用的原供应商实例，确保查询仍按实际受理归属执行。供应商实例与对象存储配置随 ModelHub 启动加载。
+通过 `model_gateway` 配置独立的 Go 网关，在 `model_routes` 选择该实例后，新请求由网关执行。保留已受理视频记录引用的原供应商实例，确保查询仍按实际受理归属执行。供应商实例与对象存储配置随 ModelHub 启动加载。
 
 ```yaml
 providers:
   vmind_go_cn:
     models: [Vmind_wardrobe_v1.0, Vmind_cloth_gen_v1.0, Vmind_outfit_v1.0, Vmind_bodymodel_v1.0, Vmind_outfit_video_v1.0]
-    vmind_gateway:
+    model_gateway:
       base_url: http://model-gateway:18580
       poll_interval: 1
       result_storage:
@@ -24,7 +24,9 @@ model_routes:
   Vmind_outfit_video_v1.0: vmind_go_cn
 ```
 
-ACK Secret `model-gateway-modelhub` 注入 `api-token`、`oss-access-key-id` 和 `oss-access-key-secret`。图片同步读取已上传对象，视频以 ModelHub 任务 UUID 向网关提交和查询，再从同一配置的存储桶流式读取成品。
+国内 ACK 按上例配置，Secret `model-gateway-modelhub` 注入 `api-token`、`oss-access-key-id` 和 `oss-access-key-secret`。美东路演使用 AppConfig `modelhub/ppe_exhibition/config-ppe_exhibition`，`base_url` 指向 `http://model-gateway.tomirro.prod:18580`，`result_storage` 配置 `provider: s3`、`region: us-east-2` 和结果桶。ECS 从 Secret 注入 `MODEL_GATEWAY_API_TOKEN`，任务角色读取 S3 成品。
+
+图片同步读取已上传对象，视频以 ModelHub 任务 UUID 向网关提交和查询，再从同一配置的存储桶流式读取成品。
 
 ## VMind-Image 直连
 

@@ -59,7 +59,7 @@ type ProviderConfig struct {
 	Ark            *ArkProviderConfig            `yaml:"ark"`
 	OpenAI         *OpenAIProviderConfig         `yaml:"openai"`
 	LTX            *LTXProviderConfig            `yaml:"ltx"`
-	VMindGateway   *VMindGatewayProviderConfig   `yaml:"vmind_gateway"`
+	VMindGateway   *VMindGatewayProviderConfig   `yaml:"model_gateway"`
 	DashScopeVideo *DashScopeVideoProviderConfig `yaml:"dashscope_video"`
 	OminilinkVideo *OminilinkVideoProviderConfig `yaml:"ominilink_video"`
 	GeminiVideo    *GeminiVideoProviderConfig    `yaml:"gemini_video"`
@@ -555,7 +555,7 @@ func (c ObjectStorageConfig) Validate() error {
 	return nil
 }
 
-// VMindGatewayProviderConfig 显式选择 Go 网关，已有直连供应商的配置和任务归属各自独立。
+// VMindGatewayProviderConfig 通过 model_gateway 接入独立的 Go 服务，直连供应商保留自己的任务归属。
 type VMindGatewayProviderConfig struct {
 	BaseURL       string              `yaml:"base_url"`
 	Token         string              `yaml:"token"`
@@ -564,7 +564,7 @@ type VMindGatewayProviderConfig struct {
 }
 
 func (c VMindGatewayProviderConfig) APIToken() string {
-	// ACK 只把业务路由存入 Nacos，网关调用凭据由 ModelHub 的专用 Secret 注入。
+	// 配置中心保存业务路由，网关调用优先使用 ModelHub 专用 Secret 注入的凭据。
 	if token := strings.TrimSpace(os.Getenv("MODEL_GATEWAY_API_TOKEN")); token != "" {
 		return token
 	}
@@ -919,10 +919,10 @@ func validateProvider(name string, provider ProviderConfig) error {
 		gateway := provider.VMindGateway
 		if strings.TrimSpace(gateway.BaseURL) == "" || gateway.APIToken() == "" ||
 			gateway.PollInterval <= 0 || !gateway.ResultStorage.Enabled() {
-			return fmt.Errorf("provider %s vmind_gateway configuration is incomplete", name)
+			return fmt.Errorf("provider %s model_gateway configuration is incomplete", name)
 		}
 		if err := gateway.ResultStore().Validate(); err != nil {
-			return fmt.Errorf("provider %s vmind_gateway result_storage: %w", name, err)
+			return fmt.Errorf("provider %s model_gateway result_storage: %w", name, err)
 		}
 	case provider.Gemini != nil:
 		if strings.TrimSpace(provider.Gemini.APIKey) == "" {

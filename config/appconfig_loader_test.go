@@ -89,6 +89,46 @@ func TestAppConfigLoaderLoadsValidatedYAML(t *testing.T) {
 	}
 }
 
+func TestAppConfigLoaderUsesModelGatewayProvider(t *testing.T) {
+	// 路演配置只传地址与结果桶，网关调用凭据由 ECS Secret 注入。
+	t.Setenv("MODEL_GATEWAY_API_TOKEN", "test-gateway-token")
+	const body = `
+database:
+  dsn: postgres://modelhub@127.0.0.1:5432/modelhub
+logfire:
+  token: test-logfire-token
+providers:
+  gateway:
+    models: [Vmind_cloth_gen_v1.0, Vmind_outfit_video_v1.0]
+    model_gateway:
+      base_url: http://model-gateway:18580
+      poll_interval: 1
+      result_storage:
+        provider: s3
+        region: us-east-2
+        bucket: test-gateway-results
+`
+	stub := &appConfigAgentStub{}
+	stub.set("1", body)
+	loader := newTestAppConfigLoader(t, stub)
+	cfg, _, err := loader.Load(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	gateway := cfg.Providers["gateway"].VMindGateway
+	if gateway == nil || gateway.ResultStorage.Bucket != "test-gateway-results" {
+		t.Fatal("model_gateway must load the gateway and its result bucket")
+	}
+	if got := cfg.ModelRoutes()[models.VWorldClothGen10]; got != "gateway" {
+		t.Fatalf("cloth model route = %q, want gateway", got)
+	}
+
+	stub.set("2", strings.Replace(body, "model_gateway:", "vmind_gateway:", 1))
+	if _, _, err := loader.Load(context.Background()); err == nil {
+		t.Fatal("legacy vmind_gateway key must not load a provider")
+	}
+}
+
 func TestAppConfigLoaderRejectsInvalidResponses(t *testing.T) {
 	tests := []struct {
 		name    string
