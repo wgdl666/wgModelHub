@@ -1,6 +1,7 @@
 package modelhub
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -29,11 +30,34 @@ func newTestService(cfg config.Config, providers map[string]provider.Set, tasks 
 	return New(config.NewLiveConfig(cfg), providers, tasks)
 }
 
-func TestVMindDreamUsesModelGatewayAfterModelListReload(t *testing.T) {
+func TestVMindModelsUseModelGatewayAfterModelListReload(t *testing.T) {
+	const decisionResult = `{"prediction":{"label":"标准商品图","probability":0.8},"options":[],"timings_ms":{"total":2}}`
 	t.Setenv("MODEL_GATEWAY_API_TOKEN", "test-gateway-token")
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/v1/chat/completions" || r.Header.Get("Authorization") != "Bearer test-gateway-token" {
-			t.Error("VLM must use the gateway Chat Completions endpoint and injected token")
+		if r.Method != http.MethodPost || r.Header.Get("Authorization") != "Bearer test-gateway-token" {
+			t.Error("VMind calls must use the injected gateway token")
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if r.URL.Path == "/v1/decision/predict" {
+			image, _, err := r.FormFile("image")
+			if err != nil {
+				t.Error(err)
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			defer image.Close()
+			raw, err := io.ReadAll(image)
+			if err != nil || !bytes.Equal(raw, []byte{1, 2, 3}) || r.FormValue("task") != "image_type" || r.FormValue("prompt") != "" {
+				t.Error("Decision must receive the inline image and preset task as multipart fields")
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			_, _ = io.WriteString(w, decisionResult)
+			return
+		}
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Errorf("unexpected VMind gateway path %s", r.URL.Path)
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -77,16 +101,18 @@ func TestVMindDreamUsesModelGatewayAfterModelListReload(t *testing.T) {
 	if _, err := service.resolve(models.VMindDreamV1, config.CapabilityText); err == nil {
 		t.Fatal("VLM must require an explicit model registration")
 	}
-	mediaProvider.Models = []string{models.VWorldOutfit10, models.VWorldOutfitVideo10, models.VMindDreamV1}
+	mediaProvider.Models = []string{models.VWorldOutfit10, models.VWorldOutfitVideo10, models.VMindDreamV1, models.VMindDecisionV1}
 	cfg.Providers = map[string]config.ProviderConfig{instance: mediaProvider}
 	raw, err := yaml.Marshal(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	live.ApplyYAML(string(raw))
-	for _, capability := range []string{config.CapabilityImage, config.CapabilityVideo} {
-		if _, err := service.resolve(models.VMindDreamV1, capability); err == nil {
-			t.Fatalf("VLM must reject %s output", capability)
+	for _, model := range []string{models.VMindDreamV1, models.VMindDecisionV1} {
+		for _, capability := range []string{config.CapabilityImage, config.CapabilityVideo} {
+			if _, err := service.resolve(model, capability); err == nil {
+				t.Fatalf("%s must reject %s output", model, capability)
+			}
 		}
 	}
 	if _, err := service.resolve(models.VWorldOutfit10, config.CapabilityText); err == nil {
@@ -107,6 +133,18 @@ func TestVMindDreamUsesModelGatewayAfterModelListReload(t *testing.T) {
 	if len(stream.events) != 1 || !stream.events[0].GetFinal() ||
 		len(stream.events[0].GetItems()) != 1 || stream.events[0].GetItems()[0].GetText() != "Red" {
 		t.Fatal("ModelHub must return a single final text event for image understanding")
+	}
+
+	decision := textRequest(models.VMindDecisionV1, "")
+	decision.Input.ModelTraits = `{"task":"image_type"}`
+	decision.Input.Items[0].GetMessage().Parts = message.Parts[1:]
+	stream = &generateRecorder{ctx: ctx}
+	if err := service.Generate(decision, stream); err != nil {
+		t.Fatal(err)
+	}
+	if len(stream.events) != 1 || !stream.events[0].GetFinal() ||
+		len(stream.events[0].GetItems()) != 1 || stream.events[0].GetItems()[0].GetText() != decisionResult {
+		t.Fatal("ModelHub must return the native Decision prediction as a final text event")
 	}
 }
 

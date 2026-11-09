@@ -283,9 +283,9 @@ providers:
       base_url: https://vmind-image.model.wgdl.tech
       username: wgdl
       password: "${VWORLD_IMAGE_PASSWORD}"
-  # 美东路演的 VLM 复用 Go 网关入口，实际凭据由 MODEL_GATEWAY_API_TOKEN 注入。
+  # 美东路演的对话与图片预测复用 Go 网关入口，凭据由 MODEL_GATEWAY_API_TOKEN 注入。
   wgdl_model_gateway_exhibition:
-    models: [Vmind_dream_v1]
+    models: [Vmind_dream_v1, Vmind_decision_v1]
     model_gateway:
       base_url: http://model-gateway.tomirro.prod:18580
       token: "${MODEL_GATEWAY_API_TOKEN}"

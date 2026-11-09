@@ -115,13 +115,13 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 		if err != nil {
 			return provider.Set{}, err
 		}
-		// 对话复用网关的地址和凭据。启动时建好客户端，后续热更新模型列表即可开通路由。
+		// 对话和预测复用网关地址与凭据，热更新模型列表即可开通各自路由。
 		baseURL := strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/") + "/v1"
 		chat, err := openai.New(name, token, baseURL, "")
 		if err != nil {
 			return provider.Set{}, err
 		}
-		return provider.Set{Text: chat, Image: vworldimage.NewGateway(name, client), Video: ltx.NewGateway(name, client, cfg.PollInterval)}, nil
+		return provider.Set{Text: vmindgateway.NewText(client, chat), Image: vworldimage.NewGateway(name, client), Video: ltx.NewGateway(name, client, cfg.PollInterval)}, nil
 	case providerCfg.VolcengineASR != nil:
 		cfg := providerCfg.VolcengineASR
 		client, err := volcengineasr.New(volcengineasr.Config{AppKey: cfg.AppKey, AccessKey: cfg.AccessKey, APIKey: cfg.APIKey, ResourceID: cfg.ResourceID, URL: cfg.URL})

@@ -44,6 +44,7 @@ var categories = map[string]Category{
 	GPT61Sol:               CategoryMultimodal,
 	KimiK3:                 CategoryMultimodal,
 	VMindDreamV1:           CategoryMultimodal,
+	VMindDecisionV1:        CategoryMultimodal,
 	FashionEmbedding:       CategoryEmbedding,
 	FashionReranker:        CategoryRerank,
 	AliyunSegmentBody:      CategorySegment,
