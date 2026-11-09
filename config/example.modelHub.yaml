@@ -274,11 +274,11 @@ providers:
     openai:
       api_key: "${FLUX2_KLEIN_API_KEY}"
       base_url: https://uu847021-9507-702f766a.bjb2.seetacloud.com:8443/flux2/v1
-  # 薇光点亮公网 FLUX：拆衣服 Vmind_wardrobe_v1.0、虚拟换衣 Vmind_outfit_v1.0、体模 Vmind_bodymodel_v1.0。
+  # 薇光点亮公网 FLUX：人物拆衣和单件商品图分别使用独立的模型 ID。
   # 体模走 /v1/images/body_model，提示词和 1024x1536 由上游固定，与拆衣服/换衣不能共用请求字段。
   # Basic Auth；不要写内网 10.200.* 或本机 127.0.0.1，也不要并入上方 SeeTacloud FLUX.2 实例。
   wgdl_image:
-    models: [Vmind_wardrobe_v1.0, Vmind_outfit_v1.0, Vmind_bodymodel_v1.0]
+    models: [Vmind_wardrobe_v1.0, Vmind_cloth_gen_v1.0, Vmind_outfit_v1.0, Vmind_bodymodel_v1.0]
     vworld_image:
       base_url: https://vmind-image.model.wgdl.tech
       username: wgdl

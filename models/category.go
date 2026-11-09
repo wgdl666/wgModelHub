@@ -107,6 +107,7 @@ var categories = map[string]Category{
 	GPTImage26Sunburst:       CategoryImageGeneration,
 	Flux2Klein9B:             CategoryImageGeneration,
 	VWorldWardrobe10:         CategoryImageGeneration,
+	VWorldClothGen10:         CategoryImageGeneration,
 	VWorldOutfit10:           CategoryImageGeneration,
 	VWorldBodyModel10:        CategoryImageGeneration,
 	PhotoroomSegment:         CategorySegment,

@@ -31,7 +31,7 @@ const (
 	requestTimeout        = 900 * time.Second
 )
 
-// Provider 只实现 ImageProvider。两个模型共用同一个入口，靠路径与 LoRA 分流。
+// Provider 按模型 ID 选择图片操作；直连和 Go 网关使用相同的模型划分。
 type Provider struct {
 	name     string
 	baseURL  string
@@ -106,8 +106,8 @@ func (p *Provider) GenerateImage(ctx context.Context, model string, request *mod
 		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "generate request is required")
 	}
 	switch model {
-	case models.VWorldWardrobe10:
-		return p.generateGarmentExtraction(ctx, request)
+	case models.VWorldWardrobe10, models.VWorldClothGen10:
+		return p.generateWardrobe(ctx, model, request)
 	case models.VWorldOutfit10:
 		return p.generateVTON(ctx, request)
 	case models.VWorldBodyModel10:
@@ -117,10 +117,10 @@ func (p *Provider) GenerateImage(ctx context.Context, model string, request *mod
 	}
 }
 
-func (p *Provider) generateGarmentExtraction(ctx context.Context, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
+func (p *Provider) generateWardrobe(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
 	images := provider.ImageMedias(request.GetInput())
 	if len(images) < 1 || len(images) > 2 {
-		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "Vmind_wardrobe_v1.0 requires source image and optionally parser mask")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "wardrobe image requires a source image and optionally a parser mask")
 	}
 	source, mime, err := inlineImage(images[0])
 	if err != nil {
@@ -137,8 +137,11 @@ func (p *Provider) generateGarmentExtraction(ctx context.Context, request *model
 	}
 	uploads := []imageUpload{{data: source, mimeType: mime, filename: "source.png"}}
 	path := productGenerationPath
-	// Route by the supplied bbox or parser payload, without inferring roles or checking taxonomy.
-	if len(images) == 2 || meta.ParseLabels != nil || meta.BBox != nil {
+	// 模型 ID 已选定操作。输入不符时拒绝，避免拆衣请求误跑成商品图。
+	if model == models.VWorldWardrobe10 {
+		if len(images) == 1 && meta.BBox == nil && meta.ParseLabels == nil {
+			return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "garment extraction requires bbox or parser input")
+		}
 		path = garmentExtractionPath
 		if meta.BBox != nil {
 			// 坐标是否归一化、是否越界由上游按 bbox_format 判定；这里只原样转成 JSON 数组。
@@ -165,8 +168,10 @@ func (p *Provider) generateGarmentExtraction(ctx context.Context, request *model
 			}
 			uploads = append(uploads, imageUpload{field: "parse_mask", filename: "human_parse_labels.png", data: mask, mimeType: mime})
 		}
+	} else if len(images) != 1 || meta.ParseLabels != nil || meta.BBox != nil || meta.BBoxFormat != "" {
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "product generation requires one image and no extraction fields")
 	}
-	return p.generate(ctx, models.VWorldWardrobe10, path, fields, uploads)
+	return p.generate(ctx, model, path, fields, uploads)
 }
 
 func (p *Provider) generateVTON(ctx context.Context, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
@@ -362,7 +367,7 @@ type garmentMeta struct {
 	Name        string            `json:"garment_name"`
 	GarmentRole string            `json:"garment_role"`
 	ParseLabels map[string]string `json:"parse_labels"`
-	// BBox 是人物图上这件衣服的 [x1,y1,x2,y2]。给了 bbox 就走 garment_extraction，不需要解析标签图。
+	// BBox 给人物拆衣提供 [x1,y1,x2,y2]，可替代解析标签图。
 	BBox       []float64 `json:"bbox"`
 	BBoxFormat string    `json:"bbox_format"`
 }
@@ -371,7 +376,7 @@ type garmentMeta struct {
 func parseGarmentMeta(text string) (garmentMeta, error) {
 	var meta garmentMeta
 	if err := json.Unmarshal([]byte(text), &meta); err != nil {
-		return meta, provider.WrapNotAttempted(provider.ErrorInvalidArgument, "Vmind_wardrobe_v1.0 text part must be JSON metadata", err)
+		return meta, provider.WrapNotAttempted(provider.ErrorInvalidArgument, "wardrobe image text part must be JSON metadata", err)
 	}
 	return meta, nil
 }

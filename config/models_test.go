@@ -202,7 +202,8 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 	if !ok {
 		t.Fatal("missing provider wgdl_image")
 	}
-	if len(vworld.Models) != 3 || vworld.Models[0] != models.VWorldWardrobe10 || vworld.Models[1] != models.VWorldOutfit10 || vworld.Models[2] != models.VWorldBodyModel10 {
+	if len(vworld.Models) != 4 || vworld.Models[0] != models.VWorldWardrobe10 || vworld.Models[1] != models.VWorldClothGen10 ||
+		vworld.Models[2] != models.VWorldOutfit10 || vworld.Models[3] != models.VWorldBodyModel10 {
 		t.Fatalf("wgdl_image models=%v", vworld.Models)
 	}
 	if vworld.VWorldImage == nil ||

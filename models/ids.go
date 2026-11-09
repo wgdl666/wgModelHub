@@ -75,10 +75,10 @@ const (
 	// Flux2Klein9B 当前 SeeTacloud 部署只开放 image edit / 多图 i2i，不能当文生图用。
 	Flux2Klein9B = "FLUX.2-klein-9B"
 	// 薇光点亮对外模型 ID 统一用 Vmind 与版本后缀；Go 常量名保留，避免无关调用代码改名。
-	// VWorldWardrobe10 是薇光点亮拆衣服（garment_extraction + cloth_gen）。
-	// 与 SeeTacloud 的 Flux2Klein9B 分实例；上游兼容 model 字段仍写 FLUX.2-klein-9B，不能把本 ID 原样下发。
-	// OOTD 可再带一张与人物图同尺寸的人体解析标签图；录衣只有一张原图，不能补一张空标签图。
+	// VWorldWardrobe10 只做人物图拆衣。调用方提供衣物框或人体解析输入。
 	VWorldWardrobe10 = "Vmind_wardrobe_v1.0"
+	// VWorldClothGen10 只用单件原图生成商品图，防止共用模型键时按输入猜操作。
+	VWorldClothGen10 = "Vmind_cloth_gen_v1.0"
 	// VWorldOutfit10 是薇光点亮虚拟换衣（edits + vton）。尺寸固定 768x1024，禁止走 OpenAI 3:4 换算。
 	VWorldOutfit10 = "Vmind_outfit_v1.0"
 	// VWorldBodyModel10 是薇光点亮体模生图 POST /v1/images/body_model，LoRA 固定 body_model。
@@ -237,6 +237,7 @@ func All() []string {
 		GPTImage26Sunburst,
 		Flux2Klein9B,
 		VWorldWardrobe10,
+		VWorldClothGen10,
 		VWorldOutfit10,
 		VWorldBodyModel10,
 		PhotoroomSegment,
