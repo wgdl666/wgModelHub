@@ -351,6 +351,18 @@ func TestSameProtocolWithoutFamilyUsesHost(t *testing.T) {
 	}
 }
 
+func TestVMindGatewayChannelIncludesImageAndVideo(t *testing.T) {
+	cfg := config.ProviderConfig{
+		Models:       []string{models.VWorldOutfit10, models.VWorldOutfitVideo10},
+		VMindGateway: &config.VMindGatewayProviderConfig{BaseURL: "http://model-gateway:18580"},
+	}
+	// 启动时先发布渠道指标。统一供应商必须同时支持这两个模型族的归因。
+	id, err := Of(cfg)
+	if err != nil || id.Protocol != "vmind_gateway" || id.Host != "model-gateway" || id.Channel != channelWeiguang || id.instance != instanceWeiguangGateway {
+		t.Fatalf("identity=%+v err=%v", id, err)
+	}
+}
+
 func TestNewFamilyIDsUseWeiguangException(t *testing.T) {
 	// 同族新 ID 不在 models 常量里，仍按例外归薇光，并按协议落到对应实例键。
 	person := config.ProviderConfig{

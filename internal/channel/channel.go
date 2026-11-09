@@ -21,25 +21,26 @@ const (
 	vertexDefaultHost = "aiplatform.googleapis.com"
 
 	// 下列缺省主机与对应适配器的默认地址一致，只取主机名，路径不参与渠道。
-	openaiDefaultHost     = "api.openai.com"
-	arkDefaultHost        = "ark.cn-beijing.volces.com"
-	dashscopeDefaultHost  = "dashscope.aliyuncs.com"
-	ominilinkVideoHost    = "vg-api.aig-ai.com"
-	photoroomDefaultHost  = "sdk.photoroom.com"
-	elevenLabsDefaultHost = "api.elevenlabs.io"
-	minimaxDefaultHost    = "api.minimaxi.com"
-	volcengineDefaultHost = "openspeech.bytedance.com"
-	assemblyAIDefaultHost = "streaming.assemblyai.com"
-	deepgramDefaultHost   = "api.deepgram.com"
-	sonioxDefaultHost     = "stt-rt.soniox.com"
-	tencentDefaultHost    = "asr.cloud.tencent.com"
-	aliyunNLSDefaultHost  = "nls-gateway.cn-shanghai.aliyuncs.com"
-	maasBeijingSuffix     = ".cn-beijing.maas.aliyuncs.com"
-	channelWeiguang       = "薇光点亮"
-	instanceSegmentPerson = "wgdl_segment_person"
-	instanceWeiguangImage = "wgdl_image"
-	instanceWeiguangVideo = "wgdl_video"
-	instanceHumanParser   = "wgdl_human_parser"
+	openaiDefaultHost       = "api.openai.com"
+	arkDefaultHost          = "ark.cn-beijing.volces.com"
+	dashscopeDefaultHost    = "dashscope.aliyuncs.com"
+	ominilinkVideoHost      = "vg-api.aig-ai.com"
+	photoroomDefaultHost    = "sdk.photoroom.com"
+	elevenLabsDefaultHost   = "api.elevenlabs.io"
+	minimaxDefaultHost      = "api.minimaxi.com"
+	volcengineDefaultHost   = "openspeech.bytedance.com"
+	assemblyAIDefaultHost   = "streaming.assemblyai.com"
+	deepgramDefaultHost     = "api.deepgram.com"
+	sonioxDefaultHost       = "stt-rt.soniox.com"
+	tencentDefaultHost      = "asr.cloud.tencent.com"
+	aliyunNLSDefaultHost    = "nls-gateway.cn-shanghai.aliyuncs.com"
+	maasBeijingSuffix       = ".cn-beijing.maas.aliyuncs.com"
+	channelWeiguang         = "薇光点亮"
+	instanceSegmentPerson   = "wgdl_segment_person"
+	instanceWeiguangImage   = "wgdl_image"
+	instanceWeiguangVideo   = "wgdl_video"
+	instanceWeiguangGateway = "wgdl_gateway"
+	instanceHumanParser     = "wgdl_human_parser"
 )
 
 // Identity 是一个实例的渠道事实。Host 是模型 API 主机，不含端口、路径和代理。
@@ -272,6 +273,10 @@ func splitTokens(value string) []string {
 // Vmind 的解析、抠图和视频先按各自规则识别，其余归生图；旧 VWorld_* 仍用于历史归因。
 // 族确定之后，用协议选择 wgdl_segment_person、wgdl_image 或 wgdl_video。
 func weiguangInstance(provider config.ProviderConfig, protocol string) (string, error) {
+	// Go 网关统一承接图片和视频，渠道归薇光，实例名与直连供应商分开以保留观测口径。
+	if protocol == "vmind_gateway" {
+		return instanceWeiguangGateway, nil
+	}
 	kind, err := weiguangKind(provider.Models)
 	if err != nil || kind == "" {
 		return "", err
@@ -340,6 +345,8 @@ func endpoint(provider config.ProviderConfig) (protocol, raw string, err error) 
 		return "ark", firstNonEmpty(provider.Ark.BaseURL, "https://"+arkDefaultHost+"/api/v3"), nil
 	case provider.OpenAI != nil:
 		return "openai", firstNonEmpty(provider.OpenAI.BaseURL, "https://"+openaiDefaultHost+"/v1"), nil
+	case provider.VMindGateway != nil:
+		return "vmind_gateway", provider.VMindGateway.BaseURL, nil
 	case provider.LTX != nil:
 		if strings.TrimSpace(provider.LTX.BaseURL) == "" {
 			return "", "", fmt.Errorf("ltx base_url is required")
