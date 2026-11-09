@@ -69,6 +69,9 @@ const (
 	// 与 GPTImage2 一并绑 AIG OpenAI-compatible Images 实例（示例与审计目标键 AIG_openai，地址仍是 https://api.aig-ai.com/v1），不能并入 Gemini 生图。
 	GPTImage25Flare    = "gpt-image-2.5-flare"
 	GPTImage25Sunburst = "gpt-image-2.5-sunburst"
+	// GPT Image 2.6 与 2.5 共用 AIG Images 实例，各自按真实 ID 路由。
+	GPTImage26Flare    = "gpt-image-2.6-flare"
+	GPTImage26Sunburst = "gpt-image-2.6-sunburst"
 	// Flux2Klein9B 当前 SeeTacloud 部署只开放 image edit / 多图 i2i，不能当文生图用。
 	Flux2Klein9B = "FLUX.2-klein-9B"
 	// 薇光点亮对外模型 ID 统一用 Vmind 与版本后缀；Go 常量名保留，避免无关调用代码改名。
@@ -230,6 +233,8 @@ func All() []string {
 		GPTImage2,
 		GPTImage25Flare,
 		GPTImage25Sunburst,
+		GPTImage26Flare,
+		GPTImage26Sunburst,
 		Flux2Klein9B,
 		VWorldWardrobe10,
 		VWorldOutfit10,

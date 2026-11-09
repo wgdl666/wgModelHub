@@ -45,6 +45,8 @@ func TestCategoryOfKnownIDs(t *testing.T) {
 		{GPTImage2, CategoryImageGeneration},
 		{GPTImage25Flare, CategoryImageGeneration},
 		{GPTImage25Sunburst, CategoryImageGeneration},
+		{GPTImage26Flare, CategoryImageGeneration},
+		{GPTImage26Sunburst, CategoryImageGeneration},
 		{Flux2Klein9B, CategoryImageGeneration},
 		{VWorldWardrobe10, CategoryImageGeneration},
 		{VWorldOutfit10, CategoryImageGeneration},
