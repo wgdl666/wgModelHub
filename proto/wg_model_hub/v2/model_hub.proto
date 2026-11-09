@@ -266,6 +266,10 @@ message ImageOutput {
   optional string image_size = 3;
   optional double temperature = 4;
   ThinkingLevel thinking_level = 5;
+  // GPT Image 的渲染画质由上游解释，缺省时沿用模型默认值。
+  optional string quality = 6;
+  // GPT Image 2.6 的出图规划强度，由上游解释。
+  optional string complexity = 7;
 }
 
 message VideoOutput {

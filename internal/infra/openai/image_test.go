@@ -41,7 +41,7 @@ func imageRequest(prompt, ratio, size string, images ...*modelhubv2.Media) *mode
 }
 
 func TestBuildImageGenerationsBodyMapsRatioWithoutReference(t *testing.T) {
-	body := buildImageGenerationsBody(models.GPTImage2, "red apple", imageRequest("red apple", "3:4", "2K"))
+	body := buildImageRequestFields(models.GPTImage2, "red apple", imageRequest("red apple", "3:4", "2K").GetOutput().GetImage())
 	if body["model"] != models.GPTImage2 || body["prompt"] != "red apple" || body["n"] != 1 {
 		t.Fatalf("body=%#v", body)
 	}
@@ -57,16 +57,18 @@ func TestBuildImageGenerationsBodyMapsRatioWithoutReference(t *testing.T) {
 }
 
 func TestBuildImageGenerationsBodyPrefersPixelImageSize(t *testing.T) {
-	body := buildImageGenerationsBody(models.GPTImage2, "hi", imageRequest("hi", "3:4", "1024x1024"))
+	body := buildImageRequestFields(models.GPTImage2, "hi", imageRequest("hi", "3:4", "1024x1024").GetOutput().GetImage())
 	if body["size"] != "1024x1024" {
 		t.Fatalf("size=%#v", body["size"])
 	}
 }
 
-func TestBuildImageGenerationsBodyOmitsSizeWhenUnset(t *testing.T) {
-	body := buildImageGenerationsBody(models.GPTImage2, "hi", imageRequest("hi", "", ""))
-	if _, ok := body["size"]; ok {
-		t.Fatalf("size=%#v", body["size"])
+func TestBuildImageRequestFieldsOmitsUnsetOptions(t *testing.T) {
+	body := buildImageRequestFields(models.GPTImage26Flare, "hi", &modelhubv2.ImageOutput{})
+	for _, field := range []string{"size", "quality", "complexity"} {
+		if _, ok := body[field]; ok {
+			t.Fatalf("unset field %q sent in %#v", field, body)
+		}
 	}
 }
 
@@ -114,7 +116,7 @@ func TestGenerateImagePostsGenerationsJSON(t *testing.T) {
 				"b64_json":       base64.StdEncoding.EncodeToString([]byte(tinyPNG)),
 				"revised_prompt": "a red apple",
 			}},
-			"usage": map[string]int{"prompt_tokens": 8, "completion_tokens": 2, "total_tokens": 10},
+			"usage": map[string]int{"input_tokens": 20, "output_tokens": 7024, "total_tokens": 7044},
 		})
 	}))
 	defer server.Close()
@@ -145,8 +147,8 @@ func TestGenerateImagePostsGenerationsJSON(t *testing.T) {
 	if event.GetItems()[1].GetText() != "a red apple" {
 		t.Fatalf("text=%#v", event.GetItems()[1])
 	}
-	if event.GetUsage().GetTotalTokens() != 10 {
-		t.Fatalf("usage=%#v", event.GetUsage())
+	if usage := event.GetUsage(); usage.GetInputTokens() != 20 || usage.GetOutputTokens() != 7024 || usage.GetTotalTokens() != 7044 {
+		t.Fatalf("usage=%v", usage)
 	}
 }
 
@@ -197,7 +199,8 @@ func TestGenerateImageEditsWithInlineReference(t *testing.T) {
 			t.Fatalf("filename=%q", files[0].Filename)
 		}
 		_ = json.NewEncoder(writer).Encode(map[string]any{
-			"data": []map[string]string{{"b64_json": base64.StdEncoding.EncodeToString([]byte(tinyPNG))}},
+			"data":  []map[string]string{{"b64_json": base64.StdEncoding.EncodeToString([]byte(tinyPNG))}},
+			"usage": map[string]int{"input_tokens": 1058, "output_tokens": 824, "total_tokens": 1882},
 		})
 	}))
 	defer server.Close()
@@ -220,6 +223,9 @@ func TestGenerateImageEditsWithInlineReference(t *testing.T) {
 	image := event.GetItems()[0].GetImage()
 	if image == nil || string(image.GetData()) != tinyPNG {
 		t.Fatalf("image=%#v", image)
+	}
+	if usage := event.GetUsage(); usage.GetInputTokens() != 1058 || usage.GetOutputTokens() != 824 || usage.GetTotalTokens() != 1882 {
+		t.Fatalf("usage=%v", usage)
 	}
 }
 
@@ -683,7 +689,8 @@ func TestGenerateImageFlux2KleinEditsSingleReference(t *testing.T) {
 			t.Fatalf("data=%q", data)
 		}
 		_ = json.NewEncoder(writer).Encode(map[string]any{
-			"data": []map[string]string{{"b64_json": base64.StdEncoding.EncodeToString([]byte(tinyPNG))}},
+			"data":  []map[string]string{{"b64_json": base64.StdEncoding.EncodeToString([]byte(tinyPNG))}},
+			"usage": map[string]int{"prompt_tokens": 8, "completion_tokens": 2, "total_tokens": 10},
 		})
 	}))
 	defer server.Close()
@@ -706,6 +713,9 @@ func TestGenerateImageFlux2KleinEditsSingleReference(t *testing.T) {
 	image := event.GetItems()[0].GetImage()
 	if image == nil || string(image.GetData()) != tinyPNG {
 		t.Fatalf("image=%#v", image)
+	}
+	if usage := event.GetUsage(); usage.GetInputTokens() != 8 || usage.GetOutputTokens() != 2 || usage.GetTotalTokens() != 10 {
+		t.Fatalf("usage=%v", usage)
 	}
 }
 
@@ -787,9 +797,20 @@ func TestGenerateImageEditsGPTImage2OmitsResponseFormat(t *testing.T) {
 	}
 }
 
-// TestGenerateImageGPTImage25RoutesModelExact 锁定 2.5 flare/sunburst：文生图走 generations、参考图走 edits，精确透传 model，且不带 FLUX.2 的 response_format。
-func TestGenerateImageGPTImage25RoutesModelExact(t *testing.T) {
-	for _, model := range []string{models.GPTImage25Flare, models.GPTImage25Sunburst} {
+// 两种 HTTP 编码都必须保留调用方值；用上游自定义字符串检验 ModelHub 不拦截档位。
+func TestGenerateImageGPTImageForwardsOptions(t *testing.T) {
+	quality, complexity := "vendor-quality", "vendor-complexity"
+	for _, tc := range []struct {
+		model          string
+		wantComplexity string
+	}{
+		{model: models.GPTImage2},
+		{model: models.GPTImage25Flare},
+		{model: models.GPTImage25Sunburst},
+		{model: models.GPTImage26Flare, wantComplexity: complexity},
+		{model: models.GPTImage26Sunburst, wantComplexity: complexity},
+	} {
+		model := tc.model
 		t.Run(model+"/generations", func(t *testing.T) {
 			var captured map[string]any
 			var gotPath string
@@ -814,7 +835,10 @@ func TestGenerateImageGPTImage25RoutesModelExact(t *testing.T) {
 			}
 			p.client = server.Client()
 
-			event, err := p.GenerateImage(context.Background(), model, imageRequest("a blue square", "1:1", ""))
+			req := imageRequest("a blue square", "1:1", "")
+			req.GetOutput().GetImage().Quality = &quality
+			req.GetOutput().GetImage().Complexity = &complexity
+			event, err := p.GenerateImage(context.Background(), model, req)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -824,8 +848,15 @@ func TestGenerateImageGPTImage25RoutesModelExact(t *testing.T) {
 			if captured["model"] != model {
 				t.Fatalf("model=%#v, want %q", captured["model"], model)
 			}
+			if captured["quality"] != quality {
+				t.Fatalf("quality=%#v, want %q", captured["quality"], quality)
+			}
+			value, present := captured["complexity"]
+			if present != (tc.wantComplexity != "") || present && value != tc.wantComplexity {
+				t.Fatalf("complexity=%#v present=%t, want %q when set", value, present, tc.wantComplexity)
+			}
 			if _, ok := captured["response_format"]; ok {
-				t.Fatalf("gpt-image-2.5 must omit response_format: %#v", captured)
+				t.Fatalf("GPT Image must omit response_format: %#v", captured)
 			}
 			if image := event.GetItems()[0].GetImage(); image == nil || string(image.GetData()) != tinyPNG {
 				t.Fatalf("image=%#v", event.GetItems()[0])
@@ -835,6 +866,8 @@ func TestGenerateImageGPTImage25RoutesModelExact(t *testing.T) {
 		t.Run(model+"/edits", func(t *testing.T) {
 			var gotPath string
 			var gotModel string
+			var gotQuality string
+			var gotComplexity string
 			var gotResponseFormat string
 			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 				gotPath = request.URL.Path
@@ -842,6 +875,8 @@ func TestGenerateImageGPTImage25RoutesModelExact(t *testing.T) {
 					t.Fatal(err)
 				}
 				gotModel = request.FormValue("model")
+				gotQuality = request.FormValue("quality")
+				gotComplexity = request.FormValue("complexity")
 				gotResponseFormat = request.FormValue("response_format")
 				files := request.MultipartForm.File["image"]
 				if len(files) != 1 {
@@ -859,9 +894,12 @@ func TestGenerateImageGPTImage25RoutesModelExact(t *testing.T) {
 			}
 			p.client = server.Client()
 
-			event, err := p.GenerateImage(context.Background(), model, imageRequest("make warmer", "", "",
+			req := imageRequest("make warmer", "", "",
 				&modelhubv2.Media{MimeType: "image/png", Source: &modelhubv2.Media_Data{Data: []byte("ref")}},
-			))
+			)
+			req.GetOutput().GetImage().Quality = &quality
+			req.GetOutput().GetImage().Complexity = &complexity
+			event, err := p.GenerateImage(context.Background(), model, req)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -870,6 +908,9 @@ func TestGenerateImageGPTImage25RoutesModelExact(t *testing.T) {
 			}
 			if gotModel != model {
 				t.Fatalf("model=%q, want %q", gotModel, model)
+			}
+			if gotQuality != quality || gotComplexity != tc.wantComplexity {
+				t.Fatalf("quality=%q complexity=%q, want %q and %q", gotQuality, gotComplexity, quality, tc.wantComplexity)
 			}
 			if gotResponseFormat != "" {
 				t.Fatalf("response_format=%q, want empty", gotResponseFormat)

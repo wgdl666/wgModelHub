@@ -220,7 +220,10 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 	if !ok {
 		t.Fatal("missing provider AIG_openai")
 	}
-	wantGPTModels := []string{models.GPT56Sol, models.GPT56Luna, models.GPT56Terra, models.GPT6Astra, models.GPT6Sol, models.GPT6Luna, models.GPT61Sol, models.GPTImage2, models.GPTImage25Flare, models.GPTImage25Sunburst}
+	wantGPTModels := []string{
+		models.GPT56Sol, models.GPT56Luna, models.GPT56Terra, models.GPT6Astra, models.GPT6Sol, models.GPT6Luna, models.GPT61Sol,
+		models.GPTImage2, models.GPTImage25Flare, models.GPTImage25Sunburst, models.GPTImage26Flare, models.GPTImage26Sunburst,
+	}
 	if !slices.Equal(asyncGPT.Models, wantGPTModels) {
 		t.Fatalf("AIG_openai models=%v, want %v", asyncGPT.Models, wantGPTModels)
 	}

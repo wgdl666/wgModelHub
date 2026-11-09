@@ -34,7 +34,7 @@ var horizontalRatios = map[string]struct{}{
 
 // GenerateImage 按 Input 是否含参考图分流 OpenAI Images API：
 // 无参考图走 /v1/images/generations（JSON），有参考图走 /v1/images/edits（multipart）。
-// GPT Image 2 / 2.5 经 AIG OpenAI-compatible Images（实例键 AIG_openai，地址 https://api.aig-ai.com/v1）：不能复用 chat/completions，也不能挂到 Gemini generateContent 实例。
+// GPT Image 经 AIG OpenAI-compatible Images（实例键 AIG_openai，地址 https://api.aig-ai.com/v1）。
 // FLUX.2-klein-9B 当前供应商仅开放 i2i edits，无参考图必须在发 HTTP 前拒绝，且 edits 须显式 response_format=b64_json。
 func (p *Provider) GenerateImage(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
 	prompt := strings.TrimSpace(provider.JoinedText(request.GetInput()))
@@ -48,7 +48,7 @@ func (p *Provider) GenerateImage(ctx context.Context, model string, request *mod
 	var raw []byte
 	var err error
 	if len(refs) == 0 {
-		body := buildImageGenerationsBody(model, prompt, request)
+		body := buildImageRequestFields(model, prompt, request.GetOutput().GetImage())
 		raw, err = p.doJSON(ctx, p.imagesAPIURL("generations"), body)
 	} else {
 		raw, err = p.doImageEdits(ctx, model, prompt, request, refs)
@@ -73,15 +73,21 @@ func (p *Provider) imagesAPIURL(endpoint string) string {
 	return base + "/images/" + endpoint
 }
 
-func buildImageGenerationsBody(model, prompt string, request *modelhubv2.GenerateRequest) map[string]any {
+func buildImageRequestFields(model, prompt string, image *modelhubv2.ImageOutput) map[string]any {
 	body := map[string]any{
 		"model":  model,
 		"prompt": prompt,
 		"n":      1,
 	}
-	// GPT Image（含 2 / 2.5）沿标准 generations 请求，不下发 response_format；默认即可解析。
-	if size := imageSize(request.GetOutput().GetImage()); size != "" {
+	if size := imageSize(image); size != "" {
 		body["size"] = size
+	}
+	// 画质和规划强度由上游解释，保留显式取值；缺省时让模型使用自己的默认值。
+	if image != nil && strings.HasPrefix(model, "gpt-image-") && image.Quality != nil {
+		body["quality"] = image.GetQuality()
+	}
+	if image != nil && (model == models.GPTImage26Flare || model == models.GPTImage26Sunburst) && image.Complexity != nil {
+		body["complexity"] = image.GetComplexity()
 	}
 	return body
 }
@@ -202,23 +208,13 @@ func normalizedImageMIME(contentType string) string {
 func (p *Provider) doImageEdits(ctx context.Context, model, prompt string, request *modelhubv2.GenerateRequest, refs []*modelhubv2.Media) ([]byte, error) {
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
-	if err := writer.WriteField("model", model); err != nil {
-		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" build edits request failed", err)
-	}
-	if err := writer.WriteField("prompt", prompt); err != nil {
-		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" build edits request failed", err)
-	}
-	if err := writer.WriteField("n", "1"); err != nil {
-		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" build edits request failed", err)
-	}
-	// FLUX.2 worker 默认回 127.0.0.1 下载 URL，ModelHub 无法拉取；必须要求 b64_json。该字段仅 FLUX.2 私有兼容特例，不带给 gpt-image-2 / 2.5。
+	fields := buildImageRequestFields(model, prompt, request.GetOutput().GetImage())
+	// FLUX.2 worker 默认回本机下载 URL，ModelHub 无法拉取，因此要求 b64_json。
 	if model == models.Flux2Klein9B {
-		if err := writer.WriteField("response_format", "b64_json"); err != nil {
-			return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" build edits request failed", err)
-		}
+		fields["response_format"] = "b64_json"
 	}
-	if size := imageSize(request.GetOutput().GetImage()); size != "" {
-		if err := writer.WriteField("size", size); err != nil {
+	for name, value := range fields {
+		if err := writer.WriteField(name, fmt.Sprint(value)); err != nil {
 			return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" build edits request failed", err)
 		}
 	}
@@ -277,8 +273,15 @@ func (p *Provider) convertImageResponse(ctx context.Context, resp *imagesGenerat
 	if resp == nil {
 		return event, nil
 	}
-	if resp.Usage != nil {
-		event.Usage = convertUsage(resp.Usage)
+	if usage := resp.Usage; usage != nil {
+		event.Usage = convertUsage(&usage.apiUsage)
+		// Images 字段优先，保留显式零值，也兼容仍返回 Chat 字段名的图片渠道。
+		if usage.InputTokens != nil {
+			event.Usage.InputTokens = *usage.InputTokens
+		}
+		if usage.OutputTokens != nil {
+			event.Usage.OutputTokens = *usage.OutputTokens
+		}
 	}
 	for _, item := range resp.Data {
 		data, err := p.decodeImageItem(ctx, item)
@@ -403,7 +406,13 @@ func deref(value *string) string {
 
 type imagesGenerationResponse struct {
 	Data  []imagesGenerationItem `json:"data"`
-	Usage *apiUsage              `json:"usage,omitempty"`
+	Usage *imagesUsage           `json:"usage,omitempty"`
+}
+
+type imagesUsage struct {
+	apiUsage
+	InputTokens  *int64 `json:"input_tokens"`
+	OutputTokens *int64 `json:"output_tokens"`
 }
 
 type imagesGenerationItem struct {
