@@ -124,8 +124,8 @@ AWS 新加坡 dev 仅通过 VPC 内的 `modelhub.internal.dev:50053` 提供 gRPC
 调用方必须已连接 dev VPC/VPN，并且输出文件的父目录必须已存在。内部端口 `50053`
 不需要 authorization header。下面的命令默认超时为五分钟；如要替换已有输出文件，
 追加 `--force`。每次成功到达服务的调用都会产生一次供应商图片生成费用。
-`--model` 可选值为 `gpt-image-2`、`gpt-image-2.5-flare`、
-`gpt-image-2.5-sunburst`，省略时保持兼容并使用 `gpt-image-2`。
+`--model` 可选值为 `gpt-image-2`、`gpt-image-2.5-flare`、`gpt-image-2.5-sunburst`、
+`gpt-image-2.6-flare`、`gpt-image-2.6-sunburst`，默认使用 `gpt-image-2`。
 
 ```bash
 ./scripts/examples/gpt-image-2.sh \
@@ -235,7 +235,7 @@ go run ./cmd/g6-smoke -image /path/to/portrait.jpg -out artifacts/g6-smoke
 该命令在进程内启动候选 ModelHub gRPC 服务，检查上述七个 ID 的真实上游结果，并保存 JSON 和透明 PNG；不修改线上部署或 Nacos。FaceSim 使用同图自比。耗时包含适配器和上游请求，不能代表跨区域调用延迟。
 
 `models.Flux2Klein9B` 当前仅支持带参考图的 image edit（i2i），须绑定独立 OpenAI Images 实例。
-`models.GPTImage2` / `models.GPTImage25Flare` / `models.GPTImage25Sunburst` 走 OpenAI Images API（generations/edits），示例与审计目标实例键都是 `AIG_openai`（`https://api.aig-ai.com/v1`），不能并入 Gemini generateContent 生图实例。
+`gpt-image-2` 及 2.5 / 2.6 的 Flare、Sunburst 都走 `AIG_openai`（`https://api.aig-ai.com/v1`）的 Images API。文生图和参考图编辑都从 `GenerateRequest.output.image` 原样透传可选的 `quality`。2.6 两个模型还透传可选的 `complexity`。省略字段时由上游选用默认值。
 `models.GeminiNanoBanana21`（`gemini-nano-banana-2.1`）走 Vertex 的现有 Generate 图片链路，示例实例是 `Vertex_AI_nano_banana`。调用方使用 `request.model` 加 `OutputSpec.image`。Vertex 生图固定 `locations/global`，必须显式配置 `vertexai.project`，不从上游错误文案中探测项目。分辨率原样传 `1K` / `2K` / `4K`；思考推荐 `MINIMAL` / `MEDIUM` / `HIGH`，`LOW` 和 `temperature` 原样下发，由上游决定是否接受。
 
 ### Vertex 文本、生图与 Google rerank 统一 ADC
