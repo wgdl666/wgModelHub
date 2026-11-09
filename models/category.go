@@ -43,6 +43,7 @@ var categories = map[string]Category{
 	GPT6Luna:               CategoryMultimodal,
 	GPT61Sol:               CategoryMultimodal,
 	KimiK3:                 CategoryMultimodal,
+	VMindDreamV1:           CategoryMultimodal,
 	FashionEmbedding:       CategoryEmbedding,
 	FashionReranker:        CategoryRerank,
 	AliyunSegmentBody:      CategorySegment,

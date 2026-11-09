@@ -2,10 +2,16 @@ package modelhub
 
 import (
 	"context"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/wgdl666/wgModelHub/config"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/infra/factory"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/internal/taskstore"
 	"github.com/wgdl666/wgModelHub/models"
@@ -21,6 +27,87 @@ import (
 // newTestService 为单测构造带 LiveConfig 的 Service，与生产 Listen 路径一致。
 func newTestService(cfg config.Config, providers map[string]provider.Set, tasks taskstore.Store) *Service {
 	return New(config.NewLiveConfig(cfg), providers, tasks)
+}
+
+func TestVMindDreamUsesModelGatewayAfterModelListReload(t *testing.T) {
+	t.Setenv("MODEL_GATEWAY_API_TOKEN", "test-gateway-token")
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/chat/completions" || r.Header.Get("Authorization") != "Bearer test-gateway-token" {
+			t.Error("VLM must use the gateway Chat Completions endpoint and injected token")
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		var request struct {
+			Model    string          `json:"model"`
+			Messages json.RawMessage `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil || request.Model != models.VMindDreamV1 ||
+			!strings.Contains(string(request.Messages), "data:image/png;base64,AQID") {
+			t.Error("gateway request must preserve the model ID and inline image")
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		_, _ = io.WriteString(w, `{"id":"test-vlm","choices":[{"message":{"content":"Red"},"finish_reason":"stop"}]}`)
+	}))
+	defer gateway.Close()
+
+	ctx := context.Background()
+	const instance = "wgdl_model_gateway_exhibition"
+	mediaProvider := config.ProviderConfig{
+		Models: []string{models.VWorldOutfit10, models.VWorldOutfitVideo10},
+		VMindGateway: &config.VMindGatewayProviderConfig{
+			BaseURL: gateway.URL + "/", PollInterval: 1,
+			ResultStorage: config.ObjectStorageConfig{
+				Provider: "s3", Region: "us-east-2", Bucket: "test-results",
+				AccessKeyID: "test-key", AccessKeySecret: "test-secret",
+			},
+		},
+	}
+	cfg := config.Config{
+		Logfire:   config.LogfireConfig{Token: "t", Env: "test", Service: "wg-model-hub"},
+		Database:  config.DatabaseConfig{DSN: "postgres://unused"},
+		Providers: map[string]config.ProviderConfig{instance: mediaProvider},
+	}
+	live := config.NewLiveConfig(cfg)
+	sets, err := factory.BuildLive(ctx, live)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := New(live, sets, nil)
+	if _, err := service.resolve(models.VMindDreamV1, config.CapabilityText); err == nil {
+		t.Fatal("VLM must require an explicit model registration")
+	}
+	mediaProvider.Models = []string{models.VWorldOutfit10, models.VWorldOutfitVideo10, models.VMindDreamV1}
+	cfg.Providers = map[string]config.ProviderConfig{instance: mediaProvider}
+	raw, err := yaml.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	live.ApplyYAML(string(raw))
+	for _, capability := range []string{config.CapabilityImage, config.CapabilityVideo} {
+		if _, err := service.resolve(models.VMindDreamV1, capability); err == nil {
+			t.Fatalf("VLM must reject %s output", capability)
+		}
+	}
+	if _, err := service.resolve(models.VWorldOutfit10, config.CapabilityText); err == nil {
+		t.Fatal("the existing outfit model must retain its media route")
+	}
+
+	request := textRequest(models.VMindDreamV1, "Which color is this?")
+	message := request.Input.Items[0].GetMessage()
+	message.Parts = append(message.Parts, &modelhubv2.ContentPart{
+		Content: &modelhubv2.ContentPart_Image{Image: &modelhubv2.Media{
+			MimeType: "image/png", Source: &modelhubv2.Media_Data{Data: []byte{1, 2, 3}},
+		}},
+	})
+	stream := &generateRecorder{ctx: ctx}
+	if err := service.Generate(request, stream); err != nil {
+		t.Fatal(err)
+	}
+	if len(stream.events) != 1 || !stream.events[0].GetFinal() ||
+		len(stream.events[0].GetItems()) != 1 || stream.events[0].GetItems()[0].GetText() != "Red" {
+		t.Fatal("ModelHub must return a single final text event for image understanding")
+	}
 }
 
 func TestServiceHotReloadModelsEnterResolveAndListModels(t *testing.T) {

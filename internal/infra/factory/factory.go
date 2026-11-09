@@ -3,6 +3,7 @@ package factory
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/wgdl666/wgModelHub/config"
 	"github.com/wgdl666/wgModelHub/internal/infra/ark"
@@ -109,11 +110,18 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 		if err != nil {
 			return provider.Set{}, err
 		}
-		client, err := vmindgateway.New(name, cfg.BaseURL, cfg.APIToken(), objects)
+		token := cfg.APIToken()
+		client, err := vmindgateway.New(name, cfg.BaseURL, token, objects)
 		if err != nil {
 			return provider.Set{}, err
 		}
-		return provider.Set{Image: vworldimage.NewGateway(name, client), Video: ltx.NewGateway(name, client, cfg.PollInterval)}, nil
+		// 对话复用网关的地址和凭据。启动时建好客户端，后续热更新模型列表即可开通路由。
+		baseURL := strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/") + "/v1"
+		chat, err := openai.New(name, token, baseURL, "")
+		if err != nil {
+			return provider.Set{}, err
+		}
+		return provider.Set{Text: chat, Image: vworldimage.NewGateway(name, client), Video: ltx.NewGateway(name, client, cfg.PollInterval)}, nil
 	case providerCfg.VolcengineASR != nil:
 		cfg := providerCfg.VolcengineASR
 		client, err := volcengineasr.New(volcengineasr.Config{AppKey: cfg.AppKey, AccessKey: cfg.AccessKey, APIKey: cfg.APIKey, ResourceID: cfg.ResourceID, URL: cfg.URL})

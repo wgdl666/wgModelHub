@@ -75,6 +75,8 @@ const (
 	// Flux2Klein9B 当前 SeeTacloud 部署只开放 image edit / 多图 i2i，不能当文生图用。
 	Flux2Klein9B = "FLUX.2-klein-9B"
 	// 薇光点亮对外模型 ID 统一用 Vmind 与版本后缀；Go 常量名保留，避免无关调用代码改名。
+	// VMindDreamV1 使用网关公布的真实模型名，文本和图片理解都返回文本。
+	VMindDreamV1 = "Vmind_dream_v1"
 	// VWorldWardrobe10 只做人物图拆衣。调用方提供衣物框或人体解析输入。
 	VWorldWardrobe10 = "Vmind_wardrobe_v1.0"
 	// VWorldClothGen10 只用单件原图生成商品图，防止共用模型键时按输入猜操作。
@@ -236,6 +238,7 @@ func All() []string {
 		GPTImage26Flare,
 		GPTImage26Sunburst,
 		Flux2Klein9B,
+		VMindDreamV1,
 		VWorldWardrobe10,
 		VWorldClothGen10,
 		VWorldOutfit10,
