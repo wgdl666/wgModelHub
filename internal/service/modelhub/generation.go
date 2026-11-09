@@ -149,7 +149,7 @@ func (s *Service) SubmitGeneration(ctx context.Context, req *modelhubv2.SubmitGe
 		tracked.Finish(&rec, nil)
 	}()
 
-	providerTaskID, submitErr := bound.set.Video.SubmitVideo(ctx, bound.model, generateReq)
+	providerTaskID, submitErr := bound.set.Video.SubmitVideo(provider.WithSubmissionID(ctx, stored.TaskID), bound.model, generateReq)
 	submitFinished := time.Now()
 	providerErr = submitErr
 	persistCtx, persistCancel := detachPersistContext(ctx)

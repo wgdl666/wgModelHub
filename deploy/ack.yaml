@@ -51,6 +51,25 @@ spec:
             # 内网 /healthz+/metrics；与 gRPC 同属 Deployment 拓扑，绝不进外部 LoadBalancer。
             - name: WG_SERVER_HTTP_PORT
               value: "51053"
+            # 仅在国内启用 vmind_gateway 路由时使用，凭据不随模型路由配置发布。
+            - name: MODEL_GATEWAY_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: model-gateway-modelhub
+                  key: api-token
+                  optional: true
+            - name: MODEL_GATEWAY_OSS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: model-gateway-modelhub
+                  key: oss-access-key-id
+                  optional: true
+            - name: MODEL_GATEWAY_OSS_ACCESS_KEY_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: model-gateway-modelhub
+                  key: oss-access-key-secret
+                  optional: true
             # Vertex 与 Google rerank 共用这份 ADC；私钥只进 Secret，不进 Nacos。
             # 下次 workspace 全量同步清单时必须保留，否则滚动发布会丢掉身份文件。
             - name: GOOGLE_APPLICATION_CREDENTIALS

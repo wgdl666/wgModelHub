@@ -12,6 +12,7 @@ import (
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
+	"github.com/wgdl666/wgModelHub/internal/infra/vmindgateway"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
 	"github.com/wgdl666/wgModelHub/protocol"
@@ -30,6 +31,14 @@ type Provider struct {
 	seed         int
 	pollInterval time.Duration
 	client       *http.Client
+	gateway      *vmindgateway.Client
+}
+
+func NewGateway(name string, gateway *vmindgateway.Client, pollInterval float64) *Provider {
+	return &Provider{
+		name: name, gateway: gateway, pollInterval: time.Duration(pollInterval * float64(time.Second)),
+		client: telemetry.NewHTTPClient(),
+	}
 }
 
 func New(name, baseURL, token string, duration float64, fps, seed int, pollInterval float64) (*Provider, error) {
@@ -72,6 +81,21 @@ func (p *Provider) SubmitVideo(ctx context.Context, model string, request *model
 	if err != nil {
 		return "", err
 	}
+	if p.gateway != nil {
+		mimeType := strings.TrimSpace(firstFrame.GetMimeType())
+		if mimeType == "" {
+			mimeType = http.DetectContentType(imageBytes)
+		}
+		input := map[string]any{
+			"prompt": provider.JoinedText(request.GetInput()),
+			"images": []vmindgateway.Image{{MIMEType: mimeType, Data: imageBytes}},
+		}
+		if motionTips != "" {
+			input["motion_tips"] = motionTips
+		}
+		task, err := p.gateway.Submit(ctx, model, provider.SubmissionID(ctx), input, http.StatusAccepted)
+		return task.RequestID, err
+	}
 	return p.submit(ctx, imageBytes, provider.JoinedText(request.GetInput()), motionTips)
 }
 
@@ -106,15 +130,25 @@ func (p *Provider) GetVideo(ctx context.Context, model string, providerTaskID st
 	if model != models.VWorldOutfitVideo10 {
 		return provider.VideoJob{}, provider.New(provider.ErrorInvalidArgument, "unsupported video model: "+model)
 	}
-	job, err := p.getJob(ctx, providerTaskID)
-	if err != nil {
-		return provider.VideoJob{}, err
-	}
 	pollMs := int32(p.pollInterval / time.Millisecond)
-	switch job["status"] {
-	case "done":
+	var state string
+	if p.gateway != nil {
+		task, err := p.gateway.Get(ctx, providerTaskID)
+		if err != nil {
+			return provider.VideoJob{}, err
+		}
+		state = task.State
+	} else {
+		job, err := p.getJob(ctx, providerTaskID)
+		if err != nil {
+			return provider.VideoJob{}, err
+		}
+		state, _ = job["status"].(string)
+	}
+	switch state {
+	case "done", "succeeded":
 		return provider.VideoJob{State: provider.VideoJobSucceeded, PollAfterMs: pollMs}, nil
-	case "error", "cancelled", "interrupted":
+	case "error", "cancelled", "interrupted", "failed":
 		// 三方错误正文可能包含输入片段，只保留稳定分类，不写入 gRPC status 或遥测。
 		return provider.VideoJob{
 			State:       provider.VideoJobFailed,
@@ -135,6 +169,21 @@ func (p *Provider) ReadVideoResult(ctx context.Context, model string, providerTa
 	// 结果读取遵守当前模型目录，避免绕过旧模型停用边界。
 	if model != models.VWorldOutfitVideo10 {
 		return provider.New(provider.ErrorInvalidArgument, "unsupported video model: "+model)
+	}
+	if p.gateway != nil {
+		task, err := p.gateway.Get(ctx, providerTaskID)
+		if err != nil {
+			return err
+		}
+		if task.State != "succeeded" || len(task.Result.Files) != 1 {
+			return provider.New(provider.ErrorInvalidResponse, "VMind video task has no successful object result")
+		}
+		_, reader, err := p.gateway.OpenResult(ctx, task.RequestID, task.Result.Files[0])
+		if err != nil {
+			return err
+		}
+		defer reader.Close()
+		return provider.EmitVideoChunksFromReader(reader, videoMIMEType, providerTaskID, 0, emit)
 	}
 	job, err := p.getJob(ctx, providerTaskID)
 	if err != nil {

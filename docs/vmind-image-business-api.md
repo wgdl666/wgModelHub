@@ -1,5 +1,32 @@
 # VWorld image v2 forwarding
 
+## 国内 Go 网关
+
+为国内配置单独的 `vmind_gateway` 供应商实例，在 `model_routes` 选择该实例后，新请求使用 Go 网关。保留已受理视频记录引用的原供应商实例，确保查询仍按实际受理归属执行。供应商实例与对象存储配置随 ModelHub 启动加载。
+
+```yaml
+providers:
+  vmind_go_cn:
+    models: [Vmind_wardrobe_v1.0, Vmind_outfit_v1.0, Vmind_bodymodel_v1.0, Vmind_outfit_video_v1.0]
+    vmind_gateway:
+      base_url: http://model-gateway:18580
+      poll_interval: 1
+      result_storage:
+        provider: oss
+        region: cn-shenzhen
+        bucket: <result-bucket>
+        endpoint: <result-endpoint>
+model_routes:
+  Vmind_wardrobe_v1.0: vmind_go_cn
+  Vmind_outfit_v1.0: vmind_go_cn
+  Vmind_bodymodel_v1.0: vmind_go_cn
+  Vmind_outfit_video_v1.0: vmind_go_cn
+```
+
+ACK Secret `model-gateway-modelhub` 注入 `api-token`、`oss-access-key-id` 和 `oss-access-key-secret`。图片同步读取已上传对象，视频以 ModelHub 任务 UUID 向网关提交和查询，再从同一配置的存储桶流式读取成品。
+
+## VMind-Image 直连
+
 The adapter uses VMind-Image's minimal multipart business API. Model IDs and Generate RPC envelopes stay unchanged.
 
 | Model / inputs | Upstream path | Text fields | Upload fields |

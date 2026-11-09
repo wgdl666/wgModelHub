@@ -39,6 +39,7 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/infra/ltx"
 	"github.com/wgdl666/wgModelHub/internal/infra/minimaxtts"
 	"github.com/wgdl666/wgModelHub/internal/infra/mixedbreadrerank"
+	"github.com/wgdl666/wgModelHub/internal/infra/objectstore"
 	"github.com/wgdl666/wgModelHub/internal/infra/ominilinkvideo"
 	"github.com/wgdl666/wgModelHub/internal/infra/openai"
 	"github.com/wgdl666/wgModelHub/internal/infra/photoroom"
@@ -47,6 +48,7 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/infra/rekognitionfaces"
 	"github.com/wgdl666/wgModelHub/internal/infra/rerankinstruction"
 	"github.com/wgdl666/wgModelHub/internal/infra/segmentperson"
+	"github.com/wgdl666/wgModelHub/internal/infra/vmindgateway"
 	"github.com/wgdl666/wgModelHub/internal/infra/vworldimage"
 	"github.com/wgdl666/wgModelHub/internal/prefixcache"
 	"github.com/wgdl666/wgModelHub/internal/provider"
@@ -101,6 +103,17 @@ func build(ctx context.Context, cfg config.Config, live *config.LiveConfig) (map
 
 func buildProvider(ctx context.Context, name string, providerCfg config.ProviderConfig, live *config.LiveConfig, instructions rerankinstruction.Resolver) (provider.Set, error) {
 	switch {
+	case providerCfg.VMindGateway != nil:
+		cfg := providerCfg.VMindGateway
+		objects, err := objectstore.New(ctx, cfg.ResultStore())
+		if err != nil {
+			return provider.Set{}, err
+		}
+		client, err := vmindgateway.New(name, cfg.BaseURL, cfg.APIToken(), objects)
+		if err != nil {
+			return provider.Set{}, err
+		}
+		return provider.Set{Image: vworldimage.NewGateway(name, client), Video: ltx.NewGateway(name, client, cfg.PollInterval)}, nil
 	case providerCfg.VolcengineASR != nil:
 		cfg := providerCfg.VolcengineASR
 		client, err := volcengineasr.New(volcengineasr.Config{AppKey: cfg.AppKey, AccessKey: cfg.AccessKey, APIKey: cfg.APIKey, ResourceID: cfg.ResourceID, URL: cfg.URL})

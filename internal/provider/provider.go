@@ -26,6 +26,18 @@ type VideoProvider interface {
 	ReadVideoResult(context.Context, string, string, EmitEvent) error
 }
 
+type submissionIDKey struct{}
+
+// WithSubmissionID 让需要 UUID 幂等键的供应商沿用已经持久化的 ModelHub 任务 ID。
+func WithSubmissionID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, submissionIDKey{}, id)
+}
+
+func SubmissionID(ctx context.Context) string {
+	id, _ := ctx.Value(submissionIDKey{}).(string)
+	return id
+}
+
 // Set 表示一个已配置供应商真正实现的能力，不用空实现伪装未支持的 RPC。
 type Set struct {
 	Text   TextProvider

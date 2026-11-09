@@ -20,19 +20,24 @@ import (
 
 // S3 把账本图片和视频写到当前环境的对象存储。URI 只作为账本里的地址。
 type S3 struct {
-	client *s3.Client
-	oss    *oss.Client
-	bucket string
+	client   *s3.Client
+	oss      *oss.Client
+	bucket   string
+	region   string
+	provider string
 }
 
 func New(ctx context.Context, cfg config.ObjectStorageConfig) (*S3, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
 	if !cfg.Enabled() {
 		return nil, nil
 	}
 	// 同一份桶配置保留原 endpoint，按 provider 使用对应厂商的签名和默认寻址规则。
 	if cfg.Provider == "oss" {
 		client := oss.NewClient(oss.LoadDefaultConfig().WithHttpClient(&http.Client{Timeout: 120 * time.Second}).WithRegion(strings.TrimSpace(cfg.Region)).WithEndpoint(strings.TrimSpace(cfg.Endpoint)).WithCredentialsProvider(osscredentials.NewStaticCredentialsProvider(strings.TrimSpace(cfg.AccessKeyID), strings.TrimSpace(cfg.AccessKeySecret))))
-		return &S3{oss: client, bucket: strings.TrimSpace(cfg.Bucket)}, nil
+		return &S3{oss: client, bucket: strings.TrimSpace(cfg.Bucket), region: strings.TrimSpace(cfg.Region), provider: "oss"}, nil
 	}
 	if cfg.Provider != "s3" {
 		return nil, fmt.Errorf("unsupported object storage provider %q", cfg.Provider)
@@ -53,7 +58,7 @@ func New(ctx context.Context, cfg config.ObjectStorageConfig) (*S3, error) {
 			// endpoint 不决定寻址方式；使用 AWS SDK 默认规则。
 		}
 	})
-	return &S3{client: client, bucket: strings.TrimSpace(cfg.Bucket)}, nil
+	return &S3{client: client, bucket: strings.TrimSpace(cfg.Bucket), region: strings.TrimSpace(cfg.Region), provider: "s3"}, nil
 }
 
 func (s *S3) Put(ctx context.Context, key, contentType string, body []byte) (string, error) {
@@ -83,19 +88,39 @@ func (s *S3) Put(ctx context.Context, key, contentType string, body []byte) (str
 	return "s3://" + s.bucket + "/" + key, nil
 }
 
+// Reference 只表达对象身份，网关不能通过响应指定存储端点或凭据。
+type Reference struct {
+	Provider string `json:"provider"`
+	Region   string `json:"region"`
+	Bucket   string `json:"bucket"`
+	Key      string `json:"key"`
+}
+
+// OpenReference 校验对象归属后返回流，视频不需要把完整文件缓存在 ModelHub。
+func (s *S3) OpenReference(ctx context.Context, ref Reference) (string, io.ReadCloser, error) {
+	if s == nil || ref.Provider != s.provider || ref.Region != s.region || ref.Bucket != s.bucket || ref.Key == "" {
+		return "", nil, fmt.Errorf("object reference does not match the configured result store")
+	}
+	return s.open(ctx, ref.Key)
+}
+
 // Get 按对象键读回已归档媒体。评测页要展示原图，不能把存储凭据交给浏览器。
 func (s *S3) Get(ctx context.Context, key string) (string, []byte, error) {
+	contentType, body, err := s.open(ctx, strings.TrimLeft(strings.TrimSpace(key), "/"))
+	if err != nil {
+		return "", nil, err
+	}
+	defer body.Close()
+	data, err := io.ReadAll(body)
+	return contentType, data, err
+}
+
+func (s *S3) open(ctx context.Context, key string) (string, io.ReadCloser, error) {
 	if s == nil || (s.client == nil && s.oss == nil) {
 		return "", nil, fmt.Errorf("object storage is not configured")
 	}
-	key = strings.TrimLeft(strings.TrimSpace(key), "/")
 	if s.oss != nil {
 		result, err := s.oss.GetObject(ctx, &oss.GetObjectRequest{Bucket: oss.Ptr(s.bucket), Key: oss.Ptr(key)})
-		if err != nil {
-			return "", nil, err
-		}
-		defer result.Body.Close()
-		body, err := io.ReadAll(result.Body)
 		if err != nil {
 			return "", nil, err
 		}
@@ -103,20 +128,11 @@ func (s *S3) Get(ctx context.Context, key string) (string, []byte, error) {
 		if result.ContentType != nil {
 			contentType = *result.ContentType
 		}
-		return contentType, body, nil
+		return contentType, result.Body, nil
 	}
 	out, err := s.client.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(key)})
 	if err != nil {
 		return "", nil, err
 	}
-	defer out.Body.Close()
-	body, err := io.ReadAll(out.Body)
-	if err != nil {
-		return "", nil, err
-	}
-	contentType := ""
-	if out.ContentType != nil {
-		contentType = *out.ContentType
-	}
-	return contentType, body, nil
+	return aws.ToString(out.ContentType), out.Body, nil
 }

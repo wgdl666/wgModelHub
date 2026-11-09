@@ -17,7 +17,7 @@ func TestObjectStorageProviderContract(t *testing.T) {
 		{"aws partial credentials", ObjectStorageConfig{Provider: "s3", Bucket: "media", Region: "ap-southeast-1", AccessKeyID: "ak"}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if err := tc.cfg.validate(); (err == nil) != tc.valid {
+			if err := tc.cfg.Validate(); (err == nil) != tc.valid {
 				t.Fatalf("validate: %v", err)
 			}
 		})

@@ -17,6 +17,7 @@ import (
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
+	"github.com/wgdl666/wgModelHub/internal/infra/vmindgateway"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
 	"github.com/wgdl666/wgModelHub/protocol"
@@ -37,8 +38,13 @@ type Provider struct {
 	username string
 	password string
 	client   *http.Client
+	gateway  *vmindgateway.Client
 	// resolveBaseURL 每次请求重读入口。路演要把国内公网切到俄亥俄 G6，不能把地址冻在进程启动时。
 	resolveBaseURL func() string
+}
+
+func NewGateway(name string, gateway *vmindgateway.Client) *Provider {
+	return &Provider{name: name, gateway: gateway}
 }
 
 func New(name, baseURL, username, password string) (*Provider, error) {
@@ -160,15 +166,7 @@ func (p *Provider) generateGarmentExtraction(ctx context.Context, request *model
 			uploads = append(uploads, imageUpload{field: "parse_mask", filename: "human_parse_labels.png", data: mask, mimeType: mime})
 		}
 	}
-	raw, err := p.doMultipart(ctx, path, fields, uploads)
-	if err != nil {
-		return nil, err
-	}
-	parsed, err := decodeImageResponse(raw)
-	if err != nil {
-		return nil, err
-	}
-	return imageEvent(parsed.Data)
+	return p.generate(ctx, models.VWorldWardrobe10, path, fields, uploads)
 }
 
 func (p *Provider) generateVTON(ctx context.Context, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
@@ -190,15 +188,7 @@ func (p *Provider) generateVTON(ctx context.Context, request *modelhubv2.Generat
 	}
 	// Preserve prompt whitespace; the model service validates without rewriting it.
 	fields := map[string]string{"prompt": provider.JoinedText(request.GetInput())}
-	raw, err := p.doMultipart(ctx, vtonPath, fields, uploads)
-	if err != nil {
-		return nil, err
-	}
-	parsed, err := decodeImageResponse(raw)
-	if err != nil {
-		return nil, err
-	}
-	return imageEvent(parsed.Data)
+	return p.generate(ctx, models.VWorldOutfit10, vtonPath, fields, uploads)
 }
 
 func (p *Provider) generateBodyModel(ctx context.Context, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
@@ -214,7 +204,14 @@ func (p *Provider) generateBodyModel(ctx context.Context, request *modelhubv2.Ge
 	if err != nil {
 		return nil, err
 	}
-	raw, err := p.doMultipart(ctx, bodyModelPath, map[string]string{"gender": gender}, []imageUpload{{data: data, mimeType: mime}})
+	return p.generate(ctx, models.VWorldBodyModel10, bodyModelPath, map[string]string{"gender": gender}, []imageUpload{{data: data, mimeType: mime}})
+}
+
+func (p *Provider) generate(ctx context.Context, model, path string, fields map[string]string, uploads []imageUpload) (*modelhubv2.GenerateEvent, error) {
+	if p.gateway != nil {
+		return p.generateThroughGateway(ctx, model, fields, uploads)
+	}
+	raw, err := p.doMultipart(ctx, path, fields, uploads)
 	if err != nil {
 		return nil, err
 	}
@@ -223,6 +220,51 @@ func (p *Provider) generateBodyModel(ctx context.Context, request *modelhubv2.Ge
 		return nil, err
 	}
 	return imageEvent(parsed.Data)
+}
+
+func (p *Provider) generateThroughGateway(ctx context.Context, model string, fields map[string]string, uploads []imageUpload) (*modelhubv2.GenerateEvent, error) {
+	images := make([]vmindgateway.Image, 0, len(uploads))
+	for _, upload := range uploads {
+		images = append(images, vmindgateway.Image{MIMEType: upload.mimeType, Data: upload.data})
+	}
+	input := map[string]any{"images": images}
+	for key, value := range fields {
+		// 业务对象已由共同的参数逻辑编码，Go 网关按结构读取坐标和解析标签。
+		switch key {
+		case "bbox", "parse_labels":
+			input[key] = json.RawMessage(value)
+		default:
+			input[key] = value
+		}
+	}
+	task, err := p.gateway.Submit(ctx, model, "", input, http.StatusOK)
+	if err != nil {
+		return nil, err
+	}
+	if task.State != "succeeded" || len(task.Result.Files) == 0 {
+		return nil, provider.New(provider.ErrorInvalidResponse, "VMind image task has no successful object results")
+	}
+	event := &modelhubv2.GenerateEvent{Final: true}
+	total := 0
+	for _, ref := range task.Result.Files {
+		_, reader, err := p.gateway.OpenResult(ctx, task.RequestID, ref)
+		if err != nil {
+			return nil, err
+		}
+		data, err := io.ReadAll(io.LimitReader(reader, protocol.MaxMediaBytes+1))
+		_ = reader.Close()
+		if err != nil {
+			return nil, provider.New(provider.ErrorUnavailable, "cannot read VMind image result")
+		}
+		total += len(data)
+		if len(data) == 0 || len(data) > protocol.MaxMediaBytes || total > protocol.MaxRPCMessageBytes {
+			return nil, provider.New(provider.ErrorInvalidResponse, "VMind image result size is invalid")
+		}
+		event.Items = append(event.Items, &modelhubv2.OutputItem{Item: &modelhubv2.OutputItem_Image{Image: &modelhubv2.Media{
+			MimeType: sniffImageMIME(data), Source: &modelhubv2.Media_Data{Data: data},
+		}}})
+	}
+	return event, nil
 }
 
 // Only decode the shared traits envelope. The upstream service owns gender validation.

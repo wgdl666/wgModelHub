@@ -59,6 +59,7 @@ type ProviderConfig struct {
 	Ark            *ArkProviderConfig            `yaml:"ark"`
 	OpenAI         *OpenAIProviderConfig         `yaml:"openai"`
 	LTX            *LTXProviderConfig            `yaml:"ltx"`
+	VMindGateway   *VMindGatewayProviderConfig   `yaml:"vmind_gateway"`
 	DashScopeVideo *DashScopeVideoProviderConfig `yaml:"dashscope_video"`
 	OminilinkVideo *OminilinkVideoProviderConfig `yaml:"ominilink_video"`
 	GeminiVideo    *GeminiVideoProviderConfig    `yaml:"gemini_video"`
@@ -538,7 +539,7 @@ func (c ObjectStorageConfig) Enabled() bool {
 	return strings.TrimSpace(c.Provider) != "" || strings.TrimSpace(c.Bucket) != "" || strings.TrimSpace(c.Region) != "" || strings.TrimSpace(c.Endpoint) != "" || strings.TrimSpace(c.AccessKeyID) != "" || strings.TrimSpace(c.AccessKeySecret) != ""
 }
 
-func (c ObjectStorageConfig) validate() error {
+func (c ObjectStorageConfig) Validate() error {
 	if !c.Enabled() {
 		return nil
 	}
@@ -552,6 +553,32 @@ func (c ObjectStorageConfig) validate() error {
 		return fmt.Errorf("object_storage requires paired credentials; oss also requires endpoint and static credentials")
 	}
 	return nil
+}
+
+// VMindGatewayProviderConfig 显式选择 Go 网关，已有直连供应商的配置和任务归属各自独立。
+type VMindGatewayProviderConfig struct {
+	BaseURL       string              `yaml:"base_url"`
+	Token         string              `yaml:"token"`
+	PollInterval  float64             `yaml:"poll_interval"`
+	ResultStorage ObjectStorageConfig `yaml:"result_storage"`
+}
+
+func (c VMindGatewayProviderConfig) APIToken() string {
+	// ACK 只把业务路由存入 Nacos，网关调用凭据由 ModelHub 的专用 Secret 注入。
+	if token := strings.TrimSpace(os.Getenv("MODEL_GATEWAY_API_TOKEN")); token != "" {
+		return token
+	}
+	return strings.TrimSpace(c.Token)
+}
+
+func (c VMindGatewayProviderConfig) ResultStore() ObjectStorageConfig {
+	store := c.ResultStorage
+	// 读取端使用只读 OSS 凭据，不能借用 Worker 的写入身份。
+	if keyID, ok := os.LookupEnv("MODEL_GATEWAY_OSS_ACCESS_KEY_ID"); ok {
+		store.AccessKeyID = keyID
+		store.AccessKeySecret = os.Getenv("MODEL_GATEWAY_OSS_ACCESS_KEY_SECRET")
+	}
+	return store
 }
 
 func LoadBootstrapFile(path string) (Bootstrap, error) {
@@ -697,7 +724,7 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.Database.DSN) == "" {
 		return fmt.Errorf("database.dsn is required")
 	}
-	if err := c.ObjectStorage.validate(); err != nil {
+	if err := c.ObjectStorage.Validate(); err != nil {
 		return err
 	}
 	if len(c.Providers) == 0 {
@@ -888,6 +915,15 @@ func validateProvider(name string, provider ProviderConfig) error {
 		return fmt.Errorf("provider %s must set exactly one concrete provider type", name)
 	}
 	switch {
+	case provider.VMindGateway != nil:
+		gateway := provider.VMindGateway
+		if strings.TrimSpace(gateway.BaseURL) == "" || gateway.APIToken() == "" ||
+			gateway.PollInterval <= 0 || !gateway.ResultStorage.Enabled() {
+			return fmt.Errorf("provider %s vmind_gateway configuration is incomplete", name)
+		}
+		if err := gateway.ResultStore().Validate(); err != nil {
+			return fmt.Errorf("provider %s vmind_gateway result_storage: %w", name, err)
+		}
 	case provider.Gemini != nil:
 		if strings.TrimSpace(provider.Gemini.APIKey) == "" {
 			return fmt.Errorf("provider %s api_key is required", name)
@@ -1160,6 +1196,9 @@ func countConcreteProviders(provider ProviderConfig) int {
 	if provider.LTX != nil {
 		n++
 	}
+	if provider.VMindGateway != nil {
+		n++
+	}
 	if provider.DashScopeVideo != nil {
 		n++
 	}
@@ -1329,6 +1368,8 @@ func validateVisionHTTP(name, kind, base, user, password string) error {
 // ProviderSupports 根据供应商类型判断能力；ASR/Speech 是专用 RPC，不经过 Generate OutputSpec。
 func ProviderSupports(provider ProviderConfig, capability string) bool {
 	switch {
+	case provider.VMindGateway != nil:
+		return capability == CapabilityImage || capability == CapabilityVideo
 	case provider.Gemini != nil, provider.OpenAI != nil:
 		return capability == CapabilityText || capability == CapabilityImage
 	case provider.ImageSeg != nil, provider.Photoroom != nil, provider.LensCorrection != nil, provider.SegmentPerson != nil, provider.VWorldImage != nil:
