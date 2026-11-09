@@ -2,6 +2,7 @@ package ltx
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -11,7 +12,7 @@ import (
 	"github.com/wgdl666/wgModelHub/models"
 )
 
-func TestSubmitVideoMotionTipsJSON(t *testing.T) {
+func TestSubmitVideoMotionTipsMultipart(t *testing.T) {
 	for _, tc := range []struct {
 		name, traits, want string
 	}{
@@ -21,34 +22,45 @@ func TestSubmitVideoMotionTipsJSON(t *testing.T) {
 		{"blank", `{"motion_tips":"  "}`, "  "},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			var submittedKey string
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path != "/v1/gateway/requests/"+models.VWorldOutfitVideo10 {
+				if r.URL.Path != "/vton" {
 					t.Errorf("path=%s", r.URL.Path)
 				}
-				payload, images := decodeGatewayRequest(t, r)
-				if got := payload.Input["motion_tips"]; tc.want != "" && got != tc.want {
-					t.Errorf("motion_tips=%v want %q", got, tc.want)
+				if err := r.ParseMultipartForm(1 << 20); err != nil {
+					t.Error(err)
+					http.Error(w, "bad multipart", http.StatusBadRequest)
+					return
 				}
-				if _, present := payload.Input["motion_tips"]; tc.want == "" && present {
-					t.Error("absent motion tips must be omitted")
+				defer r.MultipartForm.RemoveAll()
+				if got := r.FormValue("motion_tips"); got != tc.want {
+					t.Errorf("motion_tips=%q want %q", got, tc.want)
 				}
-				if payload.Input["prompt"] != "fixed scene" || len(payload.Input) > 2 {
-					t.Errorf("unexpected parameters: %v", payload.Input)
+				if tc.want == "" && len(r.MultipartForm.Value["motion_tips"]) != 0 {
+					t.Error("absent motion tips must not send an empty form field")
 				}
-				if len(images) != 1 || string(images[0].Data) != "first frame" {
-					t.Errorf("first frame changed: %v", images)
+				if r.FormValue("prompt") != "fixed scene" || r.Form.Has("model") {
+					t.Errorf("prompt/model changed: %v", r.MultipartForm.Value)
 				}
-				submittedKey = acceptGatewayRequest(t, w, r)
+				file, _, err := r.FormFile("image")
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				defer file.Close()
+				data, _ := io.ReadAll(file)
+				if string(data) != "first frame" {
+					t.Errorf("image=%q", data)
+				}
+				_, _ = w.Write([]byte(`{"job_id":"motion-job"}`))
 			}))
 			defer server.Close()
-			p, err := New("wgdl_video", server.URL, "token", 4, 24, 42, 1)
+			p, err := New("wgdl_video", server.URL, "", 4, 24, 42, 1)
 			if err != nil {
 				t.Fatal(err)
 			}
 			p.client = server.Client()
 			id, err := p.SubmitVideo(context.Background(), models.VWorldOutfitVideo10, motionRequest(tc.traits))
-			if err != nil || id != submittedKey {
+			if err != nil || id != "motion-job" {
 				t.Fatalf("id=%q err=%v", id, err)
 			}
 		})
@@ -62,7 +74,7 @@ func TestSubmitVideoRejectsInvalidMotionTraitsBeforeFetchingImage(t *testing.T) 
 		http.Error(w, "must not call upstream", http.StatusInternalServerError)
 	}))
 	defer server.Close()
-	p, err := New("wgdl_video", server.URL, "token", 4, 24, 42, 1)
+	p, err := New("wgdl_video", server.URL, "", 4, 24, 42, 1)
 	if err != nil {
 		t.Fatal(err)
 	}

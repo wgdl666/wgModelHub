@@ -9,13 +9,13 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
-	"github.com/wgdl666/wgModelHub/internal/infra/vmindgateway"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -36,80 +36,81 @@ func TestMinimalBusinessContracts(t *testing.T) {
 	source := pngBytes(t)
 	prompt := "  try this look\nkeep whitespace  "
 	cases := []struct {
-		name, model string
-		request     *modelhubv2.GenerateRequest
-		fields      map[string]string
-		files       map[string][]byte
+		name, model, path string
+		request           *modelhubv2.GenerateRequest
+		fields            map[string]string
+		files             map[string][]byte
 	}{
-		{"product", models.VWorldWardrobe10,
+		{"product", models.VWorldWardrobe10, productGenerationPath,
 			wardrobeRequest(source, `{"garment_name":"White shirt","garment_role":"clothing::top/full"}`),
 			map[string]string{"garment_name": "White shirt", "garment_role": "clothing::top/full"}, map[string][]byte{"image": source}},
-		{"extraction", models.VWorldWardrobe10,
+		{"extraction", models.VWorldWardrobe10, garmentExtractionPath,
 			wardrobeRequest(source, `{"garment_name":"shoes","garment_role":"shoes","parse_labels":{"15":"feet"}}`, []byte("mask")),
 			map[string]string{"garment_name": "shoes", "garment_role": "shoes", "parse_labels": `{"15":"feet"}`}, map[string][]byte{"image": source, "parse_mask": []byte("mask")}},
-		{"bbox", models.VWorldWardrobe10,
+		{"bbox", models.VWorldWardrobe10, garmentExtractionPath,
 			wardrobeRequest(source, `{"garment_name":"白色衬衫","bbox":[0.1,0.2,0.8,0.9]}`),
 			map[string]string{"garment_name": "白色衬衫", "bbox": "[0.1,0.2,0.8,0.9]"}, map[string][]byte{"image": source}},
-		{"bbox pixel with role", models.VWorldWardrobe10,
+		{"bbox pixel with role", models.VWorldWardrobe10, garmentExtractionPath,
 			wardrobeRequest(source, `{"garment_name":"pants","garment_role":"clothing::bottom","bbox":[100,200,500,800],"bbox_format":"pixel_xyxy"}`),
 			map[string]string{"garment_name": "pants", "garment_role": "clothing::bottom", "bbox": "[100,200,500,800]", "bbox_format": "pixel_xyxy"}, map[string][]byte{"image": source}},
-		{"bbox empty role omitted", models.VWorldWardrobe10,
+		{"bbox empty role omitted", models.VWorldWardrobe10, garmentExtractionPath,
 			wardrobeRequest(source, `{"garment_name":"shirt","garment_role":"","bbox":[0,0,1,1]}`),
 			map[string]string{"garment_name": "shirt", "bbox": "[0,0,1,1]"}, map[string][]byte{"image": source}},
-		{"vton", models.VWorldOutfit10, outfitRequest(source, []byte("garment"), prompt),
+		{"vton", models.VWorldOutfit10, vtonPath, outfitRequest(source, []byte("garment"), prompt),
 			map[string]string{"prompt": prompt}, map[string][]byte{"person_image": source, "garment_image": []byte("garment")}},
 	}
 	body := wardrobeRequest(source, "caller prompt must not be sent")
 	body.Input.ModelTraits = `{"gender":"female"}`
 	cases = append(cases, struct {
-		name, model string
-		request     *modelhubv2.GenerateRequest
-		fields      map[string]string
-		files       map[string][]byte
+		name, model, path string
+		request           *modelhubv2.GenerateRequest
+		fields            map[string]string
+		files             map[string][]byte
 	}{
-		"body", models.VWorldBodyModel10, body, map[string]string{"gender": "female"}, map[string][]byte{"image": source},
+		"body", models.VWorldBodyModel10, bodyModelPath, body, map[string]string{"gender": "female"}, map[string][]byte{"image": source},
 	})
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Output hints from generic clients must not become model-side controls.
 			tc.request.Output = &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Image{Image: &modelhubv2.ImageOutput{AspectRatio: strPtr("1:1"), ImageSize: strPtr("4K")}}}
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				wantPath := "/v1/gateway/requests/" + tc.model
-				if r.URL.Path != wantPath || r.URL.RawQuery != "" {
-					t.Errorf("path=%s want %s", r.URL.String(), wantPath)
+				if r.URL.Path != tc.path {
+					t.Errorf("path=%s want %s", r.URL.Path, tc.path)
 				}
-				if r.Header.Get("Authorization") != "Bearer secret" || r.Header.Get("Idempotency-Key") == "" {
+				user, pass, ok := r.BasicAuth()
+				if !ok || user != "wgdl" || pass != "secret" {
 					t.Error("missing upstream auth")
 				}
-				got, images := decodeGatewayRequest(t, r)
-				if len(got.Input) != len(tc.fields) {
-					t.Errorf("unexpected parameters: %#v", got.Input)
+				if err := r.ParseMultipartForm(8 << 20); err != nil {
+					t.Error(err)
+					return
+				}
+				if len(r.MultipartForm.Value) != len(tc.fields) {
+					t.Errorf("unexpected parameters: %#v", r.MultipartForm.Value)
 				}
 				for field, want := range tc.fields {
-					if field == "bbox" || field == "parse_labels" {
-						raw, _ := json.Marshal(got.Input[field])
-						if string(raw) != want {
-							t.Errorf("%s=%s want %s", field, raw, want)
-						}
-					} else if got.Input[field] != want {
-						t.Errorf("%s=%v want %q", field, got.Input[field], want)
+					if r.FormValue(field) != want {
+						t.Errorf("%s=%q want %q", field, r.FormValue(field), want)
 					}
 				}
-				var expected [][]byte
-				if tc.model == models.VWorldOutfit10 {
-					expected = [][]byte{tc.files["person_image"], tc.files["garment_image"]}
-				} else {
-					expected = append(expected, tc.files["image"])
-					if mask, ok := tc.files["parse_mask"]; ok {
-						expected = append(expected, mask)
+				if len(r.MultipartForm.File) != len(tc.files) {
+					t.Errorf("unexpected uploads: %#v", r.MultipartForm.File)
+				}
+				for field, want := range tc.files {
+					files := r.MultipartForm.File[field]
+					if len(files) != 1 {
+						t.Errorf("%s count=%d", field, len(files))
+						continue
 					}
-				}
-				if len(images) != len(expected) {
-					t.Fatalf("images=%d want %d", len(images), len(expected))
-				}
-				for index, image := range images {
-					if image.MIMEType != "image/png" || !bytes.Equal(image.Data, expected[index]) {
-						t.Errorf("image %d changed bytes or MIME type", index)
+					f, err := files[0].Open()
+					if err != nil {
+						t.Error(err)
+						continue
+					}
+					got, err := io.ReadAll(f)
+					f.Close()
+					if err != nil || !bytes.Equal(got, want) {
+						t.Errorf("%s bytes mismatch: %v", field, err)
 					}
 				}
 				json.NewEncoder(w).Encode(map[string]any{"data": []map[string]string{{"b64_json": base64.StdEncoding.EncodeToString(source)}}})
@@ -173,7 +174,7 @@ func TestRejectsWrongImageCountsAndUnknownModel(t *testing.T) {
 }
 
 func TestNewRequiresAuth(t *testing.T) {
-	_, err := New("vworld", "https://vmind-image.example", "")
+	_, err := New("vworld", "https://vmind-image.example", "wgdl", "")
 	var providerErr *provider.Error
 	if !errors.As(err, &providerErr) || providerErr.Kind != provider.ErrorConfiguration {
 		t.Fatalf("err = %v", err)
@@ -244,7 +245,7 @@ func TestBaseURLFollowsResolverOnNextRequest(t *testing.T) {
 	defer second.Close()
 
 	current := first.URL
-	p, err := NewResolving("vworld_flux_image", "secret", func() string { return current })
+	p, err := NewResolving("vworld_flux_image", "wgdl", "secret", func() string { return current })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,20 +263,22 @@ func TestBaseURLFollowsResolverOnNextRequest(t *testing.T) {
 	}
 }
 
-func TestJSONMetadataSendsTraceIDOnlyWhenSpanIsValid(t *testing.T) {
+func TestDoMultipartSendsTraceIDOnlyWhenSpanIsValid(t *testing.T) {
 	var got string
 	var present bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		payload, _ := decodeGatewayRequest(t, r)
-		got = payload.Metadata.TraceID
-		present = got != ""
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			t.Fatal(err)
+		}
+		present = r.Form.Has("trace_id")
+		got = r.FormValue("trace_id")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{}`))
 	}))
 	defer server.Close()
 	p := newTestProvider(t, server.URL)
 
-	if _, err := p.doJSON(context.Background(), models.VWorldWardrobe10, map[string]any{"prompt": "test"}, nil); err != nil {
+	if _, err := p.doMultipart(context.Background(), "/v1/images/edits", map[string]string{"n": "1"}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if present {
@@ -286,7 +289,7 @@ func TestJSONMetadataSendsTraceIDOnlyWhenSpanIsValid(t *testing.T) {
 	ctx, span := tp.Tracer("test").Start(context.Background(), "modelhub.Generate")
 	defer span.End()
 	want := span.SpanContext().TraceID().String()
-	if _, err := p.doJSON(ctx, models.VWorldWardrobe10, map[string]any{"prompt": "test"}, nil); err != nil {
+	if _, err := p.doMultipart(ctx, "/v1/images/edits", map[string]string{"n": "1"}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if !present || got != want {
@@ -296,7 +299,7 @@ func TestJSONMetadataSendsTraceIDOnlyWhenSpanIsValid(t *testing.T) {
 
 func newTestProvider(t *testing.T, baseURL string) *Provider {
 	t.Helper()
-	p, err := New("vworld_flux_image", baseURL, "secret")
+	p, err := New("vworld_flux_image", baseURL, "wgdl", "secret")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -318,26 +321,4 @@ func parseBasicAuth(header string) (user, pass string, ok bool) {
 		return "", "", false
 	}
 	return parts[0], parts[1], true
-}
-
-// 断言真实 JSON 线格式，并解码原图字节；不模拟旧 multipart 调用。
-func decodeGatewayRequest(t *testing.T, r *http.Request) (vmindgateway.Request, []vmindgateway.Image) {
-	t.Helper()
-	if r.Header.Get("Content-Type") != "application/json" {
-		t.Fatalf("content-type=%s", r.Header.Get("Content-Type"))
-	}
-	var payload vmindgateway.Request
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		t.Fatal(err)
-	}
-	raw, err := json.Marshal(payload.Input["images"])
-	if err != nil {
-		t.Fatal(err)
-	}
-	var images []vmindgateway.Image
-	if err := json.Unmarshal(raw, &images); err != nil {
-		t.Fatal(err)
-	}
-	delete(payload.Input, "images")
-	return payload, images
 }
