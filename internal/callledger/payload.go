@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"regexp"
 	"strings"
 	"unicode/utf8"
@@ -483,6 +484,17 @@ func mediaSummaryAsPlaceholder(media *modelhubv2.Media) *modelhubv2.Media {
 	}
 	if u, ok := summary["uri"].(string); ok && u != "" {
 		uri = u
+		if parsed, err := url.Parse(u); err == nil {
+			if parsed.User != nil {
+				uri = "ledger://omitted/signed-url"
+			}
+			for key := range parsed.Query() {
+				switch strings.ToLower(key) {
+				case "x-amz-signature", "x-amz-credential", "x-amz-security-token", "signature", "ossaccesskeyid", "securitytoken", "auth_key":
+					uri = "ledger://omitted/signed-url"
+				}
+			}
+		}
 	}
 	return &modelhubv2.Media{
 		MimeType: media.GetMimeType(),

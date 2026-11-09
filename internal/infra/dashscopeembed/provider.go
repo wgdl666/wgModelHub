@@ -5,9 +5,11 @@ package dashscopeembed
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -41,9 +43,25 @@ func New(name, baseURL, apiKey string, timeout time.Duration) (*Provider, error)
 	if timeout <= 0 {
 		return nil, provider.New(provider.ErrorConfiguration, "dashscope embedding HTTP timeout must be positive")
 	}
+	// Large inline-image uploads to DashScope's HTTP/2 ingress stall from
+	// the US runtime. Isolate HTTP/1.1 here; other providers keep their pool.
+	base := http.DefaultTransport
+	if standard, ok := base.(*http.Transport); ok {
+		transport := standard.Clone()
+		transport.Protocols = new(http.Protocols)
+		transport.Protocols.SetHTTP1(true)
+		transport.ForceAttemptHTTP2 = false
+		transport.TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{}
+		if transport.TLSClientConfig != nil {
+			transport.TLSClientConfig.NextProtos = []string{"http/1.1"}
+		}
+		base = transport
+	}
+	client := telemetry.NewHTTPClientWithTransport(base)
+	client.Timeout = timeout
 	return &Provider{
 		name:     name,
-		client:   telemetry.NewTimedHTTPClient(timeout),
+		client:   client,
 		endpoint: baseURL + "/services/embeddings/multimodal-embedding/multimodal-embedding",
 		apiKey:   apiKey,
 	}, nil
@@ -83,6 +101,13 @@ func embedContent(request *modelhubv2.GenerateRequest) (map[string]string, error
 		input = request.GetInput()
 	}
 	if image := provider.FirstImageMedia(input); image != nil {
+		if uri := image.GetUri(); uri != "" {
+			parsed, err := url.Parse(uri)
+			if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" || parsed.User != nil || parsed.Fragment != "" {
+				return nil, provider.New(provider.ErrorInvalidArgument, "embedding image URI must be an absolute HTTPS URL without credentials or fragment")
+			}
+			return map[string]string{"image": uri}, nil
+		}
 		data, ok := provider.InlineImageBytes(image)
 		if !ok {
 			return nil, provider.New(provider.ErrorInvalidArgument, "embedding image must be inline bytes")

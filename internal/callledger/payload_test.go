@@ -3,11 +3,30 @@ package callledger
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"strings"
 	"testing"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 )
+
+func TestSignedImageInputIsOmittedFromLedgerAndCannotReplay(t *testing.T) {
+	uri := "https://bucket.s3.us-east-2.amazonaws.com/image.png?X-Amz-Credential=private&X-Amz-Security-Token=token&X-Amz-Signature=signature"
+	req := &modelhubv2.GenerateRequest{Input: &modelhubv2.Input{Items: []*modelhubv2.InputItem{{Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{Parts: []*modelhubv2.ContentPart{{Content: &modelhubv2.ContentPart_Image{Image: &modelhubv2.Media{Source: &modelhubv2.Media_Uri{Uri: uri}, MimeType: "image/png"}}}}}}}}}}
+	payload, _ := BuildGenerateInput(req)
+	raw, _ := json.Marshal(payload)
+	for _, secret := range []string{"X-Amz-", "private", "signature"} {
+		if strings.Contains(string(raw), secret) {
+			t.Fatal("signed credentials leaked into ledger")
+		}
+	}
+	if req.Input.Items[0].GetMessage().Parts[0].GetImage().GetUri() != uri {
+		t.Fatal("ledger redaction changed vendor request")
+	}
+	if ok, _ := Replayable(Record{Operation: OperationGenerateText, Capability: CapabilityText, Status: StatusSucceeded, InputPayload: payload}); ok {
+		t.Fatal("expiring URL must not be offered for replay")
+	}
+}
 
 func TestTextAccumulatorKeepsTwoParallelTools(t *testing.T) {
 	acc := NewTextAccumulator()
