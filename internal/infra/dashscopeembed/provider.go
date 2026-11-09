@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -100,6 +101,13 @@ func embedContent(request *modelhubv2.GenerateRequest) (map[string]string, error
 		input = request.GetInput()
 	}
 	if image := provider.FirstImageMedia(input); image != nil {
+		if uri := image.GetUri(); uri != "" {
+			parsed, err := url.Parse(uri)
+			if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" || parsed.User != nil || parsed.Fragment != "" {
+				return nil, provider.New(provider.ErrorInvalidArgument, "embedding image URI must be an absolute HTTPS URL without credentials or fragment")
+			}
+			return map[string]string{"image": uri}, nil
+		}
 		data, ok := provider.InlineImageBytes(image)
 		if !ok {
 			return nil, provider.New(provider.ErrorInvalidArgument, "embedding image must be inline bytes")

@@ -17,6 +17,24 @@ type roundTrip func(*http.Request) (*http.Response, error)
 
 func (r roundTrip) Do(req *http.Request) (*http.Response, error) { return r(req) }
 
+func TestEmbeddingForwardsCallerSignedHTTPSImageWithoutFetchingOrChangingIt(t *testing.T) {
+	uri := "https://private-bucket.s3.us-east-2.amazonaws.com/image.png?X-Amz-Signature=fixture&X-Amz-Expires=600"
+	request := &modelhubv2.GenerateRequest{Input: &modelhubv2.Input{Items: []*modelhubv2.InputItem{{Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{Parts: []*modelhubv2.ContentPart{{Content: &modelhubv2.ContentPart_Image{Image: &modelhubv2.Media{MimeType: "image/png", Source: &modelhubv2.Media_Uri{Uri: uri}}}}}}}}}}}
+	content, err := embedContent(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if content["image"] != uri {
+		t.Fatal("signed image URL must reach the vendor unchanged")
+	}
+	for _, invalid := range []string{"file:///tmp/image.png", "http://internal/image.png", "https://user:password@example.com/image.png", "https:///missing-host"} {
+		request.Input.Items[0].GetMessage().Parts[0].GetImage().Source = &modelhubv2.Media_Uri{Uri: invalid}
+		if _, err := embedContent(request); err == nil {
+			t.Errorf("accepted invalid image source %q", invalid)
+		}
+	}
+}
+
 func TestEmbedTextReturns1024(t *testing.T) {
 	provider, err := New("qwen", "https://dashscope.example/api/v1", "key", 20*time.Second)
 	if err != nil {
