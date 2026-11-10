@@ -55,6 +55,26 @@ func TestBuildContentsPreservesThoughtSignatureRoundtrip(t *testing.T) {
 	}
 }
 
+func TestImageResponseTransfersSDKBytes(t *testing.T) {
+	data := []byte("sdk-owned image")
+	response := &genaisdk.GenerateContentResponse{Candidates: []*genaisdk.Candidate{{
+		Content: &genaisdk.Content{Parts: []*genaisdk.Part{
+			genaisdk.NewPartFromText("diagnostic"), genaisdk.NewPartFromBytes(data, "image/png"),
+		}},
+	}}}
+	event := convertImageResponse(response)
+	if len(event.Items) != 2 || event.Items[0].GetText() != "diagnostic" {
+		t.Fatalf("output order changed: %v", event.Items)
+	}
+	image := event.Items[1].GetImage()
+	if image.GetMimeType() != "image/png" || string(image.GetData()) != string(data) {
+		t.Fatal("image bytes or MIME changed")
+	}
+	if &image.GetData()[0] != &data[0] {
+		t.Fatal("image conversion copied SDK bytes")
+	}
+}
+
 func TestBuildImagePartsPreservesOrder(t *testing.T) {
 	request := &modelhubv2.GenerateRequest{
 		Input: &modelhubv2.Input{

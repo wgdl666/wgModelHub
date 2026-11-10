@@ -1,15 +1,14 @@
 package vmindgateway
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"io"
-	"mime/multipart"
 	"net/http"
 	"strings"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
 )
@@ -93,36 +92,24 @@ func (c *Client) predict(ctx context.Context, input *modelhubv2.Input) (string, 
 		return "", provider.NotAttemptedf(provider.ErrorInvalidArgument, "Decision requires a JPEG, PNG or WebP image")
 	}
 
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
-	file, err := writer.CreateFormFile("image", filename)
-	if err != nil {
-		return "", provider.WrapNotAttempted(provider.ErrorUnavailable, "build Decision image field", err)
-	}
-	if _, err := file.Write(image); err != nil {
-		return "", provider.WrapNotAttempted(provider.ErrorUnavailable, "write Decision image", err)
-	}
+	parts := []httpbody.Part{httpbody.File("image", filename, "application/octet-stream", image)}
 	field, value := "task", task
 	if prompt != "" {
 		field, value = "prompt", prompt
 	}
-	if err := writer.WriteField(field, value); err != nil {
-		return "", provider.WrapNotAttempted(provider.ErrorUnavailable, "write Decision task", err)
-	}
+	parts = append(parts, httpbody.Field(field, value))
 	if len(traits.Options) > 0 {
 		options, _ := json.Marshal(traits.Options)
-		if err := writer.WriteField("options", string(options)); err != nil {
-			return "", provider.WrapNotAttempted(provider.ErrorUnavailable, "write Decision options", err)
-		}
+		parts = append(parts, httpbody.Field("options", string(options)))
 	}
-	if err := writer.Close(); err != nil {
-		return "", provider.WrapNotAttempted(provider.ErrorUnavailable, "finish Decision request", err)
+	body, err := httpbody.Multipart(parts)
+	if err != nil {
+		return "", provider.WrapNotAttempted(provider.ErrorUnavailable, "build Decision image field", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+decisionPath, &body)
+	req, err := body.NewRequest(ctx, http.MethodPost, c.baseURL+decisionPath)
 	if err != nil {
 		return "", provider.WrapNotAttempted(provider.ErrorConfiguration, c.name+" create Decision request", err)
 	}
-	req.Header.Set("Content-Type", writer.FormDataContentType())
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	res, err := c.http.Do(req)
 	if err != nil {

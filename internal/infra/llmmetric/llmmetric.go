@@ -28,7 +28,7 @@ const (
 	CacheDisabled = "disabled"
 	CacheUnknown  = "unknown"
 
-	// 与 applyTextCachingPolicy 返回值对齐；仅 explicit_disabled 才能标 cache=disabled。
+	// 与文本缓存遥测模式对齐；仅 explicit_disabled 才能标 cache=disabled。
 	CachingModeExplicitDisabled = "explicit_disabled"
 )
 

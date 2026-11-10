@@ -2,16 +2,17 @@
 package vmindgateway
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
 	"github.com/wgdl666/wgModelHub/internal/infra/objectstore"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
@@ -55,9 +56,21 @@ func (c *Client) Submit(ctx context.Context, model, id string, input map[string]
 		id = uuid.NewString()
 	}
 	// Trace 与业务输入分离，重复查询可以按同一 UUID 找回执行和制品。
-	body, err := json.Marshal(map[string]any{
+	// Expose media leaves to the body composer without changing the caller's input map.
+	if images, ok := input["images"].([]Image); ok {
+		input = maps.Clone(input)
+		var values []map[string]any
+		if images != nil {
+			values = make([]map[string]any, len(images))
+		}
+		for i, image := range images {
+			values[i] = map[string]any{"mime_type": image.MIMEType, "data": image.Data}
+		}
+		input["images"] = values
+	}
+	body, err := httpbody.JSON(map[string]any{
 		"input": input, "metadata": map[string]string{"trace_id": telemetry.TraceID(ctx)},
-	})
+	}, true)
 	if err != nil {
 		return Task{}, provider.WrapNotAttempted(provider.ErrorInvalidArgument, "encode VMind gateway input", err)
 	}
@@ -72,8 +85,8 @@ func (c *Client) Get(ctx context.Context, id string) (Task, error) {
 	return c.call(ctx, http.MethodGet, "/v1/gateway/requests", id, nil, http.StatusOK)
 }
 
-func (c *Client) call(ctx context.Context, method, path, id string, body []byte, expected int) (Task, error) {
-	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, bytes.NewReader(body))
+func (c *Client) call(ctx context.Context, method, path, id string, body *httpbody.Body, expected int) (Task, error) {
+	req, err := body.NewRequest(ctx, method, c.baseURL+path)
 	if err != nil {
 		return Task{}, provider.Wrap(provider.ErrorConfiguration, c.name+" create request", err)
 	}

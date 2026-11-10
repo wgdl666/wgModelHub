@@ -13,6 +13,7 @@ import (
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
+	"google.golang.org/protobuf/proto"
 )
 
 func testGenRequest(imageURL string) *modelhubv2.GenerateRequest {
@@ -481,6 +482,80 @@ func TestSeedanceMultipleIdentityReferences(t *testing.T) {
 	p := newTestProvider(server)
 	if id, err := p.SubmitVideo(context.Background(), models.DreaminaSeedance20, request); err != nil || id != "three-view-task" {
 		t.Fatalf("submit %s %v", id, err)
+	}
+}
+
+func TestSeedanceInlineReferencesPreserveOrderAndMode(t *testing.T) {
+	for _, count := range []int{1, 3} {
+		t.Run(string(rune('0'+count)), func(t *testing.T) {
+			calls := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				if r.Method != http.MethodPost || r.URL.Path != "/v3/bytedance/api/v3/contents/generations/tasks" {
+					t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+				}
+				var payload struct {
+					Content []struct {
+						Type  string `json:"type"`
+						Text  string `json:"text"`
+						Role  string `json:"role"`
+						Image struct {
+							URL string `json:"url"`
+						} `json:"image_url"`
+					} `json:"content"`
+					GenerateAudio *bool `json:"generate_audio"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+					t.Error(err)
+					return
+				}
+				if len(payload.Content) != count+1 || payload.Content[0].Text != "walk" {
+					t.Errorf("wrong content: %+v", payload.Content)
+					return
+				}
+				role := "first_frame"
+				if count > 1 {
+					role = "reference_image"
+				}
+				for i, item := range payload.Content[1:] {
+					want := "data:image/png;base64," + base64.StdEncoding.EncodeToString([]byte{byte(i), 255, 0})
+					if item.Role != role || item.Image.URL != want {
+						t.Errorf("image %d: role=%s url=%s", i, item.Role, item.Image.URL)
+					}
+				}
+				if payload.GenerateAudio == nil || *payload.GenerateAudio != (count == 1) {
+					t.Error("single/multiple image audio behavior changed")
+				}
+				_, _ = w.Write([]byte(`{"id":"inline-references"}`))
+			}))
+			defer server.Close()
+			req := testInlineImageRequest([]byte{0, 255, 0}, "image/png")
+			message := req.Input.Items[0].GetMessage()
+			for i := 1; i < count; i++ {
+				message.Parts = append(message.Parts, &modelhubv2.ContentPart{Content: &modelhubv2.ContentPart_Image{Image: &modelhubv2.Media{MimeType: "image/png", Source: &modelhubv2.Media_Data{Data: []byte{byte(i), 255, 0}}}}})
+			}
+			before := proto.Clone(req)
+			if _, err := newTestProvider(server).SubmitVideo(context.Background(), models.DreaminaSeedance20, req); err != nil {
+				t.Fatal(err)
+			}
+			if calls != 1 || !proto.Equal(req, before) {
+				t.Fatal("submission count or original request changed")
+			}
+		})
+	}
+}
+
+func TestInlineBase64ModelValidationBeforeHTTP(t *testing.T) {
+	for _, model := range []string{models.Veo31Generate001, models.KlingV3} {
+		for _, tc := range []struct {
+			data []byte
+			mime string
+		}{{nil, "image/png"}, {[]byte("image"), ""}, {[]byte("image"), "video/mp4"}} {
+			p := &Provider{baseURL: "http://unused.invalid"}
+			if _, err := p.SubmitVideo(context.Background(), model, testInlineImageRequest(tc.data, tc.mime)); err == nil || provider.Kind(err) != provider.ErrorInvalidArgument {
+				t.Fatalf("model=%s MIME=%s err=%v", model, tc.mime, err)
+			}
+		}
 	}
 }
 

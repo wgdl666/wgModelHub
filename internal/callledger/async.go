@@ -34,7 +34,6 @@ type Call struct {
 	store   Store
 	objects ObjectStore
 	snap    Record
-	blobs   []Blob
 	done    chan struct{}
 	abort   atomic.Bool
 	goFn    func(func())
@@ -65,22 +64,21 @@ func Open(ctx context.Context, store Store, objects ObjectStore, rec *Record, bl
 		store:   store,
 		objects: objects,
 		snap:    snap,
-		blobs:   blobs,
 		done:    make(chan struct{}),
 		goFn:    goFn,
 	}
-	goFn(func() { call.insert(ctx) })
+	goFn(func() { call.insert(ctx, blobs) })
 	return call
 }
 
-func (c *Call) insert(ctx context.Context) {
+func (c *Call) insert(ctx context.Context, blobs []Blob) {
 	defer close(c.done)
 	if c == nil || c.abort.Load() {
 		return
 	}
 	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), uploadTimeout)
 	defer cancel()
-	c.snap.InputPayload = AttachBlobs(persistCtx, c.objects, c.snap.CallID, c.snap.InputPayload, c.blobs)
+	c.snap.InputPayload = AttachBlobs(persistCtx, c.objects, c.snap.CallID, c.snap.InputPayload, blobs)
 	if c.abort.Load() {
 		return
 	}

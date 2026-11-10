@@ -3,19 +3,17 @@
 package vworldimage
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
-	"mime/multipart"
 	"net/http"
-	"net/textproto"
 	"strings"
 	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/infra/vmindgateway"
 	"github.com/wgdl666/wgModelHub/internal/provider"
@@ -299,16 +297,11 @@ func (p *Provider) doMultipart(ctx context.Context, path string, fields map[stri
 	if traceID := telemetry.TraceID(ctx); traceID != "" {
 		fields["trace_id"] = traceID
 	}
-	var buf bytes.Buffer
-	writer := multipart.NewWriter(&buf)
+	parts := make([]httpbody.Part, 0, len(fields)+len(images))
 	for name, value := range fields {
-		if err := writer.WriteField(name, value); err != nil {
-			_ = writer.Close()
-			return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" build request failed", err)
-		}
+		parts = append(parts, httpbody.Field(name, value))
 	}
 	for i, image := range images {
-		// 换衣两张图都叫 image。拆衣服的第二张是人体解析标签图，上游只认 parse_mask 这个字段名。
 		name := image.field
 		if name == "" {
 			name = "image"
@@ -317,29 +310,16 @@ func (p *Provider) doMultipart(ctx context.Context, path string, fields map[stri
 		if filename == "" {
 			filename = referenceFilename(image.mimeType, i)
 		}
-		partHeader := make(textproto.MIMEHeader)
-		partHeader.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, name, filename))
-		partHeader.Set("Content-Type", image.mimeType)
-		part, err := writer.CreatePart(partHeader)
-		if err != nil {
-			_ = writer.Close()
-			return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" build request failed", err)
-		}
-		if _, err := part.Write(image.data); err != nil {
-			_ = writer.Close()
-			return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" build request failed", err)
-		}
+		parts = append(parts, httpbody.File(name, filename, image.mimeType, image.data))
 	}
-	contentType := writer.FormDataContentType()
-	if err := writer.Close(); err != nil {
+	body, err := httpbody.Multipart(parts)
+	if err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" build request failed", err)
 	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.currentBaseURL()+path, &buf)
+	httpReq, err := body.NewRequest(ctx, http.MethodPost, p.currentBaseURL()+path)
 	if err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" create request failed", err)
 	}
-	httpReq.Header.Set("Content-Type", contentType)
 	httpReq.SetBasicAuth(p.username, p.password)
 
 	resp, err := p.client.Do(httpReq)

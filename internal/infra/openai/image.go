@@ -1,19 +1,17 @@
 package openai
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
-	"mime/multipart"
 	"net/http"
-	"net/textproto"
 	"regexp"
 	"strings"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
 	"github.com/wgdl666/wgModelHub/protocol"
@@ -206,46 +204,30 @@ func normalizedImageMIME(contentType string) string {
 }
 
 func (p *Provider) doImageEdits(ctx context.Context, model, prompt string, request *modelhubv2.GenerateRequest, refs []*modelhubv2.Media) ([]byte, error) {
-	var buf bytes.Buffer
-	writer := multipart.NewWriter(&buf)
 	fields := buildImageRequestFields(model, prompt, request.GetOutput().GetImage())
-	// FLUX.2 worker 默认回本机下载 URL，ModelHub 无法拉取，因此要求 b64_json。
+	// FLUX.2 worker returns local URLs by default, so retain its b64_json contract.
 	if model == models.Flux2Klein9B {
 		fields["response_format"] = "b64_json"
 	}
+	parts := make([]httpbody.Part, 0, len(fields)+len(refs))
 	for name, value := range fields {
-		if err := writer.WriteField(name, fmt.Sprint(value)); err != nil {
-			return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" build edits request failed", err)
-		}
+		parts = append(parts, httpbody.Field(name, fmt.Sprint(value)))
 	}
 	for i, media := range refs {
 		data, mimeType, err := p.materializeReferenceImage(ctx, media)
 		if err != nil {
-			_ = writer.Close()
 			return nil, err
 		}
 		if len(data) == 0 {
-			_ = writer.Close()
 			return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "reference image has no uploadable content")
 		}
-		partHeader := make(textproto.MIMEHeader)
-		partHeader.Set("Content-Disposition", fmt.Sprintf(`form-data; name="image"; filename="%s"`, referenceImageFilename(mimeType, i)))
-		partHeader.Set("Content-Type", mimeType)
-		part, err := writer.CreatePart(partHeader)
-		if err != nil {
-			_ = writer.Close()
-			return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" build edits request failed", err)
-		}
-		if _, err := part.Write(data); err != nil {
-			_ = writer.Close()
-			return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" build edits request failed", err)
-		}
+		parts = append(parts, httpbody.File("image", referenceImageFilename(mimeType, i), mimeType, data))
 	}
-	contentType := writer.FormDataContentType()
-	if err := writer.Close(); err != nil {
+	body, err := httpbody.Multipart(parts)
+	if err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" build edits request failed", err)
 	}
-	return p.doImageHTTP(ctx, p.imagesAPIURL("edits"), contentType, &buf)
+	return p.doImageHTTP(ctx, p.imagesAPIURL("edits"), body.ContentType, body)
 }
 
 func referenceImageFilename(mimeType string, index int) string {
@@ -344,18 +326,16 @@ func (p *Provider) decodeImageItem(ctx context.Context, item imagesGenerationIte
 }
 
 func (p *Provider) doJSON(ctx context.Context, url string, body map[string]any) ([]byte, error) {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(body); err != nil {
+	encoded, err := httpbody.JSON(body, false)
+	if err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" marshal failed", err)
 	}
-	return p.doImageHTTP(ctx, url, "application/json", bytes.NewReader(buf.Bytes()))
+	return p.doImageHTTP(ctx, url, "application/json", encoded)
 }
 
 // doImageHTTP 统一 generations/edits 的鉴权、状态码分类与响应体大小限制。
-func (p *Provider) doImageHTTP(ctx context.Context, url, contentType string, body io.Reader) ([]byte, error) {
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, body)
+func (p *Provider) doImageHTTP(ctx context.Context, url, contentType string, body *httpbody.Body) ([]byte, error) {
+	httpReq, err := body.NewRequest(ctx, http.MethodPost, url)
 	if err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" create request failed", err)
 	}

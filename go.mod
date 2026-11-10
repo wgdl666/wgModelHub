@@ -171,3 +171,5 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.18.15 // indirect
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.79.2
 )
+
+replace google.golang.org/genai v1.43.0 => ./third_party/go-genai

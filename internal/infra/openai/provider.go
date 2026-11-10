@@ -2,7 +2,6 @@ package openai
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/wgdl666/kangaroo/logs"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/internal/thinking"
@@ -178,7 +178,7 @@ func (p *Provider) buildRequestBody(model string, request *modelhubv2.GenerateRe
 		}
 	}
 	body["messages"] = messages
-	// DashScope qwen3.5-flash 显式上下文缓存：仅在受信 hostname、显式 enabled 且存在带文本的 system 消息时标记稳定前缀。
+	// DashScope 显式上下文缓存：缺省开启；仅在受信 hostname 和支持的模型上标记 system 稳定前缀。
 	if p.dashScopeExplicitCacheEligible(model, input) {
 		applyDashScopeSystemCacheControl(messages)
 	}
@@ -467,7 +467,7 @@ func (p *Provider) dashScopeExplicitCacheEligible(model string, input *modelhubv
 	default:
 		return false
 	}
-	if input == nil || input.Caching == nil || !input.Caching.Enabled {
+	if caching := input.GetCaching(); caching != nil && !caching.Enabled {
 		return false
 	}
 	u, err := url.Parse(p.baseURL)
@@ -603,13 +603,11 @@ func roleString(role modelhubv2.Role) string {
 }
 
 func (p *Provider) doRequest(ctx context.Context, body map[string]any) (io.ReadCloser, error) {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(body); err != nil {
+	encoded, err := httpbody.JSON(body, false)
+	if err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" marshal failed", err)
 	}
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/chat/completions", bytes.NewReader(buf.Bytes()))
+	httpReq, err := encoded.NewRequest(ctx, http.MethodPost, p.baseURL+"/chat/completions")
 	if err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" create request failed", err)
 	}

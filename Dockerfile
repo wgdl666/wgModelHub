@@ -17,6 +17,7 @@ RUN if [ -n "$ALPINE_MIRROR" ]; then \
     && apk add --no-cache git bash
 
 COPY go.mod go.sum ./
+COPY third_party/go-genai/go.mod ./third_party/go-genai/go.mod
 # callmeta 按 go.mod 锁定的共享版本下载，不再复制服务内的协议副本。
 RUN --mount=type=cache,target=/go/pkg/mod \
     GOPROXY="$GOPROXY" go mod download
@@ -25,6 +26,8 @@ COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" \
+    GOPROXY="$GOPROXY" go test google.golang.org/genai -mode=unit -run '^TestMediaPatch' \
+    && CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" \
     GOPROXY="$GOPROXY" go test ./... \
     && CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" \
     GOPROXY="$GOPROXY" go build -trimpath -ldflags="-s -w" -o /out/wg-model-hub ./cmd/server \
