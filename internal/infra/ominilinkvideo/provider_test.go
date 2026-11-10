@@ -215,7 +215,7 @@ func TestGenerateVeoUsesInstancesPayload(t *testing.T) {
 			_ = json.NewDecoder(r.Body).Decode(&createPayload)
 			_, _ = w.Write([]byte(`{"name":"` + taskID + `"}`))
 		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/query/"):
-			_, _ = w.Write([]byte(`{"status":"success","video_url":"` + apiBase + `/veo.mp4"}`))
+			_, _ = w.Write([]byte(`{"done":true,"response":{"videos":[{"gcsUri":"` + apiBase + `/veo.mp4","mimeType":"video/mp4"}]}}`))
 		case r.URL.Path == "/veo.mp4":
 			_, _ = w.Write([]byte("mp4"))
 		default:
