@@ -21,6 +21,7 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestTextCachingMode(t *testing.T) {
@@ -38,59 +39,34 @@ func TestTextCachingMode(t *testing.T) {
 	}
 }
 
-func TestApplyTextCachingPolicy(t *testing.T) {
-	plainArk := config.ProviderConfig{Ark: &config.ArkProviderConfig{APIKey: "k"}}
-	endpointArk := config.ProviderConfig{Ark: &config.ArkProviderConfig{APIKey: "k", EndpointID: "ep-test"}}
-
-	req := &modelhubv2.GenerateRequest{}
-	if mode := applyTextCachingPolicy(req, plainArk); mode != cachingModeDefaultEnabled {
-		t.Fatalf("nil input mode = %q", mode)
-	}
-	if !req.GetInput().GetCaching().GetEnabled() {
-		t.Fatalf("nil input should default enable: %#v", req.Input)
-	}
-
-	req = &modelhubv2.GenerateRequest{Input: &modelhubv2.Input{}}
-	if mode := applyTextCachingPolicy(req, plainArk); mode != cachingModeDefaultEnabled {
-		t.Fatalf("omit mode = %q", mode)
-	}
-	if !req.Input.Caching.Enabled || req.Input.Caching.ExpireAtUnix != 0 {
-		t.Fatalf("omit caching should enable without inventing expire: %#v", req.Input.Caching)
-	}
-
-	req = &modelhubv2.GenerateRequest{Input: &modelhubv2.Input{Caching: &modelhubv2.CachingConfig{Enabled: true, ExpireAtUnix: 99}}}
-	if mode := applyTextCachingPolicy(req, plainArk); mode != cachingModeExplicitEnabled {
-		t.Fatalf("plain explicit on mode = %q", mode)
-	}
-	if !req.Input.Caching.Enabled || req.Input.Caching.ExpireAtUnix != 99 {
-		t.Fatalf("explicit enabled must keep expire_at: %#v", req.Input.Caching)
-	}
-
-	req = &modelhubv2.GenerateRequest{Input: &modelhubv2.Input{Caching: &modelhubv2.CachingConfig{Enabled: false, ExpireAtUnix: 99}}}
-	if mode := applyTextCachingPolicy(req, plainArk); mode != cachingModeExplicitDisabled {
-		t.Fatalf("plain explicit off mode = %q", mode)
-	}
-	if req.Input.Caching.Enabled {
-		t.Fatalf("explicit disabled must stay off: %#v", req.Input.Caching)
-	}
-
-	for _, tc := range []struct {
-		name string
-		cfg  *modelhubv2.CachingConfig
-	}{
-		{name: "omit", cfg: nil},
-		{name: "explicit_on", cfg: &modelhubv2.CachingConfig{Enabled: true, ExpireAtUnix: 99}},
-		{name: "explicit_off", cfg: &modelhubv2.CachingConfig{Enabled: false, ExpireAtUnix: 99}},
-	} {
-		t.Run("endpoint_"+tc.name, func(t *testing.T) {
-			req := &modelhubv2.GenerateRequest{Input: &modelhubv2.Input{Caching: tc.cfg}}
-			if mode := applyTextCachingPolicy(req, endpointArk); mode != cachingModeImplicitAutomatic {
-				t.Fatalf("mode = %q want %q", mode, cachingModeImplicitAutomatic)
-			}
-			if req.Input.Caching != nil {
-				t.Fatalf("endpoint-bound must omit explicit caching field: %#v", req.Input.Caching)
-			}
-		})
+func TestTextCachingModeForProviderDoesNotMutateRequest(t *testing.T) {
+	for _, endpoint := range []string{"", "ep-test"} {
+		cfg := config.ProviderConfig{Ark: &config.ArkProviderConfig{APIKey: "k", EndpointID: endpoint}}
+		for _, tc := range []struct {
+			name  string
+			input *modelhubv2.Input
+			mode  string
+		}{
+			{"nil_input", nil, cachingModeDefaultEnabled},
+			{"omitted", &modelhubv2.Input{}, cachingModeDefaultEnabled},
+			{"explicit_on", &modelhubv2.Input{Caching: &modelhubv2.CachingConfig{Enabled: true, ExpireAtUnix: 99}}, cachingModeExplicitEnabled},
+			{"explicit_off", &modelhubv2.Input{Caching: &modelhubv2.CachingConfig{Enabled: false, ExpireAtUnix: 99}}, cachingModeExplicitDisabled},
+		} {
+			t.Run(endpoint+"/"+tc.name, func(t *testing.T) {
+				req := &modelhubv2.GenerateRequest{Input: tc.input}
+				before := proto.Clone(req)
+				want := tc.mode
+				if endpoint != "" {
+					want = cachingModeImplicitAutomatic
+				}
+				if got := textCachingModeForProvider(req.GetInput(), cfg); got != want {
+					t.Fatalf("mode=%s want=%s", got, want)
+				}
+				if !proto.Equal(req, before) {
+					t.Fatal("cache telemetry mutated caller request")
+				}
+			})
+		}
 	}
 }
 
@@ -247,11 +223,12 @@ func TestGenerateTextDefaultsCachingAndRecordsUsage(t *testing.T) {
 		},
 	}, map[string]provider.Set{"ark": {Text: text}}, nil)
 
-	if err := service.Generate(textRequest("chat-model", "do"), &generateRecorder{ctx: context.Background()}); err != nil {
+	req := textRequest("chat-model", "do")
+	if err := service.Generate(req, &generateRecorder{ctx: context.Background()}); err != nil {
 		t.Fatal(err)
 	}
-	if text.request.GetInput().GetCaching() == nil || !text.request.GetInput().GetCaching().GetEnabled() {
-		t.Fatalf("provider should see default enabled caching: %#v", text.request.GetInput())
+	if text.request != req || req.GetInput().GetCaching() != nil {
+		t.Fatal("service must forward the original request without materializing caching defaults")
 	}
 	body := scrape()
 	base := map[string]string{"model": "chat-model", "provider": "ark", "stream": "false"}
@@ -331,8 +308,8 @@ func TestGenerateTextEndpointBoundUsesImplicitAutomatic(t *testing.T) {
 	if err := service.Generate(req, &generateRecorder{ctx: context.Background()}); err != nil {
 		t.Fatal(err)
 	}
-	if text.request.GetInput().GetCaching() != nil {
-		t.Fatalf("provider must see nil caching: %#v", text.request.GetInput().GetCaching())
+	if text.request != req || req.GetInput().GetCaching() == nil || req.GetInput().GetCaching().GetEnabled() {
+		t.Fatal("service must preserve the explicit caller switch; Ark adapter handles endpoint policy")
 	}
 	body := scrape()
 	if metricValue(t, body, "wg_modelhub_llm_cache_requests_total", map[string]string{

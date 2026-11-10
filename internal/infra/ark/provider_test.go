@@ -6,6 +6,7 @@ import (
 	"github.com/volcengine/volcengine-go-sdk/service/arkruntime/model/responses"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/models"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestConvertMessageToInputItemsEmitsAllToolCalls(t *testing.T) {
@@ -151,8 +152,8 @@ func TestBuildRequestCachingExplicitSemantics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if arkReq.Caching != nil || arkReq.ExpireAt != nil {
-		t.Fatalf("provider must not invent caching when omitted: %#v", arkReq)
+	if arkReq.Caching == nil || arkReq.Caching.GetType() != responses.CacheType_enabled || arkReq.ExpireAt != nil {
+		t.Fatalf("omitted caching must default to enabled without expiry: %#v", arkReq)
 	}
 
 	arkReq, err = p.buildRequest("model-x", base(&modelhubv2.CachingConfig{Enabled: true, ExpireAtUnix: 1700000000}))
@@ -172,6 +173,24 @@ func TestBuildRequestCachingExplicitSemantics(t *testing.T) {
 	}
 	if arkReq.Caching != nil || arkReq.ExpireAt != nil {
 		t.Fatalf("explicit disabled must not enable caching: caching=%#v expire=%#v", arkReq.Caching, arkReq.ExpireAt)
+	}
+}
+
+func TestEndpointCachePolicyDoesNotMutateCallerSwitch(t *testing.T) {
+	p := &Provider{name: "ark", endpointID: "ep-test"}
+	for _, caching := range []*modelhubv2.CachingConfig{nil, {Enabled: true, ExpireAtUnix: 99}, {Enabled: false, ExpireAtUnix: 99}} {
+		req := &modelhubv2.GenerateRequest{Input: &modelhubv2.Input{Caching: caching}}
+		before := proto.Clone(req)
+		upstream, err := p.buildRequest("model-x", req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if upstream.Caching != nil || upstream.ExpireAt != nil {
+			t.Fatal("endpoint must omit explicit cache and expiry")
+		}
+		if !proto.Equal(req, before) {
+			t.Fatal("endpoint policy changed caller cache switch")
+		}
 	}
 }
 

@@ -6,12 +6,25 @@ import (
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/models"
+	"google.golang.org/protobuf/proto"
 )
 
 const dashScopeBaseURL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
 func dashScopeProvider() *Provider {
 	return &Provider{baseURL: dashScopeBaseURL}
+}
+
+func TestDashScopeDefaultsCacheWithoutMutatingRequest(t *testing.T) {
+	req := systemUserRequest("stable system prefix", "hi", nil)
+	before := proto.Clone(req)
+	body := dashScopeProvider().buildRequestBody(models.Qwen35Flash, req, false)
+	if _, ok := systemCacheControl(t, body); !ok {
+		t.Fatal("omitted caching must default to system cache_control")
+	}
+	if !proto.Equal(req, before) {
+		t.Fatal("building provider body mutated caller request")
+	}
 }
 
 func systemUserRequest(systemText, userText string, caching *modelhubv2.CachingConfig) *modelhubv2.GenerateRequest {

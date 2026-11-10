@@ -167,7 +167,7 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 	// 供应商耗时仍由下方 stampCallTiming 用 provider 边界重写，Finish 时 UpdateResult 一并落库。
 	callStarted := time.Now()
 	rec := s.baseRecord(ctx, request.GetBusinessMetadata(), callledger.OperationGenerateText, callledger.CapabilityText, binding.model, binding.provider, callStarted)
-	// 输入快照必须在缓存策略改写请求之前，保留调用方原始参数。
+	// 输入快照保留调用方原始参数；适配器只读该请求。
 	var inBlobs []callledger.Blob
 	rec.InputPayload, inBlobs = callledger.BuildGenerateInput(request)
 	var providerErr error
@@ -175,10 +175,10 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 	tracked := s.track(ctx, &rec, inBlobs)
 	defer s.endTrack(tracked, &rec, &providerErr, &outBlobs)
 	announceCall(stream, tracked, rec.CallID)
-	// 应用文本缓存策略（普通缺省开启 / endpoint-bound Ark 隐式自动）；返回实际生效遥测模式。
+	// 只计算缓存遥测模式；普通缺省开启 / endpoint-bound Ark 隐式自动由适配器处理。
 	// 实例改名后 binding.provider 是新键，类型和 endpoint 以当前配置为准，不读启动快照。
 	providerCfg, _ := s.providerConfig(binding.provider)
-	cachingMode := applyTextCachingPolicy(request, providerCfg)
+	cachingMode := textCachingModeForProvider(request.GetInput(), providerCfg)
 	streamMode := request.GetOutput().GetStream()
 	labels := llmmetric.Labels{Model: binding.model, Provider: binding.provider, Stream: streamMode}
 	// 文本能力已路由成功：真实供应商调用前计一次 request。

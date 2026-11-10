@@ -36,26 +36,10 @@ func arkEndpointBound(providerCfg config.ProviderConfig) bool {
 	return providerCfg.Ark != nil && strings.TrimSpace(providerCfg.Ark.EndpointID) != ""
 }
 
-// applyTextCachingPolicy 仅服务文本 Generate 的缓存策略：
-//   - 普通 provider：省略 Input.Caching 时写入 enabled=true，显式 true/false 原样保留。
-//   - endpoint_id 绑定的 Ark：无论调用方省略 / 显式 true / 显式 false，一律清空 Caching，
-//     不下发显式 enabled 或 expire_at，从而使用官方自动隐式缓存（避免显式缓存 403）。
-//
-// 返回值是实际生效的遥测模式；configured/strategy != hit。
-func applyTextCachingPolicy(request *modelhubv2.GenerateRequest, providerCfg config.ProviderConfig) string {
-	// 调用点仅限已通过 validateGenerateRequest 的 generateText；request 非空契约已成立。
-	callerMode := textCachingMode(request.GetInput())
-	if request.Input == nil {
-		request.Input = &modelhubv2.Input{}
-	}
+// textCachingModeForProvider 只计算遥测模式；适配器把缓存策略写入自己的上游参数，不修改共享请求。
+func textCachingModeForProvider(input *modelhubv2.Input, providerCfg config.ProviderConfig) string {
 	if arkEndpointBound(providerCfg) {
-		// 清空字段：Ark provider 仅在 Caching.Enabled=true 时下发显式 caching；
-		// nil 表示走隐式缓存，不得写成 enabled=false（那会误读成「关闭缓存」）。
-		request.Input.Caching = nil
 		return cachingModeImplicitAutomatic
 	}
-	if request.Input.Caching == nil {
-		request.Input.Caching = &modelhubv2.CachingConfig{Enabled: true}
-	}
-	return callerMode
+	return textCachingMode(input)
 }

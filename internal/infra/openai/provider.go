@@ -178,7 +178,7 @@ func (p *Provider) buildRequestBody(model string, request *modelhubv2.GenerateRe
 		}
 	}
 	body["messages"] = messages
-	// DashScope qwen3.5-flash 显式上下文缓存：仅在受信 hostname、显式 enabled 且存在带文本的 system 消息时标记稳定前缀。
+	// DashScope 显式上下文缓存：缺省开启；仅在受信 hostname 和支持的模型上标记 system 稳定前缀。
 	if p.dashScopeExplicitCacheEligible(model, input) {
 		applyDashScopeSystemCacheControl(messages)
 	}
@@ -467,7 +467,7 @@ func (p *Provider) dashScopeExplicitCacheEligible(model string, input *modelhubv
 	default:
 		return false
 	}
-	if input == nil || input.Caching == nil || !input.Caching.Enabled {
+	if caching := input.GetCaching(); caching != nil && !caching.Enabled {
 		return false
 	}
 	u, err := url.Parse(p.baseURL)

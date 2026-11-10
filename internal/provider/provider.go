@@ -10,6 +10,7 @@ import (
 type EmitEvent func(*modelhubv2.GenerateEvent) error
 
 // TextProvider 只接收调用方传入的真实供应商模型 ID；供应商地址与凭据不会进入 RPC。
+// GenerateRequest 只读，可由多个竞速分支共享；供应商参数和缓存默认值在适配器内构造。
 type TextProvider interface {
 	Generate(context.Context, string, *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error)
 	GenerateStream(context.Context, string, *modelhubv2.GenerateRequest, EmitEvent) (*modelhubv2.GenerateEvent, error)
