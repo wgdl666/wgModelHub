@@ -66,6 +66,7 @@ CPU 改善没有内存那么确定：单并发四场景均值下降 12%～26%；
 
 ## 正确性验证
 
+- 追加 gRPC 链路测试 `TestMediaRequestGRPCRoundTrip`：使用真实 gRPC 客户端/服务端（bufconn HTTP/2 传输）、真实路由/适配器工厂及异步账本，连接本地 HTTP mock，验证 GPT 图片编辑 multipart、抠图 Base64 表单、人体解析 Base64 JSON、OpenAI 看图 SSE 回复四条链路。核对上游收到的图片/字段、客户端收到的 PNG 字节/文字、唯一 final、流式 usage 及账本输入/输出上传。四项均通过，服务包回归和该测试的 `-race` 均通过。没有新增真实厂商调用；上文性能测量仍是直接调用适配器的局部对照。
 - 新增请求体测试：标准库 JSON 字节对照（HTML 转义、Unicode、RawMessage、嵌套/空值/字节字段）、multipart 重复字段/文件/MIME、ContentLength、GetBody、HTTP 307 重放。
 - 新增账本测试：输入与调用方隔离、已克隆输入不再二次复制、输出仍保持复制隔离。
 - 新增 gateway 测试：图片 JSON 与原协议一致、nil/空数组、调用方 map 不被修改、GET 空 body。
