@@ -304,7 +304,7 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 		return provider.Set{Text: client}, nil
 	case providerCfg.FaceSim != nil:
 		cfg := providerCfg.FaceSim
-		client, err := facesim.New(name, cfg.BaseURL, cfg.Username, cfg.Password)
+		client, err := facesim.New(name, cfg.BaseURL, cfg.Username, cfg.Password, options...)
 		if err != nil {
 			return provider.Set{}, err
 		}

@@ -97,13 +97,13 @@ const (
 	// SegmentPersonBria 是国内自建人物抠图 POST /api/segment。
 	// 上游 method 在供应商配置里；本常量只选端点，不下发上游，也不能拿去替代商品主体抠图。
 	SegmentPersonBria = "Vmind_segment_person_bria_v1.0"
-	// LensDistortionCorrection 标识镜头校正 /correct 产品端点，只路由、不下发 model。
-	LensDistortionCorrection = "lens-distortion-correction"
+	// LensDistortionCorrection 与网关登记使用同一 VMind 模型键；上游 /correct 路径不随模型键改名。
+	LensDistortionCorrection = "Vmind_lens_distortion_correction_v1.0"
 	// SegmentSubjectBria 是国内自建商品主体抠图 POST /api/segment_subject。
 	// 平铺/人台衣物不能走人物端点，所以和 SegmentPersonBria 分两个真实模型 ID。
 	SegmentSubjectBria = "Vmind_segment_subject_bria_v1.0"
-	// HumanYOLO 是自建人体检测 POST /predict。置信度和 IoU 属于该服务契约，不下发成调用方参数。
-	HumanYOLO = "human-yolo"
+	// HumanYOLO 与网关登记使用同一 VMind 模型键；置信度和 IoU 仍由上游 /predict 服务管理。
+	HumanYOLO = "Vmind_human_yolo_v1.0"
 	ClothYOLO = "cloth-yolo"
 	FaceSim   = "facesim"
 	// RekognitionDetectLabels 是 DetectLabels 的 Person 实例框，和 HumanYOLO 不能互相替代。

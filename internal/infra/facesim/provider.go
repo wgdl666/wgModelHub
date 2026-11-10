@@ -23,7 +23,7 @@ type Provider struct {
 	client                            *http.Client
 }
 
-func New(name, baseURL, username, password string) (*Provider, error) {
+func New(name, baseURL, username, password string, options ...telemetry.HTTPClientOption) (*Provider, error) {
 	name = strings.TrimSpace(name)
 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	username = strings.TrimSpace(username)
@@ -34,7 +34,8 @@ func New(name, baseURL, username, password string) (*Provider, error) {
 	if (username == "") != (password == "") {
 		return nil, provider.New(provider.ErrorConfiguration, "facesim username and password must be configured together")
 	}
-	client := telemetry.NewHTTPClient()
+	// 网关凭据通过共享 HTTP 选项注入，模型服务不接收业务鉴权。
+	client := telemetry.NewHTTPClient(options...)
 	client.Timeout = 60 * time.Second
 	return &Provider{name: name, baseURL: baseURL, username: username, password: password, client: client}, nil
 }

@@ -41,10 +41,13 @@ func (p ProviderConfig) ResolveVisionGateway(providers map[string]ProviderConfig
 		segment.BaseURL = base + "/segment-person"
 		segment.Username, segment.Password = "", ""
 		p.SegmentPerson = &segment
+	case p.FaceSim != nil:
+		// 人脸比对同样经过统一登记派发，禁止沿用旧 Basic Auth 直连。
+		p.FaceSim = &FaceSimProviderConfig{BaseURL: base + "/facesim"}
 	case p.LensCorrection != nil:
 		p.LensCorrection = &LensCorrectionProviderConfig{BaseURL: base + "/lens_distortion_correction"}
 	default:
-		return p, nil, fmt.Errorf("vision_gateway is only supported by human_parser, human_yolo, segment_person and lens_distortion_correction")
+		return p, nil, fmt.Errorf("vision_gateway is only supported by human_parser, human_yolo, facesim, segment_person and lens_distortion_correction")
 	}
 	return p, gateway, nil
 }

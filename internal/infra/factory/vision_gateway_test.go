@@ -56,6 +56,11 @@ func TestVisionGatewayPreservesAdapterProtocol(t *testing.T) {
 				t.Error("person segmenter lost the preprocess option")
 			}
 			fmt.Fprintf(w, `{"refined_png_b64":%q}`, base64.StdEncoding.EncodeToString([]byte(r.URL.Path)))
+		case "/v1/vision/facesim/compare":
+			if r.FormValue("image_a") != encoded || r.FormValue("image_b") != encoded {
+				t.Error("facesim lost one of its inline images")
+			}
+			fmt.Fprint(w, `{"success":true,"similarity":0.7}`)
 		case "/v1/vision/lens_distortion_correction/correct":
 			var body struct {
 				Base64 string `json:"base64"`
@@ -84,6 +89,7 @@ func TestVisionGatewayPreservesAdapterProtocol(t *testing.T) {
 		"yolo": {VisionGateway: "gateway", HumanYOLO: &config.HumanYOLOProviderConfig{
 			BaseURL: direct, Username: "old-user", Password: "old-password"}},
 		"segment": {VisionGateway: "gateway", SegmentPerson: &config.SegmentPersonProviderConfig{BaseURL: direct, Method: "person-bria-rmbg"}},
+		"face":    {VisionGateway: "gateway", FaceSim: &config.FaceSimProviderConfig{BaseURL: direct, Username: "old", Password: "old"}},
 		"lens":    {VisionGateway: "gateway", LensCorrection: &config.LensCorrectionProviderConfig{BaseURL: direct}},
 	}})
 	if err != nil {
@@ -98,6 +104,12 @@ func TestVisionGatewayPreservesAdapterProtocol(t *testing.T) {
 		}}}},
 		ModelTraits: `{"mirror_lens":false,"crop":true}`,
 	}}
+	// 人脸比对保留双图契约，同时走与其他视觉模型相同的网关鉴权。
+	faceRequest := &modelhubv2.GenerateRequest{Input: &modelhubv2.Input{Items: []*modelhubv2.InputItem{request.Input.Items[0], request.Input.Items[0]}}}
+	face, err := sets["face"].Text.Generate(context.Background(), models.FaceSim, faceRequest)
+	if err != nil || !strings.Contains(face.GetItems()[0].GetText(), `"similarity":0.7`) {
+		t.Fatalf("facesim gateway result: %v", err)
+	}
 	for _, test := range []struct{ instance, model, want string }{
 		{"parser", models.HumanParse, `"success":true`},
 		{"yolo", models.HumanYOLO, `"persons"`},

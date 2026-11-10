@@ -304,7 +304,7 @@ providers:
       proxy_url: ""
   # 镜头校正独立服务；国内用此地址，美东路演用 aws-exhibition-lens.providers.yaml 的 VPC 前缀。
   wgdl_lens_correction:
-    models: [lens-distortion-correction]
+    models: [Vmind_lens_distortion_correction_v1.0]
     lens_distortion_correction:
       base_url: https://mirror-lens.model.wgdl.tech
   # 国内自建抠图。两个模型 ID 分别对应人物 /api/segment 与商品主体 /api/segment_subject。
@@ -317,7 +317,7 @@ providers:
       subject_method: person-bria-rmbg
   # 自建人体检测。conf/iou 固定在供应商代码里。
   aws_g6_human_yolo:
-    models: [human-yolo]
+    models: [Vmind_human_yolo_v1.0]
     human_yolo:
       base_url: http://172.31.43.7:18280/human-yolo
   # 自建人体解析。username/password 成对省略则匿名。国内和新加坡继续用这个 ID。

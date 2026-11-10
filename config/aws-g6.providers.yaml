@@ -2,13 +2,15 @@
 # Ohio dev-branch deployment: modelhub / ppe_exhibition / config-ppe_exhibition.
 providers:
   wgdl_segment_person:
+    vision_gateway: wgdl_model_gateway_exhibition
     models: [Vmind_segment_person_bria_v1.0, Vmind_segment_subject_bria_v1.0]
     segment_person:
       base_url: http://172.31.43.7:18280/segment-person
       person_method: person-birefnet-portrait
       subject_method: person-bria-rmbg
   aws_g6_human_yolo:
-    models: [human-yolo]
+    vision_gateway: wgdl_model_gateway_exhibition
+    models: [Vmind_human_yolo_v1.0]
     human_yolo:
       base_url: http://172.31.43.7:18280/human-yolo
   aws_g6_legacy_human_parser:
@@ -16,6 +18,7 @@ providers:
     human_parser:
       base_url: http://172.31.43.7:18280/human-parser/human_parser
   aws_g6_human_parser:
+    vision_gateway: wgdl_model_gateway_exhibition
     models: [Vmind_human_parse_v1.0]
     human_parser:
       base_url: http://172.31.43.7:18280/human-parser
@@ -24,13 +27,14 @@ providers:
     cloth_yolo:
       base_url: http://172.31.43.7:18280/cloth-yolo
   aws_g6_facesim:
+    vision_gateway: wgdl_model_gateway_exhibition
     models: [facesim]
     facesim:
       base_url: http://172.31.43.7:18280/facesim
 model_routes:
   Vmind_segment_person_bria_v1.0: wgdl_segment_person
   Vmind_segment_subject_bria_v1.0: wgdl_segment_person
-  human-yolo: aws_g6_human_yolo
+  Vmind_human_yolo_v1.0: aws_g6_human_yolo
   human-parser: aws_g6_legacy_human_parser
   Vmind_human_parse_v1.0: aws_g6_human_parser
   cloth-yolo: aws_g6_cloth_yolo
