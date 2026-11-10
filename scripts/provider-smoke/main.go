@@ -97,7 +97,13 @@ func run() error {
 	imageFile := flag.String("image", "", "existing JPEG or PNG fixture")
 	out := flag.String("out", "", "local result directory")
 	selected := flag.String("models", "gpt-5.6-luna,embed-v4.0,human-parser,photoroom-segment,gpt-image-2", "comma-separated models, one call each")
+	mode := flag.String("mode", "auto", "auto, text, text-stream, vision, vision-stream, tools, schema")
 	flag.Parse()
+	switch *mode {
+	case "auto", "text", "text-stream", "vision", "vision-stream", "tools", "schema":
+	default:
+		return fmt.Errorf("unsupported probe mode %q", *mode)
+	}
 	raw, err := os.ReadFile(*configFile)
 	if err != nil {
 		return err
@@ -194,11 +200,28 @@ func run() error {
 			}
 			request.Output = &modelhubv2.OutputSpec{Stream: isVision, Kind: &modelhubv2.OutputSpec_Text{Text: spec}}
 		}
+		if *mode != "auto" {
+			request = textProbeRequest(model, *mode, imageData)
+			isImage = false
+			isVision = strings.HasPrefix(*mode, "vision")
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 		stream, callErr := client.Generate(ctx, request)
 		finals, images := 0, 0
+		events, deltas := 0, 0
 		var text strings.Builder
-		row := map[string]any{"model": model, "stream": isVision, "input_bytes": len(imageData), "input_sha256": fmt.Sprintf("%x", sha256.Sum256(imageData))}
+		var toolCalls []*modelhubv2.ToolCall
+		imageCount, inputBytes := 0, 0
+		for _, part := range request.GetInput().GetItems()[0].GetMessage().GetParts() {
+			if m := part.GetImage(); m != nil {
+				imageCount++
+				inputBytes += len(m.GetData())
+			}
+		}
+		row := map[string]any{"model": model, "case": *mode, "stream": request.GetOutput().GetStream(), "image_parts": imageCount, "input_bytes": inputBytes}
+		if imageCount > 0 {
+			row["input_sha256"] = fmt.Sprintf("%x", sha256.Sum256(imageData))
+		}
 		if callErr == nil {
 			for {
 				event, e := stream.Recv()
@@ -209,14 +232,24 @@ func run() error {
 					callErr = e
 					break
 				}
+				if finals != 0 {
+					callErr = fmt.Errorf("event received after final")
+					break
+				}
+				events++
 				if event.GetFinal() {
 					finals++
+				} else {
+					deltas++
 				}
 				if event.GetUsage() != nil {
 					row["usage"] = event.GetUsage()
 				}
 				for _, item := range event.GetItems() {
 					text.WriteString(item.GetText())
+					if tc := item.GetToolCall(); tc != nil {
+						toolCalls = append(toolCalls, tc)
+					}
 					if m := item.GetImage(); m != nil {
 						images++
 						im, format, e := image.DecodeConfig(bytes.NewReader(m.GetData()))
@@ -237,9 +270,16 @@ func run() error {
 		cancel()
 		row["elapsed_ms"] = time.Since(start).Milliseconds()
 		row["finals"] = finals
+		row["events"], row["delta_events"] = events, deltas
 		row["http"] = capture.take()
-		if callErr == nil && (finals != 1 || (isImage && images != 1) || (!isImage && text.Len() == 0)) {
+		if callErr == nil && (finals != 1 || (isImage && images != 1) || (!isImage && text.Len() == 0 && len(toolCalls) == 0) || (request.GetOutput().GetStream() && deltas == 0)) {
 			callErr = fmt.Errorf("invalid final output")
+		}
+		if callErr == nil && *mode != "auto" {
+			callErr = validateTextProbe(*mode, text.String(), toolCalls)
+		}
+		if len(toolCalls) > 0 {
+			row["tool_calls"] = toolCalls
 		}
 		if callErr == nil && model == models.CohereEmbedV4 {
 			var embedding struct {
@@ -255,7 +295,7 @@ func run() error {
 				return err
 			}
 			row["text_bytes"] = text.Len()
-			if isVision {
+			if isVision || *mode != "auto" {
 				row["text"] = text.String()
 			}
 		}

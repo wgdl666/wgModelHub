@@ -17,7 +17,24 @@
 
 这是每条链路单次成功样本的耗时，不能据此比较模型速度或推断稳定容量。JSON 路径在初轮通过；后续修改仅涉及 multipart 头，图片编辑和 Photoroom 在恢复引号后重新调用成功。
 
-共发起 **10 个真实 HTTP 请求：8 个 200、2 个修复前的 403**，包含一次旧版本控制实验；没有额外自动重试。不是“初版全部通过”。逐次状态、耗时、字节数、usage、输出摘要和本地 call_id 见 [原始联调结果](media-live-provider-results.json)。图片/向量原件保留在本机输出目录，没有提交到仓库。
+上面这轮共发起 **10 个真实 HTTP 请求：8 个 200、2 个修复前的 403**，包含一次旧版本控制实验；没有额外自动重试。不是“初版全部通过”。逐次状态、耗时、字节数、usage、输出摘要和本地 call_id 见 [原始联调结果](media-live-provider-results.json)。图片/向量原件保留在本机输出目录，没有提交到仓库。
+
+## 补充 LLM 和多模态验证
+
+在同一候选生产代码上追加六条真实调用，**6/6 返回 HTTP 200 且通过客户端内容检查，无额外重试**。只有 smoke 脚本扩展，没有修改生产适配器。当前配置仍为美东路演 AppConfig v67。
+
+| 渠道 / 模型 | 案例 | 返回内容与协议检查 | 本次耗时 |
+|---|---|---|---:|
+| AIG / gpt-5.6-luna | 纯文本、非流式 | `OK`；1 个 final | 1.68 s |
+| AIG / gpt-5.6-luna | 纯文本、流式 | `OK`；1 个增量事件、1 个 final | 1.47 s |
+| AIG / gpt-5.6-luna | 指定 function call | `record_result({"code":"OK"})`；ID、名称、JSON 参数正确 | 1.71 s |
+| AIG / gpt-5.6-luna | 严格 JSON Schema 输出 | `{"code":"OK"}`；无额外字段 | 1.40 s |
+| DashScope / qwen3-vl-plus | 看图、非流式 | `Denim shorts`；1 个 final | 1.55 s |
+| DashScope / qwen3-vl-plus | 看图、流式 | `Denim shorts`；3 个增量事件、1 个 final | 1.67 s |
+
+纯文本/工具/schema 的请求都没有图片 part；看图复用同一 OOTD 素材。纯文本提示和函数描述包含中文、引号、`<&>`，覆盖 JSON 转义与嵌套工具/schema 字段。工具调用只验证模型返回的函数和参数，没有执行实际业务工具。所有案例均核对唯一 final、事件顺序、非空输出、供应商 HTTP 状态及本地异步账本终态；usage 按返回值保存。
+
+逐次回执见 [LLM/多模态原始结果](media-live-text-results.json)。这是按本次修改的 OpenAI-compatible JSON 请求路径抽样覆盖两家渠道，未逐个穷举所有模型 ID；未验证多轮历史、流式工具调用或复杂业务工具执行。Cursor 集合按 LLM/多模态检索无命中，平台 Runner 也不能调用未合并候选版本；诊断 prompt、schema、期望检查已保留在本仓库 smoke 脚本，未标为平台业务 verified 用例。
 
 ## 发现并修复的兼容问题
 
@@ -72,6 +89,16 @@ GOTOOLCHAIN=go1.26.0 go run ./scripts/provider-smoke \
   -out /private/path/results \
   -models embed-v4.0,photoroom-segment,gpt-5.6-luna,gpt-image-2,human-parser
 ```
+
+LLM 补测可用同一入口，按模式分别落到不同目录以保留每次回执：
+
+```sh
+go run ./scripts/provider-smoke -config /private/path/providers.yaml \
+  -image /private/path/portrait.jpg -out /private/path/aig-tools \
+  -models gpt-5.6-luna -mode tools
+```
+
+`-mode` 可选 `text`、`text-stream`、`vision`、`vision-stream`、`tools`、`schema`；默认 `auto` 保持原图片/CV 探针行为。LLM 构造和响应校验有单元测试，`go test -race ./scripts/provider-smoke` 与 `go vet ./scripts/provider-smoke` 通过。
 
 只运行列出的模型，每个模型一个 gRPC 请求，沿用 Service/适配器原有重试策略；脚本在任何请求失败时返回非零退出码。`results.json` 会在每个请求结束后落盘，失败也保留，不应通过反复重提覆盖失败记录。
 
