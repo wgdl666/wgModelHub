@@ -1,0 +1,69 @@
+{
+  "baseline_commit": "f41f14631351a340280e5aca7ed359b003fbc8b7",
+  "optimized_commit_before_snapshot_test": "e1e7dc9da75b0999ee4ba12537921018bdc224f4",
+  "harness": "internal/service/modelhub/media_transport_test.go",
+  "harness_sha256": "74c0a7ac8f43c17c68d1479c4b9e6cb60e8f1b5af94a1f0d58341dc6ee4656b7",
+  "normalization": {
+    "request": "method, path+query and headers; omit local mock host and derived Content-Length, normalize Content-Type without random multipart boundary; Content-Length checked against actual bytes in test",
+    "multipart": "field-name groups, repeated-field order, filenames, file MIME, byte lengths and content digests; ignore ordering between different field names and MIME header quoting",
+    "json": "parse and re-encode values; ignore object key order and external whitespace"
+  },
+  "results": [
+    {
+      "case": "GPT_image_multipart",
+      "protocol_equal": true,
+      "old": {
+        "canonical_sha256": "4d84d0036e6120e5442855e01ba5f0949d4ee008946661336a8e256eefb39b22",
+        "raw_bytes": 677,
+        "raw_sha256": "ded9954cd9a2b355cbefe82e06e6d24a8c1686a6b80dd80670f4dda999b0565c"
+      },
+      "new": {
+        "canonical_sha256": "4d84d0036e6120e5442855e01ba5f0949d4ee008946661336a8e256eefb39b22",
+        "raw_bytes": 667,
+        "raw_sha256": "c7dbbbad894b36b947dcd7519d938c76c18d5aef8c5e749d15f51061c5dc13ba"
+      }
+    },
+    {
+      "case": "segment_base64_form",
+      "protocol_equal": true,
+      "old": {
+        "canonical_sha256": "77990a3d45a0c3fd806afbbaacf621a55d3ab108bff79f90515c51a2fef93188",
+        "raw_bytes": 649,
+        "raw_sha256": "b92f11d70bff9b373dc02c3c8a69f52243a60328baf22f301ac63ad71b29feda"
+      },
+      "new": {
+        "canonical_sha256": "77990a3d45a0c3fd806afbbaacf621a55d3ab108bff79f90515c51a2fef93188",
+        "raw_bytes": 641,
+        "raw_sha256": "479001079637775307f3a255daa4a980a698857ef198fcea3b4159bb1224d4d6"
+      }
+    },
+    {
+      "case": "parser_base64_JSON",
+      "protocol_equal": true,
+      "old": {
+        "canonical_sha256": "d382344833cd4f4cbe8919d777a89c155e01b4b08f8723dba2229575e6e6b31f",
+        "raw_bytes": 116,
+        "raw_sha256": "51028c046d1e58b76a08089f7765b164636b2e45a731382b9f7bbceaf61825aa"
+      },
+      "new": {
+        "canonical_sha256": "d382344833cd4f4cbe8919d777a89c155e01b4b08f8723dba2229575e6e6b31f",
+        "raw_bytes": 116,
+        "raw_sha256": "51028c046d1e58b76a08089f7765b164636b2e45a731382b9f7bbceaf61825aa"
+      }
+    },
+    {
+      "case": "OpenAI_vision_stream",
+      "protocol_equal": true,
+      "old": {
+        "canonical_sha256": "47dda3b54f685c448e77ce83808bf20d9ba54ac5d4c86facd80a4796cfcf8727",
+        "raw_bytes": 331,
+        "raw_sha256": "309911579573afad9d8c53aceada40b9811dcc893e21bdec1b582c625eae22f6"
+      },
+      "new": {
+        "canonical_sha256": "47dda3b54f685c448e77ce83808bf20d9ba54ac5d4c86facd80a4796cfcf8727",
+        "raw_bytes": 330,
+        "raw_sha256": "9ad5ac10e0c18b5c56766195a4dfbe068fff5dbdf9e71247de16fd84c59f5f62"
+      }
+    }
+  ]
+}

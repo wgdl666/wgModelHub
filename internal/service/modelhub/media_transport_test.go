@@ -3,12 +3,15 @@ package modelhub
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"image"
 	"image/color"
 	"image/png"
 	"io"
+	"mime"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -77,6 +80,13 @@ func TestMediaRequestGRPCRoundTrip(t *testing.T) {
 					w.WriteHeader(400)
 					return
 				}
+				snapshot, err := mediaRequestSnapshot(r, raw)
+				if err != nil {
+					t.Error(err)
+					w.WriteHeader(400)
+					return
+				}
+				t.Logf("upstream_snapshot case=%s canonical_sha256=%x raw_bytes=%d raw_sha256=%x", tc.name, snapshot, len(raw), sha256.Sum256(raw))
 				r.Body = io.NopCloser(bytes.NewReader(raw))
 				if tc.image {
 					if err := r.ParseMultipartForm(1 << 20); err != nil {
@@ -235,4 +245,48 @@ func TestMediaRequestGRPCRoundTrip(t *testing.T) {
 			t.Logf("gRPC → %s → mock upstream → gRPC: PNG/text/final and async ledger verified", tc.path)
 		})
 	}
+}
+
+// Normalize protocol formatting while retaining headers, JSON values and the
+// order/metadata/content of repeated multipart fields for old/new comparisons.
+func mediaRequestSnapshot(r *http.Request, raw []byte) ([32]byte, error) {
+	mediaType, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil {
+		return [32]byte{}, err
+	}
+	headers := r.Header.Clone()
+	headers.Del("Content-Length")
+	headers.Set("Content-Type", mediaType)
+	var body any
+	if mediaType == "multipart/form-data" {
+		parts := map[string][]map[string]any{}
+		reader := multipart.NewReader(bytes.NewReader(raw), params["boundary"])
+		for {
+			part, err := reader.NextPart()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return [32]byte{}, err
+			}
+			data, err := io.ReadAll(part)
+			if err != nil {
+				return [32]byte{}, err
+			}
+			parts[part.FormName()] = append(parts[part.FormName()], map[string]any{
+				"filename": part.FileName(), "content_type": part.Header.Get("Content-Type"),
+				"bytes": len(data), "sha256": sha256.Sum256(data),
+			})
+		}
+		body = parts
+	} else if err := json.Unmarshal(raw, &body); err != nil {
+		return [32]byte{}, err
+	}
+	canonical, err := json.Marshal(map[string]any{
+		"method": r.Method, "path_query": r.URL.RequestURI(), "headers": headers, "body": body,
+	})
+	if err != nil {
+		return [32]byte{}, err
+	}
+	return sha256.Sum256(canonical), nil
 }

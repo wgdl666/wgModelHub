@@ -66,6 +66,7 @@ CPU 改善没有内存那么确定：单并发四场景均值下降 12%～26%；
 
 ## 正确性验证
 
+- 新旧请求对照：将同一个 gRPC 测试文件复制到 `f41f1463` 基线和优化工作树，各发送四条请求。本地上游实际接收的 method、path/query、鉴权等 headers、JSON 字段，以及 multipart 字段/重复文件顺序/文件名/MIME/图片字节的规范化摘要 **4/4 完全相同**；数据见 [media-request-comparison.json](media-request-comparison.json)。不要求原始报文逐字节相同：multipart 的随机 boundary、字段间顺序、MIME 参数引号，以及 JSON 外部空白可不同，ContentLength 均核对为实际 body 长度。该断言仅覆盖这四条案例，不代表真实厂商联调或所有输入穷举。
 - 追加 gRPC 链路测试 `TestMediaRequestGRPCRoundTrip`：使用真实 gRPC 客户端/服务端（bufconn HTTP/2 传输）、真实路由/适配器工厂及异步账本，连接本地 HTTP mock，验证 GPT 图片编辑 multipart、抠图 Base64 表单、人体解析 Base64 JSON、OpenAI 看图 SSE 回复四条链路。核对上游收到的图片/字段、客户端收到的 PNG 字节/文字、唯一 final、流式 usage 及账本输入/输出上传。四项均通过，服务包回归和该测试的 `-race` 均通过。没有新增真实厂商调用；上文性能测量仍是直接调用适配器的局部对照。
 - 新增请求体测试：标准库 JSON 字节对照（HTML 转义、Unicode、RawMessage、嵌套/空值/字节字段）、multipart 重复字段/文件/MIME、ContentLength、GetBody、HTTP 307 重放。
 - 新增账本测试：输入与调用方隔离、已克隆输入不再二次复制、输出仍保持复制隔离。
