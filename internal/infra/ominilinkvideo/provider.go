@@ -512,6 +512,13 @@ func videoURLFromEnvelope(envelope map[string]any) string {
 			return u
 		}
 	}
+	videos, _ := envelope["videos"].([]any)
+	for _, video := range videos {
+		item, _ := video.(map[string]any)
+		if u := stringField(item, "gcsUri"); u != "" {
+			return u
+		}
+	}
 	for _, containerKey := range []string{"content", "response", "data", "result", "output", "Response", "Output"} {
 		container, ok := envelope[containerKey].(map[string]any)
 		if !ok {
