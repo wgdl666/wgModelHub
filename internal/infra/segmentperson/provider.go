@@ -4,13 +4,11 @@
 package segmentperson
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
-	"mime/multipart"
 	"net"
 	"net/http"
 	"strings"
@@ -19,6 +17,7 @@ import (
 
 	"github.com/wgdl666/kangaroo/logs"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
@@ -159,8 +158,7 @@ func (p *Provider) methodFor(person bool) string {
 }
 
 func (p *Provider) doSegment(ctx context.Context, endpoint string, imageBytes []byte, person bool) ([]byte, error) {
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
+	parts := make([]httpbody.Part, 0, 5)
 	fields := map[string]string{
 		"image":  base64.StdEncoding.EncodeToString(imageBytes),
 		"method": p.methodFor(person),
@@ -176,12 +174,11 @@ func (p *Provider) doSegment(ctx context.Context, endpoint string, imageBytes []
 		fields["trace_id"] = traceID
 	}
 	for name, value := range fields {
-		if err := writer.WriteField(name, value); err != nil {
-			return nil, provider.WrapNotAttempted(provider.ErrorUnavailable, p.name+" build segment request", err)
-		}
+		parts = append(parts, httpbody.Field(name, value))
 	}
-	if err := writer.Close(); err != nil {
-		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" finish segment request", err)
+	body, err := httpbody.Multipart(parts)
+	if err != nil {
+		return nil, provider.WrapNotAttempted(provider.ErrorUnavailable, p.name+" build segment request", err)
 	}
 	// 抠图没有持久化副作用，瞬时连接故障允许最多三次请求；业务流程重跑仍由调用方负责。
 	// 每次重建请求体，避免 broken pipe 后复用已消耗的 multipart 流。
@@ -190,11 +187,10 @@ func (p *Provider) doSegment(ctx context.Context, endpoint string, imageBytes []
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+endpoint, bytes.NewReader(body.Bytes()))
+		httpReq, err := body.NewRequest(ctx, http.MethodPost, p.baseURL+endpoint)
 		if err != nil {
 			return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" create segment request", err)
 		}
-		httpReq.Header.Set("content-type", writer.FormDataContentType())
 		if p.username != "" {
 			httpReq.SetBasicAuth(p.username, p.password)
 		}

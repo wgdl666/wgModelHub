@@ -5,12 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"mime/multipart"
 	"net/http"
 	"strings"
 	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/infra/vmindgateway"
 	"github.com/wgdl666/wgModelHub/internal/provider"
@@ -260,15 +260,7 @@ func (p *Provider) loadFirstFrame(ctx context.Context, media *modelhubv2.Media) 
 }
 
 func (p *Provider) submit(ctx context.Context, imageBytes []byte, prompt, motionTips string) (string, error) {
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
-	imagePart, err := writer.CreateFormFile("image", "first_frame.png")
-	if err != nil {
-		return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "create multipart image", err)
-	}
-	if _, err := imagePart.Write(imageBytes); err != nil {
-		return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "write multipart image", err)
-	}
+	parts := []httpbody.Part{httpbody.File("image", "first_frame.png", "application/octet-stream", imageBytes)}
 	endpoint := "/vton"
 	fields := map[string]string{"prompt": prompt}
 	// 当前视频网关只提供 /vton；保留服务端模型与推理默认值，避免与网关规格漂移。
@@ -280,24 +272,20 @@ func (p *Provider) submit(ctx context.Context, imageBytes []byte, prompt, motion
 		fields["trace_id"] = traceID
 	}
 	for name, value := range fields {
-		if err := writer.WriteField(name, value); err != nil {
-			return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "write multipart field", err)
-		}
+		parts = append(parts, httpbody.Field(name, value))
 	}
-	if err := writer.Close(); err != nil {
-		return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "close multipart body", err)
+	body, err := httpbody.Multipart(parts)
+	if err != nil {
+		return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "build multipart request", err)
 	}
-	contentType := writer.FormDataContentType()
-	payload := append([]byte(nil), body.Bytes()...)
 	for attempt := 1; attempt <= 3; attempt++ {
 		if err := ctx.Err(); err != nil {
 			return "", err
 		}
-		request, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+endpoint, bytes.NewReader(payload))
+		request, err := body.NewRequest(ctx, http.MethodPost, p.baseURL+endpoint)
 		if err != nil {
 			return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "create submit request", err)
 		}
-		request.Header.Set("Content-Type", contentType)
 		p.setToken(request)
 		response, err := p.client.Do(request)
 		if err != nil {

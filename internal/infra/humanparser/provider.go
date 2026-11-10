@@ -3,7 +3,6 @@
 package humanparser
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
@@ -72,11 +72,11 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 	if !ok || len(data.Data) == 0 {
 		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "human-parser requires inline image bytes")
 	}
-	payload, err := json.Marshal(map[string]string{"image": base64.StdEncoding.EncodeToString(data.Data)})
+	payload, err := httpbody.JSON(map[string]string{"image": base64.StdEncoding.EncodeToString(data.Data)}, true)
 	if err != nil {
 		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" encode parser image", err)
 	}
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+path, bytes.NewReader(payload))
+	httpReq, err := payload.NewRequest(ctx, http.MethodPost, p.baseURL+path)
 	if err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" create parser request", err)
 	}

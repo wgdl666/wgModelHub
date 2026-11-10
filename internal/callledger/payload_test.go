@@ -1,6 +1,7 @@
 package callledger
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"strings"
@@ -8,6 +9,35 @@ import (
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 )
+
+func TestInputSnapshotOwnsMediaWithoutAnotherCopy(t *testing.T) {
+	data := []byte("original")
+	media := &modelhubv2.Media{MimeType: "image/png", Source: &modelhubv2.Media_Data{Data: data}}
+	req := &modelhubv2.GenerateRequest{Input: &modelhubv2.Input{Items: []*modelhubv2.InputItem{{Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{Parts: []*modelhubv2.ContentPart{{Content: &modelhubv2.ContentPart_Image{Image: media}}}}}}}}}
+	_, blobs := BuildGenerateInput(req)
+	if len(blobs) != 1 || !bytes.Equal(blobs[0].Data, data) {
+		t.Fatalf("blobs=%v", blobs)
+	}
+	data[0] = 'X'
+	if string(blobs[0].Data) != "original" || media.GetData()[0] != 'X' {
+		t.Fatal("snapshot must be isolated from the caller")
+	}
+	// A media value already owned by the snapshot transfers its byte slice.
+	owned := []byte("owned")
+	_, blob := stashClonedMedia("in", &modelhubv2.Media{Source: &modelhubv2.Media_Data{Data: owned}}, 0)
+	if &blob.Data[0] != &owned[0] {
+		t.Fatal("snapshot bytes were copied again")
+	}
+}
+
+func TestOutputMediaStillCopiesProviderBytes(t *testing.T) {
+	data := []byte("output")
+	_, _, blobs := BuildImageOutput(&modelhubv2.GenerateEvent{Items: []*modelhubv2.OutputItem{{Item: &modelhubv2.OutputItem_Image{Image: &modelhubv2.Media{Source: &modelhubv2.Media_Data{Data: data}}}}}})
+	data[0] = 'X'
+	if len(blobs) != 1 || string(blobs[0].Data) != "output" {
+		t.Fatal("output snapshot must remain isolated from provider buffers")
+	}
+}
 
 func TestTextAccumulatorKeepsTwoParallelTools(t *testing.T) {
 	acc := NewTextAccumulator()

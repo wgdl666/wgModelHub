@@ -16,6 +16,7 @@ import (
 	"github.com/wgdl666/kangaroo/logs"
 	"github.com/wgdl666/wgModelHub/config"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
@@ -176,11 +177,11 @@ func (p *Provider) post(ctx context.Context, payload any, expected int) ([][]flo
 	if err := ctx.Err(); err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorTimeout, "cohere embedding canceled before request", err)
 	}
-	body, err := json.Marshal(payload)
+	body, err := httpbody.JSON(payload, true)
 	if err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorUnavailable, p.name+" encode embedding", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.endpoint, bytes.NewReader(body))
+	req, err := body.NewRequest(ctx, http.MethodPost, p.endpoint)
 	if err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorUnavailable, p.name+" create embedding request", err)
 	}

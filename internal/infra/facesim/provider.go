@@ -2,18 +2,17 @@
 package facesim
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"io"
 	"math"
-	"mime/multipart"
 	"net/http"
 	"strings"
 	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
@@ -48,8 +47,7 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 	if len(images) != 2 {
 		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "facesim requires exactly two inline images")
 	}
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
+	parts := make([]httpbody.Part, 0, len(images))
 	for i, image := range images {
 		data, ok := image.Source.(*modelhubv2.Media_Data)
 		if !ok || len(data.Data) == 0 {
@@ -59,18 +57,16 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 		if i == 1 {
 			field = "image_b"
 		}
-		if err := writer.WriteField(field, base64.StdEncoding.EncodeToString(data.Data)); err != nil {
-			return nil, provider.WrapNotAttempted(provider.ErrorUnavailable, "build facesim image", err)
-		}
+		parts = append(parts, httpbody.Field(field, base64.StdEncoding.EncodeToString(data.Data)))
 	}
-	if err := writer.Close(); err != nil {
-		return nil, provider.WrapNotAttempted(provider.ErrorUnavailable, "finish facesim request", err)
+	body, err := httpbody.Multipart(parts)
+	if err != nil {
+		return nil, provider.WrapNotAttempted(provider.ErrorUnavailable, "build facesim image", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/compare", &body)
+	req, err := body.NewRequest(ctx, http.MethodPost, p.baseURL+"/compare")
 	if err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, "create facesim request", err)
 	}
-	req.Header.Set("content-type", writer.FormDataContentType())
 	if p.username != "" {
 		req.SetBasicAuth(p.username, p.password)
 	}

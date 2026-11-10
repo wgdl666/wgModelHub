@@ -399,7 +399,7 @@ func redactGenerateRequestMedia(req *modelhubv2.GenerateRequest) []Blob {
 			}
 		case *modelhubv2.InputItem_ToolOutput:
 			for i, image := range value.ToolOutput.GetImages() {
-				stored, blob := stashImageVideo("in", image, len(blobs))
+				stored, blob := stashClonedMedia("in", image, len(blobs))
 				if blob != nil {
 					blobs = append(blobs, *blob)
 				}
@@ -416,13 +416,13 @@ func redactContentPart(part *modelhubv2.ContentPart, blobs []Blob) []Blob {
 	}
 	switch value := part.GetContent().(type) {
 	case *modelhubv2.ContentPart_Image:
-		stored, blob := stashImageVideo("in", value.Image, len(blobs))
+		stored, blob := stashClonedMedia("in", value.Image, len(blobs))
 		if blob != nil {
 			blobs = append(blobs, *blob)
 		}
 		part.Content = &modelhubv2.ContentPart_Image{Image: stored}
 	case *modelhubv2.ContentPart_Video:
-		stored, blob := stashImageVideo("in", value.Video, len(blobs))
+		stored, blob := stashClonedMedia("in", value.Video, len(blobs))
 		if blob != nil {
 			blobs = append(blobs, *blob)
 		}
@@ -437,10 +437,19 @@ func redactContentPart(part *modelhubv2.ContentPart, blobs []Blob) []Blob {
 
 // stashImageVideo 拷走内联字节，原位置改成 ledger://pending/...，上传完成后再换成对象 URI。
 func stashImageVideo(dir string, media *modelhubv2.Media, index int) (*modelhubv2.Media, *Blob) {
+	stored, blob := stashClonedMedia(dir, media, index)
+	if blob != nil {
+		blob.Data = append([]byte(nil), blob.Data...)
+	}
+	return stored, blob
+}
+
+// stashClonedMedia takes bytes owned by the input proto.Clone snapshot. Output and stream callers still copy.
+func stashClonedMedia(dir string, media *modelhubv2.Media, index int) (*modelhubv2.Media, *Blob) {
 	if media == nil {
 		return nil, nil
 	}
-	data := append([]byte(nil), media.GetData()...)
+	data := media.GetData()
 	if len(data) == 0 {
 		return mediaSummaryAsPlaceholder(media), nil
 	}
