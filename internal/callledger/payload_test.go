@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/provider"
+	"github.com/wgdl666/wgModelHub/protocol"
 )
 
 func TestInputSnapshotOwnsMediaWithoutAnotherCopy(t *testing.T) {
@@ -24,18 +26,62 @@ func TestInputSnapshotOwnsMediaWithoutAnotherCopy(t *testing.T) {
 	}
 	// A media value already owned by the snapshot transfers its byte slice.
 	owned := []byte("owned")
-	_, blob := stashClonedMedia("in", &modelhubv2.Media{Source: &modelhubv2.Media_Data{Data: owned}}, 0)
+	_, blob := stashMedia("in", &modelhubv2.Media{Source: &modelhubv2.Media_Data{Data: owned}}, 0)
 	if &blob.Data[0] != &owned[0] {
 		t.Fatal("snapshot bytes were copied again")
 	}
 }
 
-func TestOutputMediaStillCopiesProviderBytes(t *testing.T) {
-	data := []byte("output")
-	_, _, blobs := BuildImageOutput(&modelhubv2.GenerateEvent{Items: []*modelhubv2.OutputItem{{Item: &modelhubv2.OutputItem_Image{Image: &modelhubv2.Media{Source: &modelhubv2.Media_Data{Data: data}}}}}})
-	data[0] = 'X'
-	if len(blobs) != 1 || string(blobs[0].Data) != "output" {
-		t.Fatal("output snapshot must remain isolated from provider buffers")
+func TestOutputMediaSharesProviderBytesWithoutChangingEvent(t *testing.T) {
+	image := &modelhubv2.Media{MimeType: "image/png", Source: &modelhubv2.Media_Data{Data: []byte("image")}}
+	video := &modelhubv2.Media{MimeType: "video/mp4", Source: &modelhubv2.Media_Data{Data: []byte("video")}}
+	event := &modelhubv2.GenerateEvent{Items: []*modelhubv2.OutputItem{
+		{Item: &modelhubv2.OutputItem_Image{Image: image}},
+		{Item: &modelhubv2.OutputItem_Video{Video: video}},
+	}}
+	payload, imageCount, blobs := BuildImageOutput(event)
+	if imageCount != 1 || len(blobs) != 2 {
+		t.Fatalf("imageCount=%d blobs=%d", imageCount, len(blobs))
+	}
+	for i, media := range []*modelhubv2.Media{image, video} {
+		if &blobs[i].Data[0] != &media.GetData()[0] {
+			t.Fatalf("output %d was copied", i)
+		}
+		if media.GetUri() != "" {
+			t.Fatalf("provider media %d was replaced with URI", i)
+		}
+	}
+	if event.GetItems()[0].GetImage() != image || event.GetItems()[1].GetVideo() != video {
+		t.Fatal("provider event media was replaced")
+	}
+	items := payload["items"].([]any)
+	for i, item := range items {
+		media := item.(map[string]any)["media"].(map[string]any)
+		if media["uri"] != blobs[i].Placeholder {
+			t.Fatalf("ledger media %d has no placeholder: %v", i, media)
+		}
+	}
+}
+
+func TestVideoBlobsKeepDistinctChunksWithoutAnotherCopy(t *testing.T) {
+	data := append(bytes.Repeat([]byte("a"), protocol.VideoChunkBytes), bytes.Repeat([]byte("b"), protocol.VideoChunkBytes)...)
+	data = append(data, []byte("last")...)
+	var blobs []Blob
+	err := provider.EmitVideoChunksFromReader(bytes.NewReader(data), "video/mp4", "video", 0, func(event *modelhubv2.GenerateEvent) error {
+		media := event.GetItems()[0].GetVideo()
+		blob, ok := TakeVideoBlob(len(blobs), media)
+		if !ok || &blob.Data[0] != &media.GetData()[0] {
+			t.Fatal("video ledger must reference the provider chunk")
+		}
+		blobs = append(blobs, blob)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, joined, ok := joinVideoBytes(blobs, "video/mp4")
+	if len(blobs) != 3 || !ok || !bytes.Equal(joined, data) {
+		t.Fatal("later video reads changed previously retained ledger chunks")
 	}
 }
 
