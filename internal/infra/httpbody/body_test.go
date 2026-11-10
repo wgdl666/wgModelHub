@@ -73,6 +73,32 @@ func TestMultipartPreservesFieldsFilesAndReplay(t *testing.T) {
 	}
 }
 
+func TestMultipartDispositionMatchesStandardWriter(t *testing.T) {
+	for _, name := range []string{"model", `image\"part`, "line\r\nbreak"} {
+		var reference bytes.Buffer
+		writer := multipart.NewWriter(&reference)
+		if err := writer.WriteField(name, "gpt-image-2"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := writer.CreateFormFile(name, `ref\"photo.png`); err != nil {
+			t.Fatal(err)
+		}
+		if err := writer.Close(); err != nil {
+			t.Fatal(err)
+		}
+		reader := multipart.NewReader(bytes.NewReader(reference.Bytes()), writer.Boundary())
+		for _, generated := range []Part{Field(name, "gpt-image-2"), File(name, `ref\"photo.png`, "application/octet-stream", []byte("png"))} {
+			part, err := reader.NextPart()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got, want := generated.Header.Get("Content-Disposition"), part.Header.Get("Content-Disposition"); got != want {
+				t.Fatalf("Content-Disposition=%q want=%q", got, want)
+			}
+		}
+	}
+}
+
 func TestJSONMatchesStandardEncoding(t *testing.T) {
 	values := []any{
 		map[string]any{"image": string(bytes.Repeat([]byte("YWJj+/="), 100)), "text": "引号\"\\\n\x00<&>\u2028", "raw": json.RawMessage(`{"x":"<tag>"}`), "number": 1.25},

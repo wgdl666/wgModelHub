@@ -2,9 +2,9 @@ package httpbody
 
 import (
 	"bytes"
-	"mime"
 	"mime/multipart"
 	"net/textproto"
+	"strings"
 )
 
 // Part preserves field order, repeated names, and provider-specific file headers.
@@ -15,13 +15,16 @@ type Part struct {
 	Text   string
 }
 
+var quoteEscaper = strings.NewReplacer("\\", "\\\\", `"`, `\"`, "\r", "%0D", "\n", "%0A")
+
 func Field(name, value string) Part {
-	return Part{Header: textproto.MIMEHeader{"Content-Disposition": {mime.FormatMediaType("form-data", map[string]string{"name": name})}}, Text: value}
+	// Preserve standard quoted parameters; AIG edits rejected the unquoted form.
+	return Part{Header: textproto.MIMEHeader{"Content-Disposition": {`form-data; name="` + quoteEscaper.Replace(name) + `"`}}, Text: value}
 }
 
 func File(name, filename, contentType string, data []byte) Part {
 	return Part{Header: textproto.MIMEHeader{
-		"Content-Disposition": {mime.FormatMediaType("form-data", map[string]string{"name": name, "filename": filename})},
+		"Content-Disposition": {multipart.FileContentDisposition(name, filename)},
 		"Content-Type":        {contentType},
 	}, Data: data}
 }
