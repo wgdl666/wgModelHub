@@ -507,7 +507,7 @@ func normalizeVideoURL(raw string) string {
 }
 
 func videoURLFromEnvelope(envelope map[string]any) string {
-	for _, key := range []string{"result_url", "resultUrl", "uri", "url", "URL", "video_url", "videoUrl", "path", "Path"} {
+	for _, key := range []string{"result_url", "resultUrl", "ResultVideoUrl", "uri", "url", "URL", "video_url", "videoUrl", "path", "Path"} {
 		if u := stringField(envelope, key); u != "" {
 			return u
 		}
