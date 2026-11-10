@@ -49,6 +49,7 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/infra/rekognitionfaces"
 	"github.com/wgdl666/wgModelHub/internal/infra/rerankinstruction"
 	"github.com/wgdl666/wgModelHub/internal/infra/segmentperson"
+	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/infra/vmindgateway"
 	"github.com/wgdl666/wgModelHub/internal/infra/vworldimage"
 	"github.com/wgdl666/wgModelHub/internal/prefixcache"
@@ -93,7 +94,15 @@ func build(ctx context.Context, cfg config.Config, live *config.LiveConfig) (map
 			// 多环境共用配置模板时，只实例化本区真正有凭据的 ASR，避免空密钥占用模型路由。
 			continue
 		}
-		set, err := buildProvider(ctx, name, providerCfg, live, instructions)
+		resolved, gateway, err := providerCfg.ResolveVisionGateway(cfg.Providers)
+		if err != nil {
+			return nil, fmt.Errorf("provider %s: %w", name, err)
+		}
+		var options []telemetry.HTTPClientOption
+		if gateway != nil {
+			options = append(options, withVisionGatewayAuth(gateway.APIToken()))
+		}
+		set, err := buildProvider(ctx, name, resolved, live, instructions, options...)
 		if err != nil {
 			return nil, fmt.Errorf("provider %s: %w", name, err)
 		}
@@ -102,7 +111,7 @@ func build(ctx context.Context, cfg config.Config, live *config.LiveConfig) (map
 	return sets, nil
 }
 
-func buildProvider(ctx context.Context, name string, providerCfg config.ProviderConfig, live *config.LiveConfig, instructions rerankinstruction.Resolver) (provider.Set, error) {
+func buildProvider(ctx context.Context, name string, providerCfg config.ProviderConfig, live *config.LiveConfig, instructions rerankinstruction.Resolver, options ...telemetry.HTTPClientOption) (provider.Set, error) {
 	switch {
 	case providerCfg.VMindGateway != nil:
 		cfg := providerCfg.VMindGateway
@@ -302,14 +311,14 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 		return provider.Set{Text: client}, nil
 	case providerCfg.HumanYOLO != nil:
 		cfg := providerCfg.HumanYOLO
-		client, err := humanyolo.New(name, cfg.BaseURL, cfg.Username, cfg.Password)
+		client, err := humanyolo.New(name, cfg.BaseURL, cfg.Username, cfg.Password, options...)
 		if err != nil {
 			return provider.Set{}, err
 		}
 		return provider.Set{Text: client}, nil
 	case providerCfg.HumanParser != nil:
 		cfg := providerCfg.HumanParser
-		client, err := humanparser.New(name, cfg.BaseURL, cfg.Username, cfg.Password)
+		client, err := humanparser.New(name, cfg.BaseURL, cfg.Username, cfg.Password, options...)
 		if err != nil {
 			return provider.Set{}, err
 		}
@@ -425,14 +434,14 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 		}
 		return provider.Set{Text: client}, nil
 	case providerCfg.LensCorrection != nil:
-		client, err := lenscorrection.New(name, providerCfg.LensCorrection.BaseURL)
+		client, err := lenscorrection.New(name, providerCfg.LensCorrection.BaseURL, options...)
 		if err != nil {
 			return provider.Set{}, err
 		}
 		return provider.Set{Image: client}, nil
 	case providerCfg.SegmentPerson != nil:
 		cfg := providerCfg.SegmentPerson
-		client, err := segmentperson.NewWithMethods(name, cfg.BaseURL, cfg.Username, cfg.Password, cfg.Method, cfg.PersonMethod, cfg.SubjectMethod)
+		client, err := segmentperson.NewWithMethods(name, cfg.BaseURL, cfg.Username, cfg.Password, cfg.Method, cfg.PersonMethod, cfg.SubjectMethod, options...)
 		if err != nil {
 			return provider.Set{}, err
 		}

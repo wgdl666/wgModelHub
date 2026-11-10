@@ -33,7 +33,7 @@ type Provider struct {
 	client   *http.Client
 }
 
-func New(name, baseURL, username, password string) (*Provider, error) {
+func New(name, baseURL, username, password string, options ...telemetry.HTTPClientOption) (*Provider, error) {
 	name = strings.TrimSpace(name)
 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	username = strings.TrimSpace(username)
@@ -44,7 +44,7 @@ func New(name, baseURL, username, password string) (*Provider, error) {
 	if (username == "") != (password == "") {
 		return nil, provider.New(provider.ErrorConfiguration, "human-yolo username and password must be configured together")
 	}
-	client := telemetry.NewHTTPClient()
+	client := telemetry.NewHTTPClient(options...)
 	client.Timeout = timeout
 	return &Provider{
 		name:     name,

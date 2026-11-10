@@ -49,7 +49,7 @@ func New(name, baseURL, username, password, method string) (*Provider, error) {
 }
 
 // NewWithMethods preserves legacy method while allowing endpoint-specific algorithms.
-func NewWithMethods(name, baseURL, username, password, method, personMethod, subjectMethod string) (*Provider, error) {
+func NewWithMethods(name, baseURL, username, password, method, personMethod, subjectMethod string, options ...telemetry.HTTPClientOption) (*Provider, error) {
 	name = strings.TrimSpace(name)
 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	username = strings.TrimSpace(username)
@@ -66,7 +66,7 @@ func NewWithMethods(name, baseURL, username, password, method, personMethod, sub
 	if (username == "") != (password == "") {
 		return nil, provider.New(provider.ErrorConfiguration, "segment-person username and password must be configured together")
 	}
-	client := telemetry.NewHTTPClient()
+	client := telemetry.NewHTTPClient(options...)
 	client.Timeout = requestTimeout
 	return &Provider{
 		name:          name,

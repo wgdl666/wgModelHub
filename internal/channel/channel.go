@@ -87,7 +87,11 @@ func Names(providers map[string]config.ProviderConfig) (map[string]string, error
 	channelCount := map[string]int{}
 	groups := map[groupKey][]string{}
 	for name, provider := range providers {
-		id, err := Of(provider)
+		resolved, _, err := provider.ResolveVisionGateway(providers)
+		if err != nil {
+			return nil, fmt.Errorf("provider %s: %w", name, err)
+		}
+		id, err := Of(resolved)
 		if err != nil {
 			return nil, fmt.Errorf("provider %s: %w", name, err)
 		}

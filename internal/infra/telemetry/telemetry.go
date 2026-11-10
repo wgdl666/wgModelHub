@@ -158,9 +158,16 @@ func isCallerCanceled(err error) bool {
 	return false
 }
 
+// HTTPClientOption 让供应商在保留 HTTP 观测的前提下配置自己的传输行为。
+type HTTPClientOption func(*http.Client)
+
 // NewHTTPClient 只记录目标主机、状态码和正文大小，禁止采集请求或响应正文。
-func NewHTTPClient() *http.Client {
-	return NewHTTPClientWithTransport(http.DefaultTransport)
+func NewHTTPClient(options ...HTTPClientOption) *http.Client {
+	client := NewHTTPClientWithTransport(http.DefaultTransport)
+	for _, option := range options {
+		option(client)
+	}
+	return client
 }
 
 // NewTimedHTTPClient 在 provider.http 观测之上钉死超时。

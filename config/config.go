@@ -54,6 +54,7 @@ type ProviderConfig struct {
 	Fashion *FashionProviderConfig `yaml:"fashion"`
 
 	Models         []string                      `yaml:"models"`
+	VisionGateway  string                        `yaml:"vision_gateway,omitempty"`
 	Gemini         *GeminiProviderConfig         `yaml:"gemini"`
 	VertexAI       *VertexAIProviderConfig       `yaml:"vertexai"`
 	Ark            *ArkProviderConfig            `yaml:"ark"`
@@ -736,6 +737,9 @@ func (c Config) Validate() error {
 	for name, provider := range c.Providers {
 		if err := validateProvider(name, provider); err != nil {
 			return err
+		}
+		if _, _, err := provider.ResolveVisionGateway(c.Providers); err != nil {
+			return fmt.Errorf("provider %s: %w", name, err)
 		}
 		if len(provider.Models) == 0 {
 			return fmt.Errorf("provider %s models are required", name)

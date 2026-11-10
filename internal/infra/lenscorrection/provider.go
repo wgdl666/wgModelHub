@@ -27,13 +27,13 @@ type Provider struct {
 	client   *http.Client
 }
 
-func New(name, baseURL string) (*Provider, error) {
+func New(name, baseURL string, options ...telemetry.HTTPClientOption) (*Provider, error) {
 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	parsed, err := url.Parse(baseURL)
 	if strings.TrimSpace(name) == "" || err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.User != nil {
 		return nil, provider.New(provider.ErrorConfiguration, "lens correction requires name and HTTP(S) base_url without credentials or query")
 	}
-	client := telemetry.NewHTTPClient()
+	client := telemetry.NewHTTPClient(options...)
 	client.Timeout = 60 * time.Second
 	return &Provider{name: name, endpoint: baseURL + "/correct", client: client}, nil
 }
