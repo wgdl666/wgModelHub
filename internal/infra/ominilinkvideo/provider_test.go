@@ -150,7 +150,7 @@ func TestGenerateKlingUsesImage2VideoPath(t *testing.T) {
 			_ = json.NewDecoder(r.Body).Decode(&createPayload)
 			_, _ = w.Write([]byte(`{"Response":{"JobId":"` + taskID + `"}}`))
 		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/query/"):
-			_, _ = w.Write([]byte(`{"status":"success","result_url":"` + baseURL + `/kling.mp4"}`))
+			_, _ = w.Write([]byte(`{"Response":{"Status":"DONE","ResultVideoUrl":"` + baseURL + `/kling.mp4"}}`))
 		case r.URL.Path == "/kling.mp4":
 			_, _ = w.Write([]byte("mp4"))
 		default:
