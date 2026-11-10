@@ -38,6 +38,21 @@ func testI2VRequest() *modelhubv2.GenerateRequest {
 
 func ptr(s string) *string { return &s }
 
+func TestLoadInlineMediaSharesReadOnlyBytes(t *testing.T) {
+	p := &Provider{}
+	for _, mime := range []string{"image/png", "video/mp4"} {
+		data := []byte("original media bytes")
+		media := &modelhubv2.Media{MimeType: mime, Source: &modelhubv2.Media_Data{Data: data}}
+		got, gotMIME, err := p.loadMediaBytes(context.Background(), media, protocol.MaxVideoBytes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if gotMIME != mime || string(got) != string(data) || &got[0] != &data[0] {
+			t.Fatal("inline media must retain MIME and reference original bytes")
+		}
+	}
+}
+
 func disableFFmpeg(t *testing.T) {
 	t.Helper()
 	t.Setenv("PATH", t.TempDir())

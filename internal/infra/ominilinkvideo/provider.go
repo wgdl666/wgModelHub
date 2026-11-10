@@ -64,9 +64,9 @@ func (p *Provider) SubmitVideo(ctx context.Context, model string, request *model
 	if strings.TrimSpace(prompt) == "" {
 		return "", provider.NotAttempted(provider.ErrorInvalidArgument, "video prompt text is required in input")
 	}
-	imageURL, err := p.resolveImageURL(provider.FirstImageMedia(request.GetInput()))
-	if err != nil {
-		return "", err
+	images := provider.ImageMedias(request.GetInput())
+	if len(images) == 0 {
+		return "", provider.NotAttempted(provider.ErrorInvalidArgument, "first_frame image is required in input")
 	}
 	videoOut := request.GetOutput().GetVideo()
 	resolution := ""
@@ -79,18 +79,7 @@ func (p *Provider) SubmitVideo(ctx context.Context, model string, request *model
 		}
 		aspectRatio = videoOut.GetAspectRatio()
 	}
-	// 多图 Seedance 是身份参考任务，不能仅取第一张并伪装成首帧任务。
-	var references []string
-	if ModelFamilyOf(model) == FamilySeedance && len(provider.ImageMedias(request.GetInput())) > 1 {
-		for _, media := range provider.ImageMedias(request.GetInput()) {
-			value, err := p.resolveImageURL(media)
-			if err != nil {
-				return "", err
-			}
-			references = append(references, value)
-		}
-	}
-	return p.createTask(ctx, model, imageURL, prompt, resolution, duration, aspectRatio, references)
+	return p.createTask(ctx, model, prompt, resolution, duration, aspectRatio, images)
 }
 
 // GetVideo 单次查询供应商任务；成功态缺 URL 留 ReadVideoResult 报告无效结果。
@@ -137,23 +126,8 @@ func (p *Provider) ReadVideoResult(ctx context.Context, model, providerTaskID st
 	return provider.EmitVideoChunksFromReader(response.Body, videoMIMEType, providerTaskID, 0, emit)
 }
 
-func (p *Provider) resolveImageURL(media *modelhubv2.Media) (string, error) {
-	if media == nil {
-		return "", provider.NotAttempted(provider.ErrorInvalidArgument, "first_frame image is required in input")
-	}
-	return provider.ResolveImageURL(media)
-}
-
-func (p *Provider) createTask(ctx context.Context, model, imageURL, prompt, resolution string, duration int, aspectRatio string, references []string) (string, error) {
-	createURL, body, err := p.buildCreateRequest(ctx, model, imageURL, prompt, resolution, duration, aspectRatio)
-	if len(references) > 1 {
-		resolution, duration, aspectRatio = NormalizeParams(model, resolution, duration, aspectRatio)
-		content := []map[string]any{{"type": "text", "text": strings.TrimSpace(prompt)}}
-		for _, url := range references {
-			content = append(content, map[string]any{"type": "image_url", "image_url": map[string]string{"url": url}, "role": "reference_image"})
-		}
-		body, err = json.Marshal(map[string]any{"model": model, "content": content, "resolution": resolution, "ratio": aspectRatio, "duration": duration, "generate_audio": false, "watermark": false, "return_last_frame": false})
-	}
+func (p *Provider) createTask(ctx context.Context, model, prompt, resolution string, duration int, aspectRatio string, images []*modelhubv2.Media) (string, error) {
+	createURL, body, err := p.buildCreateRequest(ctx, model, prompt, resolution, duration, aspectRatio, images)
 	if err != nil {
 		return "", err
 	}
@@ -190,29 +164,38 @@ func (p *Provider) createTask(ctx context.Context, model, imageURL, prompt, reso
 
 // buildCreateRequest 按 family 组装互斥 payload：Seedance/Vidu 的 url 收公网地址或 data URI；
 // Veo 用 bytesBase64Encoded；Kling 的 Image.Url 只收公网地址，内联字节走 Image.Base64。
-func (p *Provider) buildCreateRequest(ctx context.Context, model, imageURL, prompt, resolution string, duration int, aspectRatio string) (string, []byte, error) {
+func (p *Provider) buildCreateRequest(ctx context.Context, model, prompt, resolution string, duration int, aspectRatio string, images []*modelhubv2.Media) (string, []byte, error) {
 	model = strings.TrimSpace(model)
 	resolution, duration, aspectRatio = NormalizeParams(model, resolution, duration, aspectRatio)
 	prompt = strings.TrimSpace(prompt)
-	imageURL = strings.TrimSpace(imageURL)
 	switch ModelFamilyOf(model) {
 	case FamilySeedance:
+		// 单图是首帧，多图是身份参考；直接构造最终 payload，每张图只转换一次。
+		role, generateAudio := "first_frame", true
+		if len(images) > 1 {
+			role, generateAudio = "reference_image", false
+		}
+		content := []map[string]any{{"type": "text", "text": prompt}}
+		for _, image := range images {
+			imageURL, err := provider.ResolveImageURL(image)
+			if err != nil {
+				return "", nil, err
+			}
+			content = append(content, map[string]any{"type": "image_url", "image_url": map[string]string{"url": imageURL}, "role": role})
+		}
 		body, err := json.Marshal(map[string]any{
-			"model": model,
-			"content": []map[string]any{
-				{"type": "text", "text": prompt},
-				{"type": "image_url", "image_url": map[string]string{"url": imageURL}, "role": "first_frame"},
-			},
+			"model":             model,
+			"content":           content,
 			"resolution":        resolution,
 			"ratio":             aspectRatio,
 			"duration":          duration,
-			"generate_audio":    true,
+			"generate_audio":    generateAudio,
 			"watermark":         false,
 			"return_last_frame": false,
 		})
 		return p.modelCreateURL(model), body, err
 	case FamilyVeo:
-		imageB64, mimeType, err := p.veoImageBase64(ctx, imageURL)
+		imageB64, mimeType, err := p.veoImageBase64(ctx, images[0])
 		if err != nil {
 			return "", nil, err
 		}
@@ -232,7 +215,7 @@ func (p *Provider) buildCreateRequest(ctx context.Context, model, imageURL, prom
 		})
 		return p.modelCreateURL(model), body, err
 	case FamilyKling:
-		image, err := klingImageField(imageURL)
+		image, err := klingImageField(images[0])
 		if err != nil {
 			return "", nil, err
 		}
@@ -250,6 +233,10 @@ func (p *Provider) buildCreateRequest(ctx context.Context, model, imageURL, prom
 		body, err := json.Marshal(payload)
 		return p.baseURL + "/" + url.PathEscape(model) + "/image2video", body, err
 	case FamilyVidu:
+		imageURL, err := provider.ResolveImageURL(images[0])
+		if err != nil {
+			return "", nil, err
+		}
 		body, err := json.Marshal(map[string]any{
 			"model":      model,
 			"images":     []string{imageURL},
@@ -264,8 +251,14 @@ func (p *Provider) buildCreateRequest(ctx context.Context, model, imageURL, prom
 	}
 }
 
-func (p *Provider) veoImageBase64(ctx context.Context, imageURL string) (b64, mimeType string, err error) {
-	imageURL = strings.TrimSpace(imageURL)
+func (p *Provider) veoImageBase64(ctx context.Context, media *modelhubv2.Media) (b64, mimeType string, err error) {
+	if _, ok := media.GetSource().(*modelhubv2.Media_Data); ok {
+		return inlineImageBase64(media)
+	}
+	imageURL, err := provider.ResolveImageURL(media)
+	if err != nil {
+		return "", "", err
+	}
 	if strings.HasPrefix(imageURL, "data:") {
 		// ParseDataURI 也可能解析供应商回传；此处是提交前输入，失败标本地。
 		mimeType, data, err := provider.ParseDataURI(imageURL)
@@ -275,6 +268,25 @@ func (p *Provider) veoImageBase64(ctx context.Context, imageURL string) (b64, mi
 		return base64.StdEncoding.EncodeToString(data), mimeType, nil
 	}
 	return p.fetchImageBase64(ctx, imageURL)
+}
+
+// 内联图片直接生成模型所需的 Base64，不先构造 Data URI 再解码。
+func inlineImageBase64(media *modelhubv2.Media) (string, string, error) {
+	data, ok := provider.InlineImageBytes(media)
+	if !ok {
+		return "", "", provider.NotAttempted(provider.ErrorInvalidArgument, "image source is required")
+	}
+	if len(data) > protocol.MaxMediaBytes {
+		return "", "", provider.NotAttemptedf(provider.ErrorInvalidArgument, "image exceeds %d bytes", protocol.MaxMediaBytes)
+	}
+	mimeType := strings.ToLower(strings.TrimSpace(media.GetMimeType()))
+	if mimeType == "" {
+		return "", "", provider.NotAttempted(provider.ErrorInvalidArgument, "first_frame mime_type is required")
+	}
+	if !strings.HasPrefix(mimeType, "image/") {
+		return "", "", provider.NotAttemptedf(provider.ErrorInvalidArgument, "first_frame mime_type %s is not an image", mimeType)
+	}
+	return base64.StdEncoding.EncodeToString(data), mimeType, nil
 }
 
 func (p *Provider) fetchImageBase64(ctx context.Context, imageURL string) (b64, mimeType string, err error) {
@@ -363,10 +375,17 @@ func mimeFromURL(raw string) string {
 }
 
 // klingImageField 对齐腾讯云 Image：Url 与 Base64 二选一。data URI 去掉前缀后放 Base64，公网地址原样放 Url。
-func klingImageField(imageURL string) (map[string]string, error) {
-	imageURL = strings.TrimSpace(imageURL)
-	if imageURL == "" {
-		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "kling image is required")
+func klingImageField(media *modelhubv2.Media) (map[string]string, error) {
+	if _, ok := media.GetSource().(*modelhubv2.Media_Data); ok {
+		data, _, err := inlineImageBase64(media)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]string{"Base64": data}, nil
+	}
+	imageURL, err := provider.ResolveImageURL(media)
+	if err != nil {
+		return nil, err
 	}
 	if strings.HasPrefix(imageURL, "data:") {
 		// 提交前解析调用方 data URI；ParseDataURI 本身不标 Local，由此处认定。
