@@ -1,7 +1,6 @@
 package modelhub
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -36,38 +35,18 @@ func TestVMindModelsUseModelGatewayAfterModelListReload(t *testing.T) {
 	const decisionResult = `{"prediction":{"label":"标准商品图","probability":0.8},"options":[],"timings_ms":{"total":2}}`
 	t.Setenv("MODEL_GATEWAY_API_TOKEN", "test-gateway-token")
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/models/") && r.Header.Get("Authorization") == "Bearer test-gateway-token" {
-			key := strings.TrimPrefix(r.URL.Path, "/v1/models/")
-			kind := map[string]string{chatModel: "chat_completions", decisionModel: "decision", models.VWorldOutfit10: "vton"}[key]
-			_ = json.NewEncoder(w).Encode(map[string]string{"model_key": key, "protocol": kind})
-			return
-		}
+
 		if r.Method != http.MethodPost || r.Header.Get("Authorization") != "Bearer test-gateway-token" {
 			t.Error("VMind calls must use the injected gateway token")
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		if r.URL.Path == "/v1/decision/predict" {
-			if r.Header.Get("X-Model-Key") != decisionModel {
-				t.Error("decision model key was lost")
-			}
-			image, header, err := r.FormFile("image")
-			if err != nil {
-				t.Error(err)
-				w.WriteHeader(http.StatusBadRequest)
-				return
-			}
-			defer image.Close()
-			raw, err := io.ReadAll(image)
-			if err != nil || header.Filename != "image.png" || !bytes.Equal(raw, decisionPNG) ||
-				r.FormValue("task") != "image_type" || r.FormValue("prompt") != "" {
-				t.Error("Decision must receive the PNG with its required file extension and preset task")
-				w.WriteHeader(http.StatusBadRequest)
-				return
-			}
-			_, _ = io.WriteString(w, decisionResult)
+		if strings.HasPrefix(r.URL.Path, "/v1/gateway/requests/") {
+			// 文本模型误用图片能力也应到网关受理边界被拒绝，不做逐次预查询。
+			http.Error(w, `{"error":{"code":"invalid_protocol"}}`, http.StatusBadRequest)
 			return
 		}
+
 		if r.URL.Path != "/v1/chat/completions" {
 			t.Errorf("unexpected VMind gateway path %s", r.URL.Path)
 			w.WriteHeader(http.StatusBadRequest)
@@ -76,9 +55,24 @@ func TestVMindModelsUseModelGatewayAfterModelListReload(t *testing.T) {
 		var request struct {
 			Model    string          `json:"model"`
 			Messages json.RawMessage `json:"messages"`
+			Traits   json.RawMessage `json:"model_traits"`
+			Stream   bool            `json:"stream"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&request); err != nil || request.Model != chatModel ||
-			!strings.Contains(string(request.Messages), "data:image/png;base64,AQID") {
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatal(err)
+		}
+		if request.Model == models.VWorldOutfit10 {
+			http.Error(w, `{"error":{"code":"invalid_protocol"}}`, http.StatusBadRequest)
+			return
+		}
+		if request.Model == decisionModel {
+			if !strings.Contains(string(request.Messages), "data:image/png;base64,iVBORw0KGgo=") || string(request.Traits) != `{"task":"image_type"}` {
+				t.Error("Decision input must reach the gateway without a protocol lookup")
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]string{"content": decisionResult}, "finish_reason": "stop"}}})
+			return
+		}
+		if request.Model != chatModel || !strings.Contains(string(request.Messages), "data:image/png;base64,AQID") {
 			t.Error("gateway request must preserve the model ID and inline image")
 			w.WriteHeader(http.StatusBadRequest)
 			return
@@ -120,7 +114,7 @@ func TestVMindModelsUseModelGatewayAfterModelListReload(t *testing.T) {
 		t.Fatal(err)
 	}
 	live.ApplyYAML(string(raw))
-	// 输出契约在取得登记协议后校验，不能再靠 Service 中写死的模型名称决定。
+	// 输出契约在同一次网关受理中校验，不能靠 Service 的模型名单或额外查询决定。
 	for _, model := range []string{chatModel, decisionModel} {
 		req := textRequest(model, "test")
 		if _, err := sets[instance].Image.GenerateImage(ctx, model, req); err == nil {

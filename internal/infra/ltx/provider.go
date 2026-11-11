@@ -63,7 +63,7 @@ func New(name, baseURL, token string, duration float64, fps, seed int, pollInter
 	}, nil
 }
 
-// SubmitVideo 按网关登记确认视频协议；直连供应商仍使用既有模型边界。
+// SubmitVideo 直接提交视频输入，模型登记与协议由网关受理时校验。
 func (p *Provider) SubmitVideo(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (string, error) {
 	if p.gateway == nil && model != models.VWorldOutfitVideo10 {
 		return "", provider.NotAttempted(provider.ErrorInvalidArgument, "unsupported video model: "+model)
@@ -81,14 +81,6 @@ func (p *Provider) SubmitVideo(ctx context.Context, model string, request *model
 		return "", err
 	}
 	if p.gateway != nil {
-		// 提交按登记确认视频契约；历史任务查询仍使用已经持久化的网关任务 ID。
-		kind, err := p.gateway.ModelProtocol(ctx, model)
-		if err != nil {
-			return "", err
-		}
-		if kind != "outfit_video" {
-			return "", provider.NotAttemptedf(provider.ErrorInvalidArgument, "unsupported video protocol %q", kind)
-		}
 		mimeType := strings.TrimSpace(firstFrame.GetMimeType())
 		if mimeType == "" {
 			mimeType = http.DetectContentType(imageBytes)

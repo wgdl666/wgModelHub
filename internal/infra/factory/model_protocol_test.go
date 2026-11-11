@@ -34,16 +34,13 @@ func TestMediaGatewayUsesRegisteredModelKeys(t *testing.T) {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/models/") {
-			model := strings.TrimPrefix(r.URL.Path, "/v1/models/")
-			kind := map[string]string{imageModel: "vton", videoModel: "outfit_video"}[model]
-			_ = json.NewEncoder(w).Encode(map[string]string{"model_key": model, "protocol": kind})
-			return
-		}
+
 		state, extension, code := "succeeded", "mp4", http.StatusOK
 		if r.Method == http.MethodPost {
 			var body struct {
-				Input struct {
+				Output string `json:"output"`
+				Input  struct {
+					Text   string                  `json:"text"`
 					Prompt string                  `json:"prompt"`
 					Images []struct{ Data []byte } `json:"images"`
 				} `json:"input"`
@@ -53,16 +50,16 @@ func TestMediaGatewayUsesRegisteredModelKeys(t *testing.T) {
 				http.Error(w, "invalid input", http.StatusBadRequest)
 				return
 			}
-			count := 1
+			count, output, prompt := 1, "video", body.Input.Prompt
 			switch r.URL.Path {
 			case "/v1/gateway/requests/" + imageModel:
-				count, extension = 2, "png"
+				count, extension, output, prompt = 2, "png", "image", body.Input.Text
 			case "/v1/gateway/requests/" + videoModel:
 				state, code = "queued", http.StatusAccepted
 			default:
 				t.Errorf("model key changed before submission: %s", r.URL.Path)
 			}
-			if body.Input.Prompt != "keep prompt" || len(body.Input.Images) != count || !bytes.Equal(body.Input.Images[0].Data, imageData) {
+			if body.Output != output || prompt != "keep prompt" || len(body.Input.Images) != count || !bytes.Equal(body.Input.Images[0].Data, imageData) {
 				t.Error("registered model lost its protocol input")
 			}
 		} else if r.Method != http.MethodGet || r.URL.Path != "/v1/gateway/requests" {
@@ -96,7 +93,7 @@ func TestMediaGatewayUsesRegisteredModelKeys(t *testing.T) {
 	request := &modelhubv2.GenerateRequest{Model: imageModel, Input: &modelhubv2.Input{Items: []*modelhubv2.InputItem{{
 		Item: &modelhubv2.InputItem_Message{Message: message},
 	}}}}
-	// 新模型名经过工厂装配、协议查询、输入转换和结果读取，不能在适配器中变回旧常量。
+	// 新模型名直接提交；测试网关不提供预查询接口，仍须保留原始输入和结果读取。
 	image, err := sets["gateway"].Image.GenerateImage(t.Context(), imageModel, request)
 	if err != nil || len(image.GetItems()) != 1 || !bytes.Equal(image.Items[0].GetImage().GetData(), imageData) {
 		t.Fatalf("registered image result: %v %v", image, err)

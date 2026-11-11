@@ -19,7 +19,6 @@ import (
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
-	"github.com/wgdl666/wgModelHub/internal/infra/vmindgateway"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
 )
@@ -35,7 +34,7 @@ const (
 // Provider 只实现 ImageProvider。model 选择端点，不进入上游请求体。
 type Provider struct {
 	// Gateway 启用登记模型路由，直连供应商继续使用原有契约。
-	Gateway       *vmindgateway.Client
+	Gateway       bool
 	name          string
 	baseURL       string
 	username      string
@@ -88,19 +87,9 @@ func (p *Provider) GenerateImage(ctx context.Context, model string, request *mod
 		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "generate request is required")
 	}
 	endpoint, person, err := endpointFor(model)
-	if p.Gateway != nil {
-		var kind string
-		kind, err = p.Gateway.ModelProtocol(ctx, model)
-		if err == nil {
-			switch kind {
-			case "segment_person":
-				endpoint, person = personPath, true
-			case "segment_subject":
-				endpoint, person = subjectPath, false
-			default:
-				err = provider.NotAttemptedf(provider.ErrorInvalidArgument, "unsupported segment protocol %q", kind)
-			}
-		}
+	if p.Gateway {
+		// 人物/商品分流由网关登记决定，ModelHub 不再逐次查询或猜测模型名称。
+		endpoint, person, err = "/api/matte", false, nil
 	}
 	if err != nil {
 		return nil, err
@@ -181,6 +170,10 @@ func (p *Provider) doSegment(ctx context.Context, model, endpoint string, imageB
 		"method": p.methodFor(person),
 		"output": "b64",
 	}
+	if p.Gateway {
+		// 两种既有算法配置一起提交，由网关按登记协议选择，保留直连配置语义。
+		fields["person_method"], fields["subject_method"] = p.methodFor(true), p.methodFor(false)
+	}
 	// 人物接口沿用现网约定：preprocess 字段存在且值为字符串 "false"。商品接口不带该字段。
 	if person {
 		fields["preprocess"] = "false"
@@ -193,7 +186,14 @@ func (p *Provider) doSegment(ctx context.Context, model, endpoint string, imageB
 	for name, value := range fields {
 		parts = append(parts, httpbody.Field(name, value))
 	}
-	body, err := httpbody.Multipart(parts)
+	var body *httpbody.Body
+	var err error
+	if p.Gateway {
+		// 网关接收同一种抠图输入，再按登记决定人物/商品原生表单。
+		body, err = httpbody.JSON(fields, true)
+	} else {
+		body, err = httpbody.Multipart(parts)
+	}
 	if err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorUnavailable, p.name+" build segment request", err)
 	}
@@ -211,7 +211,7 @@ func (p *Provider) doSegment(ctx context.Context, model, endpoint string, imageB
 		if p.username != "" {
 			httpReq.SetBasicAuth(p.username, p.password)
 		}
-		if p.Gateway != nil {
+		if p.Gateway {
 			httpReq.Header.Set("X-Model-Key", model)
 		}
 		response, err = p.client.Do(httpReq)

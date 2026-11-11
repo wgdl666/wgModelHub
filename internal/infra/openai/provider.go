@@ -25,6 +25,8 @@ const DefaultBaseURL = "https://api.openai.com/v1"
 
 // Provider 适配 OpenAI-compatible 端点：文本走 /chat/completions，生图按有无参考图走 /images/generations 或 /images/edits。
 type Provider struct {
+	// 仅内部网关接收模型参数，第三方 OpenAI-compatible 请求不携带该扩展。
+	ModelGateway  bool
 	name          string
 	apiKey        string
 	baseURL       string
@@ -148,6 +150,9 @@ func (p *Provider) buildRequestBody(model string, request *modelhubv2.GenerateRe
 		// 思考档位仍按对外模型 ID 判断；upstream_model 只替换上游认的部署名。
 		"model":  p.chatModel(model),
 		"stream": stream,
+	}
+	if p.ModelGateway && strings.TrimSpace(input.GetModelTraits()) != "" {
+		body["model_traits"] = json.RawMessage(input.GetModelTraits())
 	}
 	if stream {
 		body["stream_options"] = map[string]any{"include_usage": true}

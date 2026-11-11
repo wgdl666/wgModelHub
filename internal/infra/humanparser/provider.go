@@ -14,7 +14,6 @@ import (
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
-	"github.com/wgdl666/wgModelHub/internal/infra/vmindgateway"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
 )
@@ -32,7 +31,7 @@ const (
 // Provider 只实现 TextProvider。账号密码成对出现，两个都空则匿名调用。
 type Provider struct {
 	// Gateway 启用登记模型路由，直连供应商继续使用原有契约。
-	Gateway  *vmindgateway.Client
+	Gateway  bool
 	name     string
 	baseURL  string
 	username string
@@ -64,13 +63,9 @@ func New(name, baseURL, username, password string, options ...telemetry.HTTPClie
 
 func (p *Provider) Generate(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
 	path, checkSuccess, err := predictRoute(model)
-	if p.Gateway != nil {
-		var kind string
-		kind, err = p.Gateway.ModelProtocol(ctx, model)
-		if err == nil && kind != "human_parse" {
-			err = provider.NotAttemptedf(provider.ErrorInvalidArgument, "unsupported parser protocol %q", kind)
-		}
-		path, checkSuccess = g7PredictPath, true
+	if p.Gateway {
+		// 固定解析入口只携带原模型名；网关在入队前校验登记与协议。
+		path, checkSuccess, err = g7PredictPath, true, nil
 	}
 	if err != nil {
 		return nil, err
@@ -95,7 +90,7 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 	if p.username != "" {
 		httpReq.SetBasicAuth(p.username, p.password)
 	}
-	if p.Gateway != nil {
+	if p.Gateway {
 		httpReq.Header.Set("X-Model-Key", model)
 	}
 	response, err := p.client.Do(httpReq)

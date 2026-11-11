@@ -107,14 +107,10 @@ func build(ctx context.Context, cfg config.Config, live *config.LiveConfig) (map
 			return nil, fmt.Errorf("provider %s: %w", name, err)
 		}
 		if gateway != nil {
-			// 视觉模型沿用原有编码器，模型身份与分人/分主体等协议从登记解析。
-			registered, err := vmindgateway.New(name, gateway.BaseURL, gateway.APIToken(), nil)
-			if err != nil {
-				return nil, err
-			}
+			// 视觉输入沿用已有编码器，模型与协议统一交给网关入队前校验。
 			switch p := set.Text.(type) {
 			case *humanparser.Provider:
-				p.Gateway = registered
+				p.Gateway = true
 			case *humanyolo.Provider:
 				p.Gateway = true
 			case *facesim.Provider:
@@ -122,7 +118,7 @@ func build(ctx context.Context, cfg config.Config, live *config.LiveConfig) (map
 			}
 			switch p := set.Image.(type) {
 			case *segmentperson.Provider:
-				p.Gateway = registered
+				p.Gateway = true
 			case *lenscorrection.Provider:
 				p.Gateway = true
 			}
@@ -151,7 +147,8 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 		if err != nil {
 			return provider.Set{}, err
 		}
-		return provider.Set{Text: vmindgateway.NewText(client, chat), Image: vworldimage.NewGateway(name, client), Video: ltx.NewGateway(name, client, cfg.PollInterval)}, nil
+		chat.ModelGateway = true
+		return provider.Set{Text: chat, Image: vworldimage.NewGateway(name, client), Video: ltx.NewGateway(name, client, cfg.PollInterval)}, nil
 	case providerCfg.VolcengineASR != nil:
 		cfg := providerCfg.VolcengineASR
 		client, err := volcengineasr.New(volcengineasr.Config{AppKey: cfg.AppKey, AccessKey: cfg.AccessKey, APIKey: cfg.APIKey, ResourceID: cfg.ResourceID, URL: cfg.URL})

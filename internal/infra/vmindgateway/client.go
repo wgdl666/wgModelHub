@@ -51,31 +51,6 @@ func New(name, baseURL, token string, objects *objectstore.S3) (*Client, error) 
 	return &Client{name: name, baseURL: baseURL, token: strings.TrimSpace(token), http: client, objects: objects}, nil
 }
 
-// ModelProtocol 读取网关登记的固定契约，避免 ModelHub 再维护一份模型名称白名单。
-func (c *Client) ModelProtocol(ctx context.Context, model string) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/v1/models/"+url.PathEscape(model), nil)
-	if err != nil {
-		return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "invalid gateway model", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
-	response, err := c.http.Do(req)
-	if err != nil {
-		return "", provider.WrapNotAttempted(provider.ErrorUnavailable, "read registered model protocol", err)
-	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		return "", provider.TakeHTTPError(c.name, response.StatusCode, response.Body)
-	}
-	var registered struct {
-		ModelKey string `json:"model_key"`
-		Protocol string `json:"protocol"`
-	}
-	if json.NewDecoder(io.LimitReader(response.Body, 4096)).Decode(&registered) != nil || registered.ModelKey != model || registered.Protocol == "" {
-		return "", provider.New(provider.ErrorInvalidResponse, "invalid registered model protocol")
-	}
-	return registered.Protocol, nil
-}
-
 func (c *Client) Submit(ctx context.Context, model, id string, input map[string]any, accepted int) (Task, error) {
 	if id == "" {
 		id = uuid.NewString()
@@ -93,8 +68,13 @@ func (c *Client) Submit(ctx context.Context, model, id string, input map[string]
 		}
 		input["images"] = values
 	}
+	// 输出能力随同一次提交传递，网关必须在入队前拒绝图像/视频协议不匹配。
+	output := "image"
+	if accepted == http.StatusAccepted {
+		output = "video"
+	}
 	body, err := httpbody.JSON(map[string]any{
-		"input": input, "metadata": map[string]string{"trace_id": telemetry.TraceID(ctx)},
+		"input": input, "output": output, "metadata": map[string]string{"trace_id": telemetry.TraceID(ctx)},
 	}, true)
 	if err != nil {
 		return Task{}, provider.WrapNotAttempted(provider.ErrorInvalidArgument, "encode VMind gateway input", err)

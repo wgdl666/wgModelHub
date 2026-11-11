@@ -22,12 +22,7 @@ func TestVisionGatewayPreservesAdapterProtocol(t *testing.T) {
 	t.Setenv("MODEL_GATEWAY_API_TOKEN", token)
 	encoded := base64.StdEncoding.EncodeToString([]byte(image))
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/models/") && r.Header.Get("Authorization") == "Bearer "+token {
-			key := strings.TrimPrefix(r.URL.Path, "/v1/models/")
-			kind := map[string]string{models.HumanParse: "human_parse", models.SegmentPersonBria: "segment_person", models.SegmentSubjectBria: "segment_subject", "parser-v2": "human_parse", "subject-v2": "segment_subject"}[key]
-			_ = json.NewEncoder(w).Encode(map[string]string{"model_key": key, "protocol": kind})
-			return
-		}
+
 		if r.Method != http.MethodPost || r.Header.Get("Authorization") != "Bearer "+token {
 			t.Error("vision request did not use the configured gateway bearer")
 			w.WriteHeader(http.StatusUnauthorized)
@@ -57,14 +52,18 @@ func TestVisionGatewayPreservesAdapterProtocol(t *testing.T) {
 				t.Error("YOLO file or detection thresholds changed")
 			}
 			fmt.Fprint(w, `{"persons":[{"confidence":0.9}]}`)
-		case "/v1/vision/segment-person/api/segment", "/v1/vision/segment-person/api/segment_subject":
-			if r.FormValue("method") != "person-bria-rmbg" || r.FormValue("image") != encoded || r.FormValue("output") != "b64" {
-				t.Error("segmenter lost the configured method or image")
+		case "/v1/vision/segment-person/api/matte":
+			var body map[string]string
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body["image"] != encoded || body["output"] != "b64" ||
+				body["person_method"] != "person-bria-rmbg" || body["subject_method"] != "person-bria-rmbg" {
+				t.Error("segmenter lost its image or configured algorithms")
 			}
-			if strings.HasSuffix(r.URL.Path, "/segment") && r.FormValue("preprocess") != "false" {
-				t.Error("person segmenter lost the preprocess option")
+			// 人物/商品入口由测试网关登记决定，ModelHub 无需先获知协议。
+			path := "/v1/vision/segment-person/api/segment"
+			if model := r.Header.Get("X-Model-Key"); model == models.SegmentSubjectBria || model == "subject-v2" {
+				path += "_subject"
 			}
-			fmt.Fprintf(w, `{"refined_png_b64":%q}`, base64.StdEncoding.EncodeToString([]byte(r.URL.Path)))
+			fmt.Fprintf(w, `{"refined_png_b64":%q}`, base64.StdEncoding.EncodeToString([]byte(path)))
 		case "/v1/vision/facesim/compare":
 			if r.FormValue("image_a") != encoded || r.FormValue("image_b") != encoded {
 				t.Error("facesim lost one of its inline images")

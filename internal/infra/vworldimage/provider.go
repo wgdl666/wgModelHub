@@ -103,18 +103,15 @@ func (p *Provider) GenerateImage(ctx context.Context, model string, request *mod
 	if request == nil {
 		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "generate request is required")
 	}
-	// 网关模型的处理方式来自登记；直连供应商保持既有协议约定。
+	if p.gateway != nil {
+		// 只传统一输入；具体图像协议的选择与字段校验由网关在入队前完成。
+		return p.generateThroughGateway(ctx, model, request)
+	}
+	// 直连供应商保留既有协议约定，不受网关受理边界调整影响。
 	kind := map[string]string{
 		models.VWorldWardrobe10: "garment_extraction", models.VWorldClothGen10: "product_generation",
 		models.VWorldOutfit10: "vton", models.VWorldBodyModel10: "body_model",
 	}[model]
-	if p.gateway != nil {
-		var err error
-		kind, err = p.gateway.ModelProtocol(ctx, model)
-		if err != nil {
-			return nil, err
-		}
-	}
 	switch kind {
 	case "garment_extraction", "product_generation":
 		return p.generateWardrobe(ctx, model, kind == "garment_extraction", request)
@@ -223,9 +220,6 @@ func (p *Provider) generateBodyModel(ctx context.Context, model string, request 
 }
 
 func (p *Provider) generate(ctx context.Context, model, path string, fields map[string]string, uploads []imageUpload) (*modelhubv2.GenerateEvent, error) {
-	if p.gateway != nil {
-		return p.generateThroughGateway(ctx, model, fields, uploads)
-	}
 	raw, err := p.doMultipart(ctx, path, fields, uploads)
 	if err != nil {
 		return nil, err
@@ -237,20 +231,19 @@ func (p *Provider) generate(ctx context.Context, model, path string, fields map[
 	return imageEvent(parsed.Data)
 }
 
-func (p *Provider) generateThroughGateway(ctx context.Context, model string, fields map[string]string, uploads []imageUpload) (*modelhubv2.GenerateEvent, error) {
-	images := make([]vmindgateway.Image, 0, len(uploads))
-	for _, upload := range uploads {
-		images = append(images, vmindgateway.Image{MIMEType: upload.mimeType, Data: upload.data})
-	}
-	input := map[string]any{"images": images}
-	for key, value := range fields {
-		// 业务对象已由共同的参数逻辑编码，Go 网关按结构读取坐标和解析标签。
-		switch key {
-		case "bbox", "parse_labels":
-			input[key] = json.RawMessage(value)
-		default:
-			input[key] = value
+func (p *Provider) generateThroughGateway(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
+	media := provider.ImageMedias(request.GetInput())
+	images := make([]vmindgateway.Image, 0, len(media))
+	for _, image := range media {
+		data, mimeType, err := inlineImage(image)
+		if err != nil {
+			return nil, err
 		}
+		images = append(images, vmindgateway.Image{MIMEType: mimeType, Data: data})
+	}
+	input := map[string]any{"images": images, "text": provider.JoinedText(request.GetInput())}
+	if traits := request.GetInput().GetModelTraits(); strings.TrimSpace(traits) != "" {
+		input["model_traits"] = json.RawMessage(traits)
 	}
 	task, err := p.gateway.Submit(ctx, model, "", input, http.StatusOK)
 	if err != nil {
