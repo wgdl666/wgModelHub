@@ -55,6 +55,39 @@ func TestBuildContentsPreservesThoughtSignatureRoundtrip(t *testing.T) {
 	}
 }
 
+func TestToolCallWithoutIDRemainsAbsentInHistoryAndReply(t *testing.T) {
+	call := convertFunctionCall(&genaisdk.Part{
+		FunctionCall: &genaisdk.FunctionCall{Name: "lookup", Args: map[string]any{"key": "alpha"}},
+	})
+	if call.Id != "" {
+		t.Fatalf("missing upstream ID must stay empty, got %q", call.Id)
+	}
+	contents := (&Provider{}).buildContents(&modelhubv2.GenerateRequest{Input: &modelhubv2.Input{
+		Items: []*modelhubv2.InputItem{
+			{Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{Role: modelhubv2.Role_ROLE_ASSISTANT, ToolCalls: []*modelhubv2.ToolCall{call}}}},
+			{Item: &modelhubv2.InputItem_ToolOutput{ToolOutput: &modelhubv2.ToolOutput{ToolCallId: call.Id, ToolName: call.Name, Output: `{"value":173}`}}},
+		},
+	}})
+	raw, err := json.Marshal(contents)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body []struct {
+		Parts []map[string]map[string]any `json:"parts"`
+	}
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body) != 2 || len(body[0].Parts) != 1 || len(body[1].Parts) != 1 {
+		t.Fatalf("tool history or reply lost: %s", raw)
+	}
+	for _, part := range []map[string]any{body[0].Parts[0]["functionCall"], body[1].Parts[0]["functionResponse"]} {
+		if _, present := part["id"]; present || part["name"] != "lookup" {
+			t.Fatalf("must preserve name and omit missing ID: %s", raw)
+		}
+	}
+}
+
 func TestImageResponseTransfersSDKBytes(t *testing.T) {
 	data := []byte("sdk-owned image")
 	response := &genaisdk.GenerateContentResponse{Candidates: []*genaisdk.Candidate{{

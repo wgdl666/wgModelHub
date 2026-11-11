@@ -218,8 +218,16 @@ func convertToolOutputContents(output *modelhubv2.ToolOutput) []*genaisdk.Conten
 	if name == "" {
 		name = output.ToolCallId
 	}
-	contents := []*genaisdk.Content{genaisdk.NewContentFromFunctionResponse(name, toolOutputObject(output), genaisdk.RoleUser)}
-	contents[0].Parts[0].FunctionResponse.ID = output.ToolCallId
+	contents := []*genaisdk.Content{{
+		Role: "user",
+		Parts: []*genaisdk.Part{{
+			FunctionResponse: &genaisdk.FunctionResponse{
+				ID:       output.ToolCallId,
+				Name:     name,
+				Response: toolOutputObject(output),
+			},
+		}},
+	}}
 	if len(output.Images) == 0 {
 		return contents
 	}
@@ -253,13 +261,9 @@ func convertMessage(message *modelhubv2.Message) *genaisdk.Content {
 			if len(call.ArgumentsJson) > 0 {
 				_ = json.Unmarshal(call.ArgumentsJson, &arguments)
 			}
-			id := call.Id
-			if id == "" {
-				id = call.Name
-			}
 			parts = append(parts, &genaisdk.Part{
 				FunctionCall: &genaisdk.FunctionCall{
-					ID:   id,
+					ID:   call.Id,
 					Name: call.Name,
 					Args: arguments,
 				},
@@ -523,12 +527,8 @@ func convertResponse(response *genaisdk.GenerateContentResponse) *modelhubv2.Gen
 func convertFunctionCall(part *genaisdk.Part) *modelhubv2.ToolCall {
 	call := part.FunctionCall
 	arguments, _ := json.Marshal(call.Args)
-	id := call.ID
-	if id == "" {
-		id = call.Name
-	}
 	return &modelhubv2.ToolCall{
-		Id:               id,
+		Id:               call.ID,
 		Name:             call.Name,
 		ArgumentsJson:    arguments,
 		ThoughtSignature: part.ThoughtSignature,

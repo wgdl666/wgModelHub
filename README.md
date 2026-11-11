@@ -67,7 +67,8 @@ Function Calling 和 JSON Schema；ListModels 将它列为 MULTIMODAL，同一�
 未指定档位时保留上游 MEDIUM 默认值。temperature/top_p 按 optional 契约原样传递，但 Argon 会忽略它们。
 Argon 只使用隐式缓存，不创建或引用显式缓存；即使 explicit_cache 对全部模型开启也跳过它。
 input.caching.enabled=false 不能关闭供应商隐式缓存；缓存遥测标记为 implicit_automatic，
-实际命中仍看 usage.cached_tokens。工具回执保留 tool_call_id，与上轮 FunctionCall.ID 匹配。
+实际命中仍看 usage.cached_tokens。工具调用和回执原样透传 ID；上游未返回 ID 时保持为空，
+不再用工具名代替，发回 Google 的 FunctionCall/FunctionResponse 也不写入空 ID。
 
 本次不接入 long decode，保留当前带本地补丁的 GenAI SDK；不承诺跨段续写。
 max_output_tokens 包含思考与最终输出，使用前应按场景确认预算，避免沿用小预算导致截断。
