@@ -1,12 +1,18 @@
 # wgModelHub 仓库边界
 
+## 共享规则入口
+
+- 开始任务先读取 WG 工作区公共 `AGENTS.md`，再应用本仓库特例。
+- 普通检出读取主仓库上一级的 `AGENTS.md`。Git worktree 用 `git rev-parse --path-format=absolute --git-common-dir` 定位主检出的 `.git`，再读取主检出上一级。不要根据 worktree 的父目录猜位置。
+- 公共文件不可达时说明缺口，不把它当作已加载；不为补路径向仓库写入个人绝对路径。
+
 - `wgModelHub` 是 WG 内部统一的大模型协议适配层，只负责真实供应商模型 ID（`request.model`）路由、供应商凭据托管、协议转换与错误归一化。
 - Prompt 编排、业务重试、质量验收、业务任务终态、调用方 OSS 始终留在 `wgHub` 或 `wgWardrobe`；ModelHub 成功只表示供应商结果可读，不表示业务任务终态。
 - 单个 Deployment、单个 gRPC `ModelHubService`、端口 `50053`；不提供任意路径代理、万能 RPC 或调用方注入供应商地址/密钥。
 
 # 配置与模型路由
 
-- Nacos Data ID：`wg.mirror.modelHub`；bootstrap 只保存 Nacos 定位信息，凭据与模型映射在 YAML 正文中。共享业务 YAML 忽略未知字段，但仍须拒绝多文档和缺少的必需配置；启动与热更新共用 `ParseAndValidateYAML`。
+- Nacos Data ID：`wg.mirror.modelHub`；bootstrap 只保存 Nacos 定位信息，凭据与模型映射在 YAML 正文中。启动与热更新共用 `ParseAndValidateYAML`，共享 YAML 校验规则见工作区公共约定。
 - 每个 provider 实例用互斥嵌套字段表达 Gemini/VertexAI/Ark/OpenAI/Photoroom/SegmentPerson/LTX 以及各类视频供应商，并声明 `models: [真实模型 ID...]`。
 - `ark_video` 承接方舟 Seedance 2.5（`doubao-seedance-2-5-260628`）文生视频与首帧图生视频；示例实例键是 `火山方舟_ark_video`，与文本实例 `火山方舟_ark_chat` 分绑，不能共用一套能力。任务形态由 Input 推断，不另开模型 ID 或模式枚举。
 - OpenAI 实例同时承接 chat/completions 与 Images API；无参考图走 `/v1/images/generations`，有参考图走 `/v1/images/edits`。`gpt-image-2` / `gpt-image-2.5-flare` / `gpt-image-2.5-sunburst` 复用 AIG OpenAI-compatible Images。示例与审计目标实例键都是 `AIG_openai`（`https://api.aig-ai.com/v1`），不能并入 Gemini generateContent 生图实例。
@@ -47,15 +53,14 @@
 
 - PostgreSQL 表 `modelhub.generation_task` 只存跨 Pod 查询所需最小事实：`task_id`、`caller`、`request_id`、`request_hash`、`model`、`provider`、`provider_task_id`、`state`、归一化错误、时间戳；不存 prompt、媒体正文或最终视频。
 - 唯一键 `(caller, request_id)`：同哈希返回原任务，不同哈希返回 `ALREADY_EXISTS`。先落库再调上游；上游可能已接受但本地未拿到确定结果时不得自动重提。
-- 运行时经 Ent builder/predicate 访问；业务代码禁止手写 SQL。历史 `migrations/001_generation_task.sql` 保留且须显式执行；禁止 `Schema.Create` 或启动自动 DDL。`go generate ./ent` 只再生 Ent 代码。
+- Ent 访问和显式迁移遵循公共规则。历史 `migrations/001_generation_task.sql` 保留且须显式执行；`go generate ./ent` 只再生 Ent 代码。
 - 前台 `Generate`（含文字/图片）不经过任务表。
 
 # 错误与观测
 
-- 供应商错误统一映射为 gRPC status + `google.rpc.ErrorInfo.reason`（domain=`wg.modelhub`）。
+- 内部供应商和业务错误统一使用公共规则中的 `bizerr`。最外层 gRPC adapter 将其映射为既有 gRPC status + `google.rpc.ErrorInfo.reason`，保持 domain=`wg.modelhub`；内部 service 不直接构造 transport error。
 - OpenTelemetry/Logfire 只记录主机、状态码、字节数等元数据，禁止记录 Prompt、媒体正文或密钥。
 
 # 发布
 
-- 正式发布走 `workspace` 统一入口，不绕过它手改运行环境。
 - ACK 清单见 `deploy/ack.yaml`：两副本、RollingUpdate、`terminationGracePeriodSeconds=180`、非 root `10001`。
