@@ -63,6 +63,7 @@ var categories = map[string]Category{
 	Gemini37Flash:     CategoryMultimodal,
 	Gemini38Flash:     CategoryMultimodal,
 	Gemini4Argon:      CategoryMultimodal,
+	Gemini4Carbon:     CategoryMultimodal,
 	Gemini35FlashLite: CategoryMultimodal,
 	Gemini20Flash001:  CategoryMultimodal,
 	DoubaoSeed16:      CategoryMultimodal,

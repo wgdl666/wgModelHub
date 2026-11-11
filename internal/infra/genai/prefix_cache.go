@@ -51,8 +51,8 @@ func (p *Provider) prefixKey(ctx context.Context, model string, config *genaisdk
 }
 
 func (p *Provider) preparePrefixCache(ctx context.Context, model string, request *modelhubv2.GenerateRequest, original *genaisdk.GenerateContentConfig) (*genaisdk.GenerateContentConfig, *prefixcache.Entry) {
-	// Argon 不支持创建或引用显式缓存，即使配置为全部 Google 模型开启也只走隐式缓存。
-	if model == models.Gemini4Argon {
+	// Argon/Carbon 不支持创建或引用显式缓存，即使配置为全部 Google 模型开启也只走隐式缓存。
+	if model == models.Gemini4Argon || model == models.Gemini4Carbon {
 		return original, nil
 	}
 	if p.cache == nil || p.cacheEnabled == nil || !p.cacheEnabled(model) || ctx.Err() != nil {
