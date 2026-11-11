@@ -454,6 +454,11 @@ func (s *Service) generateImage(ctx context.Context, binding binding, request *m
 	tracked := s.track(ctx, &rec, inBlobs)
 	defer s.endTrack(tracked, &rec, &providerErr, &outBlobs)
 	announceCall(stream, tracked, rec.CallID)
+	// 出图只按这次供应商调用成功还是失败计数，不单列取消：providerErr 涵盖调用失败和空图校验失败。
+	// 回传调用方失败不算模型失败。
+	defer func() {
+		llmmetric.RecordImageTerminal(ctx, binding.model, binding.provider, llmmetric.ImageOutcome(providerErr))
+	}()
 	callStarted = time.Now()
 	event, err := binding.set.Image.GenerateImage(ctx, binding.model, request)
 	callFinished := time.Now()
