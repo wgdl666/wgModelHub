@@ -2,7 +2,6 @@
 package lenscorrection
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -15,6 +14,7 @@ import (
 	"github.com/wgdl666/kangaroo/logs"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
@@ -82,10 +82,11 @@ func (p *Provider) GenerateImage(ctx context.Context, model string, request *mod
 			return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, "invalid lens correction model_traits", err)
 		}
 	}
-	body, err := json.Marshal(struct {
-		Base64 string `json:"base64"`
-		options
-	}{Base64: base64.StdEncoding.EncodeToString(data), options: opts})
+	body, err := httpbody.JSON(map[string]any{
+		"base64":      base64.StdEncoding.EncodeToString(data),
+		"mirror_lens": opts.MirrorLens,
+		"crop":        opts.Crop,
+	}, true)
 	if err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, "encode lens correction request", err)
 	}
@@ -97,7 +98,7 @@ func (p *Provider) GenerateImage(ctx context.Context, model string, request *mod
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.endpoint, bytes.NewReader(body))
+		req, err := body.NewRequest(ctx, http.MethodPost, p.endpoint)
 		if err != nil {
 			return nil, provider.WrapNotAttempted(provider.ErrorConfiguration, "create lens correction request", err)
 		}

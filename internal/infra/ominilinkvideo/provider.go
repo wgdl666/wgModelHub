@@ -1,7 +1,6 @@
 package ominilinkvideo
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -14,6 +13,7 @@ import (
 	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/protocol"
@@ -131,7 +131,7 @@ func (p *Provider) createTask(ctx context.Context, model, prompt, resolution str
 	if err != nil {
 		return "", err
 	}
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, createURL, bytes.NewReader(body))
+	httpReq, err := body.NewRequest(ctx, http.MethodPost, createURL)
 	if err != nil {
 		return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "create submit request", err)
 	}
@@ -164,7 +164,7 @@ func (p *Provider) createTask(ctx context.Context, model, prompt, resolution str
 
 // buildCreateRequest 按 family 组装互斥 payload：Seedance/Vidu 的 url 收公网地址或 data URI；
 // Veo 用 bytesBase64Encoded；Kling 的 Image.Url 只收公网地址，内联字节走 Image.Base64。
-func (p *Provider) buildCreateRequest(ctx context.Context, model, prompt, resolution string, duration int, aspectRatio string, images []*modelhubv2.Media) (string, []byte, error) {
+func (p *Provider) buildCreateRequest(ctx context.Context, model, prompt, resolution string, duration int, aspectRatio string, images []*modelhubv2.Media) (string, *httpbody.Body, error) {
 	model = strings.TrimSpace(model)
 	resolution, duration, aspectRatio = NormalizeParams(model, resolution, duration, aspectRatio)
 	prompt = strings.TrimSpace(prompt)
@@ -183,7 +183,7 @@ func (p *Provider) buildCreateRequest(ctx context.Context, model, prompt, resolu
 			}
 			content = append(content, map[string]any{"type": "image_url", "image_url": map[string]string{"url": imageURL}, "role": role})
 		}
-		body, err := json.Marshal(map[string]any{
+		body, err := httpbody.JSON(map[string]any{
 			"model":             model,
 			"content":           content,
 			"resolution":        resolution,
@@ -192,14 +192,14 @@ func (p *Provider) buildCreateRequest(ctx context.Context, model, prompt, resolu
 			"generate_audio":    generateAudio,
 			"watermark":         false,
 			"return_last_frame": false,
-		})
+		}, true)
 		return p.modelCreateURL(model), body, err
 	case FamilyVeo:
 		imageB64, mimeType, err := p.veoImageBase64(ctx, images[0])
 		if err != nil {
 			return "", nil, err
 		}
-		body, err := json.Marshal(map[string]any{
+		body, err := httpbody.JSON(map[string]any{
 			"instances": []map[string]any{{
 				"prompt": prompt,
 				"image":  map[string]string{"bytesBase64Encoded": imageB64, "mimeType": mimeType},
@@ -212,7 +212,7 @@ func (p *Provider) buildCreateRequest(ctx context.Context, model, prompt, resolu
 				"personGeneration": "allow_adult",
 				"generateAudio":    false,
 			},
-		})
+		}, true)
 		return p.modelCreateURL(model), body, err
 	case FamilyKling:
 		image, err := klingImageField(images[0])
@@ -230,21 +230,21 @@ func (p *Provider) buildCreateRequest(ctx context.Context, model, prompt, resolu
 		if version := klingAPIVersion(model); version != "" {
 			payload["Model"] = version
 		}
-		body, err := json.Marshal(payload)
+		body, err := httpbody.JSON(payload, true)
 		return p.baseURL + "/" + url.PathEscape(model) + "/image2video", body, err
 	case FamilyVidu:
 		imageURL, err := provider.ResolveImageURL(images[0])
 		if err != nil {
 			return "", nil, err
 		}
-		body, err := json.Marshal(map[string]any{
+		body, err := httpbody.JSON(map[string]any{
 			"model":      model,
 			"images":     []string{imageURL},
 			"prompt":     prompt,
 			"duration":   duration,
 			"resolution": resolution,
 			"audio":      false,
-		})
+		}, true)
 		return p.baseURL + "/" + url.PathEscape(model) + "/img2video", body, err
 	default:
 		return "", nil, provider.NotAttemptedf(provider.ErrorInvalidArgument, "unsupported ominilink video model %s", model)
