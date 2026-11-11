@@ -202,14 +202,6 @@ func RecordTerminal(ctx context.Context, l Labels, totalDuration time.Duration) 
 	r.duration.Record(ctx, totalDuration.Seconds(), otelmetric.WithAttributes(attrs...))
 }
 
-// ImageOutcome 出图只分成功/失败：调用返回错误即失败，不单列取消。
-func ImageOutcome(err error) string {
-	if err == nil {
-		return OutcomeSucceeded
-	}
-	return OutcomeFailed
-}
-
 // RecordImageTerminal 记录一次图片生成供应商调用的 outcome；只看供应商结果，回传调用方失败不算模型失败。
 func RecordImageTerminal(ctx context.Context, model, provider, outcome string) {
 	r := current.Load()

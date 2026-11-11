@@ -103,14 +103,3 @@ func TestRecordImageTerminalExportsOutcome(t *testing.T) {
 		t.Fatalf("got=%v", got)
 	}
 }
-
-func TestImageOutcomeIsSuccessOrFailure(t *testing.T) {
-	if got := llmmetric.ImageOutcome(nil); got != llmmetric.OutcomeSucceeded {
-		t.Fatalf("nil=%s", got)
-	}
-	for _, err := range []error{context.Canceled, status.Error(codes.Canceled, "x"), context.DeadlineExceeded, errors.New("boom")} {
-		if got := llmmetric.ImageOutcome(err); got != llmmetric.OutcomeFailed {
-			t.Fatalf("%v=%s", err, got)
-		}
-	}
-}
