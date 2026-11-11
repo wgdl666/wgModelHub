@@ -2,13 +2,11 @@ package ominilinkvideo
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -16,7 +14,6 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
-	"github.com/wgdl666/wgModelHub/protocol"
 )
 
 const (
@@ -88,25 +85,15 @@ func (p *Provider) GetVideo(ctx context.Context, model, providerTaskID string) (
 	if err != nil {
 		return provider.VideoJob{}, err
 	}
-	pollMs := int32(p.pollInterval / time.Millisecond)
-	switch strings.ToLower(strings.TrimSpace(res.status)) {
-	case "succeeded", "success", "completed", "done":
-		return provider.VideoJob{State: provider.VideoJobSucceeded, PollAfterMs: pollMs}, nil
-	case "failed", "failure", "fail", "error", "cancelled", "canceled", "expired":
-		msg := strings.TrimSpace(res.errorMessage)
-		if msg == "" {
-			msg = res.status
-		}
-		var jobErr error
-		if code := strings.TrimSpace(res.errorCode); code != "" {
-			jobErr = provider.Errorf(provider.ErrorUnavailable, "%s task %s: %s: %s", p.name, res.status, code, msg)
+	job := provider.VideoJob{State: res.state, PollAfterMs: int32(p.pollInterval / time.Millisecond)}
+	if res.state == provider.VideoJobFailed {
+		if res.errorCode != "" {
+			job.Err = provider.Errorf(provider.ErrorUnavailable, "%s task failed: %s: %s", p.name, res.errorCode, res.errorMessage)
 		} else {
-			jobErr = provider.Errorf(provider.ErrorUnavailable, "%s task %s: %s", p.name, res.status, msg)
+			job.Err = provider.Errorf(provider.ErrorUnavailable, "%s task failed: %s", p.name, res.errorMessage)
 		}
-		return provider.VideoJob{State: provider.VideoJobFailed, PollAfterMs: pollMs, Err: jobErr}, nil
-	default:
-		return provider.VideoJob{State: provider.VideoJobRunning, PollAfterMs: pollMs}, nil
 	}
+	return job, nil
 }
 
 // ReadVideoResult 取 result_url 并流式下载；query 需 model 与 Submit 一致。
@@ -152,158 +139,71 @@ func (p *Provider) createTask(ctx context.Context, model, prompt, resolution str
 	if resp.StatusCode >= 400 {
 		return "", provider.FromHTTPDetail(p.name, resp.StatusCode, string(raw))
 	}
-	taskID := taskIDFromCreateResponse(raw)
+	taskID, err := parseCreateResponse(model, raw)
+	if err != nil {
+		return "", err
+	}
 	if taskID == "" {
-		if msg := createResponseError(raw); msg != "" {
-			return "", provider.Errorf(provider.ErrorInvalidResponse, "%s create rejected: %s", p.name, msg)
-		}
 		return "", provider.New(provider.ErrorInvalidResponse, p.name+" empty task id in create response")
 	}
+
 	return taskID, nil
 }
 
-// buildCreateRequest 按 family 组装互斥 payload：Seedance/Vidu 的 url 收公网地址或 data URI；
-// Veo 用 bytesBase64Encoded；Kling 的 Image.Url 只收公网地址，内联字节走 Image.Base64。
 func (p *Provider) buildCreateRequest(ctx context.Context, model, prompt, resolution string, duration int, aspectRatio string, images []*modelhubv2.Media) (string, *httpbody.Body, error) {
 	model = strings.TrimSpace(model)
 	resolution, duration, aspectRatio = NormalizeParams(model, resolution, duration, aspectRatio)
 	prompt = strings.TrimSpace(prompt)
 	switch ModelFamilyOf(model) {
 	case FamilySeedance:
-		// 单图是首帧，多图是身份参考；直接构造最终 payload，每张图只转换一次。
-		role, generateAudio := "first_frame", true
-		if len(images) > 1 {
-			role, generateAudio = "reference_image", false
-		}
-		content := []map[string]any{{"type": "text", "text": prompt}}
-		for _, image := range images {
-			imageURL, err := provider.ResolveImageURL(image)
-			if err != nil {
-				return "", nil, err
-			}
-			content = append(content, map[string]any{"type": "image_url", "image_url": map[string]string{"url": imageURL}, "role": role})
-		}
-		body, err := httpbody.JSON(map[string]any{
-			"model":             model,
-			"content":           content,
-			"resolution":        resolution,
-			"ratio":             aspectRatio,
-			"duration":          duration,
-			"generate_audio":    generateAudio,
-			"watermark":         false,
-			"return_last_frame": false,
-		}, true)
-		return p.modelCreateURL(model), body, err
+		return p.buildSeedanceRequest(model, prompt, resolution, duration, aspectRatio, images)
 	case FamilyVeo:
-		imageB64, mimeType, err := p.veoImageBase64(ctx, images[0])
-		if err != nil {
-			return "", nil, err
-		}
-		body, err := httpbody.JSON(map[string]any{
-			"instances": []map[string]any{{
-				"prompt": prompt,
-				"image":  map[string]string{"bytesBase64Encoded": imageB64, "mimeType": mimeType},
-			}},
-			"parameters": map[string]any{
-				"durationSeconds":  duration,
-				"sampleCount":      1,
-				"resolution":       veoResolutionForAPI(resolution),
-				"aspectRatio":      veoAspectRatio(aspectRatio),
-				"personGeneration": "allow_adult",
-				"generateAudio":    false,
-			},
-		}, true)
-		return p.modelCreateURL(model), body, err
+		return p.buildVeoRequest(ctx, model, prompt, resolution, duration, aspectRatio, images[0])
 	case FamilyKling:
-		image, err := klingImageField(images[0])
-		if err != nil {
-			return "", nil, err
-		}
-		payload := map[string]any{
-			"Image":    image,
-			"Prompt":   prompt,
-			"Duration": strconv.Itoa(duration),
-			"Mode":     klingMode(resolution),
-			"Sound":    "off",
-			"LogoAdd":  0,
-		}
-		if version := klingAPIVersion(model); version != "" {
-			payload["Model"] = version
-		}
-		body, err := httpbody.JSON(payload, true)
-		return p.baseURL + "/" + url.PathEscape(model) + "/image2video", body, err
+		return p.buildKlingRequest(model, prompt, resolution, duration, images[0])
 	case FamilyVidu:
-		imageURL, err := provider.ResolveImageURL(images[0])
-		if err != nil {
-			return "", nil, err
-		}
-		body, err := httpbody.JSON(map[string]any{
-			"model":      model,
-			"images":     []string{imageURL},
-			"prompt":     prompt,
-			"duration":   duration,
-			"resolution": resolution,
-			"audio":      false,
-		}, true)
-		return p.baseURL + "/" + url.PathEscape(model) + "/img2video", body, err
+		return p.buildViduRequest(model, prompt, resolution, duration, images[0])
 	default:
 		return "", nil, provider.NotAttemptedf(provider.ErrorInvalidArgument, "unsupported ominilink video model %s", model)
 	}
 }
 
-func (p *Provider) veoImageBase64(ctx context.Context, media *modelhubv2.Media) (b64, mimeType string, err error) {
-	if _, ok := media.GetSource().(*modelhubv2.Media_Data); ok {
-		return inlineImageBase64(media)
+func parseCreateResponse(model string, raw []byte) (string, error) {
+	var envelope map[string]any
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return "", provider.Wrap(provider.ErrorInvalidResponse, "parse create response", err)
 	}
-	imageURL, err := provider.ResolveImageURL(media)
+	switch ModelFamilyOf(model) {
+	case FamilySeedance:
+		return parseSeedanceSubmit(envelope)
+	case FamilyVeo:
+		return parseVeoSubmit(envelope)
+	case FamilyKling:
+		return parseKlingSubmit(envelope)
+	case FamilyVidu:
+		return parseViduSubmit(envelope)
+	default:
+		return "", provider.Errorf(provider.ErrorInvalidArgument, "unsupported ominilink video model %s", model)
+	}
+}
+
+func parseTaskResponse(model string, raw []byte) (taskPollResult, error) {
+	envelope, err := decodeTaskResponse(raw)
 	if err != nil {
-		return "", "", err
+		return taskPollResult{}, err
 	}
-	if strings.HasPrefix(imageURL, "data:") {
-		// ParseDataURI 也可能解析供应商回传；此处是提交前输入，失败标本地。
-		mimeType, data, err := provider.ParseDataURI(imageURL)
-		if err != nil {
-			return "", "", provider.AsNotAttempted(err)
-		}
-		return base64.StdEncoding.EncodeToString(data), mimeType, nil
+	switch ModelFamilyOf(model) {
+	case FamilySeedance:
+		return parseSeedanceTask(envelope), nil
+	case FamilyVeo:
+		return parseVeoTask(envelope), nil
+	case FamilyKling:
+		return parseKlingTask(envelope), nil
+	case FamilyVidu:
+		return parseViduTask(envelope), nil
+	default:
+		return taskPollResult{}, provider.Errorf(provider.ErrorInvalidArgument, "unsupported ominilink video model %s", model)
 	}
-	return p.fetchImageBase64(ctx, imageURL)
-}
-
-// 内联图片直接生成模型所需的 Base64，不先构造 Data URI 再解码。
-func inlineImageBase64(media *modelhubv2.Media) (string, string, error) {
-	data, ok := provider.InlineImageBytes(media)
-	if !ok {
-		return "", "", provider.NotAttempted(provider.ErrorInvalidArgument, "image source is required")
-	}
-	if len(data) > protocol.MaxMediaBytes {
-		return "", "", provider.NotAttemptedf(provider.ErrorInvalidArgument, "image exceeds %d bytes", protocol.MaxMediaBytes)
-	}
-	mimeType := strings.ToLower(strings.TrimSpace(media.GetMimeType()))
-	if mimeType == "" {
-		return "", "", provider.NotAttempted(provider.ErrorInvalidArgument, "first_frame mime_type is required")
-	}
-	if !strings.HasPrefix(mimeType, "image/") {
-		return "", "", provider.NotAttemptedf(provider.ErrorInvalidArgument, "first_frame mime_type %s is not an image", mimeType)
-	}
-	return base64.StdEncoding.EncodeToString(data), mimeType, nil
-}
-
-func (p *Provider) fetchImageBase64(ctx context.Context, imageURL string) (b64, mimeType string, err error) {
-	// 拉取输入图失败不得记成模型调用。
-	data, err := provider.DownloadPublicURL(ctx, p.client, p.name, imageURL, protocol.MaxMediaBytes)
-	if err != nil {
-		return "", "", provider.AsNotAttempted(err)
-	}
-	mimeType = mimeFromURL(imageURL)
-	return base64.StdEncoding.EncodeToString(data), mimeType, nil
-}
-
-type taskPollResult struct {
-	status       string
-	videoURL     string
-	errorCode    string
-	errorMessage string
 }
 
 func (p *Provider) getTask(ctx context.Context, model, taskID string) (taskPollResult, error) {
@@ -328,7 +228,7 @@ func (p *Provider) getTask(ctx context.Context, model, taskID string) (taskPollR
 	if resp.StatusCode >= 400 {
 		return taskPollResult{}, provider.FromHTTPDetail(p.name, resp.StatusCode, string(raw))
 	}
-	parsed, err := parseTaskResponse(raw, taskID)
+	parsed, err := parseTaskResponse(model, raw)
 	if err != nil {
 		return taskPollResult{}, err
 	}
@@ -347,278 +247,11 @@ func normalizeBaseURL(raw string) string {
 	return base
 }
 
-func (p *Provider) modelCreateURL(model string) string {
-	if ModelFamilyOf(model) == FamilySeedance {
-		// Seedance 已迁到独立 v3 协议；同一供应商的 Kling/Veo 等仍走 v1，不能整体替换 BaseURL。
-		return strings.TrimSuffix(p.baseURL, "/v1") + "/v3/bytedance/api/v3/contents/generations/tasks"
-	}
-	return p.baseURL + "/" + url.PathEscape(strings.TrimSpace(model))
-}
-
 func (p *Provider) modelQueryURL(model, taskID string) string {
 	if ModelFamilyOf(model) == FamilySeedance {
-		return p.modelCreateURL(model) + "/" + url.PathEscape(strings.TrimSpace(taskID))
+		return p.seedanceCreateURL() + "/" + url.PathEscape(strings.TrimSpace(taskID))
 	}
 	return fmt.Sprintf("%s/query/%s/%s", p.baseURL, url.PathEscape(strings.TrimSpace(model)), url.PathEscape(strings.TrimSpace(taskID)))
-}
-
-func mimeFromURL(raw string) string {
-	lower := strings.ToLower(raw)
-	switch {
-	case strings.Contains(lower, ".png"):
-		return "image/png"
-	case strings.Contains(lower, ".webp"):
-		return "image/webp"
-	default:
-		return "image/jpeg"
-	}
-}
-
-// klingImageField 对齐腾讯云 Image：Url 与 Base64 二选一。data URI 去掉前缀后放 Base64，公网地址原样放 Url。
-func klingImageField(media *modelhubv2.Media) (map[string]string, error) {
-	if _, ok := media.GetSource().(*modelhubv2.Media_Data); ok {
-		data, _, err := inlineImageBase64(media)
-		if err != nil {
-			return nil, err
-		}
-		return map[string]string{"Base64": data}, nil
-	}
-	imageURL, err := provider.ResolveImageURL(media)
-	if err != nil {
-		return nil, err
-	}
-	if strings.HasPrefix(imageURL, "data:") {
-		// 提交前解析调用方 data URI；ParseDataURI 本身不标 Local，由此处认定。
-		_, data, err := provider.ParseDataURI(imageURL)
-		if err != nil {
-			return nil, provider.AsNotAttempted(err)
-		}
-		return map[string]string{"Base64": base64.StdEncoding.EncodeToString(data)}, nil
-	}
-	return map[string]string{"Url": imageURL}, nil
-}
-
-// createResponseError 读腾讯云 HTTP 200 业务失败：Response.Error 有 Code/Message，但没有 JobId。
-func createResponseError(raw []byte) string {
-	var envelope map[string]any
-	if err := json.Unmarshal(raw, &envelope); err != nil {
-		return ""
-	}
-	resp, ok := envelope["Response"].(map[string]any)
-	if !ok {
-		return ""
-	}
-	errObj, ok := resp["Error"].(map[string]any)
-	if !ok {
-		return ""
-	}
-	code := stringField(errObj, "Code")
-	msg := stringField(errObj, "Message")
-	switch {
-	case code != "" && msg != "":
-		return code + ": " + msg
-	case msg != "":
-		return msg
-	default:
-		return code
-	}
-}
-
-func taskIDFromCreateResponse(raw []byte) string {
-	var envelope map[string]any
-	if err := json.Unmarshal(raw, &envelope); err != nil {
-		return ""
-	}
-	if name := stringField(envelope, "name"); name != "" {
-		return name
-	}
-	for _, key := range []string{"id", "task_id", "taskId"} {
-		if v := stringField(envelope, key); v != "" {
-			return v
-		}
-	}
-	if resp, ok := envelope["Response"].(map[string]any); ok {
-		if jobID := stringField(resp, "JobId"); jobID != "" {
-			return jobID
-		}
-	}
-	if data, ok := envelope["data"].(map[string]any); ok {
-		for _, key := range []string{"id", "task_id", "taskId", "name"} {
-			if v := stringField(data, key); v != "" {
-				return v
-			}
-		}
-	}
-	return ""
-}
-
-func parseTaskResponse(raw []byte, fallbackTaskID string) (taskPollResult, error) {
-	var envelope map[string]any
-	if err := json.Unmarshal(raw, &envelope); err != nil {
-		return taskPollResult{}, provider.Wrap(provider.ErrorInvalidResponse, "parse task response", err)
-	}
-	if code := strings.ToLower(stringField(envelope, "code")); code != "" && code != "success" && code != "0" {
-		msg := firstNonEmpty(stringField(envelope, "message"), code)
-		return taskPollResult{}, provider.Errorf(provider.ErrorUnavailable, "ominilink task failed: %s", msg)
-	}
-	// Seedance 的失败任务是业务终态，必须交给 GetVideo 返回 Failed，不能误作可重试的查询错误。
-	if msg := apiFailureMessage(envelope); msg != "" && stringField(envelope, "status") != "failed" {
-		return taskPollResult{}, provider.Errorf(provider.ErrorUnavailable, "ominilink task failed: %s", msg)
-	}
-	taskObj := envelope
-	if data, ok := envelope["data"].(map[string]any); ok && len(data) > 0 {
-		taskObj = data
-	} else if resp, ok := envelope["Response"].(map[string]any); ok && len(resp) > 0 {
-		taskObj = resp
-	}
-	status := firstNonEmpty(
-		stringFieldAny(taskObj, "status", "state", "task_status", "taskStatus", "Status", "State", "TaskStatus"),
-		stringFieldAny(envelope, "status", "state", "task_status", "taskStatus"),
-	)
-	if status == "" {
-		status = veoStatusFromEnvelope(envelope)
-	}
-	videoURL := normalizeVideoURL(firstNonEmpty(
-		stringFieldAny(taskObj, "result_url", "resultUrl", "video_url", "videoUrl", "url", "URL", "path", "Path"),
-		videoURLFromEnvelope(envelope),
-		videoURLFromEnvelope(taskObj),
-	))
-	return taskPollResult{
-		status:       status,
-		videoURL:     videoURL,
-		errorCode:    taskErrorCode(taskObj, envelope),
-		errorMessage: taskErrorMessage(taskObj, envelope),
-	}, nil
-}
-
-func normalizeVideoURL(raw string) string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return ""
-	}
-	if strings.HasPrefix(raw, "http://") || strings.HasPrefix(raw, "https://") {
-		return raw
-	}
-	base := strings.TrimRight(defaultDownloadBaseURL, "/")
-	if strings.HasPrefix(raw, "/") {
-		return base + raw
-	}
-	return base + "/" + raw
-}
-
-func videoURLFromEnvelope(envelope map[string]any) string {
-	for _, key := range []string{"result_url", "resultUrl", "ResultVideoUrl", "uri", "url", "URL", "video_url", "videoUrl", "path", "Path"} {
-		if u := stringField(envelope, key); u != "" {
-			return u
-		}
-	}
-	videos, _ := envelope["videos"].([]any)
-	for _, video := range videos {
-		item, _ := video.(map[string]any)
-		if u := stringField(item, "gcsUri"); u != "" {
-			return u
-		}
-	}
-	for _, containerKey := range []string{"content", "response", "data", "result", "output", "Response", "Output"} {
-		container, ok := envelope[containerKey].(map[string]any)
-		if !ok {
-			continue
-		}
-		if u := videoURLFromEnvelope(container); u != "" {
-			return u
-		}
-	}
-	return ""
-}
-
-func veoStatusFromEnvelope(envelope map[string]any) string {
-	if done, ok := envelope["done"].(bool); ok {
-		if done && videoURLFromEnvelope(envelope) != "" {
-			return "success"
-		}
-		return "processing"
-	}
-	if errObj, ok := envelope["error"].(map[string]any); ok && len(errObj) > 0 {
-		return "failed"
-	}
-	return ""
-}
-
-func apiFailureMessage(envelope map[string]any) string {
-	if errObj, ok := envelope["error"].(map[string]any); ok {
-		if msg := stringField(errObj, "message"); msg != "" {
-			return msg
-		}
-	}
-	if reason := stringField(envelope, "fail_reason"); reason != "" {
-		return reason
-	}
-	if msg := stringField(envelope, "message"); msg != "" {
-		lowerStatus := strings.ToLower(firstNonEmpty(stringFieldAny(envelope, "status", "state")))
-		if lowerStatus == "failed" || lowerStatus == "failure" || lowerStatus == "error" {
-			return msg
-		}
-	}
-	return ""
-}
-
-func taskErrorCode(objs ...map[string]any) string {
-	for _, obj := range objs {
-		if obj == nil {
-			continue
-		}
-		// Seedance v3 将失败原因放在 error 对象中，保留 code 便于调用方区分拒绝与生成失败。
-		if detail, ok := obj["error"].(map[string]any); ok {
-			if code := stringField(detail, "code"); code != "" {
-				return code
-			}
-		}
-		if code := stringFieldAny(obj, "error_code", "errorCode", "code", "Code"); code != "" {
-			return code
-		}
-	}
-	return ""
-}
-
-func taskErrorMessage(objs ...map[string]any) string {
-	for _, obj := range objs {
-		if obj == nil {
-			continue
-		}
-		if msg := apiFailureMessage(obj); msg != "" {
-			return msg
-		}
-		if msg := stringFieldAny(obj, "fail_reason", "error_message", "errorMessage"); msg != "" {
-			return msg
-		}
-	}
-	return ""
-}
-
-func stringField(obj map[string]any, key string) string {
-	v, ok := obj[key].(string)
-	if !ok {
-		return ""
-	}
-	return strings.TrimSpace(v)
-}
-
-func stringFieldAny(obj map[string]any, keys ...string) string {
-	for _, key := range keys {
-		if v := stringField(obj, key); v != "" {
-			return v
-		}
-	}
-	return ""
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return value
-		}
-	}
-	return ""
 }
 
 var _ provider.VideoProvider = (*Provider)(nil)

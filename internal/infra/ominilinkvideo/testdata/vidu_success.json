@@ -1,0 +1,40 @@
+{
+  "state": "success",
+  "err_code": "",
+  "creations": [
+    {
+      "id": "vidu-creation",
+      "url": "https://example.test/vidu.mp4",
+      "cover_url": "https://example.test/cover.jpg",
+      "watermarked_url": "https://example.test/watermarked.mp4",
+      "moderation_url": [],
+      "video": {
+        "duration": 0,
+        "fps": 0,
+        "resolution": null
+      },
+      "speech_url": "",
+      "sound_url": "",
+      "bgm_url": "",
+      "text_content": "",
+      "attachments": []
+    }
+  ],
+  "id": "vidu-task",
+  "credits": 55,
+  "bgm": false,
+  "payload": "",
+  "cus_priority": 0,
+  "off_peak": false,
+  "audio": false,
+  "progress": 100,
+  "type": "img2video",
+  "model": "viduq3-turbo",
+  "resolution": "720p",
+  "aspect_ratio": "",
+  "template": "",
+  "duration": 5,
+  "err_msg": "",
+  "blocked_resources": [],
+  "usage": null
+}
