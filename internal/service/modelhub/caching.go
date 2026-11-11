@@ -39,7 +39,7 @@ func arkEndpointBound(providerCfg config.ProviderConfig) bool {
 
 // textCachingModeForProvider 只计算遥测模式；适配器把缓存策略写入自己的上游参数，不修改共享请求。
 func textCachingModeForProvider(request *modelhubv2.GenerateRequest, providerCfg config.ProviderConfig) string {
-	if arkEndpointBound(providerCfg) || (request.GetModel() == models.Gemini4Argon && (providerCfg.Gemini != nil || providerCfg.VertexAI != nil)) {
+	if arkEndpointBound(providerCfg) || ((request.GetModel() == models.Gemini4Argon || request.GetModel() == models.Gemini4Carbon) && (providerCfg.Gemini != nil || providerCfg.VertexAI != nil)) {
 		return cachingModeImplicitAutomatic
 	}
 	return textCachingMode(request.GetInput())

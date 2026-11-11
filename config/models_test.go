@@ -237,7 +237,7 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 	if !ok {
 		t.Fatal("missing provider Vertex_AI_chat")
 	}
-	if !slices.Equal(vertexChat.Models, []string{models.Gemini20Flash001, models.Gemini35FlashLite, models.Gemini4Argon}) {
+	if !slices.Equal(vertexChat.Models, []string{models.Gemini20Flash001, models.Gemini35FlashLite, models.Gemini4Argon, models.Gemini4Carbon}) {
 		t.Fatalf("Vertex_AI_chat models=%v", vertexChat.Models)
 	}
 	vertexRace, ok := parsed.Providers["Vertex_AI_chat_race"]
@@ -279,7 +279,7 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 	if !ok {
 		t.Fatal("missing provider Gemini_Developer_API_gemini_main")
 	}
-	for _, want := range []string{models.Gemini38Flash, models.Gemini4Argon} {
+	for _, want := range []string{models.Gemini38Flash, models.Gemini4Argon, models.Gemini4Carbon} {
 		found := false
 		for _, m := range gemini.Models {
 			if m == want {
@@ -291,9 +291,11 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 			t.Fatalf("Gemini_Developer_API_gemini_main missing %q in %v", want, gemini.Models)
 		}
 	}
-	argon := parsed.ModelRoutes[models.Gemini4Argon]
-	if argon.Default != "Gemini_Developer_API_gemini_main" || len(argon.Race) != 0 {
-		t.Fatalf("Argon must use Developer API by default without racing: %#v", argon)
+	for _, model := range []string{models.Gemini4Argon, models.Gemini4Carbon} {
+		route := parsed.ModelRoutes[model]
+		if route.Default != "Gemini_Developer_API_gemini_main" || len(route.Race) != 0 {
+			t.Fatalf("%s must use Developer API by default without racing: %#v", model, route)
+		}
 	}
 	hubChat, ok := parsed.Providers["阿里云百炼_openai_hub_chat"]
 	if !ok {

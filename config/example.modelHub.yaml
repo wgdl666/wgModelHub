@@ -17,7 +17,7 @@ database:
 # 仅 Gemini/Vertex 文本 Generate；TTL 固定1小时，后台创建，不自动续期。
 explicit_cache:
   enabled: false
-  # 可选：仅为指定真实模型启用；省略或空列表表示不限制支持显式缓存的 Google 文本模型。Argon 始终跳过。
+  # 可选：仅为指定真实模型启用；省略或空列表表示不限制支持显式缓存的 Google 文本模型。Argon/Carbon 始终跳过。
   models: [gemini-3.7-flash, gemini-3.8-flash]
 # 每个 provider 实例声明其承载的真实模型 ID；同一模型可被多个实例声明，但必须由顶层 model_routes 显式选定当前走哪一个。
 # 字面量清单见 models 包，调用方引用 github.com/wgdl666/wgModelHub/models，禁止在这里发明 alias。
@@ -30,7 +30,7 @@ providers:
       no_auth: true
   Gemini_Developer_API_gemini_main:
     # 3.8 与既有 Gemini 文本共用这一实例。3.5-flash-lite 不放这里：它的签名不能拿去和 Vertex 竞速。
-    models: [gemini-3.5-flash, gemini-3.1-pro-preview, gemini-2.5-flash, gemini-3.7-flash, gemini-3.8-flash, gemini-4-argon]
+    models: [gemini-3.5-flash, gemini-3.1-pro-preview, gemini-2.5-flash, gemini-3.7-flash, gemini-3.8-flash, gemini-4-argon, gemini-4-carbon]
     gemini:
       api_key: "${GEMINI_API_KEY}"
       proxy_url: ""
@@ -60,7 +60,7 @@ providers:
   # Vertex 文本与生图统一 ADC：不填 api_key；运行环境提供凭据文件，与 google_rerank 共用。
   # GOOGLE_APPLICATION_CREDENTIALS 指向只读凭据文件；文本与生图均固定 locations/global。
   Vertex_AI_chat:
-    models: [gemini-2.0-flash-001, gemini-3.5-flash-lite, gemini-4-argon]
+    models: [gemini-2.0-flash-001, gemini-3.5-flash-lite, gemini-4-argon, gemini-4-carbon]
     vertexai:
       project: "${VERTEX_PROJECT}"
   # 意图竞速的第二路。与 Vertex_AI_chat 同一个项目、同一条 locations/global 路径，签名才能互通。
@@ -491,8 +491,10 @@ providers:
 # 多 provider 声明同一真实模型时必须显式选定；已有实例间切换渠道只改这里，可热更新，无自动 failover。
 # 切到 AWS workflow 备用渠道（底层直连 Google 官方 Gemini）时改为 Gemini_Developer_API_aws_gemini。
 model_routes:
-  # Argon 双渠道接入，默认只走 Developer API，不配 race。
+  # Argon/Carbon 双渠道接入，默认只走 Developer API，不配 race。
   gemini-4-argon:
+    default: Gemini_Developer_API_gemini_main
+  gemini-4-carbon:
     default: Gemini_Developer_API_gemini_main
   gemini-2.5-flash-image: AIG_gemini
   gemini-3.1-flash-image: AIG_gemini

@@ -33,6 +33,8 @@ const (
 	Gemini38Flash = "gemini-3.8-flash"
 	// Gemini4Argon 支持 LOW/MEDIUM/HIGH thinking，仅使用隐式缓存。
 	Gemini4Argon = "gemini-4-argon"
+	// Gemini4Carbon 与 Argon 使用相同的 thinking 档位和隐式缓存策略。
+	Gemini4Carbon = "gemini-4-carbon"
 	// Gemini35FlashLite 支持 MINIMAL；Hub DISABLED 一律映射 MINIMAL，不按环境抬档。
 	Gemini35FlashLite = "gemini-3.5-flash-lite"
 	Gemini20Flash001  = "gemini-2.0-flash-001"
@@ -218,6 +220,7 @@ func All() []string {
 		Gemini37Flash,
 		Gemini38Flash,
 		Gemini4Argon,
+		Gemini4Carbon,
 		Gemini35FlashLite,
 		Gemini20Flash001,
 		DoubaoSeed16,

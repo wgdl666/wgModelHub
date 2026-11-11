@@ -14,7 +14,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func TestArgonThinking(t *testing.T) {
+func TestGemini4Thinking(t *testing.T) {
 	budget := int32(1024)
 	for _, tc := range []struct {
 		name string
@@ -30,33 +30,43 @@ func TestArgonThinking(t *testing.T) {
 		{"medium", &modelhubv2.TextOutput{ThinkingLevel: modelhubv2.ThinkingLevel_THINKING_LEVEL_MEDIUM}, genaisdk.ThinkingLevelMedium},
 		{"high_with_budget", &modelhubv2.TextOutput{ThinkingLevel: modelhubv2.ThinkingLevel_THINKING_LEVEL_HIGH, ThinkingBudget: &budget}, genaisdk.ThinkingLevelHigh},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			cfg := (&Provider{}).buildConfig(models.Gemini4Argon, &modelhubv2.GenerateRequest{
-				Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: tc.text}},
-			})
-			if tc.want == "" {
-				if cfg.ThinkingConfig != nil {
-					t.Fatalf("must leave the upstream MEDIUM default: %#v", cfg.ThinkingConfig)
+		for _, model := range []string{models.Gemini4Argon, models.Gemini4Carbon} {
+			t.Run(model+"/"+tc.name, func(t *testing.T) {
+				cfg := (&Provider{}).buildConfig(model, &modelhubv2.GenerateRequest{
+					Output: &modelhubv2.OutputSpec{Kind: &modelhubv2.OutputSpec_Text{Text: tc.text}},
+				})
+				if tc.want == "" {
+					if cfg.ThinkingConfig != nil {
+						t.Fatalf("must leave the upstream MEDIUM default: %#v", cfg.ThinkingConfig)
+					}
+				} else if cfg.ThinkingConfig == nil || cfg.ThinkingConfig.ThinkingLevel != tc.want || cfg.ThinkingConfig.ThinkingBudget != nil {
+					t.Fatalf("thinking=%#v want level=%s without budget", cfg.ThinkingConfig, tc.want)
 				}
-			} else if cfg.ThinkingConfig == nil || cfg.ThinkingConfig.ThinkingLevel != tc.want || cfg.ThinkingConfig.ThinkingBudget != nil {
-				t.Fatalf("thinking=%#v want level=%s without budget", cfg.ThinkingConfig, tc.want)
-			}
-		})
+			})
+		}
 	}
 }
 
 // 两个后端都使用现有 SDK；所有 HTTP（包括 ADC 换 token）均由本地 transport 返回。
-func TestArgonBackendsPreserveToolLoopAndBypassExplicitCache(t *testing.T) {
-	for _, backend := range []string{"developer", "vertex"} {
-		t.Run(backend, func(t *testing.T) {
+func TestGemini4BackendsPreserveToolLoopAndBypassExplicitCache(t *testing.T) {
+	for _, tc := range []struct {
+		model   string
+		backend string
+	}{
+		{models.Gemini4Argon, "developer"},
+		{models.Gemini4Argon, "vertex"},
+		{models.Gemini4Carbon, "developer"},
+		{models.Gemini4Carbon, "vertex"},
+	} {
+		t.Run(tc.model+"/"+tc.backend, func(t *testing.T) {
 			transport := &vertexRecordingTransport{}
 			var p *Provider
-			path := "/v1beta/models/gemini-4-argon"
-			if backend == "vertex" {
+			path := "/v1beta/models/" + tc.model
+			if tc.backend == "vertex" {
 				var adc *vertexADCTestTransport
 				p, adc = newVertexADCTestProvider(t, 3600)
 				transport = &adc.vertexRecordingTransport
-				path = "/v1beta1/projects/test-project/locations/global/publishers/google/models/gemini-4-argon"
+				path = "/v1beta1/projects/test-project/locations/global/publishers/google/models/" + tc.model
 			} else {
 				p = newTestGeminiProvider(t, transport)
 			}
@@ -65,7 +75,7 @@ func TestArgonBackendsPreserveToolLoopAndBypassExplicitCache(t *testing.T) {
 			t.Cleanup(manager.Close)
 			p.ConfigurePrefixCache(manager, func(string) bool { return true })
 			req := prefixRequest()
-			req.Model = models.Gemini4Argon
+			req.Model = tc.model
 			req.GetOutput().GetText().ThinkingLevel = modelhubv2.ThinkingLevel_THINKING_LEVEL_MEDIUM
 			req.GetOutput().GetText().ResponseFormat = &modelhubv2.ResponseFormat{
 				Type:       modelhubv2.ResponseFormatType_RESPONSE_FORMAT_TYPE_JSON_SCHEMA,

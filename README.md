@@ -54,18 +54,18 @@ Provider不新增分片重试、退避、工作协程或整单超时配置。保
 应先发布此协议，再发布Wardrobe并开启其默认关闭的 `deep_recommend.batch_embedding_enabled`。
 关闭调用方开关后新冻结恢复单条协议。本PR不修改线上配置、不部署。
 
-## Gemini 4 Argon
+## Gemini 4 Argon / Carbon
 
-`models.Gemini4Argon`（`gemini-4-argon`）复用现有 Generate 文本链路，支持多模态输入、
+`models.Gemini4Argon`（`gemini-4-argon`）和 `models.Gemini4Carbon`（`gemini-4-carbon`）复用现有 Generate 文本链路，支持多模态输入、
 Function Calling 和 JSON Schema；ListModels 将它列为 MULTIMODAL，同一模型双渠道只列一条。
 示例同时登记 Gemini Developer API（API Key）和 Vertex AI（ADC，global），
-`model_routes.gemini-4-argon.default` 默认选 `Gemini_Developer_API_gemini_main`，不配置 race。
+`model_routes` 中这两个模型的 `default` 均选 `Gemini_Developer_API_gemini_main`，不配置 race。
 需要切到已有 Vertex 实例时，将 default 改为 `Vertex_AI_chat`，可通过现有配置加载机制热更新；
 不增加自动 failover。已有工具会话的签名跨渠道兼容性未验证，切换渠道时使用新会话。
 
 思考仅发 LOW/MEDIUM/HIGH；DISABLED 和 MINIMAL 映射为 LOW，数字 thinking_budget 不下发。
-未指定档位时保留上游 MEDIUM 默认值。temperature/top_p 按 optional 契约原样传递，但 Argon 会忽略它们。
-Argon 只使用隐式缓存，不创建或引用显式缓存；即使 explicit_cache 对全部模型开启也跳过它。
+未指定档位时保留上游 MEDIUM 默认值。temperature/top_p 按 optional 契约原样传递，但 Argon/Carbon 会忽略它们。
+Argon/Carbon 只使用隐式缓存，不创建或引用显式缓存；即使 explicit_cache 对全部模型开启也跳过它们。
 input.caching.enabled=false 不能关闭供应商隐式缓存；缓存遥测标记为 implicit_automatic，
 实际命中仍看 usage.cached_tokens。工具调用和回执原样透传 ID；上游未返回 ID 时保持为空，
 不再用工具名代替，发回 Google 的 FunctionCall/FunctionResponse 也不写入空 ID。
@@ -75,13 +75,14 @@ max_output_tokens 包含思考与最终输出，使用前应按场景确认预�
 真实账号权限、配额和响应耗时需要在部署后分别验证；本地协议测试不证明 Google API 可用。
 
 参考：[模型说明](https://aistudio.google.com/docs/models/gemini-4-argon)、
+[Carbon 模型说明](https://docs.cloud.google.cn/gemini-enterprise-agent-platform/models/gemini/4-carbon)、
 [接入规则](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/guides/gemini-4-argon)、
 [Long decode](https://aistudio.google.com/docs/long-decode?generate-content=true)。
 
 ## Google 文本自动显式缓存
 
 Nacos/AppConfig 可配置 `explicit_cache.enabled: true`（默认关闭，可通过现有配置加载机制更新）。
-可选 `explicit_cache.models: [gemini-3.7-flash, gemini-3.8-flash]` 限定启用模型；省略或空列表表示不限制支持显式缓存的 Google 文本模型，Argon 始终跳过。
+可选 `explicit_cache.models: [gemini-3.7-flash, gemini-3.8-flash]` 限定启用模型；省略或空列表表示不限制支持显式缓存的 Google 文本模型，Argon/Carbon 始终跳过。
 先通过独立迁移入口创建 `modelhub.prefix_cache`，再开启配置；服务启动不会创建表。
 表只保存 `cache_key`、`cached_content`、`expires_at`，不保存 prompt 或媒体正文。
 
