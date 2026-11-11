@@ -6,6 +6,7 @@ import (
 	"github.com/wgdl666/wgModelHub/config"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/llmmetric"
+	"github.com/wgdl666/wgModelHub/models"
 )
 
 // 缓存配置模式写入指标分类；configured/strategy != hit。
@@ -37,9 +38,9 @@ func arkEndpointBound(providerCfg config.ProviderConfig) bool {
 }
 
 // textCachingModeForProvider 只计算遥测模式；适配器把缓存策略写入自己的上游参数，不修改共享请求。
-func textCachingModeForProvider(input *modelhubv2.Input, providerCfg config.ProviderConfig) string {
-	if arkEndpointBound(providerCfg) {
+func textCachingModeForProvider(request *modelhubv2.GenerateRequest, providerCfg config.ProviderConfig) string {
+	if arkEndpointBound(providerCfg) || (request.GetModel() == models.Gemini4Argon && (providerCfg.Gemini != nil || providerCfg.VertexAI != nil)) {
 		return cachingModeImplicitAutomatic
 	}
-	return textCachingMode(input)
+	return textCachingMode(request.GetInput())
 }

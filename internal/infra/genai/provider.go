@@ -218,7 +218,16 @@ func convertToolOutputContents(output *modelhubv2.ToolOutput) []*genaisdk.Conten
 	if name == "" {
 		name = output.ToolCallId
 	}
-	contents := []*genaisdk.Content{genaisdk.NewContentFromFunctionResponse(name, toolOutputObject(output), genaisdk.RoleUser)}
+	contents := []*genaisdk.Content{{
+		Role: "user",
+		Parts: []*genaisdk.Part{{
+			FunctionResponse: &genaisdk.FunctionResponse{
+				ID:       output.ToolCallId,
+				Name:     name,
+				Response: toolOutputObject(output),
+			},
+		}},
+	}}
 	if len(output.Images) == 0 {
 		return contents
 	}
@@ -252,13 +261,9 @@ func convertMessage(message *modelhubv2.Message) *genaisdk.Content {
 			if len(call.ArgumentsJson) > 0 {
 				_ = json.Unmarshal(call.ArgumentsJson, &arguments)
 			}
-			id := call.Id
-			if id == "" {
-				id = call.Name
-			}
 			parts = append(parts, &genaisdk.Part{
 				FunctionCall: &genaisdk.FunctionCall{
-					ID:   id,
+					ID:   call.Id,
 					Name: call.Name,
 					Args: arguments,
 				},
@@ -394,7 +399,7 @@ const (
 )
 
 // applyTextThinking 按模型只发一种思考参数。
-// 3.7/3.8 与 3.5-flash-lite 认档位，预算丢掉；2.5 只认数字，有预算用预算，否则把档位换成数字。
+// 3.7/3.8、4 Argon 与 3.5-flash-lite 认档位，预算丢掉；2.5 只认数字，有预算用预算，否则把档位换成数字。
 // 2.0 没有思考参数，三个字段都不发。
 func applyTextThinking(cfg *genaisdk.GenerateContentConfig, model string, textSpec *modelhubv2.TextOutput) {
 	if cfg == nil || textSpec == nil {
@@ -402,8 +407,8 @@ func applyTextThinking(cfg *genaisdk.GenerateContentConfig, model string, textSp
 	}
 	choice := thinking.FromText(textSpec)
 	switch model {
-	case models.Gemini37Flash, models.Gemini38Flash:
-		// 3.7/3.8 只有 LOW/MEDIUM/HIGH，MINIMAL 和关都会 400 或关不掉，统一落到 LOW。
+	case models.Gemini37Flash, models.Gemini38Flash, models.Gemini4Argon:
+		// 这些模型只有 LOW/MEDIUM/HIGH，MINIMAL 和关都会 400 或关不掉，统一落到 LOW。
 		if choice.Off {
 			cfg.ThinkingConfig = &genaisdk.ThinkingConfig{ThinkingLevel: genaisdk.ThinkingLevelLow}
 			return
@@ -522,12 +527,8 @@ func convertResponse(response *genaisdk.GenerateContentResponse) *modelhubv2.Gen
 func convertFunctionCall(part *genaisdk.Part) *modelhubv2.ToolCall {
 	call := part.FunctionCall
 	arguments, _ := json.Marshal(call.Args)
-	id := call.ID
-	if id == "" {
-		id = call.Name
-	}
 	return &modelhubv2.ToolCall{
-		Id:               id,
+		Id:               call.ID,
 		Name:             call.Name,
 		ArgumentsJson:    arguments,
 		ThoughtSignature: part.ThoughtSignature,

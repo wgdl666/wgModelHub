@@ -18,6 +18,7 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/infra/llmmetric"
 	"github.com/wgdl666/wgModelHub/internal/infra/metricserver"
 	"github.com/wgdl666/wgModelHub/internal/provider"
+	"github.com/wgdl666/wgModelHub/models"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -59,13 +60,31 @@ func TestTextCachingModeForProviderDoesNotMutateRequest(t *testing.T) {
 				if endpoint != "" {
 					want = cachingModeImplicitAutomatic
 				}
-				if got := textCachingModeForProvider(req.GetInput(), cfg); got != want {
+				if got := textCachingModeForProvider(req, cfg); got != want {
 					t.Fatalf("mode=%s want=%s", got, want)
 				}
 				if !proto.Equal(req, before) {
 					t.Fatal("cache telemetry mutated caller request")
 				}
 			})
+		}
+	}
+}
+
+func TestArgonCachingModeIsImplicitOnBothChannels(t *testing.T) {
+	for _, cfg := range []config.ProviderConfig{
+		{Gemini: &config.GeminiProviderConfig{APIKey: "k"}},
+		{VertexAI: &config.VertexAIProviderConfig{Project: "p"}},
+	} {
+		for _, caching := range []*modelhubv2.CachingConfig{nil, {Enabled: true}, {Enabled: false}} {
+			req := &modelhubv2.GenerateRequest{Model: models.Gemini4Argon, Input: &modelhubv2.Input{Caching: caching}}
+			before := proto.Clone(req)
+			if mode := textCachingModeForProvider(req, cfg); mode != cachingModeImplicitAutomatic {
+				t.Fatalf("mode=%s: caller switch cannot control Argon's implicit cache", mode)
+			}
+			if !proto.Equal(req, before) {
+				t.Fatal("cache telemetry mutated caller request")
+			}
 		}
 	}
 }

@@ -22,6 +22,7 @@ func TestCategoryOfKnownIDs(t *testing.T) {
 		{DeepSeekV41Flash, CategoryLLM},
 		{QwenFlash, CategoryLLM},
 		{Gemini37Flash, CategoryMultimodal},
+		{Gemini4Argon, CategoryMultimodal},
 		{DoubaoSeed16, CategoryMultimodal},
 		{Qwen35Flash, CategoryMultimodal},
 		{Qwen38Flash, CategoryMultimodal},
