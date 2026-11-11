@@ -10,7 +10,6 @@ import (
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
 	"github.com/wgdl666/wgModelHub/internal/provider"
-	"github.com/wgdl666/wgModelHub/models"
 )
 
 const decisionPath = "/v1/decision/predict"
@@ -26,10 +25,18 @@ func NewText(gateway *Client, chat provider.TextProvider) *TextProvider {
 }
 
 func (p *TextProvider) Generate(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
-	if model != models.VMindDecisionV1 {
+	// 文本协议由登记选择，真实 model 原样交给网关。
+	kind, err := p.gateway.ModelProtocol(ctx, model)
+	if err != nil {
+		return nil, err
+	}
+	if kind != "decision" && kind != "chat_completions" {
+		return nil, provider.NotAttemptedf(provider.ErrorInvalidArgument, "unsupported text protocol %q", kind)
+	}
+	if kind == "chat_completions" {
 		return p.chat.Generate(ctx, model, request)
 	}
-	result, err := p.gateway.predict(ctx, request.GetInput())
+	result, err := p.gateway.predict(ctx, model, request.GetInput())
 	if err != nil {
 		return nil, err
 	}
@@ -37,10 +44,18 @@ func (p *TextProvider) Generate(ctx context.Context, model string, request *mode
 }
 
 func (p *TextProvider) GenerateStream(ctx context.Context, model string, request *modelhubv2.GenerateRequest, emit provider.EmitEvent) (*modelhubv2.GenerateEvent, error) {
-	if model != models.VMindDecisionV1 {
+	// 文本协议由登记选择，真实 model 原样交给网关。
+	kind, err := p.gateway.ModelProtocol(ctx, model)
+	if err != nil {
+		return nil, err
+	}
+	if kind != "decision" && kind != "chat_completions" {
+		return nil, provider.NotAttemptedf(provider.ErrorInvalidArgument, "unsupported text protocol %q", kind)
+	}
+	if kind == "chat_completions" {
 		return p.chat.GenerateStream(ctx, model, request, emit)
 	}
-	result, err := p.gateway.predict(ctx, request.GetInput())
+	result, err := p.gateway.predict(ctx, model, request.GetInput())
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +68,7 @@ func (p *TextProvider) GenerateStream(ctx context.Context, model string, request
 	return provider.MetadataFinalEvent("", "", nil), nil
 }
 
-func (c *Client) predict(ctx context.Context, input *modelhubv2.Input) (string, error) {
+func (c *Client) predict(ctx context.Context, model string, input *modelhubv2.Input) (string, error) {
 	images := provider.ImageMedias(input)
 	if len(images) != 1 {
 		return "", provider.NotAttemptedf(provider.ErrorInvalidArgument, "Decision requires exactly one inline image")
@@ -110,6 +125,7 @@ func (c *Client) predict(ctx context.Context, input *modelhubv2.Input) (string, 
 	if err != nil {
 		return "", provider.WrapNotAttempted(provider.ErrorConfiguration, c.name+" create Decision request", err)
 	}
+	req.Header.Set("X-Model-Key", model)
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	res, err := c.http.Do(req)
 	if err != nil {

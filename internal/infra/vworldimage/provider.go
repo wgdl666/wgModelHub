@@ -103,19 +103,31 @@ func (p *Provider) GenerateImage(ctx context.Context, model string, request *mod
 	if request == nil {
 		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "generate request is required")
 	}
-	switch model {
-	case models.VWorldWardrobe10, models.VWorldClothGen10:
-		return p.generateWardrobe(ctx, model, request)
-	case models.VWorldOutfit10:
-		return p.generateVTON(ctx, request)
-	case models.VWorldBodyModel10:
-		return p.generateBodyModel(ctx, request)
+	// 网关模型的处理方式来自登记；直连供应商保持既有协议约定。
+	kind := map[string]string{
+		models.VWorldWardrobe10: "garment_extraction", models.VWorldClothGen10: "product_generation",
+		models.VWorldOutfit10: "vton", models.VWorldBodyModel10: "body_model",
+	}[model]
+	if p.gateway != nil {
+		var err error
+		kind, err = p.gateway.ModelProtocol(ctx, model)
+		if err != nil {
+			return nil, err
+		}
+	}
+	switch kind {
+	case "garment_extraction", "product_generation":
+		return p.generateWardrobe(ctx, model, kind == "garment_extraction", request)
+	case "vton":
+		return p.generateVTON(ctx, model, request)
+	case "body_model":
+		return p.generateBodyModel(ctx, model, request)
 	default:
-		return nil, provider.NotAttemptedf(provider.ErrorInvalidArgument, "vworld-image does not serve model %q", model)
+		return nil, provider.NotAttemptedf(provider.ErrorInvalidArgument, "unsupported image protocol %q", kind)
 	}
 }
 
-func (p *Provider) generateWardrobe(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
+func (p *Provider) generateWardrobe(ctx context.Context, model string, extraction bool, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
 	images := provider.ImageMedias(request.GetInput())
 	if len(images) < 1 || len(images) > 2 {
 		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "wardrobe image requires a source image and optionally a parser mask")
@@ -135,8 +147,8 @@ func (p *Provider) generateWardrobe(ctx context.Context, model string, request *
 	}
 	uploads := []imageUpload{{data: source, mimeType: mime, filename: "source.png"}}
 	path := productGenerationPath
-	// 模型 ID 已选定操作。输入不符时拒绝，避免拆衣请求误跑成商品图。
-	if model == models.VWorldWardrobe10 {
+	// 操作已由登记协议选定。输入不符时拒绝，避免拆衣请求误跑成商品图。
+	if extraction {
 		if len(images) == 1 && meta.BBox == nil && meta.ParseLabels == nil {
 			return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "garment extraction requires bbox or parser input")
 		}
@@ -172,10 +184,10 @@ func (p *Provider) generateWardrobe(ctx context.Context, model string, request *
 	return p.generate(ctx, model, path, fields, uploads)
 }
 
-func (p *Provider) generateVTON(ctx context.Context, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
+func (p *Provider) generateVTON(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
 	images := provider.ImageMedias(request.GetInput())
 	if len(images) != 2 {
-		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "Vmind_outfit_v1.0 requires person image then garment collage")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "vton requires person image then garment collage")
 	}
 	uploads := make([]imageUpload, 0, 2)
 	for index, media := range images {
@@ -191,13 +203,13 @@ func (p *Provider) generateVTON(ctx context.Context, request *modelhubv2.Generat
 	}
 	// Preserve prompt whitespace; the model service validates without rewriting it.
 	fields := map[string]string{"prompt": provider.JoinedText(request.GetInput())}
-	return p.generate(ctx, models.VWorldOutfit10, vtonPath, fields, uploads)
+	return p.generate(ctx, model, vtonPath, fields, uploads)
 }
 
-func (p *Provider) generateBodyModel(ctx context.Context, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
+func (p *Provider) generateBodyModel(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
 	images := provider.ImageMedias(request.GetInput())
 	if len(images) != 1 {
-		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "Vmind_bodymodel_v1.0 requires exactly one person image")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "body_model requires exactly one person image")
 	}
 	gender, err := bodyModelGender(request.GetInput().GetModelTraits())
 	if err != nil {
@@ -207,7 +219,7 @@ func (p *Provider) generateBodyModel(ctx context.Context, request *modelhubv2.Ge
 	if err != nil {
 		return nil, err
 	}
-	return p.generate(ctx, models.VWorldBodyModel10, bodyModelPath, map[string]string{"gender": gender}, []imageUpload{{data: data, mimeType: mime}})
+	return p.generate(ctx, model, bodyModelPath, map[string]string{"gender": gender}, []imageUpload{{data: data, mimeType: mime}})
 }
 
 func (p *Provider) generate(ctx context.Context, model, path string, fields map[string]string, uploads []imageUpload) (*modelhubv2.GenerateEvent, error) {

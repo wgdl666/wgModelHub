@@ -19,6 +19,7 @@ import (
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
+	"github.com/wgdl666/wgModelHub/internal/infra/vmindgateway"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
 )
@@ -33,6 +34,8 @@ const (
 
 // Provider 只实现 ImageProvider。model 选择端点，不进入上游请求体。
 type Provider struct {
+	// Gateway 启用登记模型路由，直连供应商继续使用原有契约。
+	Gateway       *vmindgateway.Client
 	name          string
 	baseURL       string
 	username      string
@@ -85,6 +88,20 @@ func (p *Provider) GenerateImage(ctx context.Context, model string, request *mod
 		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "generate request is required")
 	}
 	endpoint, person, err := endpointFor(model)
+	if p.Gateway != nil {
+		var kind string
+		kind, err = p.Gateway.ModelProtocol(ctx, model)
+		if err == nil {
+			switch kind {
+			case "segment_person":
+				endpoint, person = personPath, true
+			case "segment_subject":
+				endpoint, person = subjectPath, false
+			default:
+				err = provider.NotAttemptedf(provider.ErrorInvalidArgument, "unsupported segment protocol %q", kind)
+			}
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +113,7 @@ func (p *Provider) GenerateImage(ctx context.Context, model string, request *mod
 	if err != nil {
 		return nil, err
 	}
-	raw, err := p.doSegment(ctx, endpoint, data, person)
+	raw, err := p.doSegment(ctx, model, endpoint, data, person)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +174,7 @@ func (p *Provider) methodFor(person bool) string {
 	return p.method
 }
 
-func (p *Provider) doSegment(ctx context.Context, endpoint string, imageBytes []byte, person bool) ([]byte, error) {
+func (p *Provider) doSegment(ctx context.Context, model, endpoint string, imageBytes []byte, person bool) ([]byte, error) {
 	parts := make([]httpbody.Part, 0, 5)
 	fields := map[string]string{
 		"image":  base64.StdEncoding.EncodeToString(imageBytes),
@@ -193,6 +210,9 @@ func (p *Provider) doSegment(ctx context.Context, endpoint string, imageBytes []
 		}
 		if p.username != "" {
 			httpReq.SetBasicAuth(p.username, p.password)
+		}
+		if p.Gateway != nil {
+			httpReq.Header.Set("X-Model-Key", model)
 		}
 		response, err = p.client.Do(httpReq)
 		if ctx.Err() != nil {

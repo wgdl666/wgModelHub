@@ -1373,7 +1373,8 @@ func validateVisionHTTP(name, kind, base, user, password string) error {
 func ProviderSupports(provider ProviderConfig, capability string) bool {
 	switch {
 	case provider.VMindGateway != nil:
-		return capability == CapabilityImage || capability == CapabilityVideo
+		// 每个已登记模型的实际输出契约由对应适配器确认。
+		return capability == CapabilityText || capability == CapabilityImage || capability == CapabilityVideo
 	case provider.Gemini != nil, provider.OpenAI != nil:
 		return capability == CapabilityText || capability == CapabilityImage
 	case provider.ImageSeg != nil, provider.Photoroom != nil, provider.LensCorrection != nil, provider.SegmentPerson != nil, provider.VWorldImage != nil:

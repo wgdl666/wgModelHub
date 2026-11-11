@@ -19,6 +19,8 @@ import (
 )
 
 type Provider struct {
+	// Gateway 启用登记模型路由，直连供应商继续使用原有契约。
+	Gateway                           bool
 	name, baseURL, username, password string
 	client                            *http.Client
 }
@@ -41,7 +43,7 @@ func New(name, baseURL, username, password string, options ...telemetry.HTTPClie
 }
 
 func (p *Provider) Generate(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
-	if model != models.FaceSim {
+	if !p.Gateway && model != models.FaceSim {
 		return nil, provider.NotAttemptedf(provider.ErrorInvalidArgument, "facesim does not serve model %q", model)
 	}
 	images := provider.ImageMedias(request.GetInput())
@@ -70,6 +72,9 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 	}
 	if p.username != "" {
 		req.SetBasicAuth(p.username, p.password)
+	}
+	if p.Gateway {
+		req.Header.Set("X-Model-Key", model)
 	}
 	response, err := p.client.Do(req)
 	if err != nil {

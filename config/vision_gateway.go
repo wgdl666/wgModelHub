@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
-
-	"github.com/wgdl666/wgModelHub/models"
 )
 
 // ResolveVisionGateway 给启动时的客户端和渠道指标同一份有效地址。保留原配置副本，
@@ -30,9 +28,6 @@ func (p ProviderConfig) ResolveVisionGateway(providers map[string]ProviderConfig
 	// 因此有效配置不携带直连供应商的 Basic Auth。
 	switch {
 	case p.HumanParser != nil:
-		if len(p.Models) != 1 || strings.TrimSpace(p.Models[0]) != models.HumanParse {
-			return p, nil, fmt.Errorf("vision_gateway human_parser requires %s", models.HumanParse)
-		}
 		p.HumanParser = &HumanParserProviderConfig{BaseURL: base + "/human-parser"}
 	case p.HumanYOLO != nil:
 		p.HumanYOLO = &HumanYOLOProviderConfig{BaseURL: base + "/human-yolo"}

@@ -31,16 +31,26 @@ func newTestService(cfg config.Config, providers map[string]provider.Set, tasks 
 }
 
 func TestVMindModelsUseModelGatewayAfterModelListReload(t *testing.T) {
+	const chatModel, decisionModel = "registered-chat-v2", "registered-decision-v2"
 	decisionPNG := []byte("\x89PNG\r\n\x1a\n")
 	const decisionResult = `{"prediction":{"label":"标准商品图","probability":0.8},"options":[],"timings_ms":{"total":2}}`
 	t.Setenv("MODEL_GATEWAY_API_TOKEN", "test-gateway-token")
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/models/") && r.Header.Get("Authorization") == "Bearer test-gateway-token" {
+			key := strings.TrimPrefix(r.URL.Path, "/v1/models/")
+			kind := map[string]string{chatModel: "chat_completions", decisionModel: "decision", models.VWorldOutfit10: "vton"}[key]
+			_ = json.NewEncoder(w).Encode(map[string]string{"model_key": key, "protocol": kind})
+			return
+		}
 		if r.Method != http.MethodPost || r.Header.Get("Authorization") != "Bearer test-gateway-token" {
 			t.Error("VMind calls must use the injected gateway token")
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 		if r.URL.Path == "/v1/decision/predict" {
+			if r.Header.Get("X-Model-Key") != decisionModel {
+				t.Error("decision model key was lost")
+			}
 			image, header, err := r.FormFile("image")
 			if err != nil {
 				t.Error(err)
@@ -67,7 +77,7 @@ func TestVMindModelsUseModelGatewayAfterModelListReload(t *testing.T) {
 			Model    string          `json:"model"`
 			Messages json.RawMessage `json:"messages"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&request); err != nil || request.Model != models.VMindDreamV1 ||
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil || request.Model != chatModel ||
 			!strings.Contains(string(request.Messages), "data:image/png;base64,AQID") {
 			t.Error("gateway request must preserve the model ID and inline image")
 			w.WriteHeader(http.StatusBadRequest)
@@ -100,28 +110,28 @@ func TestVMindModelsUseModelGatewayAfterModelListReload(t *testing.T) {
 		t.Fatal(err)
 	}
 	service := New(live, sets, nil)
-	if _, err := service.resolve(models.VMindDreamV1, config.CapabilityText); err == nil {
+	if _, err := service.resolve(chatModel, config.CapabilityText); err == nil {
 		t.Fatal("VLM must require an explicit model registration")
 	}
-	mediaProvider.Models = []string{models.VWorldOutfit10, models.VWorldOutfitVideo10, models.VMindDreamV1, models.VMindDecisionV1}
+	mediaProvider.Models = []string{models.VWorldOutfit10, models.VWorldOutfitVideo10, chatModel, decisionModel}
 	cfg.Providers = map[string]config.ProviderConfig{instance: mediaProvider}
 	raw, err := yaml.Marshal(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	live.ApplyYAML(string(raw))
-	for _, model := range []string{models.VMindDreamV1, models.VMindDecisionV1} {
-		for _, capability := range []string{config.CapabilityImage, config.CapabilityVideo} {
-			if _, err := service.resolve(model, capability); err == nil {
-				t.Fatalf("%s must reject %s output", model, capability)
-			}
+	// 输出契约在取得登记协议后校验，不能再靠 Service 中写死的模型名称决定。
+	for _, model := range []string{chatModel, decisionModel} {
+		req := textRequest(model, "test")
+		if _, err := sets[instance].Image.GenerateImage(ctx, model, req); err == nil {
+			t.Fatal("text model accepted image output")
 		}
 	}
-	if _, err := service.resolve(models.VWorldOutfit10, config.CapabilityText); err == nil {
-		t.Fatal("the existing outfit model must retain its media route")
+	if _, err := sets[instance].Text.Generate(ctx, models.VWorldOutfit10, textRequest(models.VWorldOutfit10, "test")); err == nil {
+		t.Fatal("image model accepted text output")
 	}
 
-	request := textRequest(models.VMindDreamV1, "Which color is this?")
+	request := textRequest(chatModel, "Which color is this?")
 	message := request.Input.Items[0].GetMessage()
 	message.Parts = append(message.Parts, &modelhubv2.ContentPart{
 		Content: &modelhubv2.ContentPart_Image{Image: &modelhubv2.Media{
@@ -137,7 +147,7 @@ func TestVMindModelsUseModelGatewayAfterModelListReload(t *testing.T) {
 		t.Fatal("ModelHub must return a single final text event for image understanding")
 	}
 
-	decision := textRequest(models.VMindDecisionV1, "")
+	decision := textRequest(decisionModel, "")
 	decision.Input.ModelTraits = `{"task":"image_type"}`
 	decision.Input.Items[0].GetMessage().Parts = []*modelhubv2.ContentPart{{
 		Content: &modelhubv2.ContentPart_Image{Image: &modelhubv2.Media{

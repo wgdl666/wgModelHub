@@ -22,6 +22,8 @@ import (
 )
 
 type Provider struct {
+	// Gateway 启用登记模型路由，直连供应商继续使用原有契约。
+	Gateway  bool
 	name     string
 	endpoint string
 	client   *http.Client
@@ -63,7 +65,7 @@ type diagnostics struct {
 }
 
 func (p *Provider) GenerateImage(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
-	if request == nil || model != models.LensDistortionCorrection {
+	if request == nil || (!p.Gateway && model != models.LensDistortionCorrection) {
 		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "lens correction requires its model and image request")
 	}
 	images := provider.ImageMedias(request.GetInput())
@@ -100,6 +102,9 @@ func (p *Provider) GenerateImage(ctx context.Context, model string, request *mod
 			return nil, provider.WrapNotAttempted(provider.ErrorConfiguration, "create lens correction request", err)
 		}
 		req.Header.Set("Content-Type", "application/json")
+		if p.Gateway {
+			req.Header.Set("X-Model-Key", model)
+		}
 		response, err = p.client.Do(req)
 		if ctx.Err() != nil {
 			if response != nil {

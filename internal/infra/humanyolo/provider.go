@@ -25,6 +25,8 @@ const (
 
 // Provider 只实现 TextProvider，返回上游 JSON，裁图留在衣橱。
 type Provider struct {
+	// Gateway 启用登记模型路由，直连供应商继续使用原有契约。
+	Gateway  bool
 	name     string
 	baseURL  string
 	username string
@@ -55,14 +57,14 @@ func New(name, baseURL, username, password string, options ...telemetry.HTTPClie
 }
 
 func (p *Provider) Generate(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
-	if model != models.HumanYOLO {
+	if !p.Gateway && model != models.HumanYOLO {
 		return nil, provider.NotAttemptedf(provider.ErrorInvalidArgument, "human-yolo does not serve model %q", model)
 	}
 	imageBytes, err := oneInlineImage(request.GetInput())
 	if err != nil {
 		return nil, err
 	}
-	body, err := p.post(ctx, imageBytes)
+	body, err := p.post(ctx, model, imageBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +88,7 @@ func (p *Provider) GenerateStream(ctx context.Context, model string, request *mo
 	return provider.MetadataFinalEvent("", "", nil), nil
 }
 
-func (p *Provider) post(ctx context.Context, imageBytes []byte) ([]byte, error) {
+func (p *Provider) post(ctx context.Context, model string, imageBytes []byte) ([]byte, error) {
 	body, err := httpbody.Multipart([]httpbody.Part{
 		httpbody.File("file", "person.png", "application/octet-stream", imageBytes),
 		httpbody.Field("conf", confidence), httpbody.Field("iou", iou),
@@ -100,6 +102,9 @@ func (p *Provider) post(ctx context.Context, imageBytes []byte) ([]byte, error) 
 	}
 	if p.username != "" {
 		httpReq.SetBasicAuth(p.username, p.password)
+	}
+	if p.Gateway {
+		httpReq.Header.Set("X-Model-Key", model)
 	}
 	response, err := p.client.Do(httpReq)
 	if err != nil {

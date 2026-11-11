@@ -63,10 +63,9 @@ func New(name, baseURL, token string, duration float64, fps, seed int, pollInter
 	}, nil
 }
 
-// SubmitVideo 只受理当前穿搭视频模型，避免旧 ID 意外创建新任务。
-// 提交、查询和下载使用相同模型边界，旧 ltx 任务不再访问上游。
+// SubmitVideo 按网关登记确认视频协议；直连供应商仍使用既有模型边界。
 func (p *Provider) SubmitVideo(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (string, error) {
-	if model != models.VWorldOutfitVideo10 {
+	if p.gateway == nil && model != models.VWorldOutfitVideo10 {
 		return "", provider.NotAttempted(provider.ErrorInvalidArgument, "unsupported video model: "+model)
 	}
 	if request == nil {
@@ -82,6 +81,14 @@ func (p *Provider) SubmitVideo(ctx context.Context, model string, request *model
 		return "", err
 	}
 	if p.gateway != nil {
+		// 提交按登记确认视频契约；历史任务查询仍使用已经持久化的网关任务 ID。
+		kind, err := p.gateway.ModelProtocol(ctx, model)
+		if err != nil {
+			return "", err
+		}
+		if kind != "outfit_video" {
+			return "", provider.NotAttemptedf(provider.ErrorInvalidArgument, "unsupported video protocol %q", kind)
+		}
 		mimeType := strings.TrimSpace(firstFrame.GetMimeType())
 		if mimeType == "" {
 			mimeType = http.DetectContentType(imageBytes)
@@ -126,8 +133,8 @@ func (p *Provider) GetVideo(ctx context.Context, model string, providerTaskID st
 	if model == "VWorld_outfit_video_1.0" {
 		model = models.VWorldOutfitVideo10
 	}
-	// 更早的 ltx ID 已下线，仍拒绝进入供应商查询。
-	if model != models.VWorldOutfitVideo10 {
+	// 直连仍拒绝已下线的 ltx ID；网关任务按持久化的任务 ID 查询。
+	if p.gateway == nil && model != models.VWorldOutfitVideo10 {
 		return provider.VideoJob{}, provider.New(provider.ErrorInvalidArgument, "unsupported video model: "+model)
 	}
 	pollMs := int32(p.pollInterval / time.Millisecond)
@@ -166,8 +173,8 @@ func (p *Provider) ReadVideoResult(ctx context.Context, model string, providerTa
 	if model == "VWorld_outfit_video_1.0" {
 		model = models.VWorldOutfitVideo10
 	}
-	// 结果读取遵守当前模型目录，避免绕过旧模型停用边界。
-	if model != models.VWorldOutfitVideo10 {
+	// 直连结果遵守原模型边界；网关校验任务所属的结果对象。
+	if p.gateway == nil && model != models.VWorldOutfitVideo10 {
 		return provider.New(provider.ErrorInvalidArgument, "unsupported video model: "+model)
 	}
 	if p.gateway != nil {

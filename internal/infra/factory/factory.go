@@ -106,6 +106,27 @@ func build(ctx context.Context, cfg config.Config, live *config.LiveConfig) (map
 		if err != nil {
 			return nil, fmt.Errorf("provider %s: %w", name, err)
 		}
+		if gateway != nil {
+			// 视觉模型沿用原有编码器，模型身份与分人/分主体等协议从登记解析。
+			registered, err := vmindgateway.New(name, gateway.BaseURL, gateway.APIToken(), nil)
+			if err != nil {
+				return nil, err
+			}
+			switch p := set.Text.(type) {
+			case *humanparser.Provider:
+				p.Gateway = registered
+			case *humanyolo.Provider:
+				p.Gateway = true
+			case *facesim.Provider:
+				p.Gateway = true
+			}
+			switch p := set.Image.(type) {
+			case *segmentperson.Provider:
+				p.Gateway = registered
+			case *lenscorrection.Provider:
+				p.Gateway = true
+			}
+		}
 		sets[name] = set
 	}
 	return sets, nil

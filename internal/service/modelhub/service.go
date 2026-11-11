@@ -16,7 +16,6 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/internal/taskstore"
-	"github.com/wgdl666/wgModelHub/models"
 	"github.com/wgdl666/wgModelHub/protocol"
 )
 
@@ -524,10 +523,6 @@ func (s *Service) resolve(model, capability string) (binding, error) {
 	// 连接在启动时建好。models 热更新不重建客户端；实例改名时按连接参数找回原客户端。
 	// Vertex 图片是否放行看当前请求的真实模型，不看实例列表里有没有别的生图 ID。
 	allowed := config.ProviderSupports(providerCfg, capability) && config.VertexImageRequestAllowed(providerCfg, model, capability)
-	if providerCfg.VMindGateway != nil && (model == models.VMindDreamV1 || model == models.VMindDecisionV1) {
-		// 对话和预测可以接收图片，结果都是文本，避免进入同一网关的媒体任务接口。
-		allowed = capability == config.CapabilityText
-	}
 	if !allowed {
 		return binding{}, provider.Errorf(
 			provider.ErrorInvalidArgument,

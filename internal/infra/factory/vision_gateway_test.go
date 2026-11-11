@@ -22,10 +22,19 @@ func TestVisionGatewayPreservesAdapterProtocol(t *testing.T) {
 	t.Setenv("MODEL_GATEWAY_API_TOKEN", token)
 	encoded := base64.StdEncoding.EncodeToString([]byte(image))
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/models/") && r.Header.Get("Authorization") == "Bearer "+token {
+			key := strings.TrimPrefix(r.URL.Path, "/v1/models/")
+			kind := map[string]string{models.HumanParse: "human_parse", models.SegmentPersonBria: "segment_person", models.SegmentSubjectBria: "segment_subject", "parser-v2": "human_parse", "subject-v2": "segment_subject"}[key]
+			_ = json.NewEncoder(w).Encode(map[string]string{"model_key": key, "protocol": kind})
+			return
+		}
 		if r.Method != http.MethodPost || r.Header.Get("Authorization") != "Bearer "+token {
 			t.Error("vision request did not use the configured gateway bearer")
 			w.WriteHeader(http.StatusUnauthorized)
 			return
+		}
+		if r.Header.Get("X-Model-Key") == "" {
+			t.Error("vision request lost registered model key")
 		}
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
@@ -112,6 +121,10 @@ func TestVisionGatewayPreservesAdapterProtocol(t *testing.T) {
 	}
 	for _, test := range []struct{ instance, model, want string }{
 		{"parser", models.HumanParse, `"success":true`},
+		{"parser", "parser-v2", `"success":true`},
+		{"yolo", "detector-v2", `"persons"`},
+		{"segment", "subject-v2", "/v1/vision/segment-person/api/segment_subject"},
+		{"lens", "lens-v2", "/v1/vision/lens_distortion_correction/correct"},
 		{"yolo", models.HumanYOLO, `"persons"`},
 		{"segment", models.SegmentPersonBria, "/v1/vision/segment-person/api/segment"},
 		{"segment", models.SegmentSubjectBria, "/v1/vision/segment-person/api/segment_subject"},
