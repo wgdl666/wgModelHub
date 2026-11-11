@@ -13,6 +13,7 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/callledger"
 	"github.com/wgdl666/wgModelHub/internal/prefixcache"
 	"github.com/wgdl666/wgModelHub/internal/provider"
+	"github.com/wgdl666/wgModelHub/models"
 	genaisdk "google.golang.org/genai"
 )
 
@@ -50,6 +51,10 @@ func (p *Provider) prefixKey(ctx context.Context, model string, config *genaisdk
 }
 
 func (p *Provider) preparePrefixCache(ctx context.Context, model string, request *modelhubv2.GenerateRequest, original *genaisdk.GenerateContentConfig) (*genaisdk.GenerateContentConfig, *prefixcache.Entry) {
+	// Argon 不支持创建或引用显式缓存，即使配置为全部 Google 模型开启也只走隐式缓存。
+	if model == models.Gemini4Argon {
+		return original, nil
+	}
 	if p.cache == nil || p.cacheEnabled == nil || !p.cacheEnabled(model) || ctx.Err() != nil {
 		return original, nil
 	}

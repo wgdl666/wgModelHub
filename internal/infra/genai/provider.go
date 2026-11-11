@@ -219,6 +219,7 @@ func convertToolOutputContents(output *modelhubv2.ToolOutput) []*genaisdk.Conten
 		name = output.ToolCallId
 	}
 	contents := []*genaisdk.Content{genaisdk.NewContentFromFunctionResponse(name, toolOutputObject(output), genaisdk.RoleUser)}
+	contents[0].Parts[0].FunctionResponse.ID = output.ToolCallId
 	if len(output.Images) == 0 {
 		return contents
 	}
@@ -394,7 +395,7 @@ const (
 )
 
 // applyTextThinking 按模型只发一种思考参数。
-// 3.7/3.8 与 3.5-flash-lite 认档位，预算丢掉；2.5 只认数字，有预算用预算，否则把档位换成数字。
+// 3.7/3.8、4 Argon 与 3.5-flash-lite 认档位，预算丢掉；2.5 只认数字，有预算用预算，否则把档位换成数字。
 // 2.0 没有思考参数，三个字段都不发。
 func applyTextThinking(cfg *genaisdk.GenerateContentConfig, model string, textSpec *modelhubv2.TextOutput) {
 	if cfg == nil || textSpec == nil {
@@ -402,8 +403,8 @@ func applyTextThinking(cfg *genaisdk.GenerateContentConfig, model string, textSp
 	}
 	choice := thinking.FromText(textSpec)
 	switch model {
-	case models.Gemini37Flash, models.Gemini38Flash:
-		// 3.7/3.8 只有 LOW/MEDIUM/HIGH，MINIMAL 和关都会 400 或关不掉，统一落到 LOW。
+	case models.Gemini37Flash, models.Gemini38Flash, models.Gemini4Argon:
+		// 这些模型只有 LOW/MEDIUM/HIGH，MINIMAL 和关都会 400 或关不掉，统一落到 LOW。
 		if choice.Off {
 			cfg.ThinkingConfig = &genaisdk.ThinkingConfig{ThinkingLevel: genaisdk.ThinkingLevelLow}
 			return

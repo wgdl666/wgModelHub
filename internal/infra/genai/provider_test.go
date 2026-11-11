@@ -147,6 +147,9 @@ func TestBuildContentsKeepsMessageAndToolOutputOrder(t *testing.T) {
 	if contents[1].Parts[0].FunctionResponse == nil {
 		t.Fatalf("tool output missing: %#v", contents[1])
 	}
+	if response := contents[1].Parts[0].FunctionResponse; response.ID != "c1" || response.Name != "lookup" {
+		t.Fatalf("tool output identity lost: %#v", response)
+	}
 	if contents[2].Parts[0].Text != "followup" {
 		t.Fatalf("followup message lost: %#v", contents[2])
 	}

@@ -177,7 +177,7 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 	// 只计算缓存遥测模式；普通缺省开启 / endpoint-bound Ark 隐式自动由适配器处理。
 	// 实例改名后 binding.provider 是新键，类型和 endpoint 以当前配置为准，不读启动快照。
 	providerCfg, _ := s.providerConfig(binding.provider)
-	cachingMode := textCachingModeForProvider(request.GetInput(), providerCfg)
+	cachingMode := textCachingModeForProvider(request, providerCfg)
 	streamMode := request.GetOutput().GetStream()
 	labels := llmmetric.Labels{Model: binding.model, Provider: binding.provider, Stream: streamMode}
 	// 文本能力已路由成功：真实供应商调用前计一次 request。
