@@ -16,9 +16,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"cloud.google.com/go/auth"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
@@ -150,6 +152,8 @@ func TestVertexADCTextStreamImageAndCacheShareToken(t *testing.T) {
 }
 
 func TestVertexADCRefreshesExpiredToken(t *testing.T) {
+	// 只验证过期后的同步换新；临期等待由下面的用例覆盖。
+	setVertexTokenWait(t, 0, vertexTokenPollInterval)
 	p, transport := newVertexADCTestProvider(t, 1)
 	if _, err := p.Generate(context.Background(), models.Gemini25Flash, vertexTextRequest()); err != nil {
 		t.Fatal(err)
@@ -226,5 +230,96 @@ func TestVertexADCProxyCoversTokenAndModel(t *testing.T) {
 	_, _ = p.Generate(ctx, models.Gemini25Flash, vertexTextRequest())
 	if tokenCalls != 1 || connected != "aiplatform.googleapis.com:443" {
 		t.Fatalf("token calls=%d model proxy=%q", tokenCalls, connected)
+	}
+}
+
+func setVertexTokenWait(t *testing.T, minRemaining, poll time.Duration) {
+	t.Helper()
+	oldMin, oldPoll := vertexTokenMinRemaining, vertexTokenPollInterval
+	vertexTokenMinRemaining, vertexTokenPollInterval = minRemaining, poll
+	t.Cleanup(func() { vertexTokenMinRemaining, vertexTokenPollInterval = oldMin, oldPoll })
+}
+
+// 真实 ADC 缓存：令牌剩余不足余量时，模型请求必须带后台换出的新令牌，而不是临期旧令牌。
+func TestVertexADCWaitsForRefreshedTokenNearExpiry(t *testing.T) {
+	p, transport := newVertexADCTestProvider(t, 5)
+	if _, err := p.Generate(context.Background(), models.Gemini25Flash, vertexTextRequest()); err != nil {
+		t.Fatal(err)
+	}
+	// 测试 transport 断言 Authorization 等于最新一次换出的 token-N。
+	if transport.tokenCalls != 2 || transport.calls != 1 {
+		t.Fatalf("models=%d tokens=%d", transport.calls, transport.tokenCalls)
+	}
+}
+
+type fakeTokenProvider struct {
+	mu    sync.Mutex
+	calls int
+	next  func(call int) (*auth.Token, error)
+}
+
+func (f *fakeTokenProvider) Token(context.Context) (*auth.Token, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls++
+	return f.next(f.calls)
+}
+
+func TestVertexAccessTokenFreshTokenDoesNotWait(t *testing.T) {
+	fresh := &auth.Token{Value: "fresh", Expiry: time.Now().Add(time.Hour)}
+	tokens := &fakeTokenProvider{next: func(int) (*auth.Token, error) { return fresh, nil }}
+	got, err := vertexAccessToken(context.Background(), tokens)
+	if err != nil || got.Value != "fresh" || tokens.calls != 1 {
+		t.Fatalf("token=%v err=%v calls=%d", got, err, tokens.calls)
+	}
+	noExpiry := &fakeTokenProvider{next: func(int) (*auth.Token, error) { return &auth.Token{Value: "static"}, nil }}
+	if got, err := vertexAccessToken(context.Background(), noExpiry); err != nil || got.Value != "static" || noExpiry.calls != 1 {
+		t.Fatalf("token=%v err=%v calls=%d", got, err, noExpiry.calls)
+	}
+}
+
+func TestVertexAccessTokenWaitsUntilNewerToken(t *testing.T) {
+	setVertexTokenWait(t, 10*time.Second, time.Millisecond)
+	stale := &auth.Token{Value: "stale", Expiry: time.Now().Add(5 * time.Second)}
+	tokens := &fakeTokenProvider{next: func(call int) (*auth.Token, error) {
+		if call < 3 {
+			return stale, nil
+		}
+		return &auth.Token{Value: "renewed", Expiry: time.Now().Add(time.Hour)}, nil
+	}}
+	got, err := vertexAccessToken(context.Background(), tokens)
+	if err != nil || got.Value != "renewed" || tokens.calls != 3 {
+		t.Fatalf("token=%v err=%v calls=%d", got, err, tokens.calls)
+	}
+}
+
+// 后台换新失败时缓存会一直交回旧令牌；等到旧令牌过期，取一次（缓存此时同步换新）就返回，不会无限等待。
+func TestVertexAccessTokenStopsAfterStaleTokenExpires(t *testing.T) {
+	setVertexTokenWait(t, 10*time.Second, 5*time.Millisecond)
+	stale := &auth.Token{Value: "stale", Expiry: time.Now().Add(30 * time.Millisecond)}
+	refreshErr := errors.New("refresh failed")
+	tokens := &fakeTokenProvider{next: func(int) (*auth.Token, error) {
+		if time.Now().After(stale.Expiry) {
+			return nil, refreshErr
+		}
+		return stale, nil
+	}}
+	start := time.Now()
+	if _, err := vertexAccessToken(context.Background(), tokens); !errors.Is(err, refreshErr) {
+		t.Fatalf("err=%v", err)
+	}
+	if time.Since(start) > time.Second {
+		t.Fatalf("waited too long: %s", time.Since(start))
+	}
+}
+
+func TestVertexAccessTokenHonorsCancellationWhileWaiting(t *testing.T) {
+	setVertexTokenWait(t, 10*time.Second, 5*time.Millisecond)
+	stale := &auth.Token{Value: "stale", Expiry: time.Now().Add(5 * time.Second)}
+	tokens := &fakeTokenProvider{next: func(int) (*auth.Token, error) { return stale, nil }}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if _, err := vertexAccessToken(ctx, tokens); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err=%v", err)
 	}
 }
