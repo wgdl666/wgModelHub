@@ -15,17 +15,47 @@ const TTL = time.Hour
 // Manager only registers/reuses resources. It does not renew them or persist
 // prompts. Bounded workers retain the current request's static input in memory.
 type Manager struct {
-	store  Store
-	ctx    context.Context
-	cancel context.CancelFunc
-	jobs   chan struct{}
-	wg     sync.WaitGroup
-	mu     sync.Mutex
+	store   Store
+	ctx     context.Context
+	cancel  context.CancelFunc
+	jobs    chan struct{}
+	wg      sync.WaitGroup
+	mu      sync.Mutex
+	blocked map[string]time.Time
 }
 
 func New(ctx context.Context, store Store) *Manager {
 	ctx, cancel := context.WithCancel(ctx)
-	return &Manager{store: store, ctx: ctx, cancel: cancel, jobs: make(chan struct{}, 8)}
+	return &Manager{store: store, ctx: ctx, cancel: cancel, jobs: make(chan struct{}, 8), blocked: make(map[string]time.Time)}
+}
+
+// Suppress 暂停当前进程对该前缀的创建；不影响已注册缓存的读取和正常生成。
+func (m *Manager) Suppress(key string, duration time.Duration) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	// 清理过期记录并限制内存；容量满时淘汰最早到期项。
+	now := time.Now()
+	var oldest string
+	for k, until := range m.blocked {
+		if !until.After(now) {
+			delete(m.blocked, k)
+			continue
+		}
+		if oldest == "" || until.Before(m.blocked[oldest]) {
+			oldest = k
+		}
+	}
+	if len(m.blocked) >= 4096 {
+		delete(m.blocked, oldest)
+	}
+	m.blocked[key] = now.Add(duration)
+}
+
+// Suppressed 仅控制后台创建，不隐藏共享注册表中已经可用的缓存。
+func (m *Manager) Suppressed(key string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.blocked[key].After(time.Now())
 }
 
 func (m *Manager) Close() {
@@ -66,7 +96,7 @@ func (m *Manager) Invalidate(ctx context.Context, entry *Entry) {
 
 func (m *Manager) ScheduleCreate(key string, create func(context.Context) (*Entry, error)) {
 	m.mu.Lock()
-	if m.ctx.Err() != nil {
+	if m.ctx.Err() != nil || m.blocked[key].After(time.Now()) {
 		m.mu.Unlock()
 		return
 	}
@@ -86,6 +116,10 @@ func (m *Manager) ScheduleCreate(key string, create func(context.Context) (*Entr
 		ctx, cancel := context.WithTimeout(m.ctx, 25*time.Second)
 		defer cancel()
 		_, err := m.store.WithLock(ctx, lockID(key), func(store Store) error {
+			// 排队期间同 key 可能已被拒绝，取得锁后必须再次检查。
+			if m.Suppressed(key) {
+				return nil
+			}
 			// Another process may have filled the registry since the request's lookup.
 			entry, err := store.Get(ctx, key)
 			if err != nil || entry.Usable(time.Now()) {

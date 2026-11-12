@@ -413,7 +413,7 @@ func TestManagedPrefixCreationErrorsRetryOnLaterRequests(t *testing.T) {
 						fmt.Fprintf(w, `{"name":"cachedContents/retried","expireTime":%q}`, time.Now().Add(time.Hour).UTC().Format(time.RFC3339Nano))
 						return
 					}
-					message := "Cached content is too small. min_total_token_count=4096"
+					message := "Invalid cache configuration"
 					if unsupported {
 						message = "Explicit caching is not supported for this model"
 					}
@@ -507,5 +507,57 @@ func TestManagedPrefixPreservesPlanningJSONSchema(t *testing.T) {
 	final, err := p.Generate(context.Background(), req.Model, req)
 	if err != nil || len(final.GetItems()) != 1 || final.GetItems()[0].GetText() != `{"outfits":[]}` {
 		t.Fatalf("planning response changed: final=%v err=%v", final, err)
+	}
+}
+
+func TestManagedShortPrefixSuppressesCreationAndPreservesGeneration(t *testing.T) {
+	for _, message := range []string{
+		"The cached content is of 21 tokens. The minimum token count to start explicit caching is 4096.",
+		"Cached content is too small. min_total_token_count=4096",
+	} {
+		t.Run(message, func(t *testing.T) {
+			var cacheCalls atomic.Int32
+			p, manager, _ := prefixTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+				body := decodePrefixBody(t, r)
+				if strings.HasSuffix(r.URL.Path, "/cachedContents") {
+					cacheCalls.Add(1)
+					w.WriteHeader(400)
+					json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"code": 400, "status": "INVALID_ARGUMENT", "message": message}})
+					return
+				}
+				if body["cachedContent"] != nil || body["systemInstruction"] == nil || body["tools"] == nil {
+					t.Error("short prefix rejection must preserve full generation input")
+				}
+				writePrefixResponse(w, false)
+			})
+			req := prefixRequest()
+			key := p.prefixKey(context.Background(), req.Model, p.buildConfig(req.Model, req))
+			if _, err := p.Generate(context.Background(), req.Model, req); err != nil {
+				t.Fatal(err)
+			}
+			waitForPrefixCondition(t, func() bool { return manager.Suppressed(key) })
+			for i := 0; i < 5; i++ {
+				if _, err := p.Generate(context.Background(), req.Model, req); err != nil {
+					t.Fatal(err)
+				}
+			}
+			manager.Close()
+			if cacheCalls.Load() != 1 {
+				t.Fatalf("cache calls=%d want 1", cacheCalls.Load())
+			}
+		})
+	}
+}
+
+func TestInsufficientCachedContentTokensDoesNotSuppressOtherErrors(t *testing.T) {
+	for _, err := range []error{
+		genaisdk.APIError{Code: 504, Message: "Deadline expired before operation could complete."},
+		genaisdk.APIError{Code: 403, Message: "The cached content minimum token count to start explicit caching"},
+		genaisdk.APIError{Code: 400, Message: "Invalid cache configuration"},
+		genaisdk.APIError{Code: 400, Message: "Request too small"},
+	} {
+		if insufficientCachedContentTokens(err) {
+			t.Errorf("unrelated error classified as short prefix: %v", err)
+		}
 	}
 }
