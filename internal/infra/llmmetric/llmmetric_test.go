@@ -8,6 +8,8 @@ import (
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/llmmetric"
 	"github.com/wgdl666/wgModelHub/internal/provider"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -63,5 +65,41 @@ func TestIsFirstModelOutput(t *testing.T) {
 	}
 	if !llmmetric.IsFirstModelOutput(provider.ToolCallEvent(&modelhubv2.ToolCall{Name: "closet_search"})) {
 		t.Fatal("tool name must be true")
+	}
+}
+
+func TestRecordImageTerminalExportsOutcome(t *testing.T) {
+	reader := sdkmetric.NewManualReader()
+	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	if err := llmmetric.Configure(provider.Meter("test")); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	llmmetric.RecordImageTerminal(ctx, "gpt-image-2", "openai", llmmetric.OutcomeSucceeded)
+	llmmetric.RecordImageTerminal(ctx, "gpt-image-2", "openai", llmmetric.OutcomeFailed)
+	llmmetric.RecordImageTerminal(ctx, "gpt-image-2", "openai", llmmetric.OutcomeSucceeded)
+
+	var rm metricdata.ResourceMetrics
+	if err := reader.Collect(ctx, &rm); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]int64{}
+	for _, scope := range rm.ScopeMetrics {
+		for _, m := range scope.Metrics {
+			if m.Name != "wg.modelhub.llm.image.terminals" {
+				continue
+			}
+			for _, dp := range m.Data.(metricdata.Sum[int64]).DataPoints {
+				outcome, _ := dp.Attributes.Value("outcome")
+				model, _ := dp.Attributes.Value("model")
+				if model.AsString() != "gpt-image-2" {
+					t.Fatalf("model=%s", model.AsString())
+				}
+				got[outcome.AsString()] = dp.Value
+			}
+		}
+	}
+	if got[llmmetric.OutcomeSucceeded] != 2 || got[llmmetric.OutcomeFailed] != 1 {
+		t.Fatalf("got=%v", got)
 	}
 }

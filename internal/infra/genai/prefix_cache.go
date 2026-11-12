@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"strings"
+	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/callledger"
@@ -98,6 +99,10 @@ func (p *Provider) schedulePrefixCache(ctx context.Context, model string, origin
 			ToolConfig:        prefix.ToolConfig,
 		})
 		if err != nil {
+			// 相同静态前缀不会因下一次生成而变长，暂停创建但保留完整提示生成。
+			if insufficientCachedContentTokens(err) {
+				p.cache.Suppress(key, time.Hour)
+			}
 			return nil, err
 		}
 		if cached == nil || cached.Name == "" || cached.ExpireTime.IsZero() {
@@ -115,4 +120,16 @@ func missingCachedContent(err error) bool {
 	message := strings.ToLower(apiError.Message)
 	mentionsCache := strings.Contains(message, "cached content") || strings.Contains(message, "cachedcontent") || strings.Contains(message, "cached_content")
 	return mentionsCache && (strings.Contains(message, "not found") || strings.Contains(message, "not_found") || strings.Contains(message, "expired") || strings.Contains(message, "does not exist"))
+}
+
+// 仅将明确的缓存 token 下限 400 视为短前缀，504 等故障仍走原错误路径。
+func insufficientCachedContentTokens(err error) bool {
+	var apiError genaisdk.APIError
+	if !errors.As(err, &apiError) || apiError.Code != 400 {
+		return false
+	}
+	message := strings.ToLower(apiError.Message)
+	return strings.Contains(message, "cached content") &&
+		(strings.Contains(message, "minimum token count to start explicit caching") ||
+			(strings.Contains(message, "too small") && strings.Contains(message, "min_total_token_count")))
 }

@@ -454,6 +454,15 @@ func (s *Service) generateImage(ctx context.Context, binding binding, request *m
 	tracked := s.track(ctx, &rec, inBlobs)
 	defer s.endTrack(tracked, &rec, &providerErr, &outBlobs)
 	announceCall(stream, tracked, rec.CallID)
+	// 成功率口径与文本一致：调用方主动取消（如试穿主备竞速输掉的一路）单列 cancelled，不进成功率分母；
+	// 超过截止时间仍算失败。providerErr 涵盖调用失败和空图校验失败；回传调用方失败不算模型失败。
+	defer func() {
+		outcomeErr := providerErr
+		if deadline, ok := ctx.Deadline(); outcomeErr != nil && ok && !time.Now().Before(deadline) {
+			outcomeErr = context.DeadlineExceeded
+		}
+		llmmetric.RecordImageTerminal(ctx, binding.model, binding.provider, llmmetric.MapOutcome(outcomeErr))
+	}()
 	callStarted = time.Now()
 	event, err := binding.set.Image.GenerateImage(ctx, binding.model, request)
 	callFinished := time.Now()

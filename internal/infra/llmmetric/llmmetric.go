@@ -49,6 +49,7 @@ type recorder struct {
 	reasoningTokens otelmetric.Int64Counter
 	usageReports    otelmetric.Int64Counter
 	cacheRequests   otelmetric.Int64Counter
+	imageTerminals  otelmetric.Int64Counter
 }
 
 var current atomic.Pointer[recorder]
@@ -147,6 +148,14 @@ func Configure(meter otelmetric.Meter) error {
 	if err != nil {
 		return fmt.Errorf("create wg.modelhub.llm.cache.requests: %w", err)
 	}
+	// 名字带 llm 前缀，才能过 ADOT 白名单 wg_modelhub_llm_.*；导出为 wg_modelhub_llm_image_terminals_total。
+	imageTerminals, err := meter.Int64Counter(
+		"wg.modelhub.llm.image.terminals",
+		otelmetric.WithDescription("Image generation provider call outcomes"),
+	)
+	if err != nil {
+		return fmt.Errorf("create wg.modelhub.llm.image.terminals: %w", err)
+	}
 	current.Store(&recorder{
 		requests:        requests,
 		terminals:       terminals,
@@ -159,6 +168,7 @@ func Configure(meter otelmetric.Meter) error {
 		reasoningTokens: reasoningTokens,
 		usageReports:    usageReports,
 		cacheRequests:   cacheRequests,
+		imageTerminals:  imageTerminals,
 	})
 	return nil
 }
@@ -190,6 +200,19 @@ func RecordTerminal(ctx context.Context, l Labels, totalDuration time.Duration) 
 	attrs := append(baseAttrs(l), attribute.String("outcome", l.Outcome))
 	r.terminals.Add(ctx, 1, otelmetric.WithAttributes(attrs...))
 	r.duration.Record(ctx, totalDuration.Seconds(), otelmetric.WithAttributes(attrs...))
+}
+
+// RecordImageTerminal 记录一次图片生成供应商调用的 outcome；只看供应商结果，回传调用方失败不算模型失败。
+func RecordImageTerminal(ctx context.Context, model, provider, outcome string) {
+	r := current.Load()
+	if r == nil {
+		return
+	}
+	r.imageTerminals.Add(ctx, 1, otelmetric.WithAttributes(
+		attribute.String("model", model),
+		attribute.String("provider", provider),
+		attribute.String("outcome", outcome),
+	))
 }
 
 // RecordTTFT 仅流式请求在首个非空 text / tool name 时记录一次。
