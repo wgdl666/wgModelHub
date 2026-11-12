@@ -6,13 +6,15 @@
 - 普通检出读取主仓库上一级的 `AGENTS.md`。Git worktree 用 `git rev-parse --path-format=absolute --git-common-dir` 定位主检出的 `.git`，再读取主检出上一级。不要根据 worktree 的父目录猜位置。
 - 公共文件不可达时说明缺口，不把它当作已加载；不为补路径向仓库写入个人绝对路径。
 
+## 模型适配边界
+
 - `wgModelHub` 是 WG 内部统一的大模型协议适配层，只负责真实供应商模型 ID（`request.model`）路由、供应商凭据托管、协议转换与错误归一化。
 - Prompt 编排、业务重试、质量验收、业务任务终态、调用方 OSS 始终留在 `wgHub` 或 `wgWardrobe`；ModelHub 成功只表示供应商结果可读，不表示业务任务终态。
 - 单个 Deployment、单个 gRPC `ModelHubService`、端口 `50053`；不提供任意路径代理、万能 RPC 或调用方注入供应商地址/密钥。
 
-# 配置与模型路由
+## 配置与模型路由
 
-- Nacos Data ID：`wg.mirror.modelHub`；bootstrap 只保存 Nacos 定位信息，凭据与模型映射在 YAML 正文中。启动与热更新共用 `ParseAndValidateYAML`，共享 YAML 校验规则见工作区公共约定。
+- Nacos Data ID：`wg.mirror.modelHub`，provider 凭据与模型映射在共享业务 YAML 正文中。启动与热更新共用 `ParseAndValidateYAML`。
 - 每个 provider 实例用互斥嵌套字段表达 Gemini/VertexAI/Ark/OpenAI/Photoroom/SegmentPerson/LTX 以及各类视频供应商，并声明 `models: [真实模型 ID...]`。
 - `ark_video` 承接方舟 Seedance 2.5（`doubao-seedance-2-5-260628`）文生视频与首帧图生视频；示例实例键是 `火山方舟_ark_video`，与文本实例 `火山方舟_ark_chat` 分绑，不能共用一套能力。任务形态由 Input 推断，不另开模型 ID 或模式枚举。
 - OpenAI 实例同时承接 chat/completions 与 Images API；无参考图走 `/v1/images/generations`，有参考图走 `/v1/images/edits`。`gpt-image-2` / `gpt-image-2.5-flare` / `gpt-image-2.5-sunburst` 复用 AIG OpenAI-compatible Images。示例与审计目标实例键都是 `AIG_openai`（`https://api.aig-ai.com/v1`），不能并入 Gemini generateContent 生图实例。
@@ -21,7 +23,7 @@
 - `segment_person` 承接国内自建抠图。`Vmind_segment_person_bria_v1.0` 走 `POST /api/segment`，`Vmind_segment_subject_bria_v1.0` 走 `POST /api/segment_subject`；`method` 与 Basic Auth 只在供应商配置，模型 ID 不下发上游。两个 ID 不能互相替代。恰好一图入、透明 PNG 出；`max_side` 裁剪、OSS 与业务重试留在衣橱。
 - `human_yolo` 承接自建人体检测 `POST /predict`，`human-parser` 承接自建人体解析。`rekognition_detect` 承接 DetectLabels 的 Person 框，模型 ID 是 `rekognition-detect-labels`。三者都返回文本 JSON；裁图和单件提取留在衣橱。
 - `facebody_compare` 承接阿里云 `CompareFace`，模型 ID 是 `facebody-compare-face`。`rekognition_compare` 承接 `CompareFaces`，模型 ID 是 `rekognition-compare-faces`。两者都是恰好两张内联图入、文本 JSON `{"similarity":0到1}` 出。
-- `dashscope_embedding` / `cohere_embedding` / `bedrock_embedding` 承接 1024 维向量，模型 ID 分别是 `qwen3-vl-embedding`、`embed-v4.0`、`us.cohere.embed-v4:0`。一图或一段文本入，`{"embedding":[...]}` 出。仅官方 Cohere `embed-v4.0` 在 `input.model_traits` 显式设置 `embedding_batch=true,input_type=search_query` 时接受受资源预算约束的单文本 USER message；由 ModelHub 按 `cohere_embedding.max_batch_size`（≤96）顺序拆批，不设共享并发池或分片重试；调用并发由调用方管理，已有Service重试可能重跑整单，按输入顺序返回 `{"embeddings":[[...],...]}`；普通多段消息不能自动变成批量。换模型会换向量空间，调用方必须先重嵌再切读。
+- `dashscope_embedding` / `cohere_embedding` / `bedrock_embedding` 承接 1024 维向量，模型 ID 分别是 `qwen3-vl-embedding`、`embed-v4.0`、`us.cohere.embed-v4:0`。一图或一段文本入，`{"embedding":[...]}` 出。仅官方 Cohere `embed-v4.0` 在 `input.model_traits` 显式设置 `embedding_batch=true,input_type=search_query` 时接受受资源预算约束的单文本 USER message；由 ModelHub 按 `cohere_embedding.max_batch_size`（≤96）顺序拆批，不设共享并发池或分片重试；调用并发由调用方管理，已有 Service 重试可能重跑整单，按输入顺序返回 `{"embeddings":[[...],...]}`；普通多段消息不能自动变成批量。换模型会换向量空间，调用方必须先重嵌再切读。
 - 精排新协议通过 Generate 用户文本 JSON 传 `query` / `documents` / `instruction_key`，ModelHub 从顶层 `rerank_templates` 按键读取共享模板，不按英文句子猜用途。`dashscope_rerank` 的 Qwen 文本/VL 保留原 Query 并发原生 instruct；Google、Mixedbread、Cohere 官网与 Bedrock Cohere 无独立指令字段，统一渲染 query_template。模板可热更新；分数门槛、竞速与质量验收仍归调用方。无 instruction_key 的线上旧客户端暂留既有行为（Cohere/Google 丢弃 instruct，Mixedbread 主色包装），迁移后另行移除。
 - `google_rerank` 承接 Google 标准版/快速版文本精排，开放的真实模型 ID 由配置 `models` 控制，`request.model` 原样下发；已注册 default/fast 的 005 与官方 @latest ID。固定 Discovery Engine `locations/global` Ranking API；沿用文本 Generate 的 query/documents 与 index/relevance_score。instruction_key 对应模板渲染为 query，不向下游发 instruct。身份通过运行环境 ADC 提供（服务账号或联合身份文件），自动缓存刷新 OAuth token；身份配置是运行时 Secret，可与 Vertex 共用，不把 token/私钥写进 Nacos。`project` 与可选 `proxy_url` 在 provider YAML；token 交换和模型请求共用代理。
 - `facebody_detect` / `rekognition_faces` 只回人脸框 `{"faces":[{"left","top","width","height"}]}`。扩框裁锚点和主体脸选择留在 UserCenter。`facebody_library` / `rekognition_library` 承接查重、录脸、删脸；库名在供应商配置，不在请求里。
@@ -31,9 +33,9 @@
 - 启动时建立「真实模型 ID → provider 实例」路由：单 provider 声明可隐式选定；多 provider 声明同一模型时必须在顶层 `model_routes` 显式选定其一，不能依赖 map 顺序。无 profile、alias 或自动 failover。同名同资源 provider 仅 `models` 列表和/或顶层 `model_routes` 变化可通过 Nacos ListenConfig 或海外 AppConfig Agent 轮询热更新原子切换；provider 实例增删、类型、凭据、BaseURL/Endpoint 等连接资源参数变化仍须滚动重启，不得部分应用。
 - 全部真实模型 ID 是 `models` 包常量（`github.com/wgdl666/wgModelHub/models`）；Nacos / example YAML / 调用方 `request.model` 必须引用这些常量，不能另起业务名。穿搭视频对外 ID 只认 `Vmind_outfit_video_v1.0`，经 `ltx` provider 路由，示例与审计目标实例键是 `wgdl_video`；旧模型 ID `ltx` 不再受理提交、查询或下载；只支持 `Vmind_outfit_video_v1.0`。视频网关上游使用 `POST /vton`，只传首帧、prompt、可选 motion_tips 与 trace_id，模型和推理规格使用服务端默认值；不尝试 `/v2/videos/vton` 或其他提交路径。`Vmind_bodymodel_v1.0` 与拆衣服、换衣同属 `vworld_image`，示例与审计目标实例键是 `wgdl_image`，但只打 `POST /v2/images/body_model`：恰好一张人物图，提示词和 `1024x1536` 由上游固定，禁止下发本 ID、`FLUX.2-klein-9B` 或调用方 prompt。性别不进文本 part，放在 `Input.model_traits` 的 JSON 键 `gender`，原样写入上游表单，由 VMind-Image 校验。VWorld 生图使用 `/v2/images` 最小业务接口；不下发 LoRA、尺寸、seed、n、response_format、negative_prompt 等推理配置。录衣商品图走 `/product_generation`，带解析载荷的人物提取走 `/garment_extraction`，VTON 走 `/vton`；Wardrobe 提供 garment_role，网关不再映射 inventory_slot，也不验收 crop.applied。人物/商品抠图实例键是 `wgdl_segment_person`。这些展示渠道都是薇光点亮。G7 `Vmind_human_parse_v1.0` 也归入薇光点亮，目标实例键为 `wgdl_human_parser`，保留实际目标 host；旧 `human-parser` 仍按目标 host 归类。
 - 渠道由实际模型 API 目标 hostname 在 ModelHub 内派生，经内部 `/metrics` 的 `wg_modelhub_channel_info` 暴露（instance、channel、host、protocol）。出网 HTTP proxy 不另算渠道。不进公开 RPC，也不另建渠道表。实例键用下划线分词。整批改名必须滚动重启后由新进程读取；连接资源相同的实例无法靠现有热更新一一配对，热更新会整单拒绝并保留旧配置。
-- `database.dsn` 服务视频长任务的跨 Pod 持久化；当启用公网 listener 时，同一 Ent client 还服务 API Key 鉴权。所有 ModelHub 关系表都显式限定在 `modelhub` schema；启动不自动 DDL，须显式执行 `migrations/`。
+- `database.dsn` 服务视频长任务的跨 Pod 持久化；当启用公网 listener 时，同一 Ent client 还服务 API Key 鉴权。所有 ModelHub 关系表都显式限定在 `modelhub` schema。
 
-# 协议不变量
+## 协议不变量
 
 - `GenerateRequest` 顶层固定 `model` / `input` / `output` / `business_metadata`；system/任务/历史/媒体/tool 一律按序进 `Input.items`，不得另设顶层 prompt。
 - capability 由 `OutputSpec` oneof 决定；`stream` 位于 `OutputSpec`。
@@ -46,21 +48,20 @@
 - 同步 TTS 走独立 unary `SynthesizeSpeech`，不进入 `OutputSpec`；成功只表示完整音频已收集，不表示 Mirror 播放。
 - `SubmitGeneration` 第一阶段只接受 `output.video`；幂等键为 `(x-wg-caller-service, request_id)`，caller 缺失不拒绝，只用于归因与命名空间，不做鉴权。
 - `GetGeneration` 对外只表达 ModelHub 任务状态（UNSPECIFIED/PENDING/RUNNING/SUCCEEDED/FAILED）；PENDING/RUNNING/FAILED 只回一个 status 事件，SUCCEEDED 先 status 再流式 `GenerateEvent`。不暴露 provider/supplier 字段，不做 Cancel/List/Watch/Delete/Webhook/进度百分比/后台轮询 worker。
-- 视频结果从上游响应流按 1MiB `GenerateEvent` 分块，并增量执行 0 字节 / 200MiB 上限检查；禁止先整文件 `ReadAll` 再分块。
+- 视频结果从上游响应流按 1 MiB `GenerateEvent` 分块，并增量执行 0 字节 / 200 MiB 上限检查；禁止先整文件 `ReadAll` 再分块。
 - `VideoOutput` 除 `resolution` 外支持 `duration_seconds` 与 `aspect_ratio`；`GenerateEvent.generation_elapsed_ms` 保留 Gemini 等供应商生成耗时。
 
-# 视频长任务持久化（技术表，非业务任务）
+## 视频长任务持久化（技术表，非业务任务）
 
 - PostgreSQL 表 `modelhub.generation_task` 只存跨 Pod 查询所需最小事实：`task_id`、`caller`、`request_id`、`request_hash`、`model`、`provider`、`provider_task_id`、`state`、归一化错误、时间戳；不存 prompt、媒体正文或最终视频。
 - 唯一键 `(caller, request_id)`：同哈希返回原任务，不同哈希返回 `ALREADY_EXISTS`。先落库再调上游；上游可能已接受但本地未拿到确定结果时不得自动重提。
-- Ent 访问和显式迁移遵循公共规则。历史 `migrations/001_generation_task.sql` 保留且须显式执行；`go generate ./ent` 只再生 Ent 代码。
+- 迁移位于 `migrations/`，历史 `migrations/001_generation_task.sql` 保留且须显式执行。Ent 生成命令：`go generate ./ent`。
 - 前台 `Generate`（含文字/图片）不经过任务表。
 
-# 错误与观测
+## 对外错误契约
 
-- 内部供应商和业务错误统一使用公共规则中的 `bizerr`。最外层 gRPC adapter 将其映射为既有 gRPC status + `google.rpc.ErrorInfo.reason`，保持 domain=`wg.modelhub`；内部 service 不直接构造 transport error。
-- OpenTelemetry/Logfire 只记录主机、状态码、字节数等元数据，禁止记录 Prompt、媒体正文或密钥。
+- 对外错误保持既有 gRPC status + `google.rpc.ErrorInfo.reason`，domain 固定为 `wg.modelhub`。
 
-# 发布
+## 发布
 
 - ACK 清单见 `deploy/ack.yaml`：两副本、RollingUpdate、`terminationGracePeriodSeconds=180`、非 root `10001`。
