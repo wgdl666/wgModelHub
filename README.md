@@ -41,14 +41,16 @@ max_request_text_bytes: 1048576  # 缺省1 MiB，最大4 MiB；批量文本的�
 每批HTTP响应限4 MiB，完整结果限32 MiB；校验行数、1024维、有限值和null，避免文本与向量错位。
 返回文本 JSON 为 `{"embeddings":[[...],[...]]}`，单元素批次也保留复数键。
 
-Provider不新增分片重试、退避、工作协程或整单超时配置。保留原有单次HTTP 20秒超时及调用方deadline。
-瞬态失败仍由已有Service文本重试机制处理，可能重新执行整个逻辑请求，包括之前成功的分片；
-取消、超时和非瞬态错误遵守原Service规则。这里不承诺分片续算或失败后仅重算失败片。
+Provider不新增退避、工作协程或整单超时配置。单次HTTP上限为3秒（原20秒）：等满3秒仍没有完整响应时，
+Provider立即把同一个请求体重发一次，仍超时才返回超时；调用方已取消或deadline已到时不重发。
+这条规则对单条和每个批量分片相同，只覆盖“单次超时”。限流、5xx和连接错误不在Provider重发，
+仍由已有Service文本重试机制处理，可能重新执行整个逻辑请求，包括之前成功的分片；
+取消、最终超时和非瞬态错误遵守原Service规则。这里不承诺分片续算或失败后仅重算失败片。
 `cohere.embedding.batch_request`记录条数、批次数，原有`provider.http`记录每次上游耗时，
 不记录文本、向量或密钥。
 
 只有显式批量标志才拆分输入。普通多段文本仍合成单个输入，以 `{` 开头的商品文本仍走
-`search_document`，图片保留单图路径，继续返回 `{"embedding":[...]}`；单条调用不新增并发和总超时预算。
+`search_document`，图片保留单图路径，继续返回 `{"embedding":[...]}`；单条调用不新增并发，最坏耗时为两次3秒。
 批量容量限制只作用于批量输入；`model_traits`若非空仍须是合法JSON对象。
 未新增RPC、模型ID、凭据或自动切换向量空间；只接入官方Cohere Provider，Bedrock/DashScope保持原实现。
 应先发布此协议，再发布Wardrobe并开启其默认关闭的 `deep_recommend.batch_embedding_enabled`。
