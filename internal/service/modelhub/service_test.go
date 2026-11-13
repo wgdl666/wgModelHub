@@ -41,26 +41,36 @@ func TestVMindModelsUseModelGatewayAfterModelListReload(t *testing.T) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		if strings.HasPrefix(r.URL.Path, "/v1/gateway/requests/") {
-			// 文本模型误用图片能力也应到网关受理边界被拒绝，不做逐次预查询。
+		model := strings.TrimPrefix(r.URL.Path, "/v1/gateway/requests/")
+		if model == r.URL.Path || r.Header.Get("Idempotency-Key") == "" {
+			t.Errorf("not a unified submission: %s", r.URL.Path)
+			w.WriteHeader(400)
+			return
+		}
+		var envelope struct {
+			Input  json.RawMessage `json:"input"`
+			Output string          `json:"output"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&envelope); err != nil {
+			t.Error(err)
+			return
+		}
+
+		if envelope.Output != "" {
 			http.Error(w, `{"error":{"code":"invalid_protocol"}}`, http.StatusBadRequest)
 			return
 		}
 
-		if r.URL.Path != "/v1/chat/completions" {
-			t.Errorf("unexpected VMind gateway path %s", r.URL.Path)
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
 		var request struct {
 			Model    string          `json:"model"`
 			Messages json.RawMessage `json:"messages"`
 			Traits   json.RawMessage `json:"model_traits"`
 			Stream   bool            `json:"stream"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		if err := json.Unmarshal(envelope.Input, &request); err != nil {
 			t.Fatal(err)
 		}
+		request.Model = model
 		if request.Model == models.VWorldOutfit10 {
 			http.Error(w, `{"error":{"code":"invalid_protocol"}}`, http.StatusBadRequest)
 			return
