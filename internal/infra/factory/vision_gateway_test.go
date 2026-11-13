@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/wgdl666/kangaroo/callmeta"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -35,65 +34,62 @@ func TestVisionGatewayPreservesAdapterProtocol(t *testing.T) {
 		if r.Header.Get("X-Model-Key") == "" {
 			t.Error("vision request lost registered model key")
 		}
+		if r.URL.Path != "/proxy/v1/gateway/requests/"+r.Header.Get("X-Model-Key") || r.Header.Get("Idempotency-Key") == "" {
+			t.Errorf("not a unified model submission: %s", r.URL.Path)
+		}
+		var envelope struct {
+			Input json.RawMessage `json:"input"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&envelope); err != nil {
+			t.Error(err)
+			return
+		}
+		var body map[string]any
+		if err := json.Unmarshal(envelope.Input, &body); err != nil {
+			t.Error(err)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
-		switch r.URL.Path {
-		case "/v1/vision/human-parser/human_parser/predict":
-			var body map[string]string
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body["image"] != encoded {
-				t.Error("parser lost its inline JSON image")
+		switch r.Header.Get("X-Model-Key") {
+		case models.HumanParse, "parser-v2":
+			if body["image"] != encoded {
+				t.Error("parser lost image")
 			}
 			fmt.Fprint(w, `{"success":true,"pred_shape":[1,1]}`)
-		case "/v1/vision/human-yolo/predict":
-			file, _, err := r.FormFile("file")
-			if err != nil {
-				t.Error("YOLO lost its multipart file")
-				w.WriteHeader(http.StatusBadRequest)
-				return
-			}
-			defer file.Close()
-			body, err := io.ReadAll(file)
-			if err != nil || string(body) != image || r.FormValue("conf") != "0.35" || r.FormValue("iou") != "0.45" {
-				t.Error("YOLO file or detection thresholds changed")
+		case models.HumanYOLO, "detector-v2":
+			if body["file"] != encoded || body["conf"] != "0.35" || body["iou"] != "0.45" {
+				t.Errorf("YOLO input changed: %+v", body)
 			}
 			fmt.Fprint(w, `{"persons":[{"confidence":0.9}]}`)
-		case "/v1/vision/segment-person/api/matte":
-			var body map[string]string
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body["image"] != encoded || body["output"] != "b64" ||
-				body["person_method"] != "person-bria-rmbg" || body["subject_method"] != "person-bria-rmbg" {
-				t.Error("segmenter lost its image or configured algorithms")
+		case models.SegmentPersonBria, models.SegmentSubjectBria, "subject-v2":
+			if body["image"] != encoded || body["output"] != "b64" || body["person_method"] != "person-bria-rmbg" || body["subject_method"] != "person-bria-rmbg" {
+				t.Errorf("segment input changed: %+v", body)
 			}
-			// 人物/商品入口由测试网关登记决定，ModelHub 无需先获知协议。
 			path := "/v1/vision/segment-person/api/segment"
 			if model := r.Header.Get("X-Model-Key"); model == models.SegmentSubjectBria || model == "subject-v2" {
 				path += "_subject"
 			}
 			fmt.Fprintf(w, `{"refined_png_b64":%q}`, base64.StdEncoding.EncodeToString([]byte(path)))
-		case "/v1/vision/facesim/compare":
-			if r.FormValue("image_a") != encoded || r.FormValue("image_b") != encoded {
-				t.Error("facesim lost one of its inline images")
+		case models.FaceSim:
+			if body["image_a"] != encoded || body["image_b"] != encoded {
+				t.Error("facesim lost images")
 			}
 			fmt.Fprint(w, `{"success":true,"similarity":0.7}`)
-		case "/v1/vision/lens_distortion_correction/correct":
-			var body struct {
-				Base64 string `json:"base64"`
-				Mirror *bool  `json:"mirror_lens"`
-				Crop   bool   `json:"crop"`
+		case models.LensDistortionCorrection, "lens-v2":
+			if body["base64"] != encoded || body["mirror_lens"] != false || body["crop"] != true {
+				t.Errorf("lens input changed: %+v", body)
 			}
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Base64 != encoded ||
-				body.Mirror == nil || *body.Mirror || !body.Crop {
-				t.Error("lens correction lost the image or explicit false option")
-			}
-			fmt.Fprintf(w, `{"content_type":"image/png","image_base64":%q}`, base64.StdEncoding.EncodeToString([]byte(r.URL.Path)))
+			fmt.Fprintf(w, `{"content_type":"image/png","image_base64":%q}`, base64.StdEncoding.EncodeToString([]byte("/v1/vision/lens_distortion_correction/correct")))
 		default:
-			t.Errorf("unexpected gateway path %q", r.URL.Path)
-			w.WriteHeader(http.StatusNotFound)
+			t.Errorf("unexpected model %s", r.Header.Get("X-Model-Key"))
+			w.WriteHeader(404)
 		}
 	}))
 	defer gateway.Close()
 
 	const direct = "http://127.0.0.1:1"
 	sets, err := Build(context.Background(), config.Config{Providers: map[string]config.ProviderConfig{
-		"gateway": {VMindGateway: &config.VMindGatewayProviderConfig{BaseURL: gateway.URL, PollInterval: 1,
+		"gateway": {VMindGateway: &config.VMindGatewayProviderConfig{BaseURL: gateway.URL + "/proxy", PollInterval: 1,
 			ResultStorage: config.ObjectStorageConfig{Provider: "s3", Region: "us-east-2", Bucket: "fixture",
 				AccessKeyID: "test-only", AccessKeySecret: "test-only"}}},
 		"parser": {VisionGateway: "gateway", Models: []string{models.HumanParse},

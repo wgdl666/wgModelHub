@@ -360,3 +360,11 @@ API key 不会作为鉴权降级路径。项目、代理或 provider 增删须�
 共享颜色模板采用原始门槛评测问法 `检索主色是「{{query}}」的单品`（无句号），与 Mixedbread 旧主色包装一致。look 使用 Google 已测的统一模板；Mixedbread 旧 look 使用原始短 Query，因此旧 look 门槛须在新模板下重新核验。本分支不改线上模板、业务门槛或竞速配置。
 
 本次按两组 review：Wardrobe `codex/deep-recommend-rerank-race` 负责竞速和业务门槛；参数对齐由 Wardrobe `codex/rerank-instruction-key` 与本仓库 `codex/rerank-instruction-templates` 配套完成。本仓库 AppConfig 只新增 `rerank_templates`，沿用现有 Google/Mixedbread provider 与模型路由。模板不放在 Wardrobe，模型门槛不放在 ModelHub；代码合并提交使用 `[skip ci]` 跳过自动部署；配置示例仍是草案，合并代码不代表已经更新线上 AppConfig。
+
+## ModelGateway 统一调用入口
+
+`vmind_gateway` 的文本、图片、视频，以及设置 `vision_gateway` 的视觉适配器，统一向 `POST /v1/gateway/requests/{model_key}` 发送 JSON `input`，使用既有服务端 API Token 和 UUID `Idempotency-Key`。图片和视频原有的任务查询、对象存储读取保持不变；文本 JSON/SSE 和视觉原生结果继续由现有适配器转换为 gRPC。
+
+ModelHub 仍维护 `request.model → provider` 配置和 protobuf 输入/输出适配，不维护 `model → Gateway 路径` 或复制 Gateway 的 JSON Schema 校验。模型 schema、实例选择、上游路径和 endpoint 由 Gateway 管理。新增同类模型可沿用适配器和配置模型列表；新增 protobuf 尚未表达的能力仍需补适配。
+
+发布顺序：先在 Gateway 执行 input_schema 迁移并部署支持统一入口的版本，再发布此 ModelHub 版本。Gateway 保留旧路由，因此旧 ModelHub 可继续工作；此版本不向旧路由自动回退。第三方供应商直连的 OpenAI-compatible `/chat/completions` 和 Images API 不改。
