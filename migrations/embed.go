@@ -36,3 +36,8 @@ var ModelCallTraceSQL string
 //
 //go:embed 009_prefix_cache.sql
 var PrefixCacheSQL string
+
+// PrefixCacheExpiryNullableSQL persists non-cacheable prefixes with NULL expiry.
+//
+//go:embed 010_prefix_cache_expiry_nullable.sql
+var PrefixCacheExpiryNullableSQL string

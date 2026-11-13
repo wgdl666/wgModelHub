@@ -86,7 +86,12 @@ max_output_tokens 包含思考与最终输出，使用前应按场景确认预�
 Nacos/AppConfig 可配置 `explicit_cache.enabled: true`（默认关闭，可通过现有配置加载机制更新）。
 可选 `explicit_cache.models: [gemini-3.7-flash, gemini-3.8-flash]` 限定启用模型；省略或空列表表示不限制支持显式缓存的 Google 文本模型，Argon/Carbon 始终跳过。
 先通过独立迁移入口创建 `modelhub.prefix_cache`，再开启配置；服务启动不会创建表。
-表只保存 `cache_key`、`cached_content`、`expires_at`，不保存 prompt 或媒体正文。
+本版本须先执行 `010_prefix_cache_expiry_nullable.sql`（正式 migration 命令已包含），再更新服务。
+表仍只保存 `cache_key`、`cached_content`、`expires_at`，不保存 prompt 或媒体正文。
+普通缓存的资源有效期仍为1小时，使用前保留5秒余量。
+上游明确以400拒绝创建、原因是静态前缀 token 不足时，后台写入资源名为空字符串、过期时间为 NULL 的记录。
+后续所有实例读到过期时间为 NULL 的记录后直接发送完整输入，不再创建缓存；
+标记无 TTL，重启不会丢失。前缀或模型等隔离维度变化会生成新 key；同 key 需要重试时删除该标记。
 
 Gemini/Vertex 的文本 Generate 自动将实际出站的 system instruction、工具定义与工具模式
 作为固定前缀。key 隔离部署区域、调用身份、供应商连接身份和模型；动态内容与输出 Schema
@@ -95,10 +100,11 @@ Gemini/Vertex 的文本 Generate 自动将实际出站的 system instruction、�
 
 无有效缓存时，本次完整调用，后台使用 PostgreSQL 非阻塞事务 advisory lock 按 key
 协调创建，TTL 固定1小时，不自动续期。取得锁后再次查询，避免正常并发重复创建。
-创建失败不写入缓存表，不维护进程内失败冷却或 key 去重表；后续请求未命中时再次尝试，
+除上述短前缀标记外，创建失败不写入缓存表，不维护进程内失败冷却或 key 去重表；后续请求未命中时再次尝试，
 同 key 创建由数据库锁协调，后台仍有并发上限。缓存查询、失效和后台创建失败日志直接记录 error。
-数据库不可用仍完整调用。缓存使用在途可能过期：只有明确指向 CachedContent 的
-不存在/过期错误，且尚未发出增量，才作废对应旧 ID、完整补发一次并安排重建。
+数据库不可用仍完整调用。缓存使用在途可能过期：托管缓存请求收到400/403/404，
+且错误消息包含 cache content、cached content、cachecontent、cachedcontent、cache_content 或 cached_content
+（忽略大小写）时，若请求未取消、流式尚未发出增量，则完整补发一次，并在后台作废对应旧 ID、重建缓存。
 普通404、限流、超时、取消和已经输出后的失败不会走该缓存补发路径。
 
 缓存创建成功但记录尚未提交时实例异常退出，可能留下未登记的上游缓存，按1小时 TTL

@@ -8,8 +8,8 @@ import (
 	"errors"
 	"os"
 	"strings"
-	"time"
 
+	"github.com/wgdl666/kangaroo/logs"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/callledger"
 	"github.com/wgdl666/wgModelHub/internal/prefixcache"
@@ -70,6 +70,9 @@ func (p *Provider) preparePrefixCache(ctx context.Context, model string, request
 		return original, nil
 	}
 	if entry := p.cache.Lookup(ctx, key); entry != nil {
+		if entry.ExpiresAt == nil {
+			return original, nil
+		}
 		cached := *original
 		cached.CachedContent = entry.Name
 		cached.SystemInstruction = nil
@@ -99,16 +102,17 @@ func (p *Provider) schedulePrefixCache(ctx context.Context, model string, origin
 			ToolConfig:        prefix.ToolConfig,
 		})
 		if err != nil {
-			// 相同静态前缀不会因下一次生成而变长，暂停创建但保留完整提示生成。
+			// 同 key 的静态前缀不变，持久登记过短，后续直接使用完整输入。
 			if insufficientCachedContentTokens(err) {
-				p.cache.Suppress(key, time.Hour)
+				logs.Default().WarnContext(createCtx, "modelhub_prefix_cache_too_short", "key", key, "error", err)
+				return &prefixcache.Entry{}, nil
 			}
 			return nil, err
 		}
 		if cached == nil || cached.Name == "" || cached.ExpireTime.IsZero() {
 			return nil, provider.New(provider.ErrorInvalidResponse, "cache creation returned no resource name or expiry")
 		}
-		return &prefixcache.Entry{Name: cached.Name, ExpiresAt: cached.ExpireTime}, nil
+		return &prefixcache.Entry{Name: cached.Name, ExpiresAt: &cached.ExpireTime}, nil
 	})
 }
 

@@ -14,6 +14,7 @@ import (
 	"github.com/wgdl666/wgModelHub/ent"
 	"github.com/wgdl666/wgModelHub/ent/prefixcache"
 	"github.com/wgdl666/wgModelHub/internal/dbmigration"
+	"github.com/wgdl666/wgModelHub/migrations"
 )
 
 // Requires a disposable database: the explicit migration command is exercised.
@@ -29,14 +30,38 @@ func TestPostgresCacheRegistryAndCrossConnectionLocks(t *testing.T) {
 	defer db.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
+	// Start with the original three-column table and a usable resource.
+	if _, err := db.ExecContext(ctx, "CREATE SCHEMA IF NOT EXISTS modelhub"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, migrations.PrefixCacheSQL); err != nil {
+		t.Fatal(err)
+	}
+	const legacyKey = "prefix-cache-legacy-migration"
+	legacyExpiry := time.Now().Add(TTL).UTC().Truncate(time.Microsecond)
+	if _, err := db.ExecContext(ctx, "INSERT INTO modelhub.prefix_cache (cache_key, cached_content, expires_at) VALUES ($1, $2, $3)", legacyKey, "cachedContents/legacy", legacyExpiry); err != nil {
+		t.Fatal(err)
+	}
+	defer db.ExecContext(context.Background(), "DELETE FROM modelhub.prefix_cache WHERE cache_key = $1", legacyKey)
 	if err := dbmigration.Run(ctx, db); err != nil {
 		t.Fatal(err)
 	}
+	if err := dbmigration.Run(ctx, db); err != nil {
+		t.Fatalf("migration must be repeatable: %v", err)
+	}
 	client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.Postgres, db)))
 	store := NewPostgres(client)
+	legacy, err := store.Get(ctx, legacyKey)
+	if err != nil || legacy == nil || legacy.Name != "cachedContents/legacy" || legacy.ExpiresAt == nil || !legacy.ExpiresAt.Equal(legacyExpiry) {
+		t.Fatalf("migration changed existing resource: %+v err=%v", legacy, err)
+	}
+	var columns int
+	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'modelhub' AND table_name = 'prefix_cache'").Scan(&columns); err != nil || columns != 3 {
+		t.Fatalf("registry must retain three columns: count=%d err=%v", columns, err)
+	}
 	key := "prefix-cache-postgres-integration"
 	defer client.PrefixCache.Delete().Where(prefixcache.IDEQ(key)).Exec(context.Background())
-	first := &Entry{Key: key, Name: "cachedContents/first", ExpiresAt: time.Now().Add(TTL).UTC().Truncate(time.Microsecond)}
+	first := &Entry{Key: key, Name: "cachedContents/first", ExpiresAt: expiryPtr(time.Now().Add(TTL).UTC().Truncate(time.Microsecond))}
 	acquired, err := store.WithLock(ctx, lockID(key), func(txStore Store) error {
 		// A second connection must return immediately without entering its callback,
 		// including when no registry row exists yet.
@@ -54,10 +79,10 @@ func TestPostgresCacheRegistryAndCrossConnectionLocks(t *testing.T) {
 		t.Fatalf("first lock acquired=%v err=%v", acquired, err)
 	}
 	got, err := store.Get(ctx, key)
-	if err != nil || got == nil || got.Name != first.Name || !got.ExpiresAt.Equal(first.ExpiresAt) {
+	if err != nil || got == nil || got.Name != first.Name || got.ExpiresAt == nil || !got.ExpiresAt.Equal(*first.ExpiresAt) {
 		t.Fatalf("registry entry=%+v err=%v", got, err)
 	}
-	second := &Entry{Key: key, Name: "cachedContents/second", ExpiresAt: first.ExpiresAt.Add(time.Minute)}
+	second := &Entry{Key: key, Name: "cachedContents/second", ExpiresAt: expiryPtr(first.ExpiresAt.Add(time.Minute))}
 	acquired, err = store.WithLock(ctx, lockID(key), func(txStore Store) error { return txStore.Put(ctx, second) })
 	if err != nil || !acquired {
 		t.Fatalf("lock not released by commit: acquired=%v err=%v", acquired, err)
@@ -96,7 +121,7 @@ func TestPostgresCacheRegistryAndCrossConnectionLocks(t *testing.T) {
 	var creates atomic.Int32
 	create := func(context.Context) (*Entry, error) {
 		creates.Add(1)
-		return &Entry{Name: "cachedContents/shared", ExpiresAt: time.Now().Add(TTL)}, nil
+		return &Entry{Name: "cachedContents/shared", ExpiresAt: expiryPtr(time.Now().Add(TTL))}, nil
 	}
 	a.ScheduleCreate(managerKey, "", func(ctx context.Context) (*Entry, error) {
 		close(started)
@@ -123,7 +148,7 @@ func TestPostgresCacheRegistryAndCrossConnectionLocks(t *testing.T) {
 		t.Fatalf("cross-manager duplicate creation: count=%d", creates.Load())
 	}
 	_, err = store.WithLock(ctx, lockID(managerKey), func(txStore Store) error {
-		return txStore.Put(ctx, &Entry{Key: managerKey, Name: "cachedContents/shared", ExpiresAt: time.Now().Add(-time.Minute)})
+		return txStore.Put(ctx, &Entry{Key: managerKey, Name: "cachedContents/shared", ExpiresAt: expiryPtr(time.Now().Add(-time.Minute))})
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -135,5 +160,56 @@ func TestPostgresCacheRegistryAndCrossConnectionLocks(t *testing.T) {
 	b.wg.Wait()
 	if creates.Load() != 2 || b.Lookup(ctx, managerKey) == nil {
 		t.Fatal("expired prefix not rebuilt")
+	}
+
+	// Persist a negative result over an old resource, with a NULL expiry rather than a TTL.
+	_, err = store.WithLock(ctx, lockID(managerKey), func(txStore Store) error {
+		return txStore.Put(ctx, &Entry{Key: managerKey})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var resource string
+	var expiry sql.NullTime
+	if err := db.QueryRowContext(ctx, "SELECT cached_content, expires_at FROM modelhub.prefix_cache WHERE cache_key = $1", managerKey).Scan(&resource, &expiry); err != nil {
+		t.Fatal(err)
+	}
+	if resource != "" || expiry.Valid {
+		t.Fatalf("short prefix has resource/expiry: resource=%q expiry=%v", resource, expiry)
+	}
+	if err := store.Invalidate(ctx, managerKey, "cachedContents/shared"); err != nil {
+		t.Fatal(err)
+	}
+	c := New(ctx, NewPostgres(ent.NewClient(ent.Driver(entsql.OpenDB(dialect.Postgres, db)))))
+	defer c.Close()
+	if entry := c.Lookup(ctx, managerKey); entry == nil || entry.ExpiresAt != nil {
+		t.Fatalf("fresh manager lost persisted short-prefix decision: %+v", entry)
+	}
+	// A job queued before the marker was committed must reread it under the lock.
+	c.ScheduleCreate(managerKey, "", create)
+	c.wg.Wait()
+	if creates.Load() != 2 {
+		t.Fatal("persisted short prefix recreated a cache")
+	}
+	// A new short-prefix key is insertable with an empty resource and NULL expiry.
+	shortKey := key + "-short"
+	defer client.PrefixCache.Delete().Where(prefixcache.IDEQ(shortKey)).Exec(context.Background())
+	_, err = store.WithLock(ctx, lockID(shortKey), func(txStore Store) error {
+		return txStore.Put(ctx, &Entry{Key: shortKey})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry := c.Lookup(ctx, shortKey); entry == nil || entry.ExpiresAt != nil {
+		t.Fatalf("short-prefix insert was not persisted: %+v", entry)
+	}
+	_, err = store.WithLock(ctx, lockID(shortKey), func(txStore Store) error {
+		return txStore.Put(ctx, &Entry{Key: shortKey, Name: "cachedContents/re-enabled", ExpiresAt: expiryPtr(time.Now().Add(TTL))})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry := c.Lookup(ctx, shortKey); !entry.Usable(time.Now()) {
+		t.Fatalf("normal resource could not replace NULL expiry: %+v", entry)
 	}
 }

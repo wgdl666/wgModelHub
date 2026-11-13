@@ -9,14 +9,15 @@ import (
 )
 
 type Entry struct {
-	Key       string
-	Name      string
-	ExpiresAt time.Time
+	Key  string
+	Name string
+	// A nil expiry is a persisted decision to bypass explicit caching for this key.
+	ExpiresAt *time.Time
 }
 
 func (e *Entry) Usable(now time.Time) bool {
 	// Avoid handing out a resource likely to expire during request dispatch.
-	return e != nil && e.Name != "" && e.ExpiresAt.After(now.Add(5*time.Second))
+	return e != nil && e.ExpiresAt != nil && e.Name != "" && e.ExpiresAt.After(now.Add(5*time.Second))
 }
 
 type Store interface {
@@ -47,11 +48,17 @@ func (s *Postgres) Get(ctx context.Context, key string) (*Entry, error) {
 
 func (s *Postgres) Put(ctx context.Context, entry *Entry) error {
 	// Every writer holds the per-key advisory lock, including conditional removal.
-	n, err := s.client.PrefixCache.Update().Where(prefixcache.IDEQ(entry.Key)).SetCachedContent(entry.Name).SetExpiresAt(entry.ExpiresAt).Save(ctx)
+	update := s.client.PrefixCache.Update().Where(prefixcache.IDEQ(entry.Key)).SetCachedContent(entry.Name)
+	if entry.ExpiresAt == nil {
+		update.ClearExpiresAt()
+	} else {
+		update.SetExpiresAt(*entry.ExpiresAt)
+	}
+	n, err := update.Save(ctx)
 	if err != nil || n > 0 {
 		return err
 	}
-	return s.client.PrefixCache.Create().SetID(entry.Key).SetCachedContent(entry.Name).SetExpiresAt(entry.ExpiresAt).Exec(ctx)
+	return s.client.PrefixCache.Create().SetID(entry.Key).SetCachedContent(entry.Name).SetNillableExpiresAt(entry.ExpiresAt).Exec(ctx)
 }
 
 func (s *Postgres) Invalidate(ctx context.Context, key, name string) error {
