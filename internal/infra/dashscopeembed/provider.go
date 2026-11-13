@@ -3,7 +3,6 @@
 package dashscopeembed
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -12,6 +11,7 @@ import (
 	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
@@ -56,7 +56,7 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 	}
 	payload := map[string]any{
 		"model":      model,
-		"input":      map[string]any{"contents": []map[string]string{content}},
+		"input":      map[string]any{"contents": []any{content}},
 		"parameters": map[string]any{"dimension": vectorDim, "output_type": "dense"},
 	}
 	vector, err := p.post(ctx, payload)
@@ -94,11 +94,11 @@ func embedContent(request *modelhubv2.GenerateRequest) (map[string]string, error
 }
 
 func (p *Provider) post(ctx context.Context, payload any) ([]float64, error) {
-	body, err := json.Marshal(payload)
+	body, err := httpbody.JSON(payload, true)
 	if err != nil {
 		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" encode embedding", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.endpoint, bytes.NewReader(body))
+	req, err := body.NewRequest(ctx, http.MethodPost, p.endpoint)
 	if err != nil {
 		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" create embedding request", err)
 	}
