@@ -22,6 +22,6 @@ func (PrefixCache) Fields() []ent.Field {
 	return []ent.Field{
 		field.String("id").StorageKey("cache_key").Immutable(),
 		field.String("cached_content"),
-		field.Time("expires_at").SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+		field.Time("expires_at").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 	}
 }

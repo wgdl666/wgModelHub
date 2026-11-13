@@ -94,9 +94,8 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 	original := p.buildConfig(model, request)
 	config, cached := p.preparePrefixCache(ctx, model, request, original)
 	response, err := p.client.Models.GenerateContent(ctx, model, contents, config)
-	if cached != nil && ctx.Err() == nil && missingCachedContent(err) {
-		p.cache.Invalidate(ctx, cached)
-		p.schedulePrefixCache(ctx, model, original, cached.Key)
+	if cached != nil && ctx.Err() == nil && cachedContentError(err) {
+		p.schedulePrefixCache(ctx, model, original, cached.Key, cached.Name)
 		response, err = p.client.Models.GenerateContent(ctx, model, contents, original)
 	}
 	if err != nil {
@@ -117,9 +116,8 @@ func (p *Provider) GenerateStream(ctx context.Context, model string, request *mo
 	original := p.buildConfig(model, request)
 	config, cached := p.preparePrefixCache(ctx, model, request, original)
 	final, emitted, err := p.generateStreamOnce(ctx, model, contents, config, emit)
-	if cached != nil && !emitted && ctx.Err() == nil && missingCachedContent(err) {
-		p.cache.Invalidate(ctx, cached)
-		p.schedulePrefixCache(ctx, model, original, cached.Key)
+	if cached != nil && !emitted && ctx.Err() == nil && cachedContentError(err) {
+		p.schedulePrefixCache(ctx, model, original, cached.Key, cached.Name)
 		final, _, err = p.generateStreamOnce(ctx, model, contents, original, emit)
 	}
 	if err != nil {

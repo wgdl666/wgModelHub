@@ -157,7 +157,7 @@ var (
 	PrefixCacheColumns = []*schema.Column{
 		{Name: "cache_key", Type: field.TypeString},
 		{Name: "cached_content", Type: field.TypeString},
-		{Name: "expires_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "expires_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
 	}
 	// PrefixCacheTable holds the schema information for the "prefix_cache" table.
 	PrefixCacheTable = &schema.Table{
