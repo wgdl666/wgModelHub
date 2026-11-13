@@ -11,7 +11,7 @@ import (
 	"github.com/wgdl666/kangaroo/logs"
 )
 
-// Server 提供内网健康检查、指标和堆采样。
+// Server 提供内网健康检查、指标和运行时采样。
 type Server struct {
 	metricsHandler http.Handler
 	server         *http.Server
@@ -27,7 +27,8 @@ func (s *Server) Start(addr string) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", handleHealth)
 	mux.Handle("/metrics", s.metricsHandler)
-	// 采集器通过监控端口逐实例抓取堆快照。
+	// 采集器通过内网监控端口逐实例抓取 CPU 和堆快照。
+	mux.HandleFunc("GET /debug/pprof/profile", pprof.Profile)
 	mux.Handle("GET /debug/pprof/heap", pprof.Handler("heap"))
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {

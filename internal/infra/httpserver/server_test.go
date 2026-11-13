@@ -54,21 +54,23 @@ func TestMonitoringEndpoints(t *testing.T) {
 		t.Fatalf("metrics body=%q", body)
 	}
 
-	heapResp, err := http.Get(base + "/debug/pprof/heap")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer heapResp.Body.Close()
-	if heapResp.StatusCode != http.StatusOK {
-		t.Fatalf("heap status=%d", heapResp.StatusCode)
-	}
-	profile, err := gzip.NewReader(heapResp.Body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer profile.Close()
-	if size, err := io.Copy(io.Discard, profile); err != nil || size == 0 {
-		t.Fatalf("heap profile size=%d, err=%v", size, err)
+	for _, path := range []string{"/debug/pprof/heap", "/debug/pprof/profile?seconds=1"} {
+		profileResp, err := http.Get(base + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer profileResp.Body.Close()
+		if profileResp.StatusCode != http.StatusOK {
+			t.Fatalf("profile status=%d", profileResp.StatusCode)
+		}
+		profile, err := gzip.NewReader(profileResp.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer profile.Close()
+		if size, err := io.Copy(io.Discard, profile); err != nil || size == 0 {
+			t.Fatalf("profile %s size=%d, err=%v", path, size, err)
+		}
 	}
 }
 
