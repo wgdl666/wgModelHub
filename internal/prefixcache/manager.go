@@ -10,7 +10,7 @@ import (
 	"github.com/wgdl666/kangaroo/logs"
 )
 
-const TTL = time.Hour
+const TTL = 24 * time.Hour
 
 // Manager registers resources and non-cacheable prefixes. It does not renew
 // resources or persist prompts. Bounded workers retain static input in memory.

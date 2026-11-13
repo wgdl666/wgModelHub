@@ -148,18 +148,18 @@ func TestPostgresCacheRegistryAndCrossConnectionLocks(t *testing.T) {
 		t.Fatalf("cross-manager duplicate creation: count=%d", creates.Load())
 	}
 	_, err = store.WithLock(ctx, lockID(managerKey), func(txStore Store) error {
-		return txStore.Put(ctx, &Entry{Key: managerKey, Name: "cachedContents/shared", ExpiresAt: expiryPtr(time.Now().Add(-time.Minute))})
+		return txStore.Put(ctx, &Entry{Key: managerKey, Name: "cachedContents/shared", ExpiresAt: expiryPtr(time.Now().Add(9 * time.Minute))})
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if b.Lookup(ctx, managerKey) != nil {
-		t.Fatal("expired registry entry reused")
+		t.Fatal("registry entry within ten-minute margin reused")
 	}
 	b.ScheduleCreate(managerKey, "", create)
 	b.wg.Wait()
 	if creates.Load() != 2 || b.Lookup(ctx, managerKey) == nil {
-		t.Fatal("expired prefix not rebuilt")
+		t.Fatal("prefix not rebuilt before expiration")
 	}
 
 	// Persist a negative result over an old resource, with a NULL expiry rather than a TTL.

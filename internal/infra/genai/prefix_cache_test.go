@@ -176,64 +176,79 @@ func awaitPrefixPut(t *testing.T, store *prefixMemoryStore) *prefixcache.Entry {
 	}
 }
 
-func TestManagedPrefixColdCallDoesNotWaitAndDynamicInputReusesCache(t *testing.T) {
-	creating := make(chan struct{})
-	release := make(chan struct{})
-	var once sync.Once
-	defer once.Do(func() { close(release) })
-	var cacheCalls atomic.Int32
-	requests := make(chan map[string]any, 4)
-	p, _, store := prefixTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
-		body := decodePrefixBody(t, r)
-		if strings.HasSuffix(r.URL.Path, "/cachedContents") {
-			cacheCalls.Add(1)
-			if body["ttl"] != "3600s" || body["toolConfig"].(map[string]any)["functionCallingConfig"].(map[string]any)["mode"] != "ANY" {
-				t.Errorf("cached prefix lost TTL or required tool mode: %v", body)
-			}
-			close(creating)
-			select {
-			case <-release:
-			case <-r.Context().Done():
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprintf(w, `{"name":"cachedContents/shared","expireTime":%q}`, time.Now().Add(time.Hour).UTC().Format(time.RFC3339Nano))
-			return
+func TestManagedPrefixColdOrExpiringCallDoesNotWaitAndDynamicInputReusesCache(t *testing.T) {
+	for _, backend := range []genaisdk.Backend{genaisdk.BackendGeminiAPI, genaisdk.BackendVertexAI} {
+		for _, nearExpiry := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/nearExpiry=%v", backend, nearExpiry), func(t *testing.T) {
+				resourceName := "cachedContents/shared"
+				if backend == genaisdk.BackendVertexAI {
+					resourceName = "projects/test-project/locations/global/cachedContents/shared"
+				}
+				creating := make(chan struct{})
+				release := make(chan struct{})
+				var once sync.Once
+				defer once.Do(func() { close(release) })
+				var cacheCalls atomic.Int32
+				requests := make(chan map[string]any, 4)
+				p, _, store := prefixTestProviderBackend(t, backend, func(w http.ResponseWriter, r *http.Request) {
+					body := decodePrefixBody(t, r)
+					if strings.HasSuffix(r.URL.Path, "/cachedContents") {
+						cacheCalls.Add(1)
+						if body["ttl"] != "86400s" || body["toolConfig"].(map[string]any)["functionCallingConfig"].(map[string]any)["mode"] != "ANY" {
+							t.Errorf("cached prefix lost TTL or required tool mode: %v", body)
+						}
+						close(creating)
+						select {
+						case <-release:
+						case <-r.Context().Done():
+							return
+						}
+						w.Header().Set("Content-Type", "application/json")
+						fmt.Fprintf(w, `{"name":%q,"expireTime":%q}`, resourceName, time.Now().Add(prefixcache.TTL).UTC().Format(time.RFC3339Nano))
+						return
+					}
+					requests <- body
+					writePrefixResponse(w, body["cachedContent"] != nil)
+				})
+				req := prefixRequest()
+				original := proto.Clone(req)
+				if nearExpiry {
+					key := p.prefixKey(context.Background(), req.Model, p.buildConfig(req.Model, req))
+					store.Put(context.Background(), &prefixcache.Entry{Key: key, Name: "cachedContents/near-expiry", ExpiresAt: prefixExpiry(time.Now().Add(9 * time.Minute))})
+					awaitPrefixPut(t, store)
+				}
+				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+				defer cancel()
+				first, err := p.Generate(ctx, req.Model, req)
+				if err != nil || first.GetUsage().GetCachedTokens() != 0 {
+					t.Fatalf("full-input call waited/failed: final=%v err=%v", first, err)
+				}
+				select {
+				case <-creating:
+				case <-ctx.Done():
+					t.Fatal("cache creation not scheduled")
+				}
+				full := <-requests
+				if full["systemInstruction"] == nil || full["tools"] == nil || full["cachedContent"] != nil {
+					t.Fatalf("cold request lost full prefix: %v", full)
+				}
+				once.Do(func() { close(release) })
+				awaitPrefixPut(t, store)
+				next := proto.Clone(req).(*modelhubv2.GenerateRequest)
+				next.Input.Items[1].GetMessage().Parts[0] = &modelhubv2.ContentPart{Content: &modelhubv2.ContentPart_Text{Text: "Find a white shirt instead"}}
+				final, err := p.Generate(ctx, next.Model, next)
+				if err != nil || final.GetUsage().GetCachedTokens() != 5 {
+					t.Fatalf("cache reuse failed: final=%v err=%v", final, err)
+				}
+				used := <-requests
+				if used["cachedContent"] != resourceName || used["systemInstruction"] != nil || used["tools"] != nil || used["toolConfig"] != nil {
+					t.Fatalf("cache reference repeats static fields: %v", used)
+				}
+				if !strings.Contains(fmt.Sprint(used["contents"]), "white shirt") || cacheCalls.Load() != 1 || !proto.Equal(original, req) {
+					t.Fatal("dynamic contents changed, prefix recreated, or original request mutated")
+				}
+			})
 		}
-		requests <- body
-		writePrefixResponse(w, body["cachedContent"] != nil)
-	})
-	req := prefixRequest()
-	original := proto.Clone(req)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	first, err := p.Generate(ctx, req.Model, req)
-	if err != nil || first.GetUsage().GetCachedTokens() != 0 {
-		t.Fatalf("cold call waited/failed: final=%v err=%v", first, err)
-	}
-	select {
-	case <-creating:
-	case <-ctx.Done():
-		t.Fatal("cache creation not scheduled")
-	}
-	full := <-requests
-	if full["systemInstruction"] == nil || full["tools"] == nil || full["cachedContent"] != nil {
-		t.Fatalf("cold request lost full prefix: %v", full)
-	}
-	once.Do(func() { close(release) })
-	awaitPrefixPut(t, store)
-	next := proto.Clone(req).(*modelhubv2.GenerateRequest)
-	next.Input.Items[1].GetMessage().Parts[0] = &modelhubv2.ContentPart{Content: &modelhubv2.ContentPart_Text{Text: "Find a white shirt instead"}}
-	final, err := p.Generate(ctx, next.Model, next)
-	if err != nil || final.GetUsage().GetCachedTokens() != 5 {
-		t.Fatalf("cache reuse failed: final=%v err=%v", final, err)
-	}
-	used := <-requests
-	if used["cachedContent"] != "cachedContents/shared" || used["systemInstruction"] != nil || used["tools"] != nil || used["toolConfig"] != nil {
-		t.Fatalf("cache reference repeats static fields: %v", used)
-	}
-	if !strings.Contains(fmt.Sprint(used["contents"]), "white shirt") || cacheCalls.Load() != 1 || !proto.Equal(original, req) {
-		t.Fatal("dynamic contents changed, prefix recreated, or original request mutated")
 	}
 }
 
@@ -417,7 +432,7 @@ func TestManagedPrefixRecoveryDoesNotWaitForMaintenance(t *testing.T) {
 						return
 					}
 					w.Header().Set("Content-Type", "application/json")
-					fmt.Fprintf(w, `{"name":"cachedContents/rebuilt","expireTime":%q}`, time.Now().Add(time.Hour).UTC().Format(time.RFC3339Nano))
+					fmt.Fprintf(w, `{"name":"cachedContents/rebuilt","expireTime":%q}`, time.Now().Add(prefixcache.TTL).UTC().Format(time.RFC3339Nano))
 					return
 				}
 				calls.Add(1)
@@ -603,7 +618,7 @@ func TestManagedPrefixCreationErrorsRetryOnLaterRequests(t *testing.T) {
 				if strings.HasSuffix(r.URL.Path, "/cachedContents") {
 					if cacheCalls.Add(1) > 1 {
 						w.Header().Set("Content-Type", "application/json")
-						fmt.Fprintf(w, `{"name":"cachedContents/retried","expireTime":%q}`, time.Now().Add(time.Hour).UTC().Format(time.RFC3339Nano))
+						fmt.Fprintf(w, `{"name":"cachedContents/retried","expireTime":%q}`, time.Now().Add(prefixcache.TTL).UTC().Format(time.RFC3339Nano))
 						return
 					}
 					message := "Invalid cache configuration"

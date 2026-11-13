@@ -7,7 +7,7 @@ import (
 
 func expiryPtr(value time.Time) *time.Time { return &value }
 
-func TestEntryUsablePreservesFiveSecondMarginAndExcludesShortPrefixes(t *testing.T) {
+func TestEntryUsableUsesTenMinuteMarginAndExcludesShortPrefixes(t *testing.T) {
 	now := time.Now()
 	for _, tc := range []struct {
 		name  string
@@ -16,8 +16,9 @@ func TestEntryUsablePreservesFiveSecondMarginAndExcludesShortPrefixes(t *testing
 	}{
 		{"missing", nil, false},
 		{"no resource", &Entry{ExpiresAt: expiryPtr(now.Add(TTL))}, false},
-		{"within margin", &Entry{Name: "cachedContents/1", ExpiresAt: expiryPtr(now.Add(5 * time.Second))}, false},
-		{"outside margin", &Entry{Name: "cachedContents/1", ExpiresAt: expiryPtr(now.Add(5*time.Second + time.Nanosecond))}, true},
+		{"within margin", &Entry{Name: "cachedContents/1", ExpiresAt: expiryPtr(now.Add(9 * time.Minute))}, false},
+		{"exact margin", &Entry{Name: "cachedContents/1", ExpiresAt: expiryPtr(now.Add(10 * time.Minute))}, false},
+		{"outside margin", &Entry{Name: "cachedContents/1", ExpiresAt: expiryPtr(now.Add(10*time.Minute + time.Nanosecond))}, true},
 		{"too short", &Entry{}, false},
 		{"null expiry with stale resource", &Entry{Name: "cachedContents/1"}, false},
 	} {

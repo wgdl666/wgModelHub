@@ -17,7 +17,7 @@ type Entry struct {
 
 func (e *Entry) Usable(now time.Time) bool {
 	// Avoid handing out a resource likely to expire during request dispatch.
-	return e != nil && e.ExpiresAt != nil && e.Name != "" && e.ExpiresAt.After(now.Add(5*time.Second))
+	return e != nil && e.ExpiresAt != nil && e.Name != "" && e.ExpiresAt.After(now.Add(10*time.Minute))
 }
 
 type Store interface {
