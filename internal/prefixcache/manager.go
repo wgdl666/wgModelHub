@@ -82,11 +82,11 @@ func (m *Manager) Lookup(ctx context.Context, key string) *Entry {
 	return nil
 }
 
-func (m *Manager) Invalidate(ctx context.Context, entry *Entry) {
+func (m *Manager) invalidate(ctx context.Context, key, name string) {
 	ctx, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
 	defer cancel()
-	_, err := m.store.WithLock(ctx, lockID(entry.Key), func(store Store) error {
-		return store.Invalidate(ctx, entry.Key, entry.Name)
+	_, err := m.store.WithLock(ctx, lockID(key), func(store Store) error {
+		return store.Invalidate(ctx, key, name)
 	})
 	if err != nil {
 		// The full-prompt fallback is still usable during a registry outage.
@@ -94,9 +94,11 @@ func (m *Manager) Invalidate(ctx context.Context, entry *Entry) {
 	}
 }
 
-func (m *Manager) ScheduleCreate(key string, create func(context.Context) (*Entry, error)) {
+// ScheduleCreate invalidates rejectedName, when supplied, before creating a cache.
+// Both operations use the manager's context and never wait on the request path.
+func (m *Manager) ScheduleCreate(key, rejectedName string, create func(context.Context) (*Entry, error)) {
 	m.mu.Lock()
-	if m.ctx.Err() != nil || m.blocked[key].After(time.Now()) {
+	if m.ctx.Err() != nil || (rejectedName == "" && m.blocked[key].After(time.Now())) {
 		m.mu.Unlock()
 		return
 	}
@@ -115,6 +117,11 @@ func (m *Manager) ScheduleCreate(key string, create func(context.Context) (*Entr
 		}()
 		ctx, cancel := context.WithTimeout(m.ctx, 25*time.Second)
 		defer cancel()
+		if rejectedName != "" {
+			// Commit invalidation separately so a failed create cannot restore the
+			// rejected entry through a transaction rollback.
+			m.invalidate(ctx, key, rejectedName)
+		}
 		_, err := m.store.WithLock(ctx, lockID(key), func(store Store) error {
 			// 排队期间同 key 可能已被拒绝，取得锁后必须再次检查。
 			if m.Suppressed(key) {

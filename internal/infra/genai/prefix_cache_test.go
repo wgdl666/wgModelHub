@@ -24,12 +24,14 @@ import (
 
 // The same registry/locks can be shared by independent managers in tests.
 type prefixMemoryStore struct {
-	mu              sync.Mutex
-	entries         map[string]*prefixcache.Entry
-	locked          map[int64]bool
-	puts            chan *prefixcache.Entry
-	readError       error
-	invalidateError error
+	mu               sync.Mutex
+	entries          map[string]*prefixcache.Entry
+	locked           map[int64]bool
+	puts             chan *prefixcache.Entry
+	readError        error
+	invalidateError  error
+	getCalls         int
+	beforeInvalidate func(context.Context) error
 }
 
 func newPrefixMemoryStore() *prefixMemoryStore {
@@ -39,6 +41,7 @@ func newPrefixMemoryStore() *prefixMemoryStore {
 func (s *prefixMemoryStore) Get(_ context.Context, key string) (*prefixcache.Entry, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.getCalls++
 	if s.readError != nil {
 		return nil, s.readError
 	}
@@ -58,7 +61,12 @@ func (s *prefixMemoryStore) Put(_ context.Context, entry *prefixcache.Entry) err
 	return nil
 }
 
-func (s *prefixMemoryStore) Invalidate(_ context.Context, key, name string) error {
+func (s *prefixMemoryStore) Invalidate(ctx context.Context, key, name string) error {
+	if s.beforeInvalidate != nil {
+		if err := s.beforeInvalidate(ctx); err != nil {
+			return err
+		}
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.invalidateError != nil {
@@ -104,9 +112,29 @@ func prefixRequest() *modelhubv2.GenerateRequest {
 
 func prefixTestProvider(t *testing.T, handler http.HandlerFunc) (*Provider, *prefixcache.Manager, *prefixMemoryStore) {
 	t.Helper()
+	return prefixTestProviderBackend(t, genaisdk.BackendGeminiAPI, handler)
+}
+
+func prefixTestProviderBackend(t *testing.T, backend genaisdk.Backend, handler http.HandlerFunc) (*Provider, *prefixcache.Manager, *prefixMemoryStore) {
+	t.Helper()
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
-	p, err := NewGemini(context.Background(), "developer-test", geminiTestAPIKey, server.URL, "")
+	var p *Provider
+	var err error
+	if backend == genaisdk.BackendVertexAI {
+		vertexServiceAccountADC(t, "https://oauth2.googleapis.com/token")
+		transport := &countingTransport{handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Host == "oauth2.googleapis.com" {
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprint(w, `{"access_token":"test-token","token_type":"Bearer","expires_in":3600}`)
+				return
+			}
+			handler(w, r)
+		})}
+		p, err = newVertexAI(context.Background(), "vertex-test", "test-project", &http.Client{Transport: transport})
+	} else {
+		p, err = NewGemini(context.Background(), "developer-test", geminiTestAPIKey, server.URL, "")
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,51 +289,198 @@ func TestManagedPrefixKeyUsesStaticFieldsAndIsolation(t *testing.T) {
 	}
 }
 
-func TestManagedPrefixMissingResourceFallsBackOnce(t *testing.T) {
+func TestManagedPrefixCacheErrorsFallBackOnce(t *testing.T) {
+	for _, tc := range []struct {
+		backend         genaisdk.Backend
+		code            int
+		status, message string
+	}{
+		{genaisdk.BackendVertexAI, 400, "INVALID_ARGUMENT", "Cache content 918477188586536960 is expired."},
+		{genaisdk.BackendGeminiAPI, 403, "PERMISSION_DENIED", "CachedContent not found (or permission denied)"},
+		{genaisdk.BackendGeminiAPI, 404, "NOT_FOUND", "Not found: cached content metadata for missing."},
+	} {
+		for _, stream := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/%d/stream=%v", tc.backend, tc.code, stream), func(t *testing.T) {
+				var calls atomic.Int32
+				p, _, store := prefixTestProviderBackend(t, tc.backend, func(w http.ResponseWriter, r *http.Request) {
+					if r.Method != http.MethodPost {
+						t.Errorf("unexpected upstream request: %s %s", r.Method, r.URL.Path)
+					}
+					body := decodePrefixBody(t, r)
+					if strings.HasSuffix(r.URL.Path, "/cachedContents") {
+						w.WriteHeader(429)
+						fmt.Fprint(w, `{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","message":"temporary"}}`)
+						return
+					}
+					calls.Add(1)
+					if body["cachedContent"] != nil {
+						w.WriteHeader(tc.code)
+						json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"code": tc.code, "status": tc.status, "message": tc.message}})
+						return
+					}
+					if body["systemInstruction"] == nil || body["tools"] == nil || body["toolConfig"] == nil {
+						t.Error("fallback lost original system/tools/mode")
+					}
+					if stream {
+						w.Header().Set("Content-Type", "text/event-stream")
+						fmt.Fprint(w, "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"name\":\"closet_search\",\"args\":{\"color\":\"black\"}}}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":10,\"totalTokenCount\":12}}\n\n")
+						return
+					}
+					writePrefixResponse(w, false)
+				})
+				req := prefixRequest()
+				key := p.prefixKey(context.Background(), req.Model, p.buildConfig(req.Model, req))
+				store.Put(context.Background(), &prefixcache.Entry{Key: key, Name: "cachedContents/missing", ExpiresAt: time.Now().Add(time.Hour)})
+				var err error
+				if stream {
+					var emitted int
+					_, err = p.GenerateStream(context.Background(), req.Model, req, func(e *modelhubv2.GenerateEvent) error { emitted++; return nil })
+					if emitted != 1 {
+						t.Fatalf("unexpected duplicate/missing output: %d", emitted)
+					}
+				} else {
+					_, err = p.Generate(context.Background(), req.Model, req)
+				}
+				if err != nil || calls.Load() != 2 {
+					t.Fatalf("expected one full fallback: calls=%d err=%v", calls.Load(), err)
+				}
+				waitForPrefixCondition(t, func() bool {
+					got, _ := store.Get(context.Background(), key)
+					return got == nil
+				})
+			})
+		}
+	}
+}
+
+func TestManagedPrefixCacheErrorRetryRequiresManagedCacheAndStopsAfterOnce(t *testing.T) {
+	for _, managed := range []bool{false, true} {
+		for _, stream := range []bool{false, true} {
+			t.Run(fmt.Sprintf("managed=%v/stream=%v", managed, stream), func(t *testing.T) {
+				var calls atomic.Int32
+				p, _, store := prefixTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+					if strings.HasSuffix(r.URL.Path, "/cachedContents") {
+						w.WriteHeader(429)
+						fmt.Fprint(w, `{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","message":"temporary"}}`)
+						return
+					}
+					calls.Add(1)
+					w.WriteHeader(403)
+					fmt.Fprint(w, `{"error":{"code":403,"status":"PERMISSION_DENIED","message":"CachedContent not found (or permission denied)"}}`)
+				})
+				p.cacheEnabled = func(string) bool { return managed }
+				req := prefixRequest()
+				key := p.prefixKey(context.Background(), req.Model, p.buildConfig(req.Model, req))
+				store.Put(context.Background(), &prefixcache.Entry{Key: key, Name: "cachedContents/rejected", ExpiresAt: time.Now().Add(time.Hour)})
+				var err error
+				if stream {
+					_, err = p.GenerateStream(context.Background(), req.Model, req, func(*modelhubv2.GenerateEvent) error {
+						t.Error("failed attempts must not emit output")
+						return nil
+					})
+				} else {
+					_, err = p.Generate(context.Background(), req.Model, req)
+				}
+				wantCalls := int32(1)
+				if managed {
+					wantCalls = 2
+				}
+				if err == nil || calls.Load() != wantCalls {
+					t.Fatalf("calls=%d want=%d err=%v", calls.Load(), wantCalls, err)
+				}
+			})
+		}
+	}
+}
+
+func TestManagedPrefixRecoveryDoesNotWaitForMaintenance(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		t.Run(fmt.Sprint("stream=", stream), func(t *testing.T) {
+			invalidating, creating := make(chan struct{}), make(chan struct{})
+			releaseInvalidation, releaseCreation := make(chan struct{}), make(chan struct{})
+			var releaseInvalidationOnce, releaseCreationOnce sync.Once
+			defer releaseInvalidationOnce.Do(func() { close(releaseInvalidation) })
+			defer releaseCreationOnce.Do(func() { close(releaseCreation) })
 			var calls atomic.Int32
 			p, _, store := prefixTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodPost {
+					t.Errorf("unexpected upstream request: %s %s", r.Method, r.URL.Path)
+				}
 				body := decodePrefixBody(t, r)
 				if strings.HasSuffix(r.URL.Path, "/cachedContents") {
-					w.WriteHeader(429)
-					fmt.Fprint(w, `{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","message":"temporary"}}`)
+					close(creating)
+					select {
+					case <-releaseCreation:
+					case <-r.Context().Done():
+						return
+					}
+					w.Header().Set("Content-Type", "application/json")
+					fmt.Fprintf(w, `{"name":"cachedContents/rebuilt","expireTime":%q}`, time.Now().Add(time.Hour).UTC().Format(time.RFC3339Nano))
 					return
 				}
 				calls.Add(1)
 				if body["cachedContent"] != nil {
-					w.WriteHeader(404)
-					fmt.Fprint(w, `{"error":{"code":404,"status":"NOT_FOUND","message":"Not found: cached content metadata for missing."}}`)
+					w.WriteHeader(403)
+					fmt.Fprint(w, `{"error":{"code":403,"status":"PERMISSION_DENIED","message":"CachedContent not found (or permission denied)"}}`)
 					return
-				}
-				if body["systemInstruction"] == nil || body["tools"] == nil || body["toolConfig"] == nil {
-					t.Error("fallback lost original system/tools/mode")
 				}
 				if stream {
 					w.Header().Set("Content-Type", "text/event-stream")
-					fmt.Fprint(w, "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"name\":\"closet_search\",\"args\":{\"color\":\"black\"}}}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":10,\"totalTokenCount\":12}}\n\n")
+					fmt.Fprint(w, "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ok\"}]},\"finishReason\":\"STOP\"}]}\n\n")
 					return
 				}
 				writePrefixResponse(w, false)
 			})
+			store.beforeInvalidate = func(ctx context.Context) error {
+				close(invalidating)
+				select {
+				case <-releaseInvalidation:
+					return nil
+				case <-ctx.Done():
+					t.Errorf("invalidation timed out before the full-input retry completed: %v", ctx.Err())
+					return ctx.Err()
+				}
+			}
 			req := prefixRequest()
 			key := p.prefixKey(context.Background(), req.Model, p.buildConfig(req.Model, req))
-			store.Put(context.Background(), &prefixcache.Entry{Key: key, Name: "cachedContents/missing", ExpiresAt: time.Now().Add(time.Hour)})
-			var err error
-			if stream {
-				var emitted int
-				_, err = p.GenerateStream(context.Background(), req.Model, req, func(e *modelhubv2.GenerateEvent) error { emitted++; return nil })
-				if emitted != 1 {
-					t.Fatalf("unexpected duplicate/missing output: %d", emitted)
+			store.Put(context.Background(), &prefixcache.Entry{Key: key, Name: "cachedContents/rejected", ExpiresAt: time.Now().Add(time.Hour)})
+			awaitPrefixPut(t, store) // Discard the seed entry; the next put must be the rebuild.
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			done := make(chan error, 1)
+			go func() {
+				var err error
+				if stream {
+					_, err = p.GenerateStream(ctx, req.Model, req, func(*modelhubv2.GenerateEvent) error { return nil })
+				} else {
+					_, err = p.Generate(ctx, req.Model, req)
 				}
-			} else {
-				_, err = p.Generate(context.Background(), req.Model, req)
+				done <- err
+			}()
+			select {
+			case <-invalidating:
+			case <-ctx.Done():
+				t.Fatal("background invalidation was not scheduled")
 			}
-			if err != nil || calls.Load() != 2 {
-				t.Fatalf("expected one full fallback: calls=%d err=%v", calls.Load(), err)
+			select {
+			case err := <-done:
+				if err != nil || calls.Load() != 2 {
+					t.Fatalf("full-input retry failed: calls=%d err=%v", calls.Load(), err)
+				}
+			case <-ctx.Done():
+				t.Fatal("full-input retry waited for maintenance")
 			}
-			if got, _ := store.Get(context.Background(), key); got != nil {
-				t.Fatal("failed resource still registered")
+			// The request is already done; its cancellation must not cancel maintenance.
+			cancel()
+			releaseInvalidationOnce.Do(func() { close(releaseInvalidation) })
+			select {
+			case <-creating:
+			case <-time.After(2 * time.Second):
+				t.Fatal("request cancellation prevented background cache creation")
+			}
+			releaseCreationOnce.Do(func() { close(releaseCreation) })
+			if entry := awaitPrefixPut(t, store); entry.Name != "cachedContents/rebuilt" {
+				t.Fatalf("replacement was not registered: %+v", entry)
 			}
 		})
 	}
@@ -335,6 +510,11 @@ func TestManagedPrefixInvalidationFailureRetriesOnNextRequest(t *testing.T) {
 	if _, err := p.Generate(context.Background(), req.Model, req); err != nil {
 		t.Fatal(err)
 	}
+	waitForPrefixCondition(t, func() bool {
+		store.mu.Lock()
+		defer store.mu.Unlock()
+		return store.getCalls >= 2 && len(store.locked) == 0
+	})
 	if entry, _ := store.Get(context.Background(), key); entry == nil {
 		t.Fatal("failed invalidation unexpectedly removed the record")
 	}
@@ -344,9 +524,10 @@ func TestManagedPrefixInvalidationFailureRetriesOnNextRequest(t *testing.T) {
 	if _, err := p.Generate(context.Background(), req.Model, req); err != nil {
 		t.Fatal(err)
 	}
-	if entry, _ := store.Get(context.Background(), key); entry != nil {
-		t.Fatal("next request did not retry deleting the stale record")
-	}
+	waitForPrefixCondition(t, func() bool {
+		entry, _ := store.Get(context.Background(), key)
+		return entry == nil
+	})
 	if calls.Load() != 4 {
 		t.Fatalf("generation calls=%d want cached attempt plus full input on each request", calls.Load())
 	}
@@ -378,15 +559,25 @@ func TestCachedContentErrorsAreNarrowlyClassified(t *testing.T) {
 		want    bool
 	}{
 		{404, "Not found: cached content metadata for 123", true},
-		{400, "CachedContent 123 expired", true},
+		{400, "Cache content 918477188586536960 is expired.", true},
+		{403, "CachedContent not found (or permission denied)", true},
+		{400, "CACHED CONTENT cannot be used", true},
+		{400, "CacheContent is invalid", true},
+		{403, "cache_content is unavailable", true},
+		{404, "cached_content metadata missing", true},
 		{404, "model not found", false},
-		{403, "cached content does not exist or permission denied", false},
+		{403, "Permission denied for model", false},
+		{400, "cache is invalid", false},
 		{429, "cached content rate limited", false},
+		{500, "cached content unavailable", false},
 		{400, "invalid response schema", false},
 	} {
-		if got := missingCachedContent(genaisdk.APIError{Code: tc.code, Message: tc.message}); got != tc.want {
+		if got := cachedContentError(fmt.Errorf("SDK request: %w", genaisdk.APIError{Code: tc.code, Message: tc.message})); got != tc.want {
 			t.Errorf("code=%d message=%s classified=%v", tc.code, tc.message, got)
 		}
+	}
+	if cachedContentError(nil) || cachedContentError(errors.New("cached content expired")) {
+		t.Fatal("only SDK API errors should trigger cache recovery")
 	}
 }
 

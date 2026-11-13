@@ -98,7 +98,7 @@ func TestPostgresCacheRegistryAndCrossConnectionLocks(t *testing.T) {
 		creates.Add(1)
 		return &Entry{Name: "cachedContents/shared", ExpiresAt: time.Now().Add(TTL)}, nil
 	}
-	a.ScheduleCreate(managerKey, func(ctx context.Context) (*Entry, error) {
+	a.ScheduleCreate(managerKey, "", func(ctx context.Context) (*Entry, error) {
 		close(started)
 		select {
 		case <-release:
@@ -112,12 +112,12 @@ func TestPostgresCacheRegistryAndCrossConnectionLocks(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("first manager did not acquire lock")
 	}
-	b.ScheduleCreate(managerKey, create)
+	b.ScheduleCreate(managerKey, "", create)
 	b.wg.Wait()
 	close(release)
 	a.wg.Wait()
 	// A worker scheduled from a stale miss must reread the committed registry.
-	b.ScheduleCreate(managerKey, create)
+	b.ScheduleCreate(managerKey, "", create)
 	b.wg.Wait()
 	if creates.Load() != 1 || b.Lookup(ctx, managerKey) == nil {
 		t.Fatalf("cross-manager duplicate creation: count=%d", creates.Load())
@@ -131,7 +131,7 @@ func TestPostgresCacheRegistryAndCrossConnectionLocks(t *testing.T) {
 	if b.Lookup(ctx, managerKey) != nil {
 		t.Fatal("expired registry entry reused")
 	}
-	b.ScheduleCreate(managerKey, create)
+	b.ScheduleCreate(managerKey, "", create)
 	b.wg.Wait()
 	if creates.Load() != 2 || b.Lookup(ctx, managerKey) == nil {
 		t.Fatal("expired prefix not rebuilt")

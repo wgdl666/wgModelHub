@@ -77,18 +77,18 @@ func (p *Provider) preparePrefixCache(ctx context.Context, model string, request
 		cached.ToolConfig = nil
 		return &cached, entry
 	}
-	p.schedulePrefixCache(ctx, model, original, key)
+	p.schedulePrefixCache(ctx, model, original, key, "")
 	return original, nil
 }
 
-func (p *Provider) schedulePrefixCache(ctx context.Context, model string, original *genaisdk.GenerateContentConfig, key string) {
+func (p *Provider) schedulePrefixCache(ctx context.Context, model string, original *genaisdk.GenerateContentConfig, key, rejectedName string) {
 	if ctx.Err() != nil {
 		return
 	}
 	// Only static, already-converted fields are retained. Dynamic messages/media
 	// and the caller's canceled request context are not held by the background job.
 	prefix := staticPrefix{SystemInstruction: original.SystemInstruction, Tools: original.Tools, ToolConfig: original.ToolConfig}
-	p.cache.ScheduleCreate(key, func(createCtx context.Context) (*prefixcache.Entry, error) {
+	p.cache.ScheduleCreate(key, rejectedName, func(createCtx context.Context) (*prefixcache.Entry, error) {
 		if p.cacheEnabled == nil || !p.cacheEnabled(model) {
 			return nil, nil
 		}
@@ -112,14 +112,15 @@ func (p *Provider) schedulePrefixCache(ctx context.Context, model string, origin
 	})
 }
 
-func missingCachedContent(err error) bool {
+func cachedContentError(err error) bool {
 	var apiError genaisdk.APIError
-	if !errors.As(err, &apiError) || (apiError.Code != 400 && apiError.Code != 404) {
+	if !errors.As(err, &apiError) || (apiError.Code != 400 && apiError.Code != 403 && apiError.Code != 404) {
 		return false
 	}
 	message := strings.ToLower(apiError.Message)
-	mentionsCache := strings.Contains(message, "cached content") || strings.Contains(message, "cachedcontent") || strings.Contains(message, "cached_content")
-	return mentionsCache && (strings.Contains(message, "not found") || strings.Contains(message, "not_found") || strings.Contains(message, "expired") || strings.Contains(message, "does not exist"))
+	return strings.Contains(message, "cache content") || strings.Contains(message, "cached content") ||
+		strings.Contains(message, "cachecontent") || strings.Contains(message, "cachedcontent") ||
+		strings.Contains(message, "cache_content") || strings.Contains(message, "cached_content")
 }
 
 // 仅将明确的缓存 token 下限 400 视为短前缀，504 等故障仍走原错误路径。
