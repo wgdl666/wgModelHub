@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/wgdl666/kangaroo/callmeta"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -23,6 +24,9 @@ func TestVisionGatewayPreservesAdapterProtocol(t *testing.T) {
 	encoded := base64.StdEncoding.EncodeToString([]byte(image))
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
+		if r.Header.Get(callmeta.DeviceID) != "device-a" || r.Header.Get(callmeta.UserID) != "user-a" {
+			t.Error("vision gateway lost identity")
+		}
 		if r.Method != http.MethodPost || r.Header.Get("Authorization") != "Bearer "+token {
 			t.Error("vision request did not use the configured gateway bearer")
 			w.WriteHeader(http.StatusUnauthorized)
@@ -114,7 +118,7 @@ func TestVisionGatewayPreservesAdapterProtocol(t *testing.T) {
 	}}
 	// 人脸比对保留双图契约，同时走与其他视觉模型相同的网关鉴权。
 	faceRequest := &modelhubv2.GenerateRequest{Input: &modelhubv2.Input{Items: []*modelhubv2.InputItem{request.Input.Items[0], request.Input.Items[0]}}}
-	face, err := sets["face"].Text.Generate(context.Background(), models.FaceSim, faceRequest)
+	face, err := sets["face"].Text.Generate(callmeta.WithIdentity(context.Background(), "device-a", "user-a"), models.FaceSim, faceRequest)
 	if err != nil || !strings.Contains(face.GetItems()[0].GetText(), `"similarity":0.7`) {
 		t.Fatalf("facesim gateway result: %v", err)
 	}
@@ -131,7 +135,7 @@ func TestVisionGatewayPreservesAdapterProtocol(t *testing.T) {
 	} {
 		t.Run(test.model, func(t *testing.T) {
 			set := sets[test.instance]
-			ctx := context.Background()
+			ctx := callmeta.WithIdentity(context.Background(), "device-a", "user-a")
 			if set.Text != nil {
 				event, err := set.Text.Generate(ctx, test.model, request)
 				if err != nil || len(event.GetItems()) != 1 || !strings.Contains(event.GetItems()[0].GetText(), test.want) {

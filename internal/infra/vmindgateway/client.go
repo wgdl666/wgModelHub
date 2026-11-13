@@ -4,6 +4,7 @@ package vmindgateway
 import (
 	"context"
 	"encoding/json"
+	"github.com/wgdl666/kangaroo/callmeta"
 	"io"
 	"maps"
 	"net/http"
@@ -95,6 +96,8 @@ func (c *Client) call(ctx context.Context, method, path, id string, body *httpbo
 	if err != nil {
 		return Task{}, provider.Wrap(provider.ErrorConfiguration, c.name+" create request", err)
 	}
+	// 仅内部 Gateway 接收来源身份；通用供应商 HTTP transport 不传播用户信息。
+	callmeta.Propagator{}.Inject(ctx, callmeta.HTTPHeaders(req.Header))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Idempotency-Key", id)

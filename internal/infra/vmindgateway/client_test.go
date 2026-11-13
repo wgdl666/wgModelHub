@@ -3,6 +3,7 @@ package vmindgateway
 import (
 	"context"
 	"encoding/json"
+	"github.com/wgdl666/kangaroo/callmeta"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +16,9 @@ func TestSubmitPreservesImageJSONAndCallerInput(t *testing.T) {
 		input := map[string]any{"images": images, "prompt": "衣服 <&>"}
 		var received map[string]any
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get(callmeta.DeviceID) != "device-a" || r.Header.Get(callmeta.UserID) != "user-a" {
+				t.Error("gateway identity missing")
+			}
 			if r.Header.Get("Authorization") != "Bearer local" || r.Header.Get("Idempotency-Key") != "id" {
 				t.Error("authentication or request ID changed")
 			}
@@ -25,7 +29,7 @@ func TestSubmitPreservesImageJSONAndCallerInput(t *testing.T) {
 			_, _ = io.WriteString(w, `{"request_id":"id","state":"queued"}`)
 		}))
 		client := &Client{name: "local", baseURL: server.URL, token: "local", http: server.Client()}
-		_, err := client.Submit(context.Background(), "model", "id", input, http.StatusAccepted)
+		_, err := client.Submit(callmeta.WithIdentity(context.Background(), "device-a", "user-a"), "model", "id", input, http.StatusAccepted)
 		server.Close()
 		if err != nil {
 			t.Fatal(err)

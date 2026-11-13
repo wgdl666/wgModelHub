@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wgdl666/kangaroo/callmeta"
 	"github.com/wgdl666/wgModelHub/config"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/auth"
@@ -778,5 +779,38 @@ func TestSubmitGenerationRejectsLegacyLTXPublicID(t *testing.T) {
 	_, err := service.SubmitGeneration(ctx, videoSubmitRequest("ltx", "req-legacy-ltx"))
 	if status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("code=%v err=%v", status.Code(err), err)
+	}
+}
+
+type identityVideo struct {
+	fakeVideo
+	received context.Context
+}
+
+func (v *identityVideo) GetVideo(ctx context.Context, model, id string) (provider.VideoJob, error) {
+	v.received = ctx
+	return v.fakeVideo.GetVideo(ctx, model, id)
+}
+
+func TestVideoQueryRestoresOriginalIdentity(t *testing.T) {
+	video := &identityVideo{fakeVideo: fakeVideo{job: provider.VideoJob{State: provider.VideoJobRunning}}}
+	store := newMemoryStore()
+	service := videoService(video, store)
+	original := callmeta.WithIdentity(context.Background(), "mirror-a", "user-a")
+	submitted, err := service.SubmitGeneration(original, videoSubmitRequest(models.VWorldOutfitVideo10, "identity-request"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 新服务实例处理另一个用户上下文的查询；下游仍归提交者，鉴权由现有 caller 边界处理。
+	restarted := videoService(video, store)
+	query := &generationStreamRecorder{ctx: callmeta.WithIdentity(context.Background(), "mirror-b", "user-b")}
+	if err := restarted.GetGeneration(&modelhubv2.GetGenerationRequest{TaskId: submitted.GetTaskId()}, query); err != nil {
+		t.Fatal(err)
+	}
+	if video.received == nil {
+		t.Fatal("provider was not queried")
+	}
+	if device, user := callmeta.Identity(video.received); device != "mirror-a" || user != "user-a" {
+		t.Fatal("query overwrote task identity")
 	}
 }

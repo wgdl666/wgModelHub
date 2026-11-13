@@ -1,6 +1,7 @@
 package factory
 
 import (
+	"github.com/wgdl666/kangaroo/callmeta"
 	"net/http"
 
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
@@ -21,6 +22,8 @@ type visionGatewayTransport struct {
 
 func (t visionGatewayTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	outbound := req.Clone(req.Context())
+	// 只对已选择的内部视觉 Gateway 注入来源身份。
+	callmeta.Propagator{}.Inject(req.Context(), callmeta.HTTPHeaders(outbound.Header))
 	outbound.Header.Set("Authorization", "Bearer "+t.token)
 	return t.next.RoundTrip(outbound)
 }
