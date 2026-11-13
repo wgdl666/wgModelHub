@@ -86,7 +86,7 @@ func TestGemini4BackendsPreserveToolLoopAndBypassExplicitCache(t *testing.T) {
 			})
 			// 即使已有同 key 显式缓存，也必须完整发送 system/tools，不能引用旧资源。
 			key := p.prefixKey(context.Background(), req.Model, p.buildConfig(req.Model, req))
-			store.entries[key] = &prefixcache.Entry{Key: key, Name: "cachedContents/unsupported", ExpiresAt: prefixExpiry(time.Now().Add(time.Hour))}
+			store.entries[key] = &prefixcache.Entry{Key: key, Name: "cachedContents/unsupported", ExpiresAt: prefixExpiry(time.Now().Add(prefixcache.TTL))}
 			before := proto.Clone(req)
 			transport.response = `{"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"id":"call-argon","name":"closet_search","args":{"color":"black"}},"thoughtSignature":"c2ln"}]},"finishReason":"STOP"}],"responseId":"first"}`
 			first, err := p.Generate(context.Background(), req.Model, req)

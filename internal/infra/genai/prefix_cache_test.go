@@ -347,7 +347,7 @@ func TestManagedPrefixCacheErrorsFallBackOnce(t *testing.T) {
 				})
 				req := prefixRequest()
 				key := p.prefixKey(context.Background(), req.Model, p.buildConfig(req.Model, req))
-				store.Put(context.Background(), &prefixcache.Entry{Key: key, Name: "cachedContents/missing", ExpiresAt: prefixExpiry(time.Now().Add(time.Hour))})
+				store.Put(context.Background(), &prefixcache.Entry{Key: key, Name: "cachedContents/missing", ExpiresAt: prefixExpiry(time.Now().Add(prefixcache.TTL))})
 				var err error
 				if stream {
 					var emitted int
@@ -388,7 +388,7 @@ func TestManagedPrefixCacheErrorRetryRequiresManagedCacheAndStopsAfterOnce(t *te
 				p.cacheEnabled = func(string) bool { return managed }
 				req := prefixRequest()
 				key := p.prefixKey(context.Background(), req.Model, p.buildConfig(req.Model, req))
-				store.Put(context.Background(), &prefixcache.Entry{Key: key, Name: "cachedContents/rejected", ExpiresAt: prefixExpiry(time.Now().Add(time.Hour))})
+				store.Put(context.Background(), &prefixcache.Entry{Key: key, Name: "cachedContents/rejected", ExpiresAt: prefixExpiry(time.Now().Add(prefixcache.TTL))})
 				var err error
 				if stream {
 					_, err = p.GenerateStream(context.Background(), req.Model, req, func(*modelhubv2.GenerateEvent) error {
@@ -460,7 +460,7 @@ func TestManagedPrefixRecoveryDoesNotWaitForMaintenance(t *testing.T) {
 			}
 			req := prefixRequest()
 			key := p.prefixKey(context.Background(), req.Model, p.buildConfig(req.Model, req))
-			store.Put(context.Background(), &prefixcache.Entry{Key: key, Name: "cachedContents/rejected", ExpiresAt: prefixExpiry(time.Now().Add(time.Hour))})
+			store.Put(context.Background(), &prefixcache.Entry{Key: key, Name: "cachedContents/rejected", ExpiresAt: prefixExpiry(time.Now().Add(prefixcache.TTL))})
 			awaitPrefixPut(t, store) // Discard the seed entry; the next put must be the rebuild.
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 			defer cancel()
@@ -522,7 +522,7 @@ func TestManagedPrefixInvalidationFailureRetriesOnNextRequest(t *testing.T) {
 	})
 	req := prefixRequest()
 	key := p.prefixKey(context.Background(), req.Model, p.buildConfig(req.Model, req))
-	store.Put(context.Background(), &prefixcache.Entry{Key: key, Name: "cachedContents/missing", ExpiresAt: prefixExpiry(time.Now().Add(time.Hour))})
+	store.Put(context.Background(), &prefixcache.Entry{Key: key, Name: "cachedContents/missing", ExpiresAt: prefixExpiry(time.Now().Add(prefixcache.TTL))})
 	store.invalidateError = errors.New("registry unavailable")
 	if _, err := p.Generate(context.Background(), req.Model, req); err != nil {
 		t.Fatal(err)
@@ -561,7 +561,7 @@ func TestManagedPrefixDoesNotReplayAfterStreamOutput(t *testing.T) {
 	})
 	req := prefixRequest()
 	key := p.prefixKey(context.Background(), req.Model, p.buildConfig(req.Model, req))
-	store.Put(context.Background(), &prefixcache.Entry{Key: key, Name: "cachedContents/partial", ExpiresAt: prefixExpiry(time.Now().Add(time.Hour))})
+	store.Put(context.Background(), &prefixcache.Entry{Key: key, Name: "cachedContents/partial", ExpiresAt: prefixExpiry(time.Now().Add(prefixcache.TTL))})
 	var emitted int
 	_, err := p.GenerateStream(context.Background(), req.Model, req, func(*modelhubv2.GenerateEvent) error { emitted++; return nil })
 	if err == nil || calls.Load() != 1 || emitted != 1 {
@@ -711,7 +711,7 @@ func TestManagedPrefixPreservesPlanningJSONSchema(t *testing.T) {
 	req.Input.Tools, req.Input.ToolChoice = nil, nil
 	req.Output.GetText().ResponseFormat = &modelhubv2.ResponseFormat{Type: modelhubv2.ResponseFormatType_RESPONSE_FORMAT_TYPE_JSON_SCHEMA, JsonSchema: schema}
 	key := p.prefixKey(context.Background(), req.Model, p.buildConfig(req.Model, req))
-	store.Put(context.Background(), &prefixcache.Entry{Key: key, Name: "cachedContents/planning", ExpiresAt: prefixExpiry(time.Now().Add(time.Hour))})
+	store.Put(context.Background(), &prefixcache.Entry{Key: key, Name: "cachedContents/planning", ExpiresAt: prefixExpiry(time.Now().Add(prefixcache.TTL))})
 	final, err := p.Generate(context.Background(), req.Model, req)
 	if err != nil || len(final.GetItems()) != 1 || final.GetItems()[0].GetText() != `{"outfits":[]}` {
 		t.Fatalf("planning response changed: final=%v err=%v", final, err)
