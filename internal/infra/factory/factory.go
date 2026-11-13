@@ -100,7 +100,7 @@ func build(ctx context.Context, cfg config.Config, live *config.LiveConfig) (map
 		}
 		var options []telemetry.HTTPClientOption
 		if gateway != nil {
-			options = append(options, withVisionGatewayAuth(gateway.APIToken()))
+			options = append(options, withVisionGateway(gateway.BaseURL, gateway.APIToken()))
 		}
 		set, err := buildProvider(ctx, name, resolved, live, instructions, options...)
 		if err != nil {
