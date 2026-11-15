@@ -10,6 +10,9 @@ import (
 	"unicode/utf8"
 )
 
+// CodeResultObjectRead 标识结果存储读取失败，RPC reason 仍沿用 PROVIDER_UNAVAILABLE。
+const CodeResultObjectRead int32 = 50201
+
 type ErrorKind string
 
 const (

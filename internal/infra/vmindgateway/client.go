@@ -135,7 +135,7 @@ func (c *Client) OpenResult(ctx context.Context, id string, ref objectstore.Refe
 	}
 	contentType, reader, err := c.objects.OpenReference(ctx, ref)
 	if err != nil {
-		return "", nil, provider.New(provider.ErrorUnavailable, "cannot open VMind result object")
+		return "", nil, resultOpenError(ctx, id, err)
 	}
 	return contentType, reader, nil
 }

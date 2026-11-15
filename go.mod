@@ -163,7 +163,10 @@ require (
 	github.com/wgdl666/kangaroo/callmeta v0.2.0
 )
 
-require github.com/satori/go.uuid v1.2.0 // indirect
+require (
+	github.com/satori/go.uuid v1.2.0 // indirect
+	github.com/wgdl666/kangaroo/bizerr v0.0.0-20260805125009-85ddf2d025e0
+)
 
 require (
 	github.com/aliyun/alibabacloud-oss-go-sdk-v2 v1.5.3
