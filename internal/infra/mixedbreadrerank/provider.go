@@ -12,24 +12,18 @@ import (
 	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/infra/rerankbatch"
 	"github.com/wgdl666/wgModelHub/internal/infra/rerankinstruction"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
 )
 
-// maxInputDocuments 是官网 input 上限。衣橱现在按 100 切批，这里不比供应商更严。
+// The listwise API accepts the entire logical request within ModelHub's 1000-document limit.
 const maxInputDocuments = 1000
 
 type httpDoer interface {
 	Do(*http.Request) (*http.Response, error)
-}
-
-type rerankRequest struct {
-	Query          string   `json:"query"`
-	InstructionKey string   `json:"instruction_key"`
-	Instruct       string   `json:"instruct"`
-	Documents      []string `json:"documents"`
 }
 
 type wireRequest struct {
@@ -40,10 +34,7 @@ type wireRequest struct {
 	RewriteQuery bool     `json:"rewrite_query"`
 }
 
-type scored struct {
-	Index          int     `json:"index"`
-	RelevanceScore float64 `json:"relevance_score"`
-}
+type scored = rerankbatch.Result
 
 type Provider struct {
 	// Instructions 由启动装配注入；连接不变，模板按请求读取。
@@ -68,7 +59,7 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 	if model != models.MixedbreadRerankV31Listwise {
 		return nil, provider.Errorf(provider.ErrorInvalidArgument, "mixedbread rerank does not serve model %q", model)
 	}
-	parsed, err := parseRerank(request)
+	parsed, err := rerankbatch.Parse(request)
 	if err != nil {
 		return nil, err
 	}
@@ -80,17 +71,19 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 	if parsed.InstructionKey == "" {
 		parsed.Query = assembleQuery(parsed.Query)
 	}
-	raw, err := p.post(ctx, wireRequest{
-		Model:        model,
-		Query:        parsed.Query,
-		Input:        parsed.Documents,
-		ReturnInput:  false,
-		RewriteQuery: false,
+	results, err := rerankbatch.Run(ctx, parsed.Documents, maxInputDocuments, func(batchCtx context.Context, documents []string) ([]scored, error) {
+		raw, err := p.post(batchCtx, wireRequest{
+			Model:        model,
+			Query:        parsed.Query,
+			Input:        documents,
+			ReturnInput:  false,
+			RewriteQuery: false,
+		})
+		if err != nil {
+			return nil, err
+		}
+		return decodeResults(raw)
 	})
-	if err != nil {
-		return nil, err
-	}
-	results, err := decodeResults(raw, len(parsed.Documents))
 	if err != nil {
 		return nil, err
 	}
@@ -120,26 +113,6 @@ func assembleQuery(query string) string {
 	return "检索主色是「" + strings.TrimSpace(query) + "」的单品"
 }
 
-func parseRerank(request *modelhubv2.GenerateRequest) (rerankRequest, error) {
-	var input *modelhubv2.Input
-	if request != nil {
-		input = request.GetInput()
-	}
-	var parsed rerankRequest
-	if err := json.Unmarshal([]byte(provider.UserText(input)), &parsed); err != nil {
-		return rerankRequest{}, provider.New(provider.ErrorInvalidArgument, "rerank requires JSON query and documents")
-	}
-	if strings.TrimSpace(parsed.Query) == "" || len(parsed.Documents) == 0 || len(parsed.Documents) > maxInputDocuments {
-		return rerankRequest{}, provider.Errorf(provider.ErrorInvalidArgument, "rerank query and 1 to %d documents are required", maxInputDocuments)
-	}
-	for _, document := range parsed.Documents {
-		if strings.TrimSpace(document) == "" {
-			return rerankRequest{}, provider.New(provider.ErrorInvalidArgument, "rerank document text is required")
-		}
-	}
-	return parsed, nil
-}
-
 func (p *Provider) post(ctx context.Context, payload wireRequest) ([]byte, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -161,13 +134,12 @@ func (p *Provider) post(ctx context.Context, payload wireRequest) ([]byte, error
 		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" read rerank", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, provider.Errorf(provider.ErrorUnavailable, "%s rerank HTTP %d", p.name, resp.StatusCode)
+		return nil, provider.FromHTTP(p.name, resp.StatusCode)
 	}
 	return raw, nil
 }
 
-// decodeResults 要求每件文档都有分。切断按下标对回候选，缺一件就不能用这批结果。
-func decodeResults(raw []byte, want int) ([]scored, error) {
+func decodeResults(raw []byte) ([]scored, error) {
 	var decoded struct {
 		Data []struct {
 			Index int     `json:"index"`
@@ -177,19 +149,8 @@ func decodeResults(raw []byte, want int) ([]scored, error) {
 	if err := json.Unmarshal(raw, &decoded); err != nil {
 		return nil, provider.Wrap(provider.ErrorInvalidResponse, "decode mixedbread rerank", err)
 	}
-	if len(decoded.Data) != want {
-		return nil, provider.Errorf(provider.ErrorInvalidResponse, "mixedbread rerank returned %d results, want %d", len(decoded.Data), want)
-	}
-	seen := make(map[int]struct{}, want)
-	out := make([]scored, 0, want)
+	out := make([]scored, 0, len(decoded.Data))
 	for _, item := range decoded.Data {
-		if item.Index < 0 || item.Index >= want {
-			return nil, provider.Errorf(provider.ErrorInvalidResponse, "mixedbread rerank index %d out of range", item.Index)
-		}
-		if _, ok := seen[item.Index]; ok {
-			return nil, provider.Errorf(provider.ErrorInvalidResponse, "mixedbread rerank duplicate index %d", item.Index)
-		}
-		seen[item.Index] = struct{}{}
 		out = append(out, scored{Index: item.Index, RelevanceScore: item.Score})
 	}
 	return out, nil
