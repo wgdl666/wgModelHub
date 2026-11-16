@@ -12,6 +12,7 @@ import (
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
+	"github.com/wgdl666/wgModelHub/internal/infra/vmindgateway"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
 )
@@ -89,22 +90,25 @@ func (p *Provider) GenerateStream(ctx context.Context, model string, request *mo
 }
 
 func (p *Provider) post(ctx context.Context, model string, imageBytes []byte) ([]byte, error) {
-	body, err := httpbody.Multipart([]httpbody.Part{
-		httpbody.File("file", "person.png", "application/octet-stream", imageBytes),
-		httpbody.Field("conf", confidence), httpbody.Field("iou", iou),
-	})
-	if err != nil {
-		return nil, provider.WrapNotAttempted(provider.ErrorUnavailable, p.name+" build yolo request", err)
+	var httpReq *http.Request
+	var err error
+	if p.Gateway {
+		httpReq, err = vmindgateway.NewRequest(ctx, p.baseURL, model, map[string]any{"file": imageBytes, "conf": confidence, "iou": iou})
+	} else {
+		var body *httpbody.Body
+		body, err = httpbody.Multipart([]httpbody.Part{
+			httpbody.File("file", "person.png", "application/octet-stream", imageBytes),
+			httpbody.Field("conf", confidence), httpbody.Field("iou", iou),
+		})
+		if err == nil {
+			httpReq, err = body.NewRequest(ctx, http.MethodPost, p.baseURL+predictPath)
+		}
 	}
-	httpReq, err := body.NewRequest(ctx, http.MethodPost, p.baseURL+predictPath)
 	if err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" create yolo request", err)
 	}
 	if p.username != "" {
 		httpReq.SetBasicAuth(p.username, p.password)
-	}
-	if p.Gateway {
-		httpReq.Header.Set("X-Model-Key", model)
 	}
 	response, err := p.client.Do(httpReq)
 	if err != nil {

@@ -19,6 +19,7 @@ import (
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
+	"github.com/wgdl666/wgModelHub/internal/infra/vmindgateway"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
 )
@@ -86,10 +87,11 @@ func (p *Provider) GenerateImage(ctx context.Context, model string, request *mod
 	if request == nil {
 		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "generate request is required")
 	}
-	endpoint, person, err := endpointFor(model)
-	if p.Gateway {
-		// 人物/商品分流由网关登记决定，ModelHub 不再逐次查询或猜测模型名称。
-		endpoint, person, err = "/api/matte", false, nil
+	var endpoint string
+	var person bool
+	var err error
+	if !p.Gateway {
+		endpoint, person, err = endpointFor(model)
 	}
 	if err != nil {
 		return nil, err
@@ -164,7 +166,6 @@ func (p *Provider) methodFor(person bool) string {
 }
 
 func (p *Provider) doSegment(ctx context.Context, model, endpoint string, imageBytes []byte, person bool) ([]byte, error) {
-	parts := make([]httpbody.Part, 0, 5)
 	fields := map[string]string{
 		"image":  base64.StdEncoding.EncodeToString(imageBytes),
 		"method": p.methodFor(person),
@@ -183,15 +184,13 @@ func (p *Provider) doSegment(ctx context.Context, model, endpoint string, imageB
 	if traceID := telemetry.TraceID(ctx); traceID != "" {
 		fields["trace_id"] = traceID
 	}
-	for name, value := range fields {
-		parts = append(parts, httpbody.Field(name, value))
-	}
 	var body *httpbody.Body
 	var err error
-	if p.Gateway {
-		// 网关接收同一种抠图输入，再按登记决定人物/商品原生表单。
-		body, err = httpbody.JSON(fields, true)
-	} else {
+	if !p.Gateway {
+		parts := make([]httpbody.Part, 0, len(fields))
+		for name, value := range fields {
+			parts = append(parts, httpbody.Field(name, value))
+		}
 		body, err = httpbody.Multipart(parts)
 	}
 	if err != nil {
@@ -204,15 +203,17 @@ func (p *Provider) doSegment(ctx context.Context, model, endpoint string, imageB
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		httpReq, err := body.NewRequest(ctx, http.MethodPost, p.baseURL+endpoint)
+		var httpReq *http.Request
+		if p.Gateway {
+			httpReq, err = vmindgateway.NewRequest(ctx, p.baseURL, model, fields)
+		} else {
+			httpReq, err = body.NewRequest(ctx, http.MethodPost, p.baseURL+endpoint)
+		}
 		if err != nil {
 			return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" create segment request", err)
 		}
 		if p.username != "" {
 			httpReq.SetBasicAuth(p.username, p.password)
-		}
-		if p.Gateway {
-			httpReq.Header.Set("X-Model-Key", model)
 		}
 		response, err = p.client.Do(httpReq)
 		if ctx.Err() != nil {

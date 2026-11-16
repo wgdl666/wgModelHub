@@ -100,14 +100,14 @@ func build(ctx context.Context, cfg config.Config, live *config.LiveConfig) (map
 		}
 		var options []telemetry.HTTPClientOption
 		if gateway != nil {
-			options = append(options, withVisionGateway(gateway.BaseURL, gateway.APIToken()))
+			options = append(options, withVisionGatewayAuth(gateway.APIToken()))
 		}
 		set, err := buildProvider(ctx, name, resolved, live, instructions, options...)
 		if err != nil {
 			return nil, fmt.Errorf("provider %s: %w", name, err)
 		}
 		if gateway != nil {
-			// 视觉输入沿用已有编码器，模型与协议统一交给网关入队前校验。
+			// 视觉适配器直接提交统一 JSON，模型与协议由网关登记决定。
 			switch p := set.Text.(type) {
 			case *humanparser.Provider:
 				p.Gateway = true

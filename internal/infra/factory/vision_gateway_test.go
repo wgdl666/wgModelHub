@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/google/uuid"
 	"github.com/wgdl666/kangaroo/callmeta"
 	"net/http"
 	"net/http/httptest"
@@ -16,7 +17,7 @@ import (
 	"github.com/wgdl666/wgModelHub/models"
 )
 
-func TestVisionGatewayPreservesAdapterProtocol(t *testing.T) {
+func TestVisionAdaptersSubmitUnifiedJSON(t *testing.T) {
 	const image = "image fixture"
 	const token = "existing-gateway-api-token"
 	t.Setenv("MODEL_GATEWAY_API_TOKEN", token)
@@ -31,10 +32,14 @@ func TestVisionGatewayPreservesAdapterProtocol(t *testing.T) {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		if r.Header.Get("X-Model-Key") == "" {
-			t.Error("vision request lost registered model key")
+		model := strings.TrimPrefix(r.URL.Path, "/proxy/v1/gateway/requests/")
+		if _, err := uuid.Parse(r.Header.Get("Idempotency-Key")); err != nil {
+			t.Error("missing UUID request identity")
 		}
-		if r.URL.Path != "/proxy/v1/gateway/requests/"+r.Header.Get("X-Model-Key") || r.Header.Get("Idempotency-Key") == "" {
+		if r.Header.Get("X-Model-Key") != "" || r.Header.Get("Content-Type") != "application/json" {
+			t.Error("adapter emitted a legacy request")
+		}
+		if model == r.URL.Path || model == "" {
 			t.Errorf("not a unified model submission: %s", r.URL.Path)
 		}
 		var envelope struct {
@@ -50,7 +55,7 @@ func TestVisionGatewayPreservesAdapterProtocol(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		switch r.Header.Get("X-Model-Key") {
+		switch model {
 		case models.HumanParse, "parser-v2":
 			if body["image"] != encoded {
 				t.Error("parser lost image")
@@ -65,8 +70,8 @@ func TestVisionGatewayPreservesAdapterProtocol(t *testing.T) {
 			if body["image"] != encoded || body["output"] != "b64" || body["person_method"] != "person-bria-rmbg" || body["subject_method"] != "person-bria-rmbg" {
 				t.Errorf("segment input changed: %+v", body)
 			}
-			path := "/v1/vision/segment-person/api/segment"
-			if model := r.Header.Get("X-Model-Key"); model == models.SegmentSubjectBria || model == "subject-v2" {
+			path := "segment-result"
+			if model == models.SegmentSubjectBria || model == "subject-v2" {
 				path += "_subject"
 			}
 			fmt.Fprintf(w, `{"refined_png_b64":%q}`, base64.StdEncoding.EncodeToString([]byte(path)))
@@ -79,9 +84,9 @@ func TestVisionGatewayPreservesAdapterProtocol(t *testing.T) {
 			if body["base64"] != encoded || body["mirror_lens"] != false || body["crop"] != true {
 				t.Errorf("lens input changed: %+v", body)
 			}
-			fmt.Fprintf(w, `{"content_type":"image/png","image_base64":%q}`, base64.StdEncoding.EncodeToString([]byte("/v1/vision/lens_distortion_correction/correct")))
+			fmt.Fprintf(w, `{"content_type":"image/png","image_base64":%q}`, base64.StdEncoding.EncodeToString([]byte("lens-result")))
 		default:
-			t.Errorf("unexpected model %s", r.Header.Get("X-Model-Key"))
+			t.Errorf("unexpected model %s", model)
 			w.WriteHeader(404)
 		}
 	}))
@@ -122,12 +127,12 @@ func TestVisionGatewayPreservesAdapterProtocol(t *testing.T) {
 		{"parser", models.HumanParse, `"success":true`},
 		{"parser", "parser-v2", `"success":true`},
 		{"yolo", "detector-v2", `"persons"`},
-		{"segment", "subject-v2", "/v1/vision/segment-person/api/segment_subject"},
-		{"lens", "lens-v2", "/v1/vision/lens_distortion_correction/correct"},
+		{"segment", "subject-v2", "segment-result_subject"},
+		{"lens", "lens-v2", "lens-result"},
 		{"yolo", models.HumanYOLO, `"persons"`},
-		{"segment", models.SegmentPersonBria, "/v1/vision/segment-person/api/segment"},
-		{"segment", models.SegmentSubjectBria, "/v1/vision/segment-person/api/segment_subject"},
-		{"lens", models.LensDistortionCorrection, "/v1/vision/lens_distortion_correction/correct"},
+		{"segment", models.SegmentPersonBria, "segment-result"},
+		{"segment", models.SegmentSubjectBria, "segment-result_subject"},
+		{"lens", models.LensDistortionCorrection, "lens-result"},
 	} {
 		t.Run(test.model, func(t *testing.T) {
 			set := sets[test.instance]

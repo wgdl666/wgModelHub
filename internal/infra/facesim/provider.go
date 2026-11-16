@@ -14,6 +14,7 @@ import (
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
+	"github.com/wgdl666/wgModelHub/internal/infra/vmindgateway"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
 )
@@ -50,7 +51,7 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 	if len(images) != 2 {
 		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "facesim requires exactly two inline images")
 	}
-	parts := make([]httpbody.Part, 0, len(images))
+	fields := make(map[string]string, len(images))
 	for i, image := range images {
 		data, ok := image.Source.(*modelhubv2.Media_Data)
 		if !ok || len(data.Data) == 0 {
@@ -60,21 +61,24 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 		if i == 1 {
 			field = "image_b"
 		}
-		parts = append(parts, httpbody.Field(field, base64.StdEncoding.EncodeToString(data.Data)))
+		fields[field] = base64.StdEncoding.EncodeToString(data.Data)
 	}
-	body, err := httpbody.Multipart(parts)
-	if err != nil {
-		return nil, provider.WrapNotAttempted(provider.ErrorUnavailable, "build facesim image", err)
+	var req *http.Request
+	var err error
+	if p.Gateway {
+		req, err = vmindgateway.NewRequest(ctx, p.baseURL, model, fields)
+	} else {
+		var body *httpbody.Body
+		body, err = httpbody.Multipart([]httpbody.Part{httpbody.Field("image_a", fields["image_a"]), httpbody.Field("image_b", fields["image_b"])})
+		if err == nil {
+			req, err = body.NewRequest(ctx, http.MethodPost, p.baseURL+"/compare")
+		}
 	}
-	req, err := body.NewRequest(ctx, http.MethodPost, p.baseURL+"/compare")
 	if err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, "create facesim request", err)
 	}
 	if p.username != "" {
 		req.SetBasicAuth(p.username, p.password)
-	}
-	if p.Gateway {
-		req.Header.Set("X-Model-Key", model)
 	}
 	response, err := p.client.Do(req)
 	if err != nil {

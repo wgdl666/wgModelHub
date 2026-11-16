@@ -14,6 +14,7 @@ import (
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
+	"github.com/wgdl666/wgModelHub/internal/infra/vmindgateway"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
 )
@@ -62,10 +63,11 @@ func New(name, baseURL, username, password string, options ...telemetry.HTTPClie
 }
 
 func (p *Provider) Generate(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
-	path, checkSuccess, err := predictRoute(model)
-	if p.Gateway {
-		// 固定解析入口只携带原模型名；网关在入队前校验登记与协议。
-		path, checkSuccess, err = g7PredictPath, true, nil
+	var path string
+	checkSuccess := true
+	var err error
+	if !p.Gateway {
+		path, checkSuccess, err = predictRoute(model)
 	}
 	if err != nil {
 		return nil, err
@@ -78,20 +80,23 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 	if !ok || len(data.Data) == 0 {
 		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "human-parser requires inline image bytes")
 	}
-	payload, err := httpbody.JSON(map[string]string{"image": base64.StdEncoding.EncodeToString(data.Data)}, true)
-	if err != nil {
-		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" encode parser image", err)
+	input := map[string]string{"image": base64.StdEncoding.EncodeToString(data.Data)}
+	var httpReq *http.Request
+	if p.Gateway {
+		httpReq, err = vmindgateway.NewRequest(ctx, p.baseURL, model, input)
+	} else {
+		var payload *httpbody.Body
+		payload, err = httpbody.JSON(input, true)
+		if err == nil {
+			httpReq, err = payload.NewRequest(ctx, http.MethodPost, p.baseURL+path)
+		}
 	}
-	httpReq, err := payload.NewRequest(ctx, http.MethodPost, p.baseURL+path)
 	if err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" create parser request", err)
 	}
 	httpReq.Header.Set("content-type", "application/json")
 	if p.username != "" {
 		httpReq.SetBasicAuth(p.username, p.password)
-	}
-	if p.Gateway {
-		httpReq.Header.Set("X-Model-Key", model)
 	}
 	response, err := p.client.Do(httpReq)
 	if err != nil {

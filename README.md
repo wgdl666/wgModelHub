@@ -363,7 +363,7 @@ API key 不会作为鉴权降级路径。项目、代理或 provider 增删须�
 
 ## ModelGateway 统一调用入口
 
-`vmind_gateway` 的文本、图片、视频，以及设置 `vision_gateway` 的视觉适配器，统一向 `POST /v1/gateway/requests/{model_key}` 发送 JSON `input`，使用既有服务端 API Token 和 UUID `Idempotency-Key`。图片和视频原有的任务查询、对象存储读取保持不变；文本 JSON/SSE 和视觉原生结果继续由现有适配器转换为 gRPC。
+`vmind_gateway` 的文本、图片、视频，以及设置 `vision_gateway` 的视觉适配器，统一向 `POST /v1/gateway/requests/{model_key}` 发送 JSON `input`，使用既有服务端 API Token 和 UUID `Idempotency-Key`。图片和视频原有的任务查询、对象存储读取保持不变；文本 JSON/SSE 和视觉原生结果继续由现有适配器转换为 gRPC。视觉适配器直接从 protobuf 构造 JSON，不再生成旧 Gateway 路径或经 transport 拆包改写；transport 仅注入 Bearer Token。Gateway 已移除旧推理路由，需与本版本协调切换。
 
 ModelHub 仍维护 `request.model → provider` 配置和 protobuf 输入/输出适配，不维护 `model → Gateway 路径` 或复制 Gateway 的 JSON Schema 校验。模型 schema、实例选择、上游路径和 endpoint 由 Gateway 管理。新增同类模型可沿用适配器和配置模型列表；新增 protobuf 尚未表达的能力仍需补适配。
 

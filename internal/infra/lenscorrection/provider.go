@@ -2,7 +2,6 @@
 package lenscorrection
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -15,7 +14,9 @@ import (
 	"github.com/wgdl666/kangaroo/logs"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
+	"github.com/wgdl666/wgModelHub/internal/infra/vmindgateway"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
 	"github.com/wgdl666/wgModelHub/protocol"
@@ -23,10 +24,10 @@ import (
 
 type Provider struct {
 	// Gateway 启用登记模型路由，直连供应商继续使用原有契约。
-	Gateway  bool
-	name     string
-	endpoint string
-	client   *http.Client
+	Gateway bool
+	name    string
+	baseURL string
+	client  *http.Client
 }
 
 func New(name, baseURL string, options ...telemetry.HTTPClientOption) (*Provider, error) {
@@ -37,7 +38,7 @@ func New(name, baseURL string, options ...telemetry.HTTPClientOption) (*Provider
 	}
 	client := telemetry.NewHTTPClient(options...)
 	client.Timeout = 60 * time.Second
-	return &Provider{name: name, endpoint: baseURL + "/correct", client: client}, nil
+	return &Provider{name: name, baseURL: baseURL, client: client}, nil
 }
 
 // 开关缺省 true，但显式 false 必须原样下发，不能用 bool 零值吞掉关闭请求。
@@ -82,10 +83,15 @@ func (p *Provider) GenerateImage(ctx context.Context, model string, request *mod
 			return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, "invalid lens correction model_traits", err)
 		}
 	}
-	body, err := json.Marshal(struct {
+	input := struct {
 		Base64 string `json:"base64"`
 		options
-	}{Base64: base64.StdEncoding.EncodeToString(data), options: opts})
+	}{Base64: base64.StdEncoding.EncodeToString(data), options: opts}
+	var body *httpbody.Body
+	var err error
+	if !p.Gateway {
+		body, err = httpbody.JSON(input, true)
+	}
 	if err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, "encode lens correction request", err)
 	}
@@ -97,14 +103,16 @@ func (p *Provider) GenerateImage(ctx context.Context, model string, request *mod
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.endpoint, bytes.NewReader(body))
+		var req *http.Request
+		if p.Gateway {
+			req, err = vmindgateway.NewRequest(ctx, p.baseURL, model, input)
+		} else {
+			req, err = body.NewRequest(ctx, http.MethodPost, p.baseURL+"/correct")
+		}
 		if err != nil {
 			return nil, provider.WrapNotAttempted(provider.ErrorConfiguration, "create lens correction request", err)
 		}
 		req.Header.Set("Content-Type", "application/json")
-		if p.Gateway {
-			req.Header.Set("X-Model-Key", model)
-		}
 		response, err = p.client.Do(req)
 		if ctx.Err() != nil {
 			if response != nil {
