@@ -1,66 +1,35 @@
 // Package humanyolo 把自建人体检测收成 ModelHub 文本能力。
-// 衣橱只传一张图；置信度、IoU、地址和 Basic Auth 属于这个供应商，不进 RPC。
+// 衣橱只传一张图；置信度与 IoU 随统一 input 提交。
 package humanyolo
 
 import (
 	"context"
 	"io"
-	"net/http"
-	"strings"
 	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
-	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
-	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/infra/vmindgateway"
 	"github.com/wgdl666/wgModelHub/internal/provider"
-	"github.com/wgdl666/wgModelHub/models"
 )
 
 const (
-	predictPath = "/predict"
-	confidence  = "0.35"
-	iou         = "0.45"
-	timeout     = 60 * time.Second
+	confidence = "0.35"
+	iou        = "0.45"
+	timeout    = 60 * time.Second
 )
 
 // Provider 只实现 TextProvider，返回上游 JSON，裁图留在衣橱。
 type Provider struct {
-	// Gateway 启用登记模型路由，直连供应商继续使用原有契约。
-	Gateway  bool
-	name     string
-	baseURL  string
-	username string
-	password string
-	client   *http.Client
+	name    string
+	gateway *vmindgateway.Client
 }
 
-func New(name, baseURL, username, password string, options ...telemetry.HTTPClientOption) (*Provider, error) {
-	name = strings.TrimSpace(name)
-	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
-	username = strings.TrimSpace(username)
-	password = strings.TrimSpace(password)
-	if name == "" || baseURL == "" {
-		return nil, provider.New(provider.ErrorConfiguration, "human-yolo name and base_url are required")
-	}
-	if (username == "") != (password == "") {
-		return nil, provider.New(provider.ErrorConfiguration, "human-yolo username and password must be configured together")
-	}
-	client := telemetry.NewHTTPClient(options...)
-	client.Timeout = timeout
-	return &Provider{
-		name:     name,
-		baseURL:  baseURL,
-		username: username,
-		password: password,
-		client:   client,
-	}, nil
+func New(name string, gateway *vmindgateway.Client) *Provider {
+	return &Provider{name: name, gateway: gateway}
 }
 
 func (p *Provider) Generate(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
-	if !p.Gateway && model != models.HumanYOLO {
-		return nil, provider.NotAttemptedf(provider.ErrorInvalidArgument, "human-yolo does not serve model %q", model)
-	}
+
 	imageBytes, err := oneInlineImage(request.GetInput())
 	if err != nil {
 		return nil, err
@@ -90,27 +59,7 @@ func (p *Provider) GenerateStream(ctx context.Context, model string, request *mo
 }
 
 func (p *Provider) post(ctx context.Context, model string, imageBytes []byte) ([]byte, error) {
-	var httpReq *http.Request
-	var err error
-	if p.Gateway {
-		httpReq, err = vmindgateway.NewRequest(ctx, p.baseURL, model, map[string]any{"file": imageBytes, "conf": confidence, "iou": iou})
-	} else {
-		var body *httpbody.Body
-		body, err = httpbody.Multipart([]httpbody.Part{
-			httpbody.File("file", "person.png", "application/octet-stream", imageBytes),
-			httpbody.Field("conf", confidence), httpbody.Field("iou", iou),
-		})
-		if err == nil {
-			httpReq, err = body.NewRequest(ctx, http.MethodPost, p.baseURL+predictPath)
-		}
-	}
-	if err != nil {
-		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" create yolo request", err)
-	}
-	if p.username != "" {
-		httpReq.SetBasicAuth(p.username, p.password)
-	}
-	response, err := p.client.Do(httpReq)
+	response, err := p.gateway.Invoke(ctx, model, map[string]any{"file": imageBytes, "conf": confidence, "iou": iou}, timeout)
 	if err != nil {
 		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" yolo request failed", err)
 	}

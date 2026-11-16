@@ -149,21 +149,11 @@ func TestBuildPhotoroomExposesImageOnly(t *testing.T) {
 }
 
 func TestBuildSegmentPersonExposesImageOnly(t *testing.T) {
-	sets, err := Build(context.Background(), config.Config{
-		Providers: map[string]config.ProviderConfig{
-			"segment_person_bria": {
-				Models: []string{models.SegmentPersonBria, models.SegmentSubjectBria},
-				SegmentPerson: &config.SegmentPersonProviderConfig{
-					BaseURL: "https://segment-person.example",
-					Method:  "person-bria-rmbg",
-				},
-			},
-		},
-	})
+	sets, err := Build(context.Background(), visionFixtureConfig("http://gateway.example"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	set := sets["segment_person_bria"]
+	set := sets["segment"]
 	if set.Image == nil {
 		t.Fatal("missing image capability")
 	}
@@ -296,7 +286,7 @@ func TestBuildVertexAndGoogleRerankShareADCFile(t *testing.T) {
 }
 
 func TestBuildLensCorrectionImageOnly(t *testing.T) {
-	sets, err := Build(context.Background(), config.Config{Providers: map[string]config.ProviderConfig{"lens": {Models: []string{models.LensDistortionCorrection}, LensCorrection: &config.LensCorrectionProviderConfig{BaseURL: "http://172.31.43.7:18280/lens_distortion_correction"}}}})
+	sets, err := Build(context.Background(), visionFixtureConfig("http://gateway.example"))
 	if err != nil {
 		t.Fatal(err)
 	}

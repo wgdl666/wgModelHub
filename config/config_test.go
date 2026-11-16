@@ -226,7 +226,7 @@ func TestProviderSupportsPhotoroomImageOnly(t *testing.T) {
 }
 
 func TestProviderSupportsSegmentPersonImageOnly(t *testing.T) {
-	segment := ProviderConfig{SegmentPerson: &SegmentPersonProviderConfig{BaseURL: "https://segment.example", Method: "person-bria-rmbg"}}
+	segment := ProviderConfig{SegmentPerson: &SegmentPersonProviderConfig{Method: "person-bria-rmbg"}}
 	if !ProviderSupports(segment, CapabilityImage) {
 		t.Fatal("segment_person should support image")
 	}
@@ -260,7 +260,7 @@ func TestValidateRejectsSegmentPersonWithoutMethod(t *testing.T) {
 	cfg := validConfig()
 	cfg.Providers["segment_person_bria"] = ProviderConfig{
 		Models:        []string{models.SegmentPersonBria},
-		SegmentPerson: &SegmentPersonProviderConfig{BaseURL: "https://segment.example"},
+		SegmentPerson: &SegmentPersonProviderConfig{},
 	}
 	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "method") {
 		t.Fatalf("expected method error, got %v", err)
@@ -537,23 +537,23 @@ model_routes:
 
 // 两个环境端点均由配置选择；新增适配器仅支持图片，地址变更仍需重启。
 func TestLensCorrectionConfiguration(t *testing.T) {
-	for _, base := range []string{"https://mirror-lens.model.wgdl.tech", "http://172.31.43.7:18280/lens_distortion_correction"} {
-		cfg := validConfig()
-		p := ProviderConfig{Models: []string{models.LensDistortionCorrection}, LensCorrection: &LensCorrectionProviderConfig{BaseURL: base}}
-		cfg.Providers["lens"] = p
-		if err := cfg.Validate(); err != nil {
-			t.Fatal(err)
-		}
-		if !ProviderSupports(p, CapabilityImage) || ProviderSupports(p, CapabilityText) {
-			t.Fatal("wrong lens capability")
-		}
+	cfg := gatewayVisionTestConfig()
+	p := ProviderConfig{Models: []string{models.LensDistortionCorrection}, VisionGateway: "gateway", LensCorrection: &LensCorrectionProviderConfig{}}
+	cfg.Providers["lens"] = p
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
 	}
-	cfg := validConfig()
-	cfg.Providers["lens"] = ProviderConfig{Models: []string{models.LensDistortionCorrection}, LensCorrection: &LensCorrectionProviderConfig{}}
+	if !ProviderSupports(p, CapabilityImage) || ProviderSupports(p, CapabilityText) {
+		t.Fatal("wrong lens capability")
+	}
+	p.VisionGateway = ""
+	cfg.Providers["lens"] = p
 	if err := cfg.Validate(); err == nil {
-		t.Fatal("missing lens URL accepted")
+		t.Fatal("missing Gateway accepted")
 	}
-	cfg.Providers["lens"] = ProviderConfig{Models: []string{models.LensDistortionCorrection}, LensCorrection: &LensCorrectionProviderConfig{BaseURL: "https://lens.example"}, OpenAI: &OpenAIProviderConfig{APIKey: "key"}}
+	p.VisionGateway = "gateway"
+	p.OpenAI = &OpenAIProviderConfig{APIKey: "key"}
+	cfg.Providers["lens"] = p
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("two adapters accepted")
 	}

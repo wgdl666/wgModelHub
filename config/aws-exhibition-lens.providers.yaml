@@ -3,5 +3,4 @@ providers:
   wgdl_lens_correction:
     vision_gateway: wgdl_model_gateway_exhibition
     models: [Vmind_lens_distortion_correction_v1.0]
-    lens_distortion_correction:
-      base_url: http://172.31.43.7:18280/lens_distortion_correction
+    lens_distortion_correction: {}

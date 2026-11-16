@@ -108,8 +108,9 @@ func TestWorkspaceOverridesDashScopeDefault(t *testing.T) {
 
 func TestWeiguangExceptionKeepsHost(t *testing.T) {
 	segment, err := Of(config.ProviderConfig{
-		Models:        []string{models.SegmentPersonBria, models.SegmentSubjectBria},
-		SegmentPerson: &config.SegmentPersonProviderConfig{BaseURL: "https://segment-person.model.wgdl.tech"},
+		Models:           []string{models.SegmentPersonBria, models.SegmentSubjectBria},
+		VisionGatewayURL: "https://segment-person.model.wgdl.tech",
+		SegmentPerson:    &config.SegmentPersonProviderConfig{},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -128,8 +129,9 @@ func TestWeiguangExceptionKeepsHost(t *testing.T) {
 		t.Fatalf("legacy ltx=%+v", legacy)
 	}
 	parser, err := Of(config.ProviderConfig{
-		Models:      []string{models.HumanParse},
-		HumanParser: &config.HumanParserProviderConfig{BaseURL: "http://172.31.42.52:6105"},
+		Models:           []string{models.HumanParse},
+		VisionGatewayURL: "http://172.31.42.52:6105",
+		HumanParser:      &config.HumanParserProviderConfig{},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -193,16 +195,18 @@ func TestNamesKeepVLRoleWithoutSiblingAndAreIdempotent(t *testing.T) {
 func TestWeiguangInstanceNames(t *testing.T) {
 	providers := map[string]config.ProviderConfig{
 		"薇光点亮": {
-			Models:        []string{models.SegmentPersonBria},
-			SegmentPerson: &config.SegmentPersonProviderConfig{BaseURL: "https://segment-person.model.wgdl.tech"},
+			Models:           []string{models.SegmentPersonBria},
+			VisionGatewayURL: "https://segment-person.model.wgdl.tech",
+			SegmentPerson:    &config.SegmentPersonProviderConfig{},
 		},
 		"薇光点亮_image": {
 			Models:      []string{models.VWorldOutfit10},
 			VWorldImage: &config.VWorldImageProviderConfig{BaseURL: "https://vmind.example"},
 		},
 		"G7": {
-			Models:      []string{models.HumanParse},
-			HumanParser: &config.HumanParserProviderConfig{BaseURL: "https://g7.example"},
+			Models:           []string{models.HumanParse},
+			VisionGatewayURL: "https://g7.example",
+			HumanParser:      &config.HumanParserProviderConfig{},
 		},
 		"薇光点亮_video": {
 			Models: []string{models.VWorldOutfitVideo10},
@@ -316,8 +320,9 @@ func TestSameProtocolWithoutFamilyUsesHost(t *testing.T) {
 	// 协议相同、模型不属于薇光点亮模型族时，渠道和实例键都按主机，不进薇光点亮。
 	cases := []config.ProviderConfig{
 		{
-			Models:        []string{"custom-segment-worker"},
-			SegmentPerson: &config.SegmentPersonProviderConfig{BaseURL: "https://other-segment.example/api"},
+			Models:           []string{"custom-segment-worker"},
+			VisionGatewayURL: "https://other-segment.example/api",
+			SegmentPerson:    &config.SegmentPersonProviderConfig{},
 		},
 		{
 			VWorldImage: &config.VWorldImageProviderConfig{BaseURL: "https://other-image.example/v1"},
@@ -329,8 +334,9 @@ func TestSameProtocolWithoutFamilyUsesHost(t *testing.T) {
 	}
 	// 旧版人体解析虽然共用适配器，但不属于本次更正的 human_parse。
 	cases = append(cases, config.ProviderConfig{
-		Models:      []string{models.HumanParser},
-		HumanParser: &config.HumanParserProviderConfig{BaseURL: "https://legacy-parser.example"},
+		Models:           []string{models.HumanParser},
+		VisionGatewayURL: "https://legacy-parser.example",
+		HumanParser:      &config.HumanParserProviderConfig{},
 	})
 	hosts := []string{"other-segment.example", "other-image.example", "other-video.example", "legacy-parser.example"}
 	for i, cfg := range cases {
@@ -367,8 +373,10 @@ func TestVMindSynchronousVisionChannels(t *testing.T) {
 	// 两个正式模型改名后，启动阶段的渠道指标必须继续按检测/矫正协议归因。
 	providers := map[string]config.ProviderConfig{
 		"gateway": {Models: []string{models.VMindDreamV1}, VMindGateway: &config.VMindGatewayProviderConfig{BaseURL: "http://model-gateway:18580"}},
-		"detect":  {Models: []string{models.HumanYOLO}, VisionGateway: "gateway", HumanYOLO: &config.HumanYOLOProviderConfig{BaseURL: "http://172.31.43.7:18280/human-yolo"}},
-		"correct": {Models: []string{models.LensDistortionCorrection}, VisionGateway: "gateway", LensCorrection: &config.LensCorrectionProviderConfig{BaseURL: "http://172.31.43.7:18280/lens_distortion_correction"}},
+		"detect": {Models: []string{models.HumanYOLO}, VisionGateway: "gateway", VisionGatewayURL: "http://172.31.43.7:18280/human-yolo",
+			HumanYOLO: &config.HumanYOLOProviderConfig{}},
+		"correct": {Models: []string{models.LensDistortionCorrection}, VisionGateway: "gateway", VisionGatewayURL: "http://172.31.43.7:18280/lens_distortion_correction",
+			LensCorrection: &config.LensCorrectionProviderConfig{}},
 	}
 	for name, want := range map[string]string{"detect": instanceHumanYOLO, "correct": instanceLensCorrection} {
 		resolved, _, err := providers[name].ResolveVisionGateway(providers)
@@ -385,12 +393,14 @@ func TestVMindSynchronousVisionChannels(t *testing.T) {
 func TestNewFamilyIDsUseWeiguangException(t *testing.T) {
 	// 同族新 ID 不在 models 常量里，仍按例外归薇光，并按协议落到对应实例键。
 	person := config.ProviderConfig{
-		Models:        []string{"segment-person-next"},
-		SegmentPerson: &config.SegmentPersonProviderConfig{BaseURL: "https://seg.example/api"},
+		Models:           []string{"segment-person-next"},
+		VisionGatewayURL: "https://seg.example/api",
+		SegmentPerson:    &config.SegmentPersonProviderConfig{},
 	}
 	subject := config.ProviderConfig{
-		Models:        []string{"segment-subject-next"},
-		SegmentPerson: &config.SegmentPersonProviderConfig{BaseURL: "https://sub.example/api"},
+		Models:           []string{"segment-subject-next"},
+		VisionGatewayURL: "https://sub.example/api",
+		SegmentPerson:    &config.SegmentPersonProviderConfig{},
 	}
 	image := config.ProviderConfig{
 		Models:      []string{"VWorld_studio_2.0"},

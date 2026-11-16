@@ -7,46 +7,24 @@ import (
 	"encoding/json"
 	"io"
 	"math"
-	"net/http"
-	"strings"
 	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
-	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
-	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/infra/vmindgateway"
 	"github.com/wgdl666/wgModelHub/internal/provider"
-	"github.com/wgdl666/wgModelHub/models"
 )
 
 type Provider struct {
-	// Gateway 启用登记模型路由，直连供应商继续使用原有契约。
-	Gateway                           bool
-	name, baseURL, username, password string
-	client                            *http.Client
+	name    string
+	gateway *vmindgateway.Client
 }
 
-func New(name, baseURL, username, password string, options ...telemetry.HTTPClientOption) (*Provider, error) {
-	name = strings.TrimSpace(name)
-	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
-	username = strings.TrimSpace(username)
-	password = strings.TrimSpace(password)
-	if name == "" || baseURL == "" {
-		return nil, provider.New(provider.ErrorConfiguration, "facesim name and base_url are required")
-	}
-	if (username == "") != (password == "") {
-		return nil, provider.New(provider.ErrorConfiguration, "facesim username and password must be configured together")
-	}
-	// 网关凭据通过共享 HTTP 选项注入，模型服务不接收业务鉴权。
-	client := telemetry.NewHTTPClient(options...)
-	client.Timeout = 60 * time.Second
-	return &Provider{name: name, baseURL: baseURL, username: username, password: password, client: client}, nil
+func New(name string, gateway *vmindgateway.Client) *Provider {
+	return &Provider{name: name, gateway: gateway}
 }
 
 func (p *Provider) Generate(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
-	if !p.Gateway && model != models.FaceSim {
-		return nil, provider.NotAttemptedf(provider.ErrorInvalidArgument, "facesim does not serve model %q", model)
-	}
+
 	images := provider.ImageMedias(request.GetInput())
 	if len(images) != 2 {
 		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "facesim requires exactly two inline images")
@@ -63,24 +41,7 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 		}
 		fields[field] = base64.StdEncoding.EncodeToString(data.Data)
 	}
-	var req *http.Request
-	var err error
-	if p.Gateway {
-		req, err = vmindgateway.NewRequest(ctx, p.baseURL, model, fields)
-	} else {
-		var body *httpbody.Body
-		body, err = httpbody.Multipart([]httpbody.Part{httpbody.Field("image_a", fields["image_a"]), httpbody.Field("image_b", fields["image_b"])})
-		if err == nil {
-			req, err = body.NewRequest(ctx, http.MethodPost, p.baseURL+"/compare")
-		}
-	}
-	if err != nil {
-		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, "create facesim request", err)
-	}
-	if p.username != "" {
-		req.SetBasicAuth(p.username, p.password)
-	}
-	response, err := p.client.Do(req)
+	response, err := p.gateway.Invoke(ctx, model, fields, 60*time.Second)
 	if err != nil {
 		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" facesim request failed", err)
 	}

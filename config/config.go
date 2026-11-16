@@ -53,18 +53,19 @@ type ProviderConfig struct {
 	// Fashion 保留现有衣橱向量空间和多模态精排协议。
 	Fashion *FashionProviderConfig `yaml:"fashion"`
 
-	Models         []string                      `yaml:"models"`
-	VisionGateway  string                        `yaml:"vision_gateway,omitempty"`
-	Gemini         *GeminiProviderConfig         `yaml:"gemini"`
-	VertexAI       *VertexAIProviderConfig       `yaml:"vertexai"`
-	Ark            *ArkProviderConfig            `yaml:"ark"`
-	OpenAI         *OpenAIProviderConfig         `yaml:"openai"`
-	LTX            *LTXProviderConfig            `yaml:"ltx"`
-	VMindGateway   *VMindGatewayProviderConfig   `yaml:"model_gateway"`
-	DashScopeVideo *DashScopeVideoProviderConfig `yaml:"dashscope_video"`
-	OminilinkVideo *OminilinkVideoProviderConfig `yaml:"ominilink_video"`
-	GeminiVideo    *GeminiVideoProviderConfig    `yaml:"gemini_video"`
-	ArkVideo       *ArkVideoProviderConfig       `yaml:"ark_video"`
+	Models           []string                      `yaml:"models"`
+	VisionGatewayURL string                        `yaml:"-"` // 仅由 Gateway 引用解析，供渠道指标读取实际目标。
+	VisionGateway    string                        `yaml:"vision_gateway,omitempty"`
+	Gemini           *GeminiProviderConfig         `yaml:"gemini"`
+	VertexAI         *VertexAIProviderConfig       `yaml:"vertexai"`
+	Ark              *ArkProviderConfig            `yaml:"ark"`
+	OpenAI           *OpenAIProviderConfig         `yaml:"openai"`
+	LTX              *LTXProviderConfig            `yaml:"ltx"`
+	VMindGateway     *VMindGatewayProviderConfig   `yaml:"model_gateway"`
+	DashScopeVideo   *DashScopeVideoProviderConfig `yaml:"dashscope_video"`
+	OminilinkVideo   *OminilinkVideoProviderConfig `yaml:"ominilink_video"`
+	GeminiVideo      *GeminiVideoProviderConfig    `yaml:"gemini_video"`
+	ArkVideo         *ArkVideoProviderConfig       `yaml:"ark_video"`
 	// MinimaxTTS 承接同步一次性 TTS；与 chat/completions OpenAI 实例分绑，避免误用文本能力。
 	MinimaxTTS *MinimaxTTSProviderConfig `yaml:"minimax_tts"`
 	// ElevenLabsTTS 承接整段和流式 TTS；与 Minimax 分绑，未配置时不影响现有 speech 路由。
@@ -291,20 +292,15 @@ type PhotoroomProviderConfig struct {
 }
 
 // SegmentPersonProviderConfig 承接国内自建抠图。
-// base_url / method / Basic Auth 只在 ModelHub；人物与商品主体靠 models 里的两个真实 ID 区分。
+// 算法参数随统一 input 提交，人物/主体分流由 Gateway 登记协议决定。
 type SegmentPersonProviderConfig struct {
-	BaseURL       string `yaml:"base_url"`
-	Username      string `yaml:"username"`
-	Password      string `yaml:"password"`
 	Method        string `yaml:"method"`
 	PersonMethod  string `yaml:"person_method"`
 	SubjectMethod string `yaml:"subject_method"`
 }
 
-// LensCorrectionProviderConfig 的 base_url 保留环境前缀，适配器统一追加 /correct。
-type LensCorrectionProviderConfig struct {
-	BaseURL string `yaml:"base_url"`
-}
+// LensCorrectionProviderConfig 只选择结果适配器，连接由 vision_gateway 引用提供。
+type LensCorrectionProviderConfig = GatewayVisionConfig
 
 // VWorldImageProviderConfig 承接薇光点亮公网生图入口。
 // 密码只来自受保护配置/环境变量；不要写内网 10.200.* 或本机 127.0.0.1 调试口。
@@ -314,31 +310,18 @@ type VWorldImageProviderConfig struct {
 	Password string `yaml:"password"`
 }
 
-// HumanYOLOProviderConfig 是自建检测服务的地址和 Basic Auth。阈值在供应商代码里，不进 YAML。
-type HumanYOLOProviderConfig struct {
-	BaseURL  string `yaml:"base_url"`
-	Username string `yaml:"username"`
-	Password string `yaml:"password"`
-}
+// HumanYOLOProviderConfig 只选择检测结果适配器；阈值随 Gateway input 提交。
+type HumanYOLOProviderConfig = GatewayVisionConfig
 
 type ClothYOLOProviderConfig struct {
 	BaseURL  string `yaml:"base_url"`
 	Username string `yaml:"username"`
 	Password string `yaml:"password"`
 }
-type FaceSimProviderConfig struct {
-	BaseURL  string `yaml:"base_url"`
-	Username string `yaml:"username"`
-	Password string `yaml:"password"`
-}
+type FaceSimProviderConfig = GatewayVisionConfig
 
-// HumanParserProviderConfig 是人体解析地址。账号密码成对，两个都空则匿名。
-// 无鉴权的私网服务应把账号密码留空；配置前确认部署环境可达。
-type HumanParserProviderConfig struct {
-	BaseURL  string `yaml:"base_url"`
-	Username string `yaml:"username"`
-	Password string `yaml:"password"`
-}
+// HumanParserProviderConfig 只选择人体解析结果适配器，不能配置原生地址或凭据。
+type HumanParserProviderConfig = GatewayVisionConfig
 
 // RekognitionDetectProviderConfig 是 DetectLabels 的区域和可选静态钥。空钥走任务角色。
 type RekognitionDetectProviderConfig struct {
@@ -1043,43 +1026,19 @@ func validateProvider(name string, provider ProviderConfig) error {
 		if strings.TrimSpace(provider.Photoroom.APIKey) == "" {
 			return fmt.Errorf("provider %s api_key is required", name)
 		}
-	case provider.LensCorrection != nil:
-		endpoint, err := url.Parse(strings.TrimSpace(provider.LensCorrection.BaseURL))
-		if err != nil || endpoint.Host == "" || (endpoint.Scheme != "http" && endpoint.Scheme != "https") || endpoint.RawQuery != "" || endpoint.Fragment != "" || endpoint.User != nil {
-			return fmt.Errorf("provider %s lens_distortion_correction requires HTTP(S) base_url without credentials or query", name)
-		}
 	case provider.SegmentPerson != nil:
 		segment := provider.SegmentPerson
-		if strings.TrimSpace(segment.BaseURL) == "" || (strings.TrimSpace(segment.Method) == "" && (strings.TrimSpace(segment.PersonMethod) == "" || strings.TrimSpace(segment.SubjectMethod) == "")) {
-			return fmt.Errorf("provider %s segment_person base_url and method are required", name)
-		}
-		if (strings.TrimSpace(segment.Username) == "") != (strings.TrimSpace(segment.Password) == "") {
-			return fmt.Errorf("provider %s segment_person username and password must be configured together", name)
+		if strings.TrimSpace(segment.Method) == "" && (strings.TrimSpace(segment.PersonMethod) == "" || strings.TrimSpace(segment.SubjectMethod) == "") {
+			return fmt.Errorf("provider %s segment_person method or both person_method and subject_method are required", name)
 		}
 	case provider.VWorldImage != nil:
 		vworld := provider.VWorldImage
 		if strings.TrimSpace(vworld.BaseURL) == "" || strings.TrimSpace(vworld.Username) == "" || strings.TrimSpace(vworld.Password) == "" {
 			return fmt.Errorf("provider %s vworld_image base_url, username and password are required", name)
 		}
-	case provider.HumanYOLO != nil:
-		yolo := provider.HumanYOLO
-		if err := validateVisionHTTP(name, "human_yolo", yolo.BaseURL, yolo.Username, yolo.Password); err != nil {
-			return err
-		}
 	case provider.ClothYOLO != nil:
 		c := provider.ClothYOLO
 		return validateVisionHTTP(name, "cloth_yolo", c.BaseURL, c.Username, c.Password)
-	case provider.FaceSim != nil:
-		c := provider.FaceSim
-		return validateVisionHTTP(name, "facesim", c.BaseURL, c.Username, c.Password)
-	case provider.HumanParser != nil:
-		parser := provider.HumanParser
-		if strings.TrimSpace(parser.BaseURL) == "" {
-			return fmt.Errorf("provider %s human_parser base_url is required", name)
-		}
-		if (strings.TrimSpace(parser.Username) == "") != (strings.TrimSpace(parser.Password) == "") {
-			return fmt.Errorf("provider %s human_parser username and password must be configured together", name)
-		}
 	case provider.RekognitionDetect != nil:
 		detect := provider.RekognitionDetect
 		region := strings.TrimSpace(detect.Region)

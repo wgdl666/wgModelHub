@@ -241,6 +241,15 @@ func assertRoutes(t *testing.T, snap auditSnapshot, names map[string]string, pro
 	if err := yaml.Unmarshal(body, &before); err != nil {
 		t.Fatal(err)
 	}
+	// 历史快照保留原渠道事实；已移除的直连配置必须先迁移，不能重写后当作当前运行配置。
+	for _, p := range providers {
+		if p.VisionGatewayURL != "" && p.VisionGateway == "" {
+			if _, _, err := RewriteYAML(body); err == nil {
+				t.Fatal("historical native vision config requires Gateway migration")
+			}
+			return
+		}
+	}
 	rewritten, renames, err := RewriteYAML(body)
 	if err != nil {
 		t.Fatalf("%s rewrite: %v", snap.Environment, err)
@@ -338,13 +347,16 @@ func providerFromAudit(t *testing.T, item auditProvider, row auditRow) config.Pr
 	case "photoroom":
 		cfg.Photoroom = &config.PhotoroomProviderConfig{APIKey: "audit", BaseURL: urlFor(explicit), ProxyURL: proxy}
 	case "segment_person":
-		cfg.SegmentPerson = &config.SegmentPersonProviderConfig{BaseURL: urlFor(explicit)}
+		cfg.SegmentPerson = &config.SegmentPersonProviderConfig{}
+		cfg.VisionGatewayURL = urlFor(explicit)
 	case "vworld_image":
 		cfg.VWorldImage = &config.VWorldImageProviderConfig{BaseURL: urlFor(explicit)}
 	case "human_yolo":
-		cfg.HumanYOLO = &config.HumanYOLOProviderConfig{BaseURL: urlFor(explicit)}
+		cfg.HumanYOLO = &config.HumanYOLOProviderConfig{}
+		cfg.VisionGatewayURL = urlFor(explicit)
 	case "human_parser":
-		cfg.HumanParser = &config.HumanParserProviderConfig{BaseURL: urlFor(explicit)}
+		cfg.HumanParser = &config.HumanParserProviderConfig{}
+		cfg.VisionGatewayURL = urlFor(explicit)
 	case "rekognition_detect":
 		cfg.RekognitionDetect = &config.RekognitionDetectProviderConfig{Region: awsRegion(t, row.Host, "rekognition.")}
 	case "rekognition_compare":

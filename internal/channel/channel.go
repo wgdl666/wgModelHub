@@ -89,9 +89,13 @@ func Names(providers map[string]config.ProviderConfig) (map[string]string, error
 	channelCount := map[string]int{}
 	groups := map[groupKey][]string{}
 	for name, provider := range providers {
-		resolved, _, err := provider.ResolveVisionGateway(providers)
-		if err != nil {
-			return nil, fmt.Errorf("provider %s: %w", name, err)
+		resolved := provider
+		if provider.VisionGateway != "" {
+			var err error
+			resolved, _, err = provider.ResolveVisionGateway(providers)
+			if err != nil {
+				return nil, fmt.Errorf("provider %s: %w", name, err)
+			}
 		}
 		id, err := Of(resolved)
 		if err != nil {
@@ -404,12 +408,9 @@ func endpoint(provider config.ProviderConfig) (protocol, raw string, err error) 
 	case provider.Photoroom != nil:
 		return "photoroom", firstNonEmpty(provider.Photoroom.BaseURL, "https://"+photoroomDefaultHost), nil
 	case provider.LensCorrection != nil:
-		return "lens_distortion_correction", provider.LensCorrection.BaseURL, nil
+		return "lens_distortion_correction", provider.VisionGatewayURL, nil
 	case provider.SegmentPerson != nil:
-		if strings.TrimSpace(provider.SegmentPerson.BaseURL) == "" {
-			return "", "", fmt.Errorf("segment_person base_url is required")
-		}
-		return "segment_person", provider.SegmentPerson.BaseURL, nil
+		return "segment_person", provider.VisionGatewayURL, nil
 	case provider.VWorldImage != nil:
 		if strings.TrimSpace(provider.VWorldImage.BaseURL) == "" {
 			return "", "", fmt.Errorf("vworld_image base_url is required")
@@ -421,20 +422,11 @@ func endpoint(provider config.ProviderConfig) (protocol, raw string, err error) 
 		}
 		return "cloth_yolo", provider.ClothYOLO.BaseURL, nil
 	case provider.FaceSim != nil:
-		if strings.TrimSpace(provider.FaceSim.BaseURL) == "" {
-			return "", "", fmt.Errorf("facesim base_url is required")
-		}
-		return "facesim", provider.FaceSim.BaseURL, nil
+		return "facesim", provider.VisionGatewayURL, nil
 	case provider.HumanYOLO != nil:
-		if strings.TrimSpace(provider.HumanYOLO.BaseURL) == "" {
-			return "", "", fmt.Errorf("human_yolo base_url is required")
-		}
-		return "human_yolo", provider.HumanYOLO.BaseURL, nil
+		return "human_yolo", provider.VisionGatewayURL, nil
 	case provider.HumanParser != nil:
-		if strings.TrimSpace(provider.HumanParser.BaseURL) == "" {
-			return "", "", fmt.Errorf("human_parser base_url is required")
-		}
-		return "human_parser", provider.HumanParser.BaseURL, nil
+		return "human_parser", provider.VisionGatewayURL, nil
 	case provider.RekognitionDetect != nil:
 		raw, err = awsRegional("rekognition", provider.RekognitionDetect.Region)
 		return "rekognition_detect", raw, err

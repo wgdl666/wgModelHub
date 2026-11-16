@@ -66,11 +66,11 @@ func listModelsTestService() *Service {
 			},
 			"person_detect": {
 				Models:    []string{models.HumanYOLO},
-				HumanYOLO: &config.HumanYOLOProviderConfig{BaseURL: "https://example.invalid", Username: "u", Password: "p"},
+				HumanYOLO: &config.HumanYOLOProviderConfig{},
 			},
 			"human_parser": {
 				Models:      []string{models.HumanParser, models.HumanParse},
-				HumanParser: &config.HumanParserProviderConfig{BaseURL: "https://example.invalid"},
+				HumanParser: &config.HumanParserProviderConfig{},
 			},
 			"extra": {
 				Models: []string{"not-in-catalog"},

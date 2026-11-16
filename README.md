@@ -241,7 +241,7 @@ Nacos 热更新；实例增删或凭据/端点等资源参数变化须滚动重�
 
 ### AWS-G6 视觉服务
 
-`config/aws-g6.providers.yaml` 是待合并的 provider 和路由配置，不是完整的 Nacos/AppConfig 配置；合并时保留其他模型、数据库、日志等设置。部署前须从实际 ModelHub 运行环境验证 `172.31.43.7:18280` 可达，连接资源变化须滚动重启。
+`config/aws-g6.providers.yaml` 是待合并的 provider 和路由配置，不是完整的 Nacos/AppConfig 配置；合并时保留其他模型、数据库、日志等设置。五类视觉适配器必须引用同环境的 `model_gateway`，由 Gateway 连接实际 G6 实例；连接资源变化须滚动重启。
 
 美东目标按 `wgPlatformInfra/config/services-tomirro/modelhub.yaml` 核对：代码分支是 `dev`，运行身份是 `US/ppe_exhibition`，ECS 为 `us-east-2` 的 `tomirro/modelhub-service`。AppConfig 为 `modelhub / ppe_exhibition / config-ppe_exhibition`（application `u8e7hop`、environment `em4ujml`、profile `n1chtur`），不是新加坡使用的 `modelhub / dev / config-dev`。发布前再从实际 ECS task 和 AppConfig metadata 核实身份；备份当前完整配置，合并 overlay 后执行 `ParseAndValidateYAML`。先让支持新 provider 的代码发布成功，再部署新配置并滚动重启；验收失败时恢复原配置版本和原健康镜像。仓库现有美东发布流程是 `.github/workflows/deploy-aws-exhibition.yml` → `tomirro-modelhub` 托管流水线，按正式 `dev` 的精确 SHA 发布。
 
@@ -252,13 +252,13 @@ Nacos 热更新；实例增删或凭据/端点等资源参数变化须滚动重�
 | HumanParser | `human-parser`、`Vmind_human_parse_v1.0` | `/human-parser/human_parser/predict` | 解析 JSON |
 | SegmentPerson | `Vmind_segment_person_bria_v1.0` | `/segment-person/api/segment` | PNG，人像 Portrait |
 | SegmentPerson | `Vmind_segment_subject_bria_v1.0` | `/segment-person/api/segment_subject` | PNG，主体 BRIA |
-| HumanYolo | `human-yolo` | `/human-yolo/predict` | 检测 JSON |
+| HumanYolo | `Vmind_human_yolo_v1.0` | `/human-yolo/predict` | 检测 JSON |
 | ClothYolo | `cloth-yolo` | `/cloth-yolo/predict` | 检测 JSON |
 | FaceSim | `facesim` | `/facesim/compare` | 比对 JSON |
 
-人像 ID 是历史调用 ID，实际算法由 `segment_person.person_method: person-birefnet-portrait` 选择；主体用 `subject_method: person-bria-rmbg`。原有 `method` 仍可作为兼容回退。旧 `human-parser` provider 的 base URL 包含 `/human_parser`，新 `Vmind_human_parse_v1.0` provider 则只包含服务前缀，两者最终请求同一预测接口。
+人体解析、人体检测、人脸比对和抠图的原生 G6 路径由 Gateway 内部使用，ModelHub 不再拼接这些路径。人体解析、人体检测、人脸比对、人物/主体抠图及镜头校正必须配置 `vision_gateway`，原 `base_url`、`username`、`password` 不再接受。`person_method` / `subject_method` 随 input 提交，由 Gateway 按登记协议选择；`method` 可提供共同算法值。
 
-这些上游可省略用户名和密码；配置 Basic Auth 时必须两项同时填写。FaceSim 输入两张图片，`similarity` 保持 0–1，`cosine_similarity` 保留上游带符号的余弦分数。ClothYolo 是独立服装检测能力，不参与人像抠图过滤。
+五类视觉模型使用 Gateway 的 Bearer Token，原生凭据不在这些 ModelHub provider 中配置。FaceSim 输入两张图片，`similarity` 保持 0–1，`cosine_similarity` 保留上游带符号的余弦分数。ClothYolo 是独立服装检测能力，不参与人像抠图过滤。
 
 在可访问 G6 的环境运行真实图片验证：
 
@@ -363,8 +363,24 @@ API key 不会作为鉴权降级路径。项目、代理或 provider 增删须�
 
 ## ModelGateway 统一调用入口
 
-`vmind_gateway` 的文本、图片、视频，以及设置 `vision_gateway` 的视觉适配器，统一向 `POST /v1/gateway/requests/{model_key}` 发送 JSON `input`，使用既有服务端 API Token 和 UUID `Idempotency-Key`。图片和视频原有的任务查询、对象存储读取保持不变；文本 JSON/SSE 和视觉原生结果继续由现有适配器转换为 gRPC。视觉适配器直接从 protobuf 构造 JSON，不再生成旧 Gateway 路径或经 transport 拆包改写；transport 仅注入 Bearer Token。Gateway 已移除旧推理路由，需与本版本协调切换。
+`model_gateway` 的文本、图片、视频，以及通过 `vision_gateway` 引用它的视觉适配器，统一向 `POST /v1/gateway/requests/{model_key}` 发送 JSON `input`，使用既有服务端 API Token 和 UUID `Idempotency-Key`。图片和视频原有的任务查询、对象存储读取保持不变；文本 JSON/SSE 和视觉原生结果继续由现有适配器转换为 gRPC。五类视觉适配器仅保留 protobuf 输入和结果转换，统一由 Gateway 客户端添加路径、UUID、Bearer Token 和来源身份；原生直连、Basic Auth、multipart 发送和本地重试已删除。Gateway 已移除旧推理路由，需与本版本协调切换。
 
 ModelHub 仍维护 `request.model → provider` 配置和 protobuf 输入/输出适配，不维护 `model → Gateway 路径` 或复制 Gateway 的 JSON Schema 校验。模型 schema、实例选择、上游路径和 endpoint 由 Gateway 管理。新增同类模型可沿用适配器和配置模型列表；新增 protobuf 尚未表达的能力仍需补适配。
 
-发布顺序：先在 Gateway 执行 input_schema 迁移并部署支持统一入口的版本，再发布此 ModelHub 版本。Gateway 保留旧路由，因此旧 ModelHub 可继续工作；此版本不向旧路由自动回退。第三方供应商直连的 OpenAI-compatible `/chat/completions` 和 Images API 不改。
+发布前在 Gateway 执行 input_schema 迁移，完成模型实例登记，并将这五类视觉 provider 的连接配置改为 `vision_gateway` 引用。Gateway 与 ModelHub 需协调切换：Gateway 旧路由已删除，ModelHub 不再接受这些 provider 的原生连接参数。第三方供应商直连的 OpenAI-compatible `/chat/completions` 和 Images API 不改。
+
+视觉配置示例（`wgdl_model_gateway` 必须是同环境已经配置的 `model_gateway` 实例）：
+
+```yaml
+providers:
+  wgdl_human_yolo:
+    models: [Vmind_human_yolo_v1.0]
+    vision_gateway: wgdl_model_gateway
+    human_yolo: {}
+  wgdl_segment_person:
+    models: [Vmind_segment_person_bria_v1.0, Vmind_segment_subject_bria_v1.0]
+    vision_gateway: wgdl_model_gateway
+    segment_person:
+      person_method: person-birefnet-portrait
+      subject_method: person-bria-rmbg
+```

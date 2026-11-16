@@ -7,71 +7,31 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"io"
-	"net/http"
 	"strings"
 	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
-	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
-	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/infra/vmindgateway"
 	"github.com/wgdl666/wgModelHub/internal/provider"
-	"github.com/wgdl666/wgModelHub/models"
 )
 
 const (
-	// legacyPredictPath 是国内/新加坡 human-parser 的旧入口，不能改成 G7 路径。
-	legacyPredictPath = "/predict"
-	// g7PredictPath 是 G7 人体解析。HTTP 200 仍可能 success=false，必须另判。Vmind_human_parse_v1.0 渠道归属薇光点亮。
-	g7PredictPath = "/human_parser/predict"
-	timeout       = 120 * time.Second
+	timeout = 120 * time.Second
 	// responseLimit 盖住 2048 边长分割图的 base64。超过说明上游没按像素上限返回。
 	responseLimit = 16 << 20
 )
 
-// Provider 只实现 TextProvider。账号密码成对出现，两个都空则匿名调用。
+// Provider 只转换人体解析输入和结果，连接与凭据统一由 Gateway 客户端持有。
 type Provider struct {
-	// Gateway 启用登记模型路由，直连供应商继续使用原有契约。
-	Gateway  bool
-	name     string
-	baseURL  string
-	username string
-	password string
-	client   *http.Client
+	name    string
+	gateway *vmindgateway.Client
 }
 
-func New(name, baseURL, username, password string, options ...telemetry.HTTPClientOption) (*Provider, error) {
-	name = strings.TrimSpace(name)
-	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
-	username = strings.TrimSpace(username)
-	password = strings.TrimSpace(password)
-	if name == "" || baseURL == "" {
-		return nil, provider.New(provider.ErrorConfiguration, "human-parser name and base_url are required")
-	}
-	if (username == "") != (password == "") {
-		return nil, provider.New(provider.ErrorConfiguration, "human-parser username and password must be configured together")
-	}
-	client := telemetry.NewHTTPClient(options...)
-	client.Timeout = timeout
-	return &Provider{
-		name:     name,
-		baseURL:  baseURL,
-		username: username,
-		password: password,
-		client:   client,
-	}, nil
+func New(name string, gateway *vmindgateway.Client) *Provider {
+	return &Provider{name: name, gateway: gateway}
 }
 
 func (p *Provider) Generate(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
-	var path string
-	checkSuccess := true
-	var err error
-	if !p.Gateway {
-		path, checkSuccess, err = predictRoute(model)
-	}
-	if err != nil {
-		return nil, err
-	}
 	images := provider.ImageMedias(request.GetInput())
 	if len(images) != 1 {
 		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "human-parser requires exactly one input image")
@@ -81,24 +41,7 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "human-parser requires inline image bytes")
 	}
 	input := map[string]string{"image": base64.StdEncoding.EncodeToString(data.Data)}
-	var httpReq *http.Request
-	if p.Gateway {
-		httpReq, err = vmindgateway.NewRequest(ctx, p.baseURL, model, input)
-	} else {
-		var payload *httpbody.Body
-		payload, err = httpbody.JSON(input, true)
-		if err == nil {
-			httpReq, err = payload.NewRequest(ctx, http.MethodPost, p.baseURL+path)
-		}
-	}
-	if err != nil {
-		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" create parser request", err)
-	}
-	httpReq.Header.Set("content-type", "application/json")
-	if p.username != "" {
-		httpReq.SetBasicAuth(p.username, p.password)
-	}
-	response, err := p.client.Do(httpReq)
+	response, err := p.gateway.Invoke(ctx, model, input, timeout)
 	if err != nil {
 		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" parser request failed", err)
 	}
@@ -114,24 +57,10 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 		return nil, provider.FromHTTPDetail(p.name, response.StatusCode, string(body))
 	}
 	// G7 用 HTTP 200 包业务失败。不在这里拦住的话，账本会记成成功，衣橱才发现没有分割图。
-	if checkSuccess {
-		if err := requireParserSuccess(p.name, body); err != nil {
-			return nil, err
-		}
+	if err := requireParserSuccess(p.name, body); err != nil {
+		return nil, err
 	}
 	return provider.TextFinalEvent(string(body), nil, "", "", nil), nil
-}
-
-// predictRoute 按模型 ID 选路径。旧 ID 保持原样，避免国内和新加坡跟着路演改入口。
-func predictRoute(model string) (string, bool, error) {
-	switch model {
-	case models.HumanParser:
-		return legacyPredictPath, false, nil
-	case models.HumanParse:
-		return g7PredictPath, true, nil
-	default:
-		return "", false, provider.NotAttemptedf(provider.ErrorInvalidArgument, "human-parser does not serve model %q", model)
-	}
 }
 
 func requireParserSuccess(name string, body []byte) error {

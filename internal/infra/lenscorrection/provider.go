@@ -1,4 +1,4 @@
-// Package lenscorrection 适配镜头校正 HTTP 契约并对暂时性传输故障有限重试；对象存储、处理标记和业务任务重试归调用方。
+// Package lenscorrection 转换 Gateway 镜头校正输入和结果；不重发已受理的模型调用。
 package lenscorrection
 
 import (
@@ -7,38 +7,22 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
-	"github.com/wgdl666/kangaroo/logs"
-
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
-	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
-	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/infra/vmindgateway"
 	"github.com/wgdl666/wgModelHub/internal/provider"
-	"github.com/wgdl666/wgModelHub/models"
 	"github.com/wgdl666/wgModelHub/protocol"
 )
 
 type Provider struct {
-	// Gateway 启用登记模型路由，直连供应商继续使用原有契约。
-	Gateway bool
 	name    string
-	baseURL string
-	client  *http.Client
+	gateway *vmindgateway.Client
 }
 
-func New(name, baseURL string, options ...telemetry.HTTPClientOption) (*Provider, error) {
-	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
-	parsed, err := url.Parse(baseURL)
-	if strings.TrimSpace(name) == "" || err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.User != nil {
-		return nil, provider.New(provider.ErrorConfiguration, "lens correction requires name and HTTP(S) base_url without credentials or query")
-	}
-	client := telemetry.NewHTTPClient(options...)
-	client.Timeout = 60 * time.Second
-	return &Provider{name: name, baseURL: baseURL, client: client}, nil
+func New(name string, gateway *vmindgateway.Client) *Provider {
+	return &Provider{name: name, gateway: gateway}
 }
 
 // 开关缺省 true，但显式 false 必须原样下发，不能用 bool 零值吞掉关闭请求。
@@ -66,7 +50,7 @@ type diagnostics struct {
 }
 
 func (p *Provider) GenerateImage(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
-	if request == nil || (!p.Gateway && model != models.LensDistortionCorrection) {
+	if request == nil {
 		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "lens correction requires its model and image request")
 	}
 	images := provider.ImageMedias(request.GetInput())
@@ -87,68 +71,14 @@ func (p *Provider) GenerateImage(ctx context.Context, model string, request *mod
 		Base64 string `json:"base64"`
 		options
 	}{Base64: base64.StdEncoding.EncodeToString(data), options: opts}
-	var body *httpbody.Body
-	var err error
-	if !p.Gateway {
-		body, err = httpbody.JSON(input, true)
-	}
+	response, err := p.gateway.Invoke(ctx, model, input, 60*time.Second)
 	if err != nil {
-		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, "encode lens correction request", err)
-	}
-	// 校正不创建业务资产，可复用同一原图重试；总预算仍为 60 秒，避免三次调用放大等待时间。
-	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
-	var response *http.Response
-	for attempt := 1; ; attempt++ {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		var req *http.Request
-		if p.Gateway {
-			req, err = vmindgateway.NewRequest(ctx, p.baseURL, model, input)
-		} else {
-			req, err = body.NewRequest(ctx, http.MethodPost, p.baseURL+"/correct")
-		}
-		if err != nil {
-			return nil, provider.WrapNotAttempted(provider.ErrorConfiguration, "create lens correction request", err)
-		}
-		req.Header.Set("Content-Type", "application/json")
-		response, err = p.client.Do(req)
-		if ctx.Err() != nil {
-			if response != nil {
-				response.Body.Close()
-			}
-			return nil, ctx.Err()
-		}
-		if err == nil && response.StatusCode == http.StatusOK {
-			break
-		}
-		statusCode := 0
-		retryable := err != nil
-		var callErr error
-		if err != nil {
-			callErr = provider.Wrap(provider.ErrorUnavailable, p.name+" lens correction request failed", err)
-		} else {
-			statusCode = response.StatusCode
-			// 错误正文可能回显 Base64，不读取或记录；重试前释放响应体。
-			response.Body.Close()
-			callErr = provider.FromHTTPDetail(p.name, statusCode, "lens correction upstream rejected request")
-			retryable = statusCode == 429 || statusCode == 500 || statusCode == 502 || statusCode == 503 || statusCode == 504
-		}
-		if !retryable || attempt == 3 {
-			return nil, callErr
-		}
-		// 包含首次最多三次；短暂退避可被取消，不重试参数错误或成功响应的解析错误。
-		logs.Default().WarnContext(ctx, "modelhub_lens_correction_retry", "provider", p.name, "attempt", attempt, "status_code", statusCode)
-		timer := time.NewTimer(time.Duration(attempt) * 200 * time.Millisecond)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return nil, ctx.Err()
-		case <-timer.C:
-		}
+		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" lens correction request failed", err)
 	}
 	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return nil, provider.FromHTTPDetail(p.name, response.StatusCode, "lens correction gateway rejected request")
+	}
 	var payload struct {
 		ImageBase64 string `json:"image_base64"`
 		diagnostics
