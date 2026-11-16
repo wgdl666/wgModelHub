@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"sync"
 	"time"
@@ -19,22 +20,30 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/provider"
 )
 
-const writeTimeout = 5 * time.Second
+const (
+	writeTimeout     = 5 * time.Second
+	handshakeTimeout = 10 * time.Second
+	stopWaitTimeout  = 2 * time.Second
+)
 
 // Dialect 收拢各厂 WebSocket 的握手和事件差异；统一控制面仍只使用 proto 字段。
 // BuildStart/Parse 必须只做确定的厂家映射，未知 ASRFeatures 由 OpenASR 记录诊断后忽略。
 type Dialect struct {
-	Name              string
-	URL               func(*modelhubv2.TranscribeSpeechStart) (string, error)
-	Header            func() http.Header
-	BuildStart        func(*modelhubv2.TranscribeSpeechStart) (messageType int, payload []byte, err error)
-	BuildAudio        func([]byte) (messageType int, payload []byte, err error)
-	BuildFinalize     func() (messageType int, payload []byte, ok bool)
-	BuildStop         func() (messageType int, payload []byte, ok bool)
-	Parse             func(messageType int, payload []byte) ([]*modelhubv2.TranscribeSpeechTranscript, error)
-	SupportsHotwordID bool
-	SupportsSpeakers  bool
-	SupportsFormatted bool
+	Name          string
+	URL           func(*modelhubv2.TranscribeSpeechStart) (string, error)
+	Header        func() http.Header
+	BuildStart    func(*modelhubv2.TranscribeSpeechStart) (messageType int, payload []byte, err error)
+	BuildAudio    func([]byte) (messageType int, payload []byte, err error)
+	BuildFinalize func() (messageType int, payload []byte, ok bool)
+	BuildStop     func() (messageType int, payload []byte, ok bool)
+	ReadSession   func(messageType int, payload []byte) (*modelhubv2.TranscribeSpeechSession, error)
+	// Parse 返回 io.EOF 表示供应商已确认结束，先前转写已经交付。
+	Parse              func(messageType int, payload []byte) ([]*modelhubv2.TranscribeSpeechTranscript, error)
+	SessionExpiredCode string
+	DrainOnStop        bool
+	SupportsHotwordID  bool
+	SupportsSpeakers   bool
+	SupportsFormatted  bool
 }
 
 type WebSocketProvider struct {
@@ -58,7 +67,7 @@ func (p *WebSocketProvider) OpenASR(ctx context.Context, _ string, start *modelh
 	if p.dialect.Header != nil {
 		header = p.dialect.Header()
 	}
-	conn, resp, err := (&websocket.Dialer{HandshakeTimeout: 10 * time.Second}).DialContext(ctx, endpoint, header)
+	conn, resp, err := (&websocket.Dialer{HandshakeTimeout: handshakeTimeout}).DialContext(ctx, endpoint, header)
 	if err != nil {
 		if resp != nil && resp.Body != nil {
 			_ = resp.Body.Close()
@@ -75,7 +84,9 @@ func (p *WebSocketProvider) OpenASR(ctx context.Context, _ string, start *modelh
 		ctx:     sessionCtx,
 		cancel:  cancel,
 		errs:    make(chan error, 1),
+		done:    make(chan struct{}),
 	}
+	s.info = &modelhubv2.TranscribeSpeechSession{SessionId: s.id}
 	if p.dialect.BuildStart != nil {
 		messageType, payload, buildErr := p.dialect.BuildStart(start)
 		if buildErr != nil {
@@ -88,6 +99,29 @@ func (p *WebSocketProvider) OpenASR(ctx context.Context, _ string, start *modelh
 			cancel()
 			return nil, provider.Wrap(provider.ErrorUnavailable, p.dialect.Name+" start failed", err)
 		}
+	}
+	if p.dialect.ReadSession != nil {
+		// Begin 是真实就绪确认；RPC 建立和 Start 发出都不能替代它。
+		stopCancel := context.AfterFunc(ctx, func() { _ = conn.Close() })
+		defer stopCancel()
+		_ = conn.SetReadDeadline(time.Now().Add(handshakeTimeout))
+		messageType, payload, readErr := conn.ReadMessage()
+		kind := provider.ErrorUnavailable
+		if readErr == nil {
+			kind = provider.ErrorInvalidResponse
+			s.info, readErr = p.dialect.ReadSession(messageType, payload)
+		}
+		if readErr != nil {
+			counted := false
+			s.noteSessionFailure(readErr, &counted)
+			_ = conn.Close()
+			cancel()
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			return nil, s.failure(kind, "session start failed", readErr)
+		}
+		_ = conn.SetReadDeadline(time.Time{})
 	}
 	go s.readLoop()
 	return s, nil
@@ -110,6 +144,7 @@ func LogIgnoredFeatures(ctx context.Context, dialect Dialect, features *modelhub
 
 type webSocketSession struct {
 	id      string
+	info    *modelhubv2.TranscribeSpeechSession
 	name    string
 	conn    *websocket.Conn
 	dialect Dialect
@@ -117,12 +152,14 @@ type webSocketSession struct {
 	ctx     context.Context
 	cancel  context.CancelFunc
 	errs    chan error
+	done    chan struct{}
+	readErr error
 	writeMu sync.Mutex
 	stop    sync.Once
 }
 
-func (s *webSocketSession) ID() string           { return s.id }
-func (s *webSocketSession) Errors() <-chan error { return s.errs }
+func (s *webSocketSession) Info() *modelhubv2.TranscribeSpeechSession { return s.info }
+func (s *webSocketSession) Errors() <-chan error                      { return s.errs }
 
 func (s *webSocketSession) SendAudio(data []byte) error {
 	if len(data) == 0 {
@@ -157,6 +194,18 @@ func (s *webSocketSession) Stop() error {
 				retErr = s.write(messageType, payload)
 			}
 		}
+		if retErr == nil && s.dialect.DrainOnStop {
+			timer := time.NewTimer(stopWaitTimeout)
+			defer timer.Stop()
+			select {
+			case <-s.done:
+				retErr = s.readErr
+			case <-s.ctx.Done():
+				retErr = s.ctx.Err()
+			case <-timer.C:
+				retErr = provider.Wrap(provider.ErrorTimeout, s.name+" termination timed out", context.DeadlineExceeded)
+			}
+		}
 		s.cancel()
 		if err := s.conn.Close(); retErr == nil && err != nil {
 			retErr = err
@@ -181,6 +230,7 @@ func (s *webSocketSession) write(messageType int, payload []byte) error {
 }
 
 func (s *webSocketSession) readLoop() {
+	defer close(s.done)
 	defer close(s.errs)
 	// counted 保证同一次拒绝只打一个点：Error 帧先到，后面的关闭帧不再计。
 	counted := false
@@ -189,14 +239,19 @@ func (s *webSocketSession) readLoop() {
 		if err != nil {
 			if s.ctx.Err() == nil && !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
 				s.noteSessionFailure(err, &counted)
-				s.report(provider.Wrap(provider.ErrorUnavailable, s.name+" websocket read failed", err))
+				s.report(s.failure(provider.ErrorUnavailable, "websocket read failed", err))
+			} else if s.ctx.Err() == nil && s.dialect.DrainOnStop {
+				s.report(provider.Wrap(provider.ErrorUnavailable, s.name+" closed before Termination", err))
 			}
 			return
 		}
 		transcripts, err := s.dialect.Parse(messageType, payload)
+		if errors.Is(err, io.EOF) {
+			return
+		}
 		if err != nil {
 			s.noteSessionFailure(err, &counted)
-			s.report(provider.Wrap(provider.ErrorInvalidResponse, s.name+" response parse failed", err))
+			s.report(s.failure(provider.ErrorInvalidResponse, "response parse failed", err))
 			return
 		}
 		for _, transcript := range transcripts {
@@ -209,6 +264,13 @@ func (s *webSocketSession) readLoop() {
 			}
 		}
 	}
+}
+
+func (s *webSocketSession) failure(kind provider.ErrorKind, message string, err error) error {
+	if code, ok := FailureCode(err); ok && code == s.dialect.SessionExpiredCode {
+		return provider.Wrap(provider.ErrorASRSessionExpired, s.name+" session expired", err)
+	}
+	return provider.Wrap(kind, s.name+" "+message, err)
 }
 
 func (s *webSocketSession) noteSessionFailure(err error, counted *bool) {
@@ -224,6 +286,7 @@ func (s *webSocketSession) noteSessionFailure(err error, counted *bool) {
 }
 
 func (s *webSocketSession) report(err error) {
+	s.readErr = err
 	select {
 	case s.errs <- err:
 	default:

@@ -14,7 +14,20 @@ Prompt 编排、业务重试、质量验收、任务状态、OSS、数据库和 
 rpc Generate(GenerateRequest) returns (stream GenerateEvent);
 rpc SynthesizeSpeech(SynthesizeSpeechRequest) returns (SynthesizeSpeechResponse);
 rpc SynthesizeSpeechStream(SynthesizeSpeechRequest) returns (stream SynthesizeSpeechResponse);
+rpc TranscribeSpeechStream(stream TranscribeSpeechClientMessage) returns (stream TranscribeSpeechServerMessage);
 ```
+
+## ASR 会话期限与结束
+
+一条 `TranscribeSpeechStream` 对应一条供应商 ASR 连接。首次响应的
+`TranscribeSpeechSession.expires_at` 是供应商确认的到期时间；不提供期限的模型留空。
+AssemblyAI 必须收到 `Begin` 后才返回 Session，`expires_at` 来自该帧，不按本地三小时推算。
+AssemblyAI 的 Error 帧或 WebSocket 关闭码 `3008` 返回 `Unavailable`，
+`ErrorInfo.reason=ASR_SESSION_EXPIRED`，调用方可识别并恢复，不再记成转写解析失败。
+
+调用方发送 Stop 后，AssemblyAI 适配器继续读取并交付末尾转写，等到 `Termination`
+再结束 RPC；最多等待两秒，超时明确返回错误。取消 RPC 仍立即释放连接。
+语音连接轮换、PCM 交接和业务会话连续性由 Hub 管理，ModelHub 不自动替换同一 RPC 的供应商连接。
 
 ## Cohere 批量查询向量
 

@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.2
 // - protoc             v5.29.3
-// source: proto/wg_model_hub/v2/model_hub.proto
+// source: wg_model_hub/v2/model_hub.proto
 
 package wg_model_hubv2
 
@@ -493,5 +493,5 @@ var ModelHubService_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
-	Metadata: "proto/wg_model_hub/v2/model_hub.proto",
+	Metadata: "wg_model_hub/v2/model_hub.proto",
 }

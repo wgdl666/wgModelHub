@@ -6,11 +6,11 @@ export PATH := $(shell go env GOPATH)/bin:$(PATH)
 generate:
 	go generate ./ent
 	protoc \
-		-I . \
+		-I proto \
 		-I third_party/googleapis \
 		--go_out=. --go_opt=module=github.com/wgdl666/wgModelHub \
 		--go-grpc_out=. --go-grpc_opt=module=github.com/wgdl666/wgModelHub \
-		proto/wg_model_hub/v2/model_hub.proto
+		wg_model_hub/v2/model_hub.proto
 
 test:
 	go test ./...

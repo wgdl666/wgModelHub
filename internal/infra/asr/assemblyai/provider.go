@@ -3,14 +3,17 @@ package assemblyai
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	common "github.com/wgdl666/wgModelHub/internal/infra/asr"
 	"github.com/wgdl666/wgModelHub/internal/provider"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type Config struct {
@@ -68,12 +71,37 @@ func New(cfg Config) (provider.ASRProvider, error) {
 			h.Set("Authorization", cfg.APIKey)
 			return h
 		},
-		BuildFinalize:     common.JSONControl("ForceEndpoint"),
-		BuildStop:         common.JSONControl("Terminate"),
-		Parse:             parse,
-		SupportsSpeakers:  true,
-		SupportsFormatted: true,
+		BuildFinalize:      common.JSONControl("ForceEndpoint"),
+		BuildStop:          common.JSONControl("Terminate"),
+		ReadSession:        parseSession,
+		Parse:              parse,
+		SessionExpiredCode: "3008",
+		DrainOnStop:        true,
+		SupportsSpeakers:   true,
+		SupportsFormatted:  true,
 	}), nil
+}
+
+func parseSession(messageType int, payload []byte) (*modelhubv2.TranscribeSpeechSession, error) {
+	var event struct {
+		Type      string `json:"type"`
+		ID        string `json:"id"`
+		ExpiresAt int64  `json:"expires_at"`
+	}
+	if err := common.ParseJSON(payload, &event); err != nil {
+		return nil, err
+	}
+	if event.Type != "Begin" {
+		if _, err := parse(messageType, payload); err != nil {
+			return nil, err
+		}
+		return nil, provider.New(provider.ErrorInvalidResponse, "assemblyai expected Begin")
+	}
+	expires := timestamppb.New(time.Unix(event.ExpiresAt, 0))
+	if event.ID == "" || event.ExpiresAt <= 0 || !expires.IsValid() {
+		return nil, provider.New(provider.ErrorInvalidResponse, "assemblyai Begin has no valid session id or expiry")
+	}
+	return &modelhubv2.TranscribeSpeechSession{SessionId: event.ID, ExpiresAt: expires}, nil
 }
 
 func parse(_ int, payload []byte) ([]*modelhubv2.TranscribeSpeechTranscript, error) {
@@ -101,6 +129,9 @@ func parse(_ int, payload []byte) ([]*modelhubv2.TranscribeSpeechTranscript, err
 			code = "unknown"
 		}
 		return nil, &common.SessionFailure{Code: code, Reason: strings.TrimSpace(event.ErrorText)}
+	}
+	if event.Type == "Termination" {
+		return nil, io.EOF
 	}
 	if event.Type != "Turn" || strings.TrimSpace(event.Transcript) == "" {
 		return nil, nil

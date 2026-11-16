@@ -116,7 +116,9 @@ type session struct {
 	once sync.Once
 }
 
-func (s *session) ID() string           { return s.id }
+func (s *session) Info() *modelhubv2.TranscribeSpeechSession {
+	return &modelhubv2.TranscribeSpeechSession{SessionId: s.id}
+}
 func (s *session) Errors() <-chan error { return s.errs }
 func (s *session) SendAudio(data []byte) error {
 	if err := s.st.SendAudioData(data); err != nil {
