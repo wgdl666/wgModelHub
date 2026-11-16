@@ -36,9 +36,17 @@ func TestVMindModelsUseModelGatewayAfterModelListReload(t *testing.T) {
 	t.Setenv("MODEL_GATEWAY_API_TOKEN", "test-gateway-token")
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
-		if r.Method != http.MethodPost || r.Header.Get("Authorization") != "Bearer test-gateway-token" {
+		if r.Header.Get("Authorization") != "Bearer test-gateway-token" {
 			t.Error("VMind calls must use the injected gateway token")
 			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if r.Method == http.MethodGet {
+			kind := map[string]string{"/v1/models/" + chatModel: "chat_completions", "/v1/models/" + decisionModel: "decision"}[r.URL.Path]
+			if kind == "" {
+				t.Errorf("unexpected model definition lookup: %s", r.URL.Path)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]string{"protocol": kind})
 			return
 		}
 		model := strings.TrimPrefix(r.URL.Path, "/v1/gateway/requests/")
@@ -124,7 +132,7 @@ func TestVMindModelsUseModelGatewayAfterModelListReload(t *testing.T) {
 		t.Fatal(err)
 	}
 	live.ApplyYAML(string(raw))
-	// 输出契约在同一次网关受理中校验，不能靠 Service 的模型名单或额外查询决定。
+	// 模型名单热更新保留能力区分；图片适配器读取协议，文本仍由 Gateway 受理时检查。
 	for _, model := range []string{chatModel, decisionModel} {
 		req := textRequest(model, "test")
 		if _, err := sets[instance].Image.GenerateImage(ctx, model, req); err == nil {

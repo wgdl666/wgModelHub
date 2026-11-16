@@ -367,6 +367,8 @@ API key 不会作为鉴权降级路径。项目、代理或 provider 增删须�
 
 ModelHub 仍维护 `request.model → provider` 配置和 protobuf 输入/输出适配，不维护 `model → Gateway 路径` 或复制 Gateway 的 JSON Schema 校验。模型 schema、实例选择、上游路径和 endpoint 由 Gateway 管理。新增同类模型可沿用适配器和配置模型列表；新增 protobuf 尚未表达的能力仍需补适配。
 
+媒体图片适配器通过 `GET /v1/models/{model_key}` 读取已登记 protocol，再把 protobuf 中的文本/traits 展开为该协议的规范字段：VTON 的 `prompt`、拆衣的 `garment_name`/`bbox`/`parse_labels`、体模的 `gender`。发给 Gateway 的 input 不再包含媒体 `text`/`model_traits` 兼容信封，字段规则由 Gateway 的数据库 Schema 校验。新登记的同协议模型键继续复用现有转换，不在 ModelHub 增加模型键到协议的配置。
+
 发布前在 Gateway 执行 input_schema 迁移，完成模型实例登记，并将这五类视觉 provider 的连接配置改为 `vision_gateway` 引用。Gateway 与 ModelHub 需协调切换：Gateway 旧路由已删除，ModelHub 不再接受这些 provider 的原生连接参数。第三方供应商直连的 OpenAI-compatible `/chat/completions` 和 Images API 不改。
 
 视觉配置示例（`wgdl_model_gateway` 必须是同环境已经配置的 `model_gateway` 实例）：
