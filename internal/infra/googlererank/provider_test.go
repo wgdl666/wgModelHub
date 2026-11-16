@@ -163,11 +163,13 @@ func TestInvalidResultsCannotMisassociateCandidates(t *testing.T) {
 		`{"records":[{"id":"1"},{"id":"0","score":0.1}]}`,
 		`{"records":[{"id":"1","score":1.1},{"id":"0","score":0.1}]}`,
 	} {
-		if _, err := decodeResults([]byte(body), 2); provider.Kind(err) != provider.ErrorInvalidResponse {
+		p := testProvider(t, 200, body)
+		if _, err := p.Generate(context.Background(), models.GoogleSemanticRankerDefault005, request(testInput)); provider.Kind(err) != provider.ErrorInvalidResponse {
 			t.Errorf("body=%s err=%v", body, err)
 		}
 	}
-	if _, err := decodeResults([]byte(`{"records":[{"id":"0","score":0}]}`), 1); err != nil {
+	p := testProvider(t, 200, `{"records":[{"id":"0","score":0}]}`)
+	if _, err := p.Generate(context.Background(), models.GoogleSemanticRankerDefault005, request(`{"query":"q","documents":["a"]}`)); err != nil {
 		t.Fatalf("zero is a valid score: %v", err)
 	}
 }
