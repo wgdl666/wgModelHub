@@ -1,7 +1,6 @@
 package arkvideo
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -10,6 +9,7 @@ import (
 	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 )
@@ -154,7 +154,7 @@ func (p *Provider) createTask(ctx context.Context, model, imageURL, prompt, reso
 			"role":      "first_frame",
 		})
 	}
-	body, err := json.Marshal(map[string]any{
+	body, err := httpbody.JSON(map[string]any{
 		"model":          strings.TrimSpace(model),
 		"content":        content,
 		"resolution":     resolution,
@@ -162,11 +162,11 @@ func (p *Provider) createTask(ctx context.Context, model, imageURL, prompt, reso
 		"duration":       duration,
 		"generate_audio": true,
 		"watermark":      false,
-	})
+	}, true)
 	if err != nil {
 		return "", err
 	}
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+createPath, bytes.NewReader(body))
+	httpReq, err := body.NewRequest(ctx, http.MethodPost, p.baseURL+createPath)
 	if err != nil {
 		return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "create submit request", err)
 	}

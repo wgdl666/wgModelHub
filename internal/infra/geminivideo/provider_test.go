@@ -203,6 +203,10 @@ func TestGenerateI2VInteractionPayload(t *testing.T) {
 	if !ok || len(input) != 2 {
 		t.Fatalf("input=%v", body["input"])
 	}
+	image, _ := input[0].(map[string]any)
+	if image["type"] != "image" || image["mime_type"] != "image/png" || image["data"] != base64.StdEncoding.EncodeToString([]byte{0x89, 0x50, 0x4e, 0x47}) {
+		t.Fatal("first-frame image changed")
+	}
 	rf, _ := body["response_format"].(map[string]any)
 	if rf["delivery"] != "uri" {
 		t.Fatalf("delivery=%v", rf["delivery"])
@@ -330,6 +334,10 @@ func TestGenerateEditUploadsFilesAndOrdersParts(t *testing.T) {
 	first, _ := input[0].(map[string]any)
 	if first["type"] != "video" {
 		t.Fatalf("first part=%v", first)
+	}
+	image, _ := input[1].(map[string]any)
+	if image["type"] != "image" || image["mime_type"] != "image/png" || image["data"] != base64.StdEncoding.EncodeToString([]byte{0x89, 0x50}) {
+		t.Fatal("edit reference image changed")
 	}
 	genCfg, _ := interactionBody["generation_config"].(map[string]any)
 	videoCfg, _ := genCfg["video_config"].(map[string]any)

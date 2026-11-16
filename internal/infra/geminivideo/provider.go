@@ -17,6 +17,7 @@ import (
 	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
@@ -99,7 +100,7 @@ func (p *Provider) SubmitVideo(ctx context.Context, model string, request *model
 		return "", provider.NotAttempted(provider.ErrorInvalidArgument, "video prompt text is required in input")
 	}
 	isEdit := provider.FirstVideoMedia(request.GetInput()) != nil
-	var body []byte
+	var body *httpbody.Body
 	var err error
 	if isEdit {
 		body, err = p.buildEditBody(ctx, model, request, prompt)
@@ -183,7 +184,7 @@ func (p *Provider) ReadVideoResult(ctx context.Context, _ string, providerTaskID
 	return p.readVideoFromURI(ctx, uri, mimeType, providerTaskID, genElapsed, emit)
 }
 
-func (p *Provider) buildI2VBody(ctx context.Context, model string, request *modelhubv2.GenerateRequest, prompt, aspectRatio string, duration int) ([]byte, error) {
+func (p *Provider) buildI2VBody(ctx context.Context, model string, request *modelhubv2.GenerateRequest, prompt, aspectRatio string, duration int) (*httpbody.Body, error) {
 	imageMedia := provider.FirstImageMedia(request.GetInput())
 	if imageMedia == nil {
 		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "first_frame image is required in input")
@@ -195,7 +196,7 @@ func (p *Provider) buildI2VBody(ctx context.Context, model string, request *mode
 	if mimeType == "" {
 		mimeType = "image/jpeg"
 	}
-	return json.Marshal(map[string]any{
+	return httpbody.JSON(map[string]any{
 		"model": model,
 		"input": []map[string]any{
 			{"type": "image", "data": base64.StdEncoding.EncodeToString(imageBytes), "mime_type": mimeType},
@@ -213,10 +214,10 @@ func (p *Provider) buildI2VBody(ctx context.Context, model string, request *mode
 		"background": true,
 		"store":      true,
 		"stream":     false,
-	})
+	}, true)
 }
 
-func (p *Provider) buildEditBody(ctx context.Context, model string, request *modelhubv2.GenerateRequest, prompt string) ([]byte, error) {
+func (p *Provider) buildEditBody(ctx context.Context, model string, request *modelhubv2.GenerateRequest, prompt string) (*httpbody.Body, error) {
 	videoMedia := provider.FirstVideoMedia(request.GetInput())
 	if videoMedia == nil {
 		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "video is required in input for edit")
@@ -248,7 +249,7 @@ func (p *Provider) buildEditBody(ctx context.Context, model string, request *mod
 		{"type": "image", "data": base64.StdEncoding.EncodeToString(refBytes), "mime_type": refMIME},
 		{"type": "text", "text": prompt},
 	}
-	return json.Marshal(map[string]any{
+	return httpbody.JSON(map[string]any{
 		"model": model,
 		"input": inputParts,
 		"generation_config": map[string]any{
@@ -261,11 +262,11 @@ func (p *Provider) buildEditBody(ctx context.Context, model string, request *mod
 		"background": true,
 		"store":      true,
 		"stream":     false,
-	})
+	}, true)
 }
 
-func (p *Provider) createInteraction(ctx context.Context, body []byte) (string, error) {
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.interactionsURL(), bytes.NewReader(body))
+func (p *Provider) createInteraction(ctx context.Context, body *httpbody.Body) (string, error) {
+	httpReq, err := body.NewRequest(ctx, http.MethodPost, p.interactionsURL())
 	if err != nil {
 		return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "create interaction request", err)
 	}
