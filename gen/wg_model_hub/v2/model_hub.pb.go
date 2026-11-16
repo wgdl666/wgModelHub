@@ -3379,10 +3379,8 @@ func (*TranscribeSpeechServerMessage_Session) isTranscribeSpeechServerMessage_It
 func (*TranscribeSpeechServerMessage_Transcript) isTranscribeSpeechServerMessage_Item() {}
 
 type TranscribeSpeechSession struct {
-	state     protoimpl.MessageState `protogen:"open.v1"`
-	SessionId string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	// 供应商确认的会话到期时间；未提供期限的模型不填写。
-	ExpiresAt     *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3422,13 +3420,6 @@ func (x *TranscribeSpeechSession) GetSessionId() string {
 		return x.SessionId
 	}
 	return ""
-}
-
-func (x *TranscribeSpeechSession) GetExpiresAt() *timestamppb.Timestamp {
-	if x != nil {
-		return x.ExpiresAt
-	}
-	return nil
 }
 
 // ListModelCallsRequest 的时间按 started_at。include_eval 为真时才包含 business_scene=model_eval。
@@ -4299,12 +4290,10 @@ const file_wg_model_hub_v2_model_hub_proto_rawDesc = "" +
 	"\n" +
 	"transcript\x18\x02 \x01(\v2+.wg_model_hub.v2.TranscribeSpeechTranscriptH\x00R\n" +
 	"transcriptB\x06\n" +
-	"\x04item\"s\n" +
+	"\x04item\"8\n" +
 	"\x17TranscribeSpeechSession\x12\x1d\n" +
 	"\n" +
-	"session_id\x18\x01 \x01(\tR\tsessionId\x129\n" +
-	"\n" +
-	"expires_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\"\x99\x02\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\"\x99\x02\n" +
 	"\x15ListModelCallsRequest\x12.\n" +
 	"\x04from\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x04from\x12*\n" +
 	"\x02to\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x02to\x12\x14\n" +
@@ -4573,39 +4562,38 @@ var file_wg_model_hub_v2_model_hub_proto_depIdxs = []int32{
 	44, // 52: wg_model_hub.v2.TranscribeSpeechStart.features:type_name -> wg_model_hub.v2.ASRFeatures
 	49, // 53: wg_model_hub.v2.TranscribeSpeechServerMessage.session:type_name -> wg_model_hub.v2.TranscribeSpeechSession
 	57, // 54: wg_model_hub.v2.TranscribeSpeechServerMessage.transcript:type_name -> wg_model_hub.v2.TranscribeSpeechTranscript
-	59, // 55: wg_model_hub.v2.TranscribeSpeechSession.expires_at:type_name -> google.protobuf.Timestamp
-	59, // 56: wg_model_hub.v2.ListModelCallsRequest.from:type_name -> google.protobuf.Timestamp
-	59, // 57: wg_model_hub.v2.ListModelCallsRequest.to:type_name -> google.protobuf.Timestamp
-	59, // 58: wg_model_hub.v2.ModelCallSummary.started_at:type_name -> google.protobuf.Timestamp
-	51, // 59: wg_model_hub.v2.ListModelCallsResponse.calls:type_name -> wg_model_hub.v2.ModelCallSummary
-	51, // 60: wg_model_hub.v2.GetModelCallResponse.summary:type_name -> wg_model_hub.v2.ModelCallSummary
-	60, // 61: wg_model_hub.v2.GetModelCallResponse.input:type_name -> google.protobuf.Struct
-	60, // 62: wg_model_hub.v2.GetModelCallResponse.output:type_name -> google.protobuf.Struct
-	13, // 63: wg_model_hub.v2.ModelHubService.Generate:input_type -> wg_model_hub.v2.GenerateRequest
-	34, // 64: wg_model_hub.v2.ModelHubService.SubmitGeneration:input_type -> wg_model_hub.v2.SubmitGenerationRequest
-	35, // 65: wg_model_hub.v2.ModelHubService.GetGeneration:input_type -> wg_model_hub.v2.GetGenerationRequest
-	39, // 66: wg_model_hub.v2.ModelHubService.SynthesizeSpeech:input_type -> wg_model_hub.v2.SynthesizeSpeechRequest
-	39, // 67: wg_model_hub.v2.ModelHubService.SynthesizeSpeechStream:input_type -> wg_model_hub.v2.SynthesizeSpeechRequest
-	41, // 68: wg_model_hub.v2.ModelHubService.TranscribeSpeechStream:input_type -> wg_model_hub.v2.TranscribeSpeechClientMessage
-	9,  // 69: wg_model_hub.v2.ModelHubService.ListModels:input_type -> wg_model_hub.v2.ListModelsRequest
-	50, // 70: wg_model_hub.v2.ModelHubService.ListModelCalls:input_type -> wg_model_hub.v2.ListModelCallsRequest
-	53, // 71: wg_model_hub.v2.ModelHubService.GetModelCall:input_type -> wg_model_hub.v2.GetModelCallRequest
-	55, // 72: wg_model_hub.v2.ModelHubService.GetModelCallMedia:input_type -> wg_model_hub.v2.GetModelCallMediaRequest
-	33, // 73: wg_model_hub.v2.ModelHubService.Generate:output_type -> wg_model_hub.v2.GenerateEvent
-	36, // 74: wg_model_hub.v2.ModelHubService.SubmitGeneration:output_type -> wg_model_hub.v2.GenerationTask
-	38, // 75: wg_model_hub.v2.ModelHubService.GetGeneration:output_type -> wg_model_hub.v2.GenerationTaskEvent
-	40, // 76: wg_model_hub.v2.ModelHubService.SynthesizeSpeech:output_type -> wg_model_hub.v2.SynthesizeSpeechResponse
-	40, // 77: wg_model_hub.v2.ModelHubService.SynthesizeSpeechStream:output_type -> wg_model_hub.v2.SynthesizeSpeechResponse
-	48, // 78: wg_model_hub.v2.ModelHubService.TranscribeSpeechStream:output_type -> wg_model_hub.v2.TranscribeSpeechServerMessage
-	11, // 79: wg_model_hub.v2.ModelHubService.ListModels:output_type -> wg_model_hub.v2.ListModelsResponse
-	52, // 80: wg_model_hub.v2.ModelHubService.ListModelCalls:output_type -> wg_model_hub.v2.ListModelCallsResponse
-	54, // 81: wg_model_hub.v2.ModelHubService.GetModelCall:output_type -> wg_model_hub.v2.GetModelCallResponse
-	56, // 82: wg_model_hub.v2.ModelHubService.GetModelCallMedia:output_type -> wg_model_hub.v2.GetModelCallMediaResponse
-	73, // [73:83] is the sub-list for method output_type
-	63, // [63:73] is the sub-list for method input_type
-	63, // [63:63] is the sub-list for extension type_name
-	63, // [63:63] is the sub-list for extension extendee
-	0,  // [0:63] is the sub-list for field type_name
+	59, // 55: wg_model_hub.v2.ListModelCallsRequest.from:type_name -> google.protobuf.Timestamp
+	59, // 56: wg_model_hub.v2.ListModelCallsRequest.to:type_name -> google.protobuf.Timestamp
+	59, // 57: wg_model_hub.v2.ModelCallSummary.started_at:type_name -> google.protobuf.Timestamp
+	51, // 58: wg_model_hub.v2.ListModelCallsResponse.calls:type_name -> wg_model_hub.v2.ModelCallSummary
+	51, // 59: wg_model_hub.v2.GetModelCallResponse.summary:type_name -> wg_model_hub.v2.ModelCallSummary
+	60, // 60: wg_model_hub.v2.GetModelCallResponse.input:type_name -> google.protobuf.Struct
+	60, // 61: wg_model_hub.v2.GetModelCallResponse.output:type_name -> google.protobuf.Struct
+	13, // 62: wg_model_hub.v2.ModelHubService.Generate:input_type -> wg_model_hub.v2.GenerateRequest
+	34, // 63: wg_model_hub.v2.ModelHubService.SubmitGeneration:input_type -> wg_model_hub.v2.SubmitGenerationRequest
+	35, // 64: wg_model_hub.v2.ModelHubService.GetGeneration:input_type -> wg_model_hub.v2.GetGenerationRequest
+	39, // 65: wg_model_hub.v2.ModelHubService.SynthesizeSpeech:input_type -> wg_model_hub.v2.SynthesizeSpeechRequest
+	39, // 66: wg_model_hub.v2.ModelHubService.SynthesizeSpeechStream:input_type -> wg_model_hub.v2.SynthesizeSpeechRequest
+	41, // 67: wg_model_hub.v2.ModelHubService.TranscribeSpeechStream:input_type -> wg_model_hub.v2.TranscribeSpeechClientMessage
+	9,  // 68: wg_model_hub.v2.ModelHubService.ListModels:input_type -> wg_model_hub.v2.ListModelsRequest
+	50, // 69: wg_model_hub.v2.ModelHubService.ListModelCalls:input_type -> wg_model_hub.v2.ListModelCallsRequest
+	53, // 70: wg_model_hub.v2.ModelHubService.GetModelCall:input_type -> wg_model_hub.v2.GetModelCallRequest
+	55, // 71: wg_model_hub.v2.ModelHubService.GetModelCallMedia:input_type -> wg_model_hub.v2.GetModelCallMediaRequest
+	33, // 72: wg_model_hub.v2.ModelHubService.Generate:output_type -> wg_model_hub.v2.GenerateEvent
+	36, // 73: wg_model_hub.v2.ModelHubService.SubmitGeneration:output_type -> wg_model_hub.v2.GenerationTask
+	38, // 74: wg_model_hub.v2.ModelHubService.GetGeneration:output_type -> wg_model_hub.v2.GenerationTaskEvent
+	40, // 75: wg_model_hub.v2.ModelHubService.SynthesizeSpeech:output_type -> wg_model_hub.v2.SynthesizeSpeechResponse
+	40, // 76: wg_model_hub.v2.ModelHubService.SynthesizeSpeechStream:output_type -> wg_model_hub.v2.SynthesizeSpeechResponse
+	48, // 77: wg_model_hub.v2.ModelHubService.TranscribeSpeechStream:output_type -> wg_model_hub.v2.TranscribeSpeechServerMessage
+	11, // 78: wg_model_hub.v2.ModelHubService.ListModels:output_type -> wg_model_hub.v2.ListModelsResponse
+	52, // 79: wg_model_hub.v2.ModelHubService.ListModelCalls:output_type -> wg_model_hub.v2.ListModelCallsResponse
+	54, // 80: wg_model_hub.v2.ModelHubService.GetModelCall:output_type -> wg_model_hub.v2.GetModelCallResponse
+	56, // 81: wg_model_hub.v2.ModelHubService.GetModelCallMedia:output_type -> wg_model_hub.v2.GetModelCallMediaResponse
+	72, // [72:82] is the sub-list for method output_type
+	62, // [62:72] is the sub-list for method input_type
+	62, // [62:62] is the sub-list for extension type_name
+	62, // [62:62] is the sub-list for extension extendee
+	0,  // [0:62] is the sub-list for field type_name
 }
 
 func init() { file_wg_model_hub_v2_model_hub_proto_init() }

@@ -442,8 +442,6 @@ message TranscribeSpeechServerMessage {
 
 message TranscribeSpeechSession {
   string session_id = 1;
-  // 供应商确认的会话到期时间；未提供期限的模型不填写。
-  google.protobuf.Timestamp expires_at = 2;
 }
 
 // ListModelCallsRequest 的时间按 started_at。include_eval 为真时才包含 business_scene=model_eval。

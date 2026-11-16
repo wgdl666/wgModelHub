@@ -73,7 +73,7 @@ type ASRProvider interface {
 
 // ASRSession 只承载已经建立的单条双向会话；Finalize 不关闭连接，Stop 才释放计费资源。
 type ASRSession interface {
-	Info() *modelhubv2.TranscribeSpeechSession
+	ID() string
 	SendAudio([]byte) error
 	Finalize() error
 	Stop() error

@@ -57,9 +57,7 @@ type session struct {
 	sentence   int
 }
 
-func (s *session) Info() *modelhubv2.TranscribeSpeechSession {
-	return &modelhubv2.TranscribeSpeechSession{SessionId: s.id}
-}
+func (s *session) ID() string           { return s.id }
 func (s *session) Errors() <-chan error { return s.errs }
 func (s *session) SendAudio(data []byte) error {
 	if err := s.recognizer.Write(data); err != nil {

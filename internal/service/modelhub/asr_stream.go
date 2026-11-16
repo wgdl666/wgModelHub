@@ -75,14 +75,11 @@ func (s *Service) TranscribeSpeechStream(stream modelhubv2.ModelHubService_Trans
 		return asrStatus(ctx, err)
 	}
 	defer asrSession.Stop()
-	sendMu.Lock()
-	err = stream.Send(&modelhubv2.TranscribeSpeechServerMessage{
+	if err := stream.Send(&modelhubv2.TranscribeSpeechServerMessage{
 		Item: &modelhubv2.TranscribeSpeechServerMessage_Session{
-			Session: asrSession.Info(),
+			Session: &modelhubv2.TranscribeSpeechSession{SessionId: asrSession.ID()},
 		},
-	})
-	sendMu.Unlock()
-	if err != nil {
+	}); err != nil {
 		providerErr = err
 		return err
 	}
@@ -100,10 +97,8 @@ func (s *Service) TranscribeSpeechStream(stream modelhubv2.ModelHubService_Trans
 			return asrStatus(ctx, ctx.Err())
 		case sessionErr, ok := <-errs:
 			if !ok {
-				rec.OutputPayload = callledger.BuildASROutput(int(transcriptCount.Load()), int(finalCount.Load()))
-				stampCallTiming(&rec, callStarted, time.Now())
-				s.finishRecord(&rec, nil, nil)
-				return nil
+				errs = nil
+				continue
 			}
 			if sessionErr != nil {
 				providerErr = sessionErr
@@ -164,11 +159,7 @@ type asrReceive struct {
 func receiveASRMessages(stream modelhubv2.ModelHubService_TranscribeSpeechStreamServer, out chan<- asrReceive) {
 	for {
 		message, err := stream.Recv()
-		select {
-		case out <- asrReceive{message: message, err: err}:
-		case <-stream.Context().Done():
-			return
-		}
+		out <- asrReceive{message: message, err: err}
 		if err != nil {
 			return
 		}

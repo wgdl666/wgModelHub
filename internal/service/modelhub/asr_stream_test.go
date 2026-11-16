@@ -17,28 +17,25 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type mockASRProvider struct {
-	mu        sync.Mutex
-	model     string
-	start     *modelhubv2.TranscribeSpeechStart
-	session   *mockASRSession
-	expiresAt *timestamppb.Timestamp
+	mu      sync.Mutex
+	model   string
+	start   *modelhubv2.TranscribeSpeechStart
+	session *mockASRSession
 }
 
 func (p *mockASRProvider) OpenASR(_ context.Context, model string, start *modelhubv2.TranscribeSpeechStart, emit provider.ASREmit) (provider.ASRSession, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.model, p.start = model, start
-	p.session = &mockASRSession{id: "mock-session", expiresAt: p.expiresAt, emit: emit, errs: make(chan error)}
+	p.session = &mockASRSession{id: "mock-session", emit: emit, errs: make(chan error)}
 	return p.session, nil
 }
 
 type mockASRSession struct {
 	id        string
-	expiresAt *timestamppb.Timestamp
 	emit      provider.ASREmit
 	errs      chan error
 	audio     []byte
@@ -46,9 +43,7 @@ type mockASRSession struct {
 	stopped   bool
 }
 
-func (s *mockASRSession) Info() *modelhubv2.TranscribeSpeechSession {
-	return &modelhubv2.TranscribeSpeechSession{SessionId: s.id, ExpiresAt: s.expiresAt}
-}
+func (s *mockASRSession) ID() string           { return s.id }
 func (s *mockASRSession) Errors() <-chan error { return s.errs }
 func (s *mockASRSession) SendAudio(data []byte) error {
 	s.audio = append(s.audio, data...)
@@ -92,7 +87,7 @@ func validASRStart() *modelhubv2.TranscribeSpeechStart {
 
 // mock 会话覆盖 start→session→audio→transcript→finalize→stop 的完整双向桥接与真实模型路由。
 func TestTranscribeSpeechStreamRoutesAndBridges(t *testing.T) {
-	mock := &mockASRProvider{expiresAt: timestamppb.New(time.Now().Add(3 * time.Hour))}
+	mock := &mockASRProvider{}
 	client := asrStreamClient(t, mock)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -108,9 +103,6 @@ func TestTranscribeSpeechStreamRoutesAndBridges(t *testing.T) {
 	session, err := stream.Recv()
 	if err != nil || session.GetSession().GetSessionId() != "mock-session" {
 		t.Fatalf("session=%v err=%v", session, err)
-	}
-	if !session.GetSession().GetExpiresAt().AsTime().Equal(mock.expiresAt.AsTime()) {
-		t.Fatalf("expiry not forwarded: %v", session.GetSession())
 	}
 	if err := stream.Send(&modelhubv2.TranscribeSpeechClientMessage{
 		Item: &modelhubv2.TranscribeSpeechClientMessage_Audio{Audio: &modelhubv2.TranscribeSpeechAudio{Data: []byte{1, 2}}},
