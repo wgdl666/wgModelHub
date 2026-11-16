@@ -350,26 +350,6 @@ API key 不会作为鉴权降级路径。项目、代理或 provider 增删须�
 [ADC](https://docs.cloud.google.com/docs/authentication/application-default-credentials)、
 [Kubernetes 工作负载身份联合](https://docs.cloud.google.com/iam/docs/workload-identity-federation-with-kubernetes)。
 
-### 精排容量与拆批
-
-所有精排适配器共享单次逻辑请求最多 **1000 个非空文本候选**的上限。超过上限时，
-ModelHub 在调用供应商前返回 gRPC `INVALID_ARGUMENT`，`ErrorInfo.reason=INVALID_ARGUMENT`；
-调用方提交完整候选集，不再为了供应商容量自行切批。`query` / `documents` / `instruction_key`
-及返回 `results[].index` / `relevance_score` 的协议不变。
-
-内部统一通过 `internal/infra/rerankbatch` 顺序执行连续分片：Qwen 文本版每批 500 条、
-Qwen VL 文本输入每批 100 条；Google、Mixedbread listwise 和 Cohere 官网每批 1000 条。
-Bedrock 每次请求可携带 1000 条，并通过 SDK paginator 收齐所有结果页。
-Mixedbread 在总上限内始终整组提交，不拆分 listwise 候选集合。
-
-每批结果必须包含该批每个候选恰好一次的合法下标和有限分数；全部批次成功后才返回完整结果。
-批内按相关性排序，跨批保留输入连续分块顺序，并将下标还原到原始候选集。
-不同请求的分数不保证可比，不将各批分数混排成全局排名。共享层不裁剪、拆段或估算文本 token，
-文本长度问题仍由供应商处理；HTTP 适配器的 400/422 参数错误统一归一化，不进入 Service 的瞬时错误重试。
-每次供应商分片通过 `modelhub.rerank_batch` 记录起始下标和候选数。
-
-配套修改须先发布 ModelHub，再发布移除 100 条分批的 Wardrobe，避免新调用方请求被旧适配器拒绝。
-
 ### 共享精排指令模板
 
 调用方在现有 Generate 用户文本 JSON 中传 `query`、`documents`、`instruction_key`（`color` 或 `look`）。真实模型仍由外层 `request.model` 选择，protobuf 不变；ModelHub 不负责竞速、分数门槛或业务验收。
