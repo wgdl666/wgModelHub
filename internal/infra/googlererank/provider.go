@@ -15,7 +15,6 @@ import (
 	"cloud.google.com/go/auth"
 	"cloud.google.com/go/auth/credentials"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
-	"github.com/wgdl666/wgModelHub/internal/infra/rerankbatch"
 	"github.com/wgdl666/wgModelHub/internal/infra/rerankinstruction"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
@@ -63,40 +62,47 @@ func New(name, project, proxyURL string) (*Provider, error) {
 	}, nil
 }
 
-type rerankInput = rerankbatch.Request
+type rerankInput struct {
+	Query          string   `json:"query"`
+	InstructionKey string   `json:"instruction_key"`
+	Instruct       string   `json:"instruct"`
+	Documents      []string `json:"documents"`
+}
 
 type record struct {
 	ID      string `json:"id"`
 	Content string `json:"content"`
 }
 
-type result = rerankbatch.Result
+type result struct {
+	Index int     `json:"index"`
+	Score float64 `json:"relevance_score"`
+}
 
 func (p *Provider) Generate(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
-	parsed, err := rerankbatch.Parse(request)
-	if err != nil {
-		return nil, err
+	// 可用模型由当前配置的 models 路由控制；原样下发请求 ID，切换版本或 fast 不应改适配器。
+	var input *modelhubv2.Input
+	if request != nil {
+		input = request.GetInput()
+	}
+	var parsed rerankInput
+	// Google 无独立 instruct；新协议由共享模板生成 Query。
+	if err := json.Unmarshal([]byte(provider.UserText(input)), &parsed); err != nil {
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "google rerank requires JSON query and documents")
+	}
+	if strings.TrimSpace(parsed.Query) == "" || len(parsed.Documents) == 0 || len(parsed.Documents) > 1000 {
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "google rerank requires query and 1 to 1000 documents")
 	}
 	query, _, err := p.Instructions.Resolve(parsed.Query, parsed.Instruct, parsed.InstructionKey, false)
 	if err != nil {
 		return nil, err
 	}
-	results, err := rerankbatch.Run(ctx, parsed.Documents, 1000, func(batchCtx context.Context, documents []string) ([]result, error) {
-		return p.rankOnce(batchCtx, model, query, documents)
-	})
-	if err != nil {
-		return nil, err
-	}
-	text, err := json.Marshal(map[string]any{"results": results})
-	if err != nil {
-		return nil, provider.Wrap(provider.ErrorInvalidResponse, "encode google rerank results", err)
-	}
-	return provider.TextFinalEvent(string(text), nil, "", "", nil), nil
-}
-
-func (p *Provider) rankOnce(ctx context.Context, model, query string, documents []string) ([]result, error) {
-	records := make([]record, len(documents))
-	for i, document := range documents {
+	parsed.Query = query
+	records := make([]record, len(parsed.Documents))
+	for i, document := range parsed.Documents {
+		if strings.TrimSpace(document) == "" {
+			return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "google rerank document text is required")
+		}
 		records[i] = record{ID: strconv.Itoa(i), Content: document}
 	}
 	body, err := json.Marshal(struct {
@@ -105,7 +111,7 @@ func (p *Provider) rankOnce(ctx context.Context, model, query string, documents 
 		Records                       []record `json:"records"`
 		TopN                          int      `json:"topN"`
 		IgnoreRecordDetailsInResponse bool     `json:"ignoreRecordDetailsInResponse"`
-	}{model, query, records, len(records), true})
+	}{model, parsed.Query, records, len(records), true})
 	if err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, "encode google rerank request", err)
 	}
@@ -139,11 +145,15 @@ func (p *Provider) rankOnce(ctx context.Context, model, query string, documents 
 	if err != nil {
 		return nil, provider.Wrap(provider.ErrorUnavailable, "read google rerank response", err)
 	}
-	results, err := decodeResults(raw)
+	results, err := decodeResults(raw, len(records))
 	if err != nil {
 		return nil, err
 	}
-	return results, nil
+	text, err := json.Marshal(map[string]any{"results": results})
+	if err != nil {
+		return nil, provider.Wrap(provider.ErrorInvalidResponse, "encode google rerank results", err)
+	}
+	return provider.TextFinalEvent(string(text), nil, "", "", nil), nil
 }
 
 func (p *Provider) GenerateStream(ctx context.Context, model string, request *modelhubv2.GenerateRequest, emit provider.EmitEvent) (*modelhubv2.GenerateEvent, error) {
@@ -159,7 +169,7 @@ func (p *Provider) GenerateStream(ctx context.Context, model string, request *mo
 	return provider.MetadataFinalEvent("", "", nil), nil
 }
 
-func decodeResults(raw []byte) ([]result, error) {
+func decodeResults(raw []byte, want int) ([]result, error) {
 	var decoded struct {
 		Records []struct {
 			ID    string   `json:"id"`
@@ -169,14 +179,19 @@ func decodeResults(raw []byte) ([]result, error) {
 	if err := json.Unmarshal(raw, &decoded); err != nil {
 		return nil, provider.New(provider.ErrorInvalidResponse, "invalid google rerank response JSON")
 	}
-	results := make([]result, 0, len(decoded.Records))
+	if len(decoded.Records) != want {
+		return nil, provider.New(provider.ErrorInvalidResponse, "google rerank returned incomplete results")
+	}
+	results := make([]result, 0, want)
+	seen := make(map[string]bool, want)
 	for _, item := range decoded.Records {
 		index, err := strconv.Atoi(item.ID)
 		// id 由输入下标生成；不能把供应商的排序位置当成候选下标，漏分/重复会把衣服对应错。
-		if err != nil || strconv.Itoa(index) != item.ID || item.Score == nil || *item.Score < 0 || *item.Score > 1 {
+		if err != nil || index < 0 || index >= want || strconv.Itoa(index) != item.ID || seen[item.ID] || item.Score == nil || *item.Score < 0 || *item.Score > 1 {
 			return nil, provider.New(provider.ErrorInvalidResponse, "google rerank returned invalid record IDs or scores")
 		}
-		results = append(results, result{Index: index, RelevanceScore: *item.Score})
+		seen[item.ID] = true
+		results = append(results, result{Index: index, Score: *item.Score})
 	}
 	return results, nil
 }

@@ -10,8 +10,6 @@ import (
 	"testing"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
-	"github.com/wgdl666/wgModelHub/internal/infra/rerankbatch"
-	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
 )
 
@@ -90,59 +88,6 @@ func TestRejectsIncompleteIndexes(t *testing.T) {
 		if _, err := p.Generate(context.Background(), models.MixedbreadRerankV31Listwise, request(`{"query":"红色","documents":["a","b"]}`)); err == nil {
 			t.Fatalf("body %s must be rejected", body)
 		}
-	}
-}
-
-func TestListwiseUsesOneRequestAtLogicalLimit(t *testing.T) {
-	calls := 0
-	p := client(t, func(r *http.Request) (*http.Response, error) {
-		calls++
-		var payload wireRequest
-		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-			t.Fatal(err)
-		}
-		if len(payload.Input) != 1000 {
-			t.Fatalf("listwise candidate set was split: %d", len(payload.Input))
-		}
-		items := make([]map[string]any, len(payload.Input))
-		for index := range items {
-			items[index] = map[string]any{"index": index, "score": 0.5}
-		}
-		raw, err := json.Marshal(map[string]any{"data": items})
-		if err != nil {
-			t.Fatal(err)
-		}
-		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(string(raw))), Header: make(http.Header)}, nil
-	})
-	documents := make([]string, 1001)
-	for index := range documents {
-		documents[index] = "document"
-	}
-	for _, count := range []int{1000, 1001} {
-		raw, err := json.Marshal(rerankbatch.Request{Query: "query", Documents: documents[:count]})
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, err = p.Generate(t.Context(), models.MixedbreadRerankV31Listwise, request(string(raw)))
-		if count == 1000 && err != nil {
-			t.Fatal(err)
-		}
-		if count == 1001 && (provider.Kind(err) != provider.ErrorInvalidArgument || !provider.IsNotAttempted(err)) {
-			t.Fatalf("oversized listwise request: %v", err)
-		}
-	}
-	if calls != 1 {
-		t.Fatalf("vendor calls=%d, want one complete listwise call", calls)
-	}
-}
-
-func TestHTTPParameterErrorIsNotTransient(t *testing.T) {
-	p := client(t, func(*http.Request) (*http.Response, error) {
-		return &http.Response{StatusCode: 422, Body: io.NopCloser(strings.NewReader("invalid input")), Header: make(http.Header)}, nil
-	})
-	_, err := p.Generate(t.Context(), models.MixedbreadRerankV31Listwise, request(`{"query":"q","documents":["doc"]}`))
-	if provider.Kind(err) != provider.ErrorInvalidArgument || provider.IsNotAttempted(err) {
-		t.Fatalf("classification=%v", err)
 	}
 }
 

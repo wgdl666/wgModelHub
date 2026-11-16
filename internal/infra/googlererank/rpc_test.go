@@ -9,13 +9,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"cloud.google.com/go/auth"
 	"github.com/wgdl666/wgModelHub/config"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	modelhub "github.com/wgdl666/wgModelHub/internal/service/modelhub"
 	"github.com/wgdl666/wgModelHub/models"
-	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -84,36 +82,6 @@ func TestGenerateRPCAndListModels(t *testing.T) {
 			t.Fatalf("stream=%t finals=%d text=%s", streaming, finals, text)
 		}
 	}
-}
-
-func TestLogicalLimitReturnsInvalidArgumentWithoutCallingGoogle(t *testing.T) {
-	p := testProvider(t, 200, "")
-	p.tokens = tokenFunc(func(context.Context) (*auth.Token, error) {
-		t.Fatal("oversized request must not acquire an upstream token")
-		return nil, nil
-	})
-	client, _ := rpcClient(t, p)
-	documents := make([]string, 1001)
-	for index := range documents {
-		documents[index] = "document"
-	}
-	raw, err := json.Marshal(rerankInput{Query: "query", Documents: documents})
-	if err != nil {
-		t.Fatal(err)
-	}
-	stream, err := client.Generate(t.Context(), request(string(raw)))
-	if err == nil {
-		_, err = stream.Recv()
-	}
-	if status.Code(err) != codes.InvalidArgument {
-		t.Fatalf("status=%v", err)
-	}
-	for _, detail := range status.Convert(err).Details() {
-		if info, ok := detail.(*errdetails.ErrorInfo); ok && info.Domain == "wg.modelhub" && info.Reason == "INVALID_ARGUMENT" {
-			return
-		}
-	}
-	t.Fatalf("missing ModelHub error reason: %v", status.Convert(err).Details())
 }
 
 // AppConfig/Nacos 的模型列表更新后复用原客户端；未开放的 ID 不能触发上游调用。

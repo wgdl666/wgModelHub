@@ -13,7 +13,6 @@ import (
 	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
-	"github.com/wgdl666/wgModelHub/internal/infra/rerankbatch"
 	"github.com/wgdl666/wgModelHub/internal/infra/rerankinstruction"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
@@ -26,7 +25,12 @@ type httpDoer interface {
 	Do(*http.Request) (*http.Response, error)
 }
 
-type rerankRequest = rerankbatch.Request
+type rerankRequest struct {
+	Query          string   `json:"query"`
+	InstructionKey string   `json:"instruction_key"`
+	Documents      []string `json:"documents"`
+	Instruct       string   `json:"instruct"`
+}
 
 type Provider struct {
 	// Instructions 由启动装配注入；连接不变，模板按请求读取。
@@ -52,7 +56,7 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 	if model != models.Qwen37TextRerank && model != models.Qwen3VLRerank {
 		return nil, provider.Errorf(provider.ErrorInvalidArgument, "dashscope rerank does not serve model %q", model)
 	}
-	parsed, err := rerankbatch.Parse(request)
+	parsed, err := parseRerank(request)
 	if err != nil {
 		return nil, err
 	}
@@ -60,20 +64,12 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 	if err != nil {
 		return nil, err
 	}
-	batchSize := 500
-	if model == models.Qwen3VLRerank {
-		batchSize = 100
+	payload, endpoint := p.payload(model, parsed)
+	raw, err := p.post(ctx, endpoint, payload)
+	if err != nil {
+		return nil, err
 	}
-	results, err := rerankbatch.Run(ctx, parsed.Documents, batchSize, func(batchCtx context.Context, documents []string) ([]scored, error) {
-		batch := *parsed
-		batch.Documents = documents
-		payload, endpoint := p.payload(model, &batch)
-		raw, err := p.post(batchCtx, endpoint, payload)
-		if err != nil {
-			return nil, err
-		}
-		return decodeResults(model == models.Qwen3VLRerank, raw)
-	})
+	results, err := decodeResults(model == models.Qwen3VLRerank, raw)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +94,27 @@ func (p *Provider) GenerateStream(ctx context.Context, model string, request *mo
 	return provider.MetadataFinalEvent("", "", nil), nil
 }
 
-func (p *Provider) payload(model string, parsed *rerankRequest) (any, string) {
+func parseRerank(request *modelhubv2.GenerateRequest) (rerankRequest, error) {
+	var input *modelhubv2.Input
+	if request != nil {
+		input = request.GetInput()
+	}
+	var parsed rerankRequest
+	if err := json.Unmarshal([]byte(provider.UserText(input)), &parsed); err != nil {
+		return rerankRequest{}, provider.New(provider.ErrorInvalidArgument, "rerank requires JSON query and documents")
+	}
+	if strings.TrimSpace(parsed.Query) == "" || len(parsed.Documents) == 0 || len(parsed.Documents) > 100 {
+		return rerankRequest{}, provider.New(provider.ErrorInvalidArgument, "rerank query and 1 to 100 documents are required")
+	}
+	for _, document := range parsed.Documents {
+		if strings.TrimSpace(document) == "" {
+			return rerankRequest{}, provider.New(provider.ErrorInvalidArgument, "rerank document text is required")
+		}
+	}
+	return parsed, nil
+}
+
+func (p *Provider) payload(model string, parsed rerankRequest) (any, string) {
 	if model == models.Qwen3VLRerank {
 		docs := make([]map[string]string, 0, len(parsed.Documents))
 		for _, text := range parsed.Documents {
@@ -141,12 +157,15 @@ func (p *Provider) post(ctx context.Context, endpoint string, payload any) ([]by
 		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" read rerank", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, provider.FromHTTP(p.name, resp.StatusCode)
+		return nil, provider.Errorf(provider.ErrorUnavailable, "%s rerank HTTP %d", p.name, resp.StatusCode)
 	}
 	return raw, nil
 }
 
-type scored = rerankbatch.Result
+type scored struct {
+	Index          int     `json:"index"`
+	RelevanceScore float64 `json:"relevance_score"`
+}
 
 func decodeResults(native bool, raw []byte) ([]scored, error) {
 	if native {

@@ -16,7 +16,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/bedrockagentruntime/types"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
-	"github.com/wgdl666/wgModelHub/internal/infra/rerankbatch"
 	"github.com/wgdl666/wgModelHub/internal/infra/rerankinstruction"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
@@ -61,31 +60,20 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 	if model != models.CohereRerankV35 {
 		return nil, provider.Errorf(provider.ErrorInvalidArgument, "bedrock rerank does not serve model %q", model)
 	}
-	parsed, err := rerankbatch.Parse(request)
-	if err != nil {
-		return nil, err
+	var parsed struct {
+		Query          string   `json:"query"`
+		InstructionKey string   `json:"instruction_key"`
+		Instruct       string   `json:"instruct"`
+		Documents      []string `json:"documents"`
 	}
-	query, _, err := p.Instructions.Resolve(parsed.Query, parsed.Instruct, parsed.InstructionKey, false)
-	if err != nil {
-		return nil, err
+	if err := json.Unmarshal([]byte(provider.UserText(requestInput(request))), &parsed); err != nil || strings.TrimSpace(parsed.Query) == "" || len(parsed.Documents) == 0 || len(parsed.Documents) > 100 {
+		return nil, provider.New(provider.ErrorInvalidArgument, "rerank requires a query and 1 to 100 documents")
 	}
-	// Bedrock accepts 1000 sources; result pagination is handled within each provider call.
-	results, err := rerankbatch.Run(ctx, parsed.Documents, 1000, func(batchCtx context.Context, documents []string) ([]rerankbatch.Result, error) {
-		return p.rankOnce(batchCtx, model, query, documents)
-	})
-	if err != nil {
-		return nil, err
-	}
-	body, err := json.Marshal(map[string]any{"results": results})
-	if err != nil {
-		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" encode rerank", err)
-	}
-	return provider.TextFinalEvent(string(body), nil, "", "", nil), nil
-}
-
-func (p *Provider) rankOnce(ctx context.Context, model, query string, documents []string) ([]rerankbatch.Result, error) {
-	sources := make([]types.RerankSource, 0, len(documents))
-	for _, document := range documents {
+	sources := make([]types.RerankSource, 0, len(parsed.Documents))
+	for _, document := range parsed.Documents {
+		if strings.TrimSpace(document) == "" {
+			return nil, provider.New(provider.ErrorInvalidArgument, "rerank document text is required")
+		}
 		text := document
 		sources = append(sources, types.RerankSource{
 			Type: types.RerankSourceTypeInline,
@@ -95,32 +83,39 @@ func (p *Provider) rankOnce(ctx context.Context, model, query string, documents 
 			},
 		})
 	}
-	pages := bedrockagentruntime.NewRerankPaginator(p.client, &bedrockagentruntime.RerankInput{
+	query, _, err := p.Instructions.Resolve(parsed.Query, parsed.Instruct, parsed.InstructionKey, false)
+	if err != nil {
+		return nil, err
+	}
+	output, err := p.client.Rerank(ctx, &bedrockagentruntime.RerankInput{
 		Queries: []types.RerankQuery{{Type: types.RerankQueryContentTypeText, TextQuery: &types.RerankTextDocument{Text: &query}}},
 		Sources: sources,
 		RerankingConfiguration: &types.RerankingConfiguration{
 			Type: types.RerankingConfigurationTypeBedrockRerankingModel,
 			BedrockRerankingConfiguration: &types.BedrockRerankingConfiguration{
 				ModelConfiguration: &types.BedrockRerankingModelConfiguration{ModelArn: aws.String(fmt.Sprintf("arn:aws:bedrock:%s::foundation-model/%s", p.region, model))},
-				NumberOfResults:    aws.Int32(int32(len(documents))),
+				NumberOfResults:    aws.Int32(int32(len(parsed.Documents))),
 			},
 		},
 	})
-	results := make([]rerankbatch.Result, 0, len(documents))
-	for pages.HasMorePages() {
-		output, err := pages.NextPage(ctx)
-		if err != nil {
-			return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" rerank", err)
-		}
+	if err != nil {
+		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" rerank", err)
+	}
+	results := make([]map[string]any, 0)
+	if output != nil {
 		for _, item := range output.Results {
 			score := 0.0
 			if item.RelevanceScore != nil {
 				score = float64(*item.RelevanceScore)
 			}
-			results = append(results, rerankbatch.Result{Index: int(aws.ToInt32(item.Index)), RelevanceScore: score})
+			results = append(results, map[string]any{"index": int(aws.ToInt32(item.Index)), "relevance_score": score})
 		}
 	}
-	return results, nil
+	body, err := json.Marshal(map[string]any{"results": results})
+	if err != nil {
+		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" encode rerank", err)
+	}
+	return provider.TextFinalEvent(string(body), nil, "", "", nil), nil
 }
 
 func (p *Provider) GenerateStream(ctx context.Context, model string, request *modelhubv2.GenerateRequest, emit provider.EmitEvent) (*modelhubv2.GenerateEvent, error) {
@@ -135,4 +130,11 @@ func (p *Provider) GenerateStream(ctx context.Context, model string, request *mo
 		}
 	}
 	return provider.MetadataFinalEvent("", "", nil), nil
+}
+
+func requestInput(request *modelhubv2.GenerateRequest) *modelhubv2.Input {
+	if request == nil {
+		return nil
+	}
+	return request.GetInput()
 }
