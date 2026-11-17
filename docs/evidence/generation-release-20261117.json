@@ -19,6 +19,7 @@
   "cross_repository_contracts": "passed",
   "hub_linux_dockerfile_all_tests": "passed",
   "hub_macos_all_tests": "failed in unchanged examples/gpt-image-2 wrapper timing tests; service packages passed",
-  "production_hub_acceptance": "blocked: TCP 50053 timeout",
-  "production_deployed": false
+  "production_hub_acceptance": "passed: existing production ModelHub -> Gateway -> GPU -> production S3 -> ModelHub, five cases",
+  "production_deployed": false,
+  "production_hub_evidence": "production-hub-acceptance-20261117.json"
 }

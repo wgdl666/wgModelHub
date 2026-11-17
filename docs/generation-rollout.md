@@ -33,3 +33,5 @@ G7e GPU2/3 已更新的是 FLUX 服务中调用 PE 的代码和提示词配置�
 2026-11-17 本机验证：服务、配置及适配器 race 测试通过；真实生产 AppConfig 结构（以占位值模拟运行时注入 Token，不出站）通过；Gateway 跨仓库测试、go vet、go mod verify 通过。全量 macOS 测试中，未修改的 examples/gpt-image-2 信号退出测试超过 1 秒断言，正式 Linux Dockerfile 已通过全部测试（含该示例）并完成构建；本机 macOS 全量结果仍记录为失败，不混同平台结论。
 
 正式候选已发布美东 ECR，源提交及不可变 digest 见 [候选制品证据](evidence/generation-release-20261117.json)。本记录不代表生产 Gateway/ModelHub 已部署。
+
+生产基线验收已通过：现有 ModelHub 经 Gateway/GPU/生产 S3 返回五份结果，商品图、拆衣、换衣均 PE applied，四张 PNG 与一个视频完整解码且与 S3 哈希一致。沿用现有业务方安全组，无需更改安全组规则。见 [生产 Hub 验收证据](evidence/production-hub-acceptance-20261117.json)。本次未发布本 PR 的候选镜像，发布后仍需回归。
