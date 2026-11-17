@@ -34,8 +34,8 @@ func TestAppConfigSchemaContract(t *testing.T) {
 	for _, definitionName := range []string{
 		"database", "logfire", "provider", "gemini", "vertexai", "ark", "openai", "ltx",
 		"dashscopeVideo", "ominilinkVideo", "geminiVideo", "arkVideo", "photoroom",
-		"minimaxTts", "elevenlabsTts", "segmentPerson", "vworldImage",
-		"humanYolo", "clothYolo", "faceSim", "humanParser", "rekognitionDetect", "facebodyCompare", "rekognitionCompare",
+		"minimaxTts", "elevenlabsTts", "vworldImage",
+		"clothYolo", "rekognitionDetect", "facebodyCompare", "rekognitionCompare",
 		"dashscopeEmbedding", "cohereEmbedding", "bedrockEmbedding", "dashscopeRerank", "bedrockRerank", "cohereRerank", "mixedbreadRerank", "googleRerank",
 		"facebodyDetect", "facebodyLibrary", "rekognitionFaces", "rekognitionLibrary",
 		"asrAPIKey", "asrDashscope", "asrVolcengine", "asrAliyun", "asrTencent",
@@ -162,6 +162,58 @@ func TestAppConfigSchemaContract(t *testing.T) {
 	}
 	if _, ok := vertexProps["location"]; ok {
 		t.Fatal("vertexai must not declare location")
+	}
+}
+
+func TestVisionGatewaySchemaMatchesRuntime(t *testing.T) {
+	content, err := os.ReadFile("appconfig.schema.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schema map[string]any
+	if err := json.Unmarshal(content, &schema); err != nil {
+		t.Fatal(err)
+	}
+	definitions := mustMap(t, schema["definitions"])
+	provider := mustMap(t, definitions["provider"])
+	properties := mustMap(t, provider["properties"])
+	reference := mustMap(t, properties["vision_gateway"])
+	if reference["type"] != "string" || reference["pattern"] != `^\S(?:.*\S)?$` {
+		t.Fatal("vision_gateway must be a non-blank provider reference")
+	}
+	dependencies := mustMap(t, provider["dependencies"])
+	kinds := map[string]string{
+		"human_parser": "humanParser", "human_yolo": "humanYolo", "facesim": "faceSim",
+		"lens_distortion_correction": "lensCorrection", "segment_person": "segmentPerson",
+	}
+	for kind, name := range kinds {
+		assertStringSet(t, dependencies[kind], "vision_gateway")
+		definition := mustMap(t, definitions[name])
+		if definition["additionalProperties"] != false {
+			t.Fatalf("%s must reject legacy connection settings", name)
+		}
+		fields := mustMap(t, definition["properties"])
+		if kind == "segment_person" {
+			if len(fields) != 3 || fields["method"] == nil || fields["person_method"] == nil || fields["subject_method"] == nil {
+				t.Fatal("segment_person must retain only algorithm method settings")
+			}
+		} else if len(fields) != 0 {
+			t.Fatalf("%s must be an empty adapter selector", kind)
+		}
+		if _, exists := definition["required"]; exists {
+			t.Fatalf("%s must not require legacy connection fields", kind)
+		}
+	}
+	allowed := mustSlice(t, mustMap(t, dependencies["vision_gateway"])["oneOf"])
+	if len(allowed) != len(kinds) {
+		t.Fatal("vision_gateway must only apply to the five supported adapters")
+	}
+	for _, entry := range allowed {
+		required := mustSlice(t, mustMap(t, entry)["required"])
+		if len(required) != 1 || kinds[required[0].(string)] == "" {
+			t.Fatalf("unsupported vision_gateway dependency: %v", required)
+		}
+		delete(kinds, required[0].(string))
 	}
 }
 

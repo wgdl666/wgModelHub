@@ -16,3 +16,11 @@ go test -race -p 1 ./config ./internal/infra/vmindgateway ./internal/infra/vworl
 ```
 
 完整合并、发布及回退步骤见 modelGateway 的 `docs/INTEGRATION_ROLLOUT.md`。
+
+## 视觉配置迁移门槛（2026-11-17）
+
+生产 AppConfig 中五个视觉 provider 已有 `vision_gateway`，但还保留原生连接字段；候选进程会拒绝启动。迁移时移除 `human_parser`、`human_yolo`、`facesim`、`lens_distortion_correction` 内的连接配置，保留空对象 `{}`；`segment_person` 只保留 `method` / `person_method` / `subject_method`。本地 `schema/appconfig.schema.json` 已同步此规则，并要求五类适配器声明非空 `vision_gateway`。跨 provider 引用有效性仍由 `ParseAndValidateYAML` 检查。仓库 Schema 不会自动绑定或更新云端 AppConfig Validator。
+
+另外，`human-parser.model.wgdl.tech` 对应国内 **L20-1** 的 `https://human-parser.model.wgdl.tech/human_parser`（用户确认），不是 AWS G6 解析服务。保留 `human-parser` 模型键及原服务语义，由同环境 Gateway 管理实际后端地址、鉴权和健康检查；不得重写为 `Vmind_human_parse_v1.0`。当前 Gateway 的人体解析实现仅支持 G6 前置服务 `/_dispatch/{port}/human-parser/human_parser/predict`，因此国内服务还需原生转发支持及真实链路验收，不能只添加一条实例记录就宣称迁移完成。示例中的 Gateway 引用是目标配置，不是已上线证据。
+
+发布前先验证国内解析的 Gateway 转发和独立模型登记，再用目标环境完整配置运行 `ParseAndValidateYAML`，最后发布 Hub 并验证两个解析模型分别到达原目标。连接配置变化必须滚动重启；回退同时恢复旧镜像和旧配置。已完成的图像/视频生成 GPU 验收不覆盖国内解析。
