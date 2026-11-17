@@ -34,13 +34,16 @@ func TestMediaGatewayUsesRegisteredModelKeys(t *testing.T) {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
+		if r.Method == http.MethodGet && r.URL.Path == "/v1/models/"+imageModel {
+			_ = json.NewEncoder(w).Encode(map[string]string{"protocol": "vton"})
+			return
+		}
 
 		state, extension, code := "succeeded", "mp4", http.StatusOK
 		if r.Method == http.MethodPost {
 			var body struct {
 				Output string `json:"output"`
 				Input  struct {
-					Text   string                  `json:"text"`
 					Prompt string                  `json:"prompt"`
 					Images []struct{ Data []byte } `json:"images"`
 				} `json:"input"`
@@ -53,7 +56,7 @@ func TestMediaGatewayUsesRegisteredModelKeys(t *testing.T) {
 			count, output, prompt := 1, "video", body.Input.Prompt
 			switch r.URL.Path {
 			case "/v1/gateway/requests/" + imageModel:
-				count, extension, output, prompt = 2, "png", "image", body.Input.Text
+				count, extension, output = 2, "png", "image"
 			case "/v1/gateway/requests/" + videoModel:
 				state, code = "queued", http.StatusAccepted
 			default:
@@ -93,7 +96,7 @@ func TestMediaGatewayUsesRegisteredModelKeys(t *testing.T) {
 	request := &modelhubv2.GenerateRequest{Model: imageModel, Input: &modelhubv2.Input{Items: []*modelhubv2.InputItem{{
 		Item: &modelhubv2.InputItem_Message{Message: message},
 	}}}}
-	// 新模型名直接提交；测试网关不提供预查询接口，仍须保留原始输入和结果读取。
+	// 新模型键从 Gateway 读取适配协议，提交规范字段并保留结果读取。
 	image, err := sets["gateway"].Image.GenerateImage(t.Context(), imageModel, request)
 	if err != nil || len(image.GetItems()) != 1 || !bytes.Equal(image.Items[0].GetImage().GetData(), imageData) {
 		t.Fatalf("registered image result: %v %v", image, err)
