@@ -30,4 +30,6 @@ G7e GPU2/3 已更新的是 FLUX 服务中调用 PE 的代码和提示词配置�
 - Gateway 跨仓库：非法业务输入不入账；旧/新 Hub 输入在滚动期间可重放同一请求。
 - 生产门槛：真实 Hub → Gateway → 模型 → 生产 S3 → Hub 媒体返回，并核对 PE applied。网络连通失败或仅构建成功均不能记为生产验收通过。
 
-2026-11-17 本机验证：服务、配置及适配器 race 测试通过；真实生产 AppConfig 结构（以占位值模拟运行时注入 Token，不出站）通过；Gateway 跨仓库测试、go vet、go mod verify 通过。全量 macOS 测试中，未修改的 examples/gpt-image-2 信号退出测试超过 1 秒断言，正式 Linux Dockerfile 构建需再核验；不能将本机全量测试记为通过。
+2026-11-17 本机验证：服务、配置及适配器 race 测试通过；真实生产 AppConfig 结构（以占位值模拟运行时注入 Token，不出站）通过；Gateway 跨仓库测试、go vet、go mod verify 通过。全量 macOS 测试中，未修改的 examples/gpt-image-2 信号退出测试超过 1 秒断言，正式 Linux Dockerfile 已通过全部测试（含该示例）并完成构建；本机 macOS 全量结果仍记录为失败，不混同平台结论。
+
+正式候选已发布美东 ECR，源提交及不可变 digest 见 [候选制品证据](evidence/generation-release-20261117.json)。本记录不代表生产 Gateway/ModelHub 已部署。
