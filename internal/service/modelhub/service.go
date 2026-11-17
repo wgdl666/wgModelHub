@@ -124,6 +124,9 @@ func (s *Service) Generate(request *modelhubv2.GenerateRequest, stream modelhubv
 		telemetry.RecordError(ctx, statusErr)
 		return statusErr
 	}
+	if err := injectDrillFault(ctx, request.GetModel()); err != nil {
+		return err
+	}
 	// 竞速只由 model_routes.race 决定，调用方不传开关。没配名单就走原来的单路。
 	if capability == config.CapabilityText {
 		if names := s.live.Load().RaceProviders(request.GetModel()); len(names) >= 2 {
