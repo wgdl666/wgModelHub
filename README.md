@@ -119,11 +119,11 @@ Gemini/Vertex 的文本 Generate 自动将实际出站的 system instruction、�
 
 ## VWorld/LTX 视频动作参数
 
-`SubmitGeneration` 调用 `Vmind_outfit_video_v1.0` 时，调用方可在 `request.input.model_traits` 中传 JSON 字符串 `{"motion_tips":"Slowly turn the body 30 degrees."}`。LTX 适配器读取 `motion_tips`，去除首尾空白后写入 `POST /vton` 的独立 multipart 字段；`image`、`prompt` 和上游 `model=ltx` 保持原协议。
+`SubmitGeneration` 调用 `Vmind_outfit_video_v1.0` 时，调用方可在 `request.input.model_traits` 中传 JSON 字符串 `{"motion_tips":"Slowly turn the body 30 degrees."}`。LTX 适配器去除首尾空白后，将首帧、`prompt` 和 `motion_tips` 写入 Gateway 请求的 `input`。
 
-该参数可省略；缺失、空串或仅空白时不发送表单字段。非法 JSON、非对象或非字符串值在出站前拒绝；其他模型特性键忽略。ModelHub 只透传调用方的动作文本，不追加业务动作规则，也不把它合并到 `prompt`。动作内容参与已有请求哈希：同一 caller/request_id 改动作会返回 `ALREADY_EXISTS`。
+该参数可省略，缺失、空串或仅空白时省略该字段。非法 JSON、非对象或非字符串值在出站前拒绝；其他模型特性键忽略。ModelHub 只透传调用方的动作文本，不追加业务动作规则，也不把它合并到 `prompt`。动作内容参与已有请求哈希：同一 caller/request_id 改动作会返回 `ALREADY_EXISTS`。
 
-上线须先确认上游 `/vton` 消费该字段，再发布本适配器和调用方。此行为只适用于 VWorld/LTX。
+联调时用 VWorld/LTX 的 Gateway 模型定义确认该字段，并验证动作传到模型端。
 
 ## 配置源与 AWS dev 部署
 
@@ -368,6 +368,10 @@ API key 不会作为鉴权降级路径。项目、代理或 provider 增删须�
 ModelHub 仍维护 `request.model → provider` 配置和 protobuf 输入/输出适配，不维护 `model → Gateway 路径` 或复制 Gateway 的 JSON Schema 校验。模型 schema、实例选择、上游路径和 endpoint 由 Gateway 管理。新增同类模型可沿用适配器和配置模型列表；新增 protobuf 尚未表达的能力仍需补适配。
 
 媒体图片适配器通过 `GET /v1/models/{model_key}` 读取已登记 protocol，再把 protobuf 中的文本/traits 展开为该协议的规范字段：VTON 的 `prompt`、拆衣的 `garment_name`/`bbox`/`parse_labels`、体模的 `gender`。发给 Gateway 的 input 不再包含媒体 `text`/`model_traits` 兼容信封，字段规则由 Gateway 的数据库 Schema 校验。新登记的同协议模型键继续复用现有转换，不在 ModelHub 增加模型键到协议的配置。
+
+VMind 的拆衣、商品图、试衣图、体模和试衣视频在示例里都绑定到 `wgdl_model_gateway_exhibition`。迁移现有环境时，将这五个模型加入同环境 Gateway provider 的 `models` 列表，使用该 Gateway 的地址、Token 和成品存储配置。图片模型从旧 `vworld_image` 实例移到 Gateway，并更新已有的 `model_routes` 默认项。图片提交后读取 `result.files`，视频保存返回的请求 ID，按同一 UUID 查询 Gateway 并从成品存储流式读取视频。
+
+从直连 `ltx` 切换时，保留历史任务记录中的原 provider（例如 `wgdl_video`）及其配置。美东路演在顶层 `model_routes` 下设置 `Vmind_outfit_video_v1.0: wgdl_model_gateway_exhibition`。新任务按新路由提交，旧任务的查询和成品读取会使用入库时保存的 provider 和任务 ID。
 
 发布前在 Gateway 执行 input_schema 迁移，完成模型实例登记，并将这五类视觉 provider 的连接配置改为 `vision_gateway` 引用。Gateway 与 ModelHub 需协调切换：Gateway 旧路由已删除，ModelHub 不再接受这些 provider 的原生连接参数。第三方供应商直连的 OpenAI-compatible `/chat/completions` 和 Images API 不改。
 

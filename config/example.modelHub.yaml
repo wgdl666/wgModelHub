@@ -274,22 +274,21 @@ providers:
     openai:
       api_key: "${FLUX2_KLEIN_API_KEY}"
       base_url: https://uu847021-9507-702f766a.bjb2.seetacloud.com:8443/flux2/v1
-  # 薇光点亮公网 FLUX：人物拆衣和单件商品图分别使用独立的模型 ID。
-  # 体模走 /v1/images/body_model，提示词和 1024x1536 由上游固定，与拆衣服/换衣不能共用请求字段。
-  # Basic Auth；不要写内网 10.200.* 或本机 127.0.0.1，也不要并入上方 SeeTacloud FLUX.2 实例。
-  wgdl_image:
-    models: [Vmind_wardrobe_v1.0, Vmind_cloth_gen_v1.0, Vmind_outfit_v1.0, Vmind_bodymodel_v1.0]
-    vworld_image:
-      base_url: https://vmind-image.model.wgdl.tech
-      username: wgdl
-      password: "${VWORLD_IMAGE_PASSWORD}"
-  # 美东路演的对话与图片预测复用 Go 网关入口，凭据由 MODEL_GATEWAY_API_TOKEN 注入。
+  # 美东路演的对话、预测和 VMind 图片/视频共用同环境 Gateway。
+  # 其他环境使用本环境的 Gateway 地址和成品存储配置。
   wgdl_model_gateway_exhibition:
-    models: [Vmind_dream_v1, Vmind_decision_v1]
+    models:
+      - Vmind_dream_v1
+      - Vmind_decision_v1
+      - Vmind_wardrobe_v1.0
+      - Vmind_cloth_gen_v1.0
+      - Vmind_outfit_v1.0
+      - Vmind_bodymodel_v1.0
+      - Vmind_outfit_video_v1.0
     model_gateway:
       base_url: http://model-gateway.tomirro.prod:18580
       token: "${MODEL_GATEWAY_API_TOKEN}"
-      poll_interval: 1
+      poll_interval: 2
       result_storage:
         provider: s3
         region: us-east-2
@@ -426,16 +425,6 @@ providers:
     rekognition_library:
       region: us-east-2
       collection: wg-face-identity-us
-  # 穿搭视频对外 ID 是 Vmind_outfit_video_v1.0；LTX /vton 的 multipart model 仍写 ltx。
-  wgdl_video:
-    models: [Vmind_outfit_video_v1.0]
-    ltx:
-      base_url: https://ltx.example
-      token: "${LTX_TOKEN}"
-      duration: 4
-      fps: 24
-      seed: 42
-      poll_interval: 2
   # DashScope Wan/HappyHorse/Kling 图生视频与 wan2.7-videoedit。
   阿里云百炼_dashscope_video:
     models:

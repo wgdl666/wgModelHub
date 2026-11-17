@@ -77,11 +77,7 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 			VertexAI *struct {
 				Project string `yaml:"project"`
 			} `yaml:"vertexai"`
-			VWorldImage *struct {
-				BaseURL  string `yaml:"base_url"`
-				Username string `yaml:"username"`
-				Password string `yaml:"password"`
-			} `yaml:"vworld_image"`
+			VMindGateway *VMindGatewayProviderConfig `yaml:"model_gateway"`
 		} `yaml:"providers"`
 		ModelRoutes map[string]ModelRoute `yaml:"model_routes"`
 	}
@@ -197,23 +193,17 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 		t.Fatalf("flux2 openai.base_url=%v, want SeeTacloud flux2/v1", flux2.OpenAI)
 	}
 
-	// 薇光点亮公网 FLUX 必须独立实例；密码只允许环境变量占位，禁止写内网调试口。
-	vworld, ok := parsed.Providers["wgdl_image"]
-	if !ok {
-		t.Fatal("missing provider wgdl_image")
+	// 示例中的 VMind 图片和视频提交给同一个 Gateway，成品由其配置的存储读取。
+	const mediaGateway = "wgdl_model_gateway_exhibition"
+	gateway := parsed.Providers[mediaGateway].VMindGateway
+	if gateway == nil || !gateway.ResultStorage.Enabled() {
+		t.Fatal("missing media Gateway or result storage in example config")
 	}
-	if len(vworld.Models) != 4 || vworld.Models[0] != models.VWorldWardrobe10 || vworld.Models[1] != models.VWorldClothGen10 ||
-		vworld.Models[2] != models.VWorldOutfit10 || vworld.Models[3] != models.VWorldBodyModel10 {
-		t.Fatalf("wgdl_image models=%v", vworld.Models)
-	}
-	if vworld.VWorldImage == nil ||
-		vworld.VWorldImage.BaseURL != "https://vmind-image.model.wgdl.tech" ||
-		vworld.VWorldImage.Username != "wgdl" ||
-		vworld.VWorldImage.Password != "${VWORLD_IMAGE_PASSWORD}" {
-		t.Fatalf("wgdl_image config=%#v", vworld.VWorldImage)
-	}
-	if strings.Contains(vworld.VWorldImage.BaseURL, "10.200.") || strings.Contains(vworld.VWorldImage.BaseURL, "127.0.0.1") {
-		t.Fatal("wgdl_image must not use intranet/localhost upstream")
+	for _, model := range []string{models.VWorldWardrobe10, models.VWorldClothGen10, models.VWorldOutfit10, models.VWorldBodyModel10, models.VWorldOutfitVideo10} {
+		providers := declaredBy[model]
+		if _, ok := providers[mediaGateway]; !ok || len(providers) != 1 {
+			t.Errorf("%s must be bound only to %s in the example, got %v", model, mediaGateway, providers)
+		}
 	}
 
 	// GPT 文本与图片复用 AIG 凭据，分别由 Chat Completions / Images 分派；不能并入 Gemini 生图。
