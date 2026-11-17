@@ -147,21 +147,24 @@ func TestStalledBodyOverRealTransportIsResentOnce(t *testing.T) {
 	}
 }
 
-func TestHungBatchIsResentWithSameTexts(t *testing.T) {
-	p := shortAttemptProvider(t, config.CohereEmbeddingProviderConfig{})
-	var seen [][]string
+func TestHungBatchChunkIsResentAndKeepsOrder(t *testing.T) {
+	p := shortAttemptProvider(t, config.CohereEmbeddingProviderConfig{MaxBatchSize: 1})
+	counts := map[string]int{}
+	var order []string
 	p.client = embeddingDoer(func(r *http.Request) (*http.Response, error) {
-		seen = append(seen, payloadTexts(r))
-		if len(seen) == 1 {
+		text := payloadTexts(r)[0]
+		counts[text]++
+		if text == "b" && counts[text] == 1 {
 			return hang(r)
 		}
-		return floatResponse(testVectors(3)), nil
+		order = append(order, text)
+		return floatResponse(testVectors(1)), nil
 	})
 	event, err := p.Generate(context.Background(), models.CohereEmbedV4, logicalRequest("a", "b", "c"))
 	if err != nil || event == nil {
 		t.Fatalf("err=%v event=%v", err, event)
 	}
-	if !reflect.DeepEqual(seen, [][]string{{"a", "b", "c"}, {"a", "b", "c"}}) {
-		t.Fatalf("attempts=%v", seen)
+	if !reflect.DeepEqual(counts, map[string]int{"a": 1, "b": 2, "c": 1}) || !reflect.DeepEqual(order, []string{"a", "b", "c"}) {
+		t.Fatalf("counts=%v order=%v", counts, order)
 	}
 }

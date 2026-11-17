@@ -17,7 +17,7 @@ import (
 	"github.com/wgdl666/wgModelHub/models"
 )
 
-const vectorDim = provider.EmbeddingDimension
+const vectorDim = 1024
 
 type httpDoer interface {
 	Do(*http.Request) (*http.Response, error)
@@ -50,42 +50,53 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 	if model != models.Qwen3VLEmbedding {
 		return nil, provider.Errorf(provider.ErrorInvalidArgument, "dashscope embedding does not serve model %q", model)
 	}
-	input, err := provider.ParseEmbeddingInput(request.GetInput())
+	texts, err := provider.EmbeddingBatchTexts(request.GetInput(), 0, 0)
 	if err != nil {
 		return nil, err
 	}
-	var contents []map[string]string
-	if input.ImageDataURI != "" {
-		contents = []map[string]string{{"image": input.ImageDataURI}}
-	} else {
-		contents = make([]map[string]string, len(input.Texts))
-		for i, text := range input.Texts {
-			contents[i] = map[string]string{"text": text}
-		}
+	if texts != nil {
+		return p.forwardBatch(ctx, model, texts)
 	}
-	rows, err := p.post(ctx, model, contents)
+	content, err := embedContent(request)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := p.post(ctx, model, []map[string]string{content}, false)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 || len(rows[0].Embedding) != vectorDim {
+		return nil, provider.New(provider.ErrorInvalidResponse, "dashscope embedding must return 1024 floats")
+	}
+	return embeddingEvent("embedding", rows[0].Embedding)
+}
+
+func (p *Provider) forwardBatch(ctx context.Context, model string, texts []string) (*modelhubv2.GenerateEvent, error) {
+	// 批次由调用方准备，一个 ModelHub 请求对应一个百炼请求体。
+	contents := make([]map[string]string, len(texts))
+	for i, text := range texts {
+		contents[i] = map[string]string{"text": text}
+	}
+	rows, err := p.post(ctx, model, contents, true)
 	if err != nil {
 		return nil, err
 	}
 	if len(rows) != len(contents) {
 		return nil, provider.Errorf(provider.ErrorInvalidResponse, "dashscope embedding count is %d, want %d", len(rows), len(contents))
 	}
-	vectors := make([][]float64, len(rows))
+
+	vectors := make([][]float64, len(texts))
+	// 百炼用 index 标识输入位置，响应数组可以乱序。
 	for _, row := range rows {
-		index := 0
-		// 多条响应按分片内 index 对齐输入，单条只有一个位置。
-		if len(rows) > 1 {
-			if row.Index == nil || *row.Index < 0 || *row.Index >= len(vectors) || vectors[*row.Index] != nil {
-				return nil, provider.New(provider.ErrorInvalidResponse, "dashscope embedding returned an invalid or duplicate index")
-			}
-			index = *row.Index
+		if row.Index == nil || *row.Index < 0 || *row.Index >= len(vectors) || vectors[*row.Index] != nil {
+			return nil, provider.New(provider.ErrorInvalidResponse, "dashscope embedding returned an invalid or duplicate index")
 		}
 		if len(row.Embedding) != vectorDim {
 			return nil, provider.Errorf(provider.ErrorInvalidResponse, "dashscope embedding dimension is %d, want %d", len(row.Embedding), vectorDim)
 		}
-		vectors[index] = row.Embedding
+		vectors[*row.Index] = row.Embedding
 	}
-	return provider.EmbeddingEvent(vectors)
+	return embeddingEvent("embeddings", vectors)
 }
 
 func (p *Provider) GenerateStream(ctx context.Context, model string, request *modelhubv2.GenerateRequest, emit provider.EmitEvent) (*modelhubv2.GenerateEvent, error) {
@@ -96,14 +107,35 @@ func (p *Provider) GenerateStream(ctx context.Context, model string, request *mo
 	return emitText(event, emit)
 }
 
+func embedContent(request *modelhubv2.GenerateRequest) (map[string]string, error) {
+	var input *modelhubv2.Input
+	if request != nil {
+		input = request.GetInput()
+	}
+	if image := provider.FirstImageMedia(input); image != nil {
+		data, ok := provider.InlineImageBytes(image)
+		if !ok {
+			return nil, provider.New(provider.ErrorInvalidArgument, "embedding image must be inline bytes")
+		}
+		return map[string]string{"image": "data:" + imageMime(image) + ";base64," + encodeBase64(data)}, nil
+	}
+	text := strings.TrimSpace(provider.UserText(input))
+	if text == "" {
+		return nil, provider.New(provider.ErrorInvalidArgument, "embedding requires an image or text")
+	}
+	return map[string]string{"text": text}, nil
+}
+
 type embeddingRow struct {
 	Index     *int      `json:"index"`
 	Embedding []float64 `json:"embedding"`
 }
 
-func (p *Provider) post(ctx context.Context, model string, contents []map[string]string) ([]embeddingRow, error) {
-	// 每个 contents 条目独立计算一个向量。
-	parameters := map[string]any{"dimension": vectorDim, "output_type": "dense", "enable_fusion": false}
+func (p *Provider) post(ctx context.Context, model string, contents []map[string]string, batch bool) ([]embeddingRow, error) {
+	parameters := map[string]any{"dimension": vectorDim, "output_type": "dense"}
+	if batch {
+		parameters["enable_fusion"] = false
+	}
 	payload := map[string]any{
 		"model":      model,
 		"input":      map[string]any{"contents": contents},

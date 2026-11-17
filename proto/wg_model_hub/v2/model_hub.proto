@@ -187,7 +187,6 @@ message Input {
   // 模型特性。JSON 字符串，不是提示词，也不进文本 part。
   // 各模型只读自己认识的键。体模读 gender，只允许 male、female。
   string model_traits = 7;
-  EmbeddingInput embedding = 8;
 }
 
 enum ThinkingMode {
@@ -514,12 +513,4 @@ message TranscribeSpeechTranscript {
   string speaker = 7;
   repeated string speakers = 8;
   repeated string session_speakers = 9;
-}
-
-// EmbeddingInput 接受有序文本列表或一张内联图，每个输入对应一个向量。
-message EmbeddingInput {
-  repeated string texts = 1;
-  Media image = 2;
-  // 查询默认使用 search_query。建索引的文本显式设置 true，图片按建索引处理。
-  bool search_document = 3;
 }

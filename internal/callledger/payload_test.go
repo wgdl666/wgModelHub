@@ -32,20 +32,6 @@ func TestInputSnapshotOwnsMediaWithoutAnotherCopy(t *testing.T) {
 	}
 }
 
-func TestEmbeddingImageUsesLedgerPlaceholder(t *testing.T) {
-	image := &modelhubv2.Media{MimeType: "image/png", Source: &modelhubv2.Media_Data{Data: []byte("image")}}
-	req := &modelhubv2.GenerateRequest{Input: &modelhubv2.Input{
-		Embedding: &modelhubv2.EmbeddingInput{Image: image},
-	}}
-	payload, blobs := BuildGenerateInput(req)
-	input := payload["input"].(map[string]any)
-	media := input["embedding"].(map[string]any)["image"].(map[string]any)
-	if len(blobs) != 1 || !bytes.Equal(blobs[0].Data, image.GetData()) ||
-		media["uri"] != blobs[0].Placeholder || media["data"] != nil {
-		t.Fatalf("ledger did not archive the embedding image: %v", media)
-	}
-}
-
 func TestOutputMediaSharesProviderBytesWithoutChangingEvent(t *testing.T) {
 	image := &modelhubv2.Media{MimeType: "image/png", Source: &modelhubv2.Media_Data{Data: []byte("image")}}
 	video := &modelhubv2.Media{MimeType: "video/mp4", Source: &modelhubv2.Media_Data{Data: []byte("video")}}

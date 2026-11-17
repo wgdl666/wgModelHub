@@ -100,13 +100,16 @@ func TestEmbedBatchRejectsDuplicateIndex(t *testing.T) {
 }
 
 func batchRequest(count int) *modelhubv2.GenerateRequest {
-	texts := make([]string, count)
-	for i := range texts {
-		texts[i] = strconv.Itoa(i)
+	input := &modelhubv2.Input{ModelTraits: `{"embedding_batch":true,"input_type":"search_query"}`}
+	for i := range count {
+		input.Items = append(input.Items, &modelhubv2.InputItem{
+			Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
+				Role:  modelhubv2.Role_ROLE_USER,
+				Parts: []*modelhubv2.ContentPart{{Content: &modelhubv2.ContentPart_Text{Text: strconv.Itoa(i)}}},
+			}},
+		})
 	}
-	return &modelhubv2.GenerateRequest{Input: &modelhubv2.Input{
-		Embedding: &modelhubv2.EmbeddingInput{Texts: texts},
-	}}
+	return &modelhubv2.GenerateRequest{Input: input}
 }
 
 func embeddingResponse(t *testing.T, rows []embeddingRow) *http.Response {

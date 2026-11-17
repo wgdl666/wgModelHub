@@ -1,11 +1,15 @@
 // Package cohereembed 把 Cohere 官方 embed-v4.0 收成 ModelHub 文本结果。
-// 查询和建索引使用不同的 input_type。
+// query 和以 { 开头的文档文本使用不同 input_type，混用会拉低召回。
 package cohereembed
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"io"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -20,8 +24,9 @@ import (
 )
 
 const (
-	vectorDim        = provider.EmbeddingDimension
-	maxResponseBytes = 4 << 20
+	vectorDim                = 1024
+	maxResponseBytes         = 4 << 20
+	maxCombinedResponseBytes = 32 << 20
 
 	// 2026-11 美东路演 7 天成功调用 P95 约 1.7 秒、P99 约 3.6 秒，原先单次等满 20 秒才失败。
 	attemptTimeout = 3 * time.Second
@@ -38,6 +43,7 @@ type Provider struct {
 	client   httpDoer
 	endpoint string
 	apiKey   string
+	limits   config.CohereEmbeddingProviderConfig
 	// attemptTimeout 是单次 HTTP 从发出到读完正文的上限；调用方 ctx 更早结束时以 ctx 为准。
 	attemptTimeout time.Duration
 }
@@ -46,11 +52,15 @@ func New(name string, cfg *config.CohereEmbeddingProviderConfig) (*Provider, err
 	if cfg == nil {
 		return nil, provider.New(provider.ErrorConfiguration, "cohere embedding config is required")
 	}
+	resolved := cfg.Resolved()
 	name = strings.TrimSpace(name)
-	baseURL := strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
-	apiKey := strings.TrimSpace(cfg.APIKey)
+	baseURL := strings.TrimRight(strings.TrimSpace(resolved.BaseURL), "/")
+	apiKey := strings.TrimSpace(resolved.APIKey)
 	if name == "" || baseURL == "" || apiKey == "" {
 		return nil, provider.New(provider.ErrorConfiguration, "cohere embedding requires base_url and api_key")
+	}
+	if err := resolved.ValidateExecutionLimits(); err != nil {
+		return nil, provider.Wrap(provider.ErrorConfiguration, "cohere embedding execution limits", err)
 	}
 	// 请求并发与总 deadline 仍由调用方管理；单次 HTTP 上限由 post 按次设置，客户端自身不再钉总超时。
 	return &Provider{
@@ -58,6 +68,7 @@ func New(name string, cfg *config.CohereEmbeddingProviderConfig) (*Provider, err
 		client:         telemetry.NewHTTPClient(),
 		endpoint:       baseURL + "/v2/embed",
 		apiKey:         apiKey,
+		limits:         resolved,
 		attemptTimeout: attemptTimeout,
 	}, nil
 }
@@ -66,26 +77,31 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 	if model != models.CohereEmbedV4 {
 		return nil, provider.Errorf(provider.ErrorInvalidArgument, "cohere embedding does not serve model %q", model)
 	}
-	input, err := provider.ParseEmbeddingInput(request.GetInput())
+	payload, batch, err := p.coherePayload(model, request)
 	if err != nil {
 		return nil, err
 	}
-	payload := map[string]any{
-		"model": model, "input_type": input.SearchType(),
-		"embedding_types": []string{"float"}, "output_dimension": vectorDim,
-	}
-	expected := len(input.Texts)
-	if input.ImageDataURI != "" {
-		payload["images"] = []string{input.ImageDataURI}
-		expected = 1
+	var vectors [][]float64
+	if batch {
+		vectors, err = p.embedBatch(ctx, payload)
 	} else {
-		payload["texts"] = input.Texts
+		vectors, err = p.post(ctx, payload, 1)
 	}
-	vectors, err := p.post(ctx, payload, expected)
 	if err != nil {
 		return nil, err
 	}
-	return provider.EmbeddingEvent(vectors)
+	result := map[string]any{"embeddings": vectors}
+	if !batch {
+		result = map[string]any{"embedding": vectors[0]}
+	}
+	body, err := json.Marshal(result)
+	if err != nil {
+		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" encode embedding", err)
+	}
+	if len(body) > maxCombinedResponseBytes {
+		return nil, provider.New(provider.ErrorInvalidResponse, "cohere embedding combined response exceeds size limit")
+	}
+	return provider.TextFinalEvent(string(body), nil, "", "", nil), nil
 }
 
 func (p *Provider) GenerateStream(ctx context.Context, model string, request *modelhubv2.GenerateRequest, emit provider.EmitEvent) (*modelhubv2.GenerateEvent, error) {
@@ -100,6 +116,47 @@ func (p *Provider) GenerateStream(ctx context.Context, model string, request *mo
 		}
 	}
 	return provider.MetadataFinalEvent("", "", nil), nil
+}
+
+func (p *Provider) coherePayload(model string, request *modelhubv2.GenerateRequest) (map[string]any, bool, error) {
+	var input *modelhubv2.Input
+	if request != nil {
+		input = request.GetInput()
+	}
+	base := map[string]any{"model": model, "embedding_types": []string{"float"}, "output_dimension": vectorDim}
+	texts, err := provider.EmbeddingBatchTexts(input, p.limits.MaxRequestTexts, p.limits.MaxRequestTextBytes)
+	if err != nil {
+		return nil, false, err
+	}
+	if texts != nil {
+		base["input_type"] = "search_query"
+		base["texts"] = texts
+		return base, true, nil
+	}
+	if image := provider.FirstImageMedia(input); image != nil {
+		data, ok := provider.InlineImageBytes(image)
+		if !ok {
+			return nil, false, provider.NotAttempted(provider.ErrorInvalidArgument, "embedding image must be inline bytes")
+		}
+		mime := image.GetMimeType()
+		if mime == "" {
+			mime = "image/jpeg"
+		}
+		base["input_type"] = "search_document"
+		base["images"] = []string{"data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(data)}
+		return base, false, nil
+	}
+	text := strings.TrimSpace(provider.UserText(input))
+	if text == "" {
+		return nil, false, provider.NotAttempted(provider.ErrorInvalidArgument, "embedding requires an image or text")
+	}
+	inputType := "search_query"
+	if strings.HasPrefix(text, "{") {
+		inputType = "search_document"
+	}
+	base["input_type"] = inputType
+	base["texts"] = []string{text}
+	return base, false, nil
 }
 
 // post 发送一个 HTTP 请求体并校验向量。单次等满 attemptTimeout 仍没有完整响应时立即重发一次：向量计算幂等，重发没有业务副作用。
@@ -132,7 +189,24 @@ func (p *Provider) post(ctx context.Context, payload any, expected int) ([][]flo
 	if len(raw) > maxResponseBytes {
 		return nil, provider.New(provider.ErrorInvalidResponse, "cohere embedding response exceeds size limit")
 	}
-	return provider.DecodeFloatEmbeddings(raw, expected)
+	vectors, err := decodeFloatEmbeddings(raw)
+	if err != nil {
+		return nil, err
+	}
+	if len(vectors) != expected {
+		return nil, provider.Errorf(provider.ErrorInvalidResponse, "cohere embedding count is %d, want %d", len(vectors), expected)
+	}
+	for _, vector := range vectors {
+		if len(vector) != vectorDim {
+			return nil, provider.Errorf(provider.ErrorInvalidResponse, "cohere embedding dimension is %d, want %d", len(vector), vectorDim)
+		}
+		for _, value := range vector {
+			if math.IsNaN(value) || math.IsInf(value, 0) {
+				return nil, provider.New(provider.ErrorInvalidResponse, "cohere embedding contains non-finite values")
+			}
+		}
+	}
+	return vectors, nil
 }
 
 // postOnce 发一次请求并读完正文，整个过程受 attemptTimeout 约束。
@@ -160,4 +234,62 @@ func (p *Provider) postOnce(ctx context.Context, body *httpbody.Body) ([]byte, e
 		return nil, provider.FromHTTP(p.name, resp.StatusCode)
 	}
 	return raw, nil
+}
+
+func decodeFloatEmbeddings(raw []byte) ([][]float64, error) {
+	var decoded struct {
+		Embeddings json.RawMessage `json:"embeddings"`
+	}
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return nil, provider.Wrap(provider.ErrorInvalidResponse, "decode cohere embedding", err)
+	}
+	if len(decoded.Embeddings) == 0 {
+		return nil, provider.New(provider.ErrorInvalidResponse, "cohere embedding response is empty")
+	}
+	rowsJSON := decoded.Embeddings
+	if !bytes.HasPrefix(bytes.TrimSpace(rowsJSON), []byte("[")) {
+		var byType struct {
+			Float json.RawMessage `json:"float"`
+		}
+		if err := json.Unmarshal(rowsJSON, &byType); err != nil {
+			return nil, provider.Wrap(provider.ErrorInvalidResponse, "decode cohere float embeddings", err)
+		}
+		rowsJSON = byType.Float
+	}
+	// encoding/json 会把 null 数值静默变成 0，不能把供应商缺失值当作有效向量。
+	if bytes.Contains(rowsJSON, []byte("null")) {
+		return nil, provider.New(provider.ErrorInvalidResponse, "cohere embedding contains null values")
+	}
+	var rows [][]float64
+	if err := json.Unmarshal(rowsJSON, &rows); err != nil {
+		return nil, provider.Wrap(provider.ErrorInvalidResponse, "decode cohere float embeddings", err)
+	}
+	if len(rows) == 0 {
+		return nil, provider.New(provider.ErrorInvalidResponse, "cohere embedding response is empty")
+	}
+	return rows, nil
+}
+
+// embedBatch 顺序拆分一个逻辑请求，不放大调用方并发；完整成功后按输入顺序返回。
+func (p *Provider) embedBatch(ctx context.Context, payload map[string]any) ([][]float64, error) {
+	ctx, span := logs.StartSpan(ctx, "cohere.embedding.batch_request")
+	defer span.End()
+	texts := payload["texts"].([]string)
+	span.SetInt("embedding.text_count", len(texts))
+	span.SetInt("embedding.batch_count", (len(texts)+p.limits.MaxBatchSize-1)/p.limits.MaxBatchSize)
+	rows := make([][]float64, 0, len(texts))
+	for start := 0; start < len(texts); start += p.limits.MaxBatchSize {
+		end := min(start+p.limits.MaxBatchSize, len(texts))
+		part := map[string]any{"model": payload["model"], "embedding_types": payload["embedding_types"], "output_dimension": vectorDim, "input_type": "search_query", "texts": texts[start:end]}
+		vectors, err := p.post(ctx, part, end-start)
+		if err != nil {
+			// 前面已有分片成功时，后续取消不能把整单记成从未触达供应商。
+			if start > 0 && provider.IsNotAttempted(err) {
+				err = &provider.Error{Kind: provider.Kind(err), Message: "cohere batch embedding failed", Err: err}
+			}
+			return nil, err
+		}
+		rows = append(rows, vectors...)
+	}
+	return rows, nil
 }

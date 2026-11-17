@@ -3,7 +3,9 @@
 package bedrockembed
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"strings"
 	"time"
@@ -19,7 +21,7 @@ import (
 	"github.com/wgdl666/wgModelHub/models"
 )
 
-const vectorDim = provider.EmbeddingDimension
+const vectorDim = 1024
 
 type invokeAPI interface {
 	InvokeModel(ctx context.Context, params *bedrockruntime.InvokeModelInput, optFns ...func(*bedrockruntime.Options)) (*bedrockruntime.InvokeModelOutput, error)
@@ -59,19 +61,9 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 	if model != models.CohereEmbedV4Bedrock {
 		return nil, provider.Errorf(provider.ErrorInvalidArgument, "bedrock embedding does not serve model %q", model)
 	}
-	input, err := provider.ParseEmbeddingInput(request.GetInput())
+	payload, err := bedrockPayload(request)
 	if err != nil {
 		return nil, err
-	}
-	payload := map[string]any{
-		"input_type": input.SearchType(), "embedding_types": []string{"float"}, "output_dimension": vectorDim,
-	}
-	expected := len(input.Texts)
-	if input.ImageDataURI != "" {
-		payload["images"] = []string{input.ImageDataURI}
-		expected = 1
-	} else {
-		payload["texts"] = input.Texts
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -86,11 +78,18 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 	if output == nil || len(output.Body) == 0 {
 		return nil, provider.New(provider.ErrorInvalidResponse, "bedrock embedding response is empty")
 	}
-	vectors, err := provider.DecodeFloatEmbeddings(output.Body, expected)
+	vector, err := decodeFloatEmbedding(output.Body)
 	if err != nil {
 		return nil, err
 	}
-	return provider.EmbeddingEvent(vectors)
+	if len(vector) != vectorDim {
+		return nil, provider.Errorf(provider.ErrorInvalidResponse, "bedrock embedding dimension is %d, want %d", len(vector), vectorDim)
+	}
+	encoded, err := json.Marshal(map[string]any{"embedding": vector})
+	if err != nil {
+		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" encode embedding", err)
+	}
+	return provider.TextFinalEvent(string(encoded), nil, "", "", nil), nil
 }
 
 func (p *Provider) GenerateStream(ctx context.Context, model string, request *modelhubv2.GenerateRequest, emit provider.EmitEvent) (*modelhubv2.GenerateEvent, error) {
@@ -105,4 +104,61 @@ func (p *Provider) GenerateStream(ctx context.Context, model string, request *mo
 		}
 	}
 	return provider.MetadataFinalEvent("", "", nil), nil
+}
+
+func bedrockPayload(request *modelhubv2.GenerateRequest) (map[string]any, error) {
+	var input *modelhubv2.Input
+	if request != nil {
+		input = request.GetInput()
+	}
+	if image := provider.FirstImageMedia(input); image != nil {
+		data, ok := provider.InlineImageBytes(image)
+		if !ok {
+			return nil, provider.New(provider.ErrorInvalidArgument, "embedding image must be inline bytes")
+		}
+		mime := image.GetMimeType()
+		if mime == "" {
+			mime = "image/jpeg"
+		}
+		return map[string]any{
+			"input_type": "search_document",
+			"images":     []string{"data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(data)},
+			"embedding_types": []string{"float"}, "output_dimension": vectorDim,
+		}, nil
+	}
+	text := strings.TrimSpace(provider.UserText(input))
+	if text == "" {
+		return nil, provider.New(provider.ErrorInvalidArgument, "embedding requires an image or text")
+	}
+	inputType := "search_query"
+	if strings.HasPrefix(text, "{") {
+		inputType = "search_document"
+	}
+	return map[string]any{
+		"input_type": inputType, "texts": []string{text},
+		"embedding_types": []string{"float"}, "output_dimension": vectorDim,
+	}, nil
+}
+
+func decodeFloatEmbedding(raw []byte) ([]float64, error) {
+	var decoded struct {
+		Embeddings json.RawMessage `json:"embeddings"`
+	}
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return nil, provider.Wrap(provider.ErrorInvalidResponse, "decode bedrock embedding", err)
+	}
+	if bytes.HasPrefix(bytes.TrimSpace(decoded.Embeddings), []byte("[")) {
+		var rows [][]float64
+		if err := json.Unmarshal(decoded.Embeddings, &rows); err != nil || len(rows) == 0 {
+			return nil, provider.New(provider.ErrorInvalidResponse, "bedrock embedding response is empty")
+		}
+		return rows[0], nil
+	}
+	var byType struct {
+		Float [][]float64 `json:"float"`
+	}
+	if err := json.Unmarshal(decoded.Embeddings, &byType); err != nil || len(byType.Float) == 0 {
+		return nil, provider.New(provider.ErrorInvalidResponse, "bedrock embedding response is empty")
+	}
+	return byType.Float[0], nil
 }
