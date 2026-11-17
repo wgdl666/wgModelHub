@@ -36,31 +36,49 @@ func TestVMindModelsUseModelGatewayAfterModelListReload(t *testing.T) {
 	t.Setenv("MODEL_GATEWAY_API_TOKEN", "test-gateway-token")
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
-		if r.Method != http.MethodPost || r.Header.Get("Authorization") != "Bearer test-gateway-token" {
+		if r.Header.Get("Authorization") != "Bearer test-gateway-token" {
 			t.Error("VMind calls must use the injected gateway token")
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		if strings.HasPrefix(r.URL.Path, "/v1/gateway/requests/") {
-			// 文本模型误用图片能力也应到网关受理边界被拒绝，不做逐次预查询。
+		if r.Method == http.MethodGet {
+			kind := map[string]string{"/v1/models/" + chatModel: "chat_completions", "/v1/models/" + decisionModel: "decision"}[r.URL.Path]
+			if kind == "" {
+				t.Errorf("unexpected model definition lookup: %s", r.URL.Path)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]string{"protocol": kind})
+			return
+		}
+		model := strings.TrimPrefix(r.URL.Path, "/v1/gateway/requests/")
+		if model == r.URL.Path || r.Header.Get("Idempotency-Key") == "" {
+			t.Errorf("not a unified submission: %s", r.URL.Path)
+			w.WriteHeader(400)
+			return
+		}
+		var envelope struct {
+			Input  json.RawMessage `json:"input"`
+			Output string          `json:"output"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&envelope); err != nil {
+			t.Error(err)
+			return
+		}
+
+		if envelope.Output != "" {
 			http.Error(w, `{"error":{"code":"invalid_protocol"}}`, http.StatusBadRequest)
 			return
 		}
 
-		if r.URL.Path != "/v1/chat/completions" {
-			t.Errorf("unexpected VMind gateway path %s", r.URL.Path)
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
 		var request struct {
 			Model    string          `json:"model"`
 			Messages json.RawMessage `json:"messages"`
 			Traits   json.RawMessage `json:"model_traits"`
 			Stream   bool            `json:"stream"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		if err := json.Unmarshal(envelope.Input, &request); err != nil {
 			t.Fatal(err)
 		}
+		request.Model = model
 		if request.Model == models.VWorldOutfit10 {
 			http.Error(w, `{"error":{"code":"invalid_protocol"}}`, http.StatusBadRequest)
 			return
@@ -114,7 +132,7 @@ func TestVMindModelsUseModelGatewayAfterModelListReload(t *testing.T) {
 		t.Fatal(err)
 	}
 	live.ApplyYAML(string(raw))
-	// 输出契约在同一次网关受理中校验，不能靠 Service 的模型名单或额外查询决定。
+	// 模型名单热更新保留能力区分；图片适配器读取协议，文本仍由 Gateway 受理时检查。
 	for _, model := range []string{chatModel, decisionModel} {
 		req := textRequest(model, "test")
 		if _, err := sets[instance].Image.GenerateImage(ctx, model, req); err == nil {

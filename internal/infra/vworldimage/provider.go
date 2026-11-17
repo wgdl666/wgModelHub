@@ -104,10 +104,12 @@ func (p *Provider) GenerateImage(ctx context.Context, model string, request *mod
 		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "generate request is required")
 	}
 	if p.gateway != nil {
-		// 只传统一输入；具体图像协议的选择与字段校验由网关在入队前完成。
-		return p.generateThroughGateway(ctx, model, request)
+		kind, err := p.gateway.ModelProtocol(ctx, model)
+		if err != nil {
+			return nil, err
+		}
+		return p.generateThroughGateway(ctx, model, kind, request)
 	}
-	// 直连供应商保留既有协议约定，不受网关受理边界调整影响。
 	kind := map[string]string{
 		models.VWorldWardrobe10: "garment_extraction", models.VWorldClothGen10: "product_generation",
 		models.VWorldOutfit10: "vton", models.VWorldBodyModel10: "body_model",
@@ -231,7 +233,7 @@ func (p *Provider) generate(ctx context.Context, model, path string, fields map[
 	return imageEvent(parsed.Data)
 }
 
-func (p *Provider) generateThroughGateway(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
+func (p *Provider) generateThroughGateway(ctx context.Context, model, kind string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
 	media := provider.ImageMedias(request.GetInput())
 	images := make([]vmindgateway.Image, 0, len(media))
 	for _, image := range media {
@@ -241,9 +243,37 @@ func (p *Provider) generateThroughGateway(ctx context.Context, model string, req
 		}
 		images = append(images, vmindgateway.Image{MIMEType: mimeType, Data: data})
 	}
-	input := map[string]any{"images": images, "text": provider.JoinedText(request.GetInput())}
-	if traits := request.GetInput().GetModelTraits(); strings.TrimSpace(traits) != "" {
-		input["model_traits"] = json.RawMessage(traits)
+	// protobuf 的文本/traits 在适配器展开为模型字段，Gateway 只校验这一份 JSON 契约。
+	input := map[string]any{"images": images}
+	switch kind {
+	case "vton":
+		input["prompt"] = provider.JoinedText(request.GetInput())
+	case "garment_extraction", "product_generation":
+		meta, err := parseGarmentMeta(provider.JoinedText(request.GetInput()))
+		if err != nil {
+			return nil, err
+		}
+		input["garment_name"] = meta.Name
+		if meta.GarmentRole != "" {
+			input["garment_role"] = meta.GarmentRole
+		}
+		if meta.BBox != nil {
+			input["bbox"] = meta.BBox
+		}
+		if meta.BBoxFormat != "" {
+			input["bbox_format"] = meta.BBoxFormat
+		}
+		if meta.ParseLabels != nil {
+			input["parse_labels"] = meta.ParseLabels
+		}
+	case "body_model":
+		gender, err := bodyModelGender(request.GetInput().GetModelTraits())
+		if err != nil {
+			return nil, err
+		}
+		input["gender"] = gender
+	default:
+		return nil, provider.NotAttemptedf(provider.ErrorInvalidArgument, "unsupported image model %q", model)
 	}
 	task, err := p.gateway.Submit(ctx, model, "", input, http.StatusOK)
 	if err != nil {

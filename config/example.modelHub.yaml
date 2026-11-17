@@ -302,42 +302,42 @@ providers:
       api_key: "${PHOTOROOM_API_KEY}"
       base_url: https://sdk.photoroom.com
       proxy_url: ""
-  # 镜头校正独立服务；国内用此地址，美东路演用 aws-exhibition-lens.providers.yaml 的 VPC 前缀。
+  # 镜头校正通过同环境 Gateway；实际模型地址由 Gateway 实例登记维护。
   wgdl_lens_correction:
+    vision_gateway: wgdl_model_gateway_exhibition
     models: [Vmind_lens_distortion_correction_v1.0]
-    lens_distortion_correction:
-      base_url: https://mirror-lens.model.wgdl.tech
-  # 国内自建抠图。两个模型 ID 分别对应人物 /api/segment 与商品主体 /api/segment_subject。
-  # username/password 可成对省略（匿名）；method 是上游算法名，不是模型 ID。
+    lens_distortion_correction: {}
+  # 自建抠图：人物和商品主体分流由 Gateway 登记协议决定。
+  # method 是算法参数，不是模型 ID；连接仅引用 Gateway。
   wgdl_segment_person:
+    vision_gateway: wgdl_model_gateway_exhibition
     models: [Vmind_segment_person_bria_v1.0, Vmind_segment_subject_bria_v1.0]
     segment_person:
-      base_url: http://172.31.43.7:18280/segment-person
       person_method: person-birefnet-portrait
       subject_method: person-bria-rmbg
   # 自建人体检测。conf/iou 固定在供应商代码里。
   aws_g6_human_yolo:
+    vision_gateway: wgdl_model_gateway_exhibition
     models: [Vmind_human_yolo_v1.0]
-    human_yolo:
-      base_url: http://172.31.43.7:18280/human-yolo
-  # 自建人体解析。username/password 成对省略则匿名。国内和新加坡继续用这个 ID。
+    human_yolo: {}
+  # 自建人体解析通过 Gateway；该模型 ID 须先在目标环境登记。
   human-parser.model.wgdl.tech:
+    vision_gateway: wgdl_model_gateway_exhibition
     models: [human-parser]
-    human_parser:
-      base_url: http://172.31.43.7:18280/human-parser/human_parser
-  # G6 人体解析：Vmind_human_parse_v1.0 使用 /human_parser/predict；旧 human-parser /predict 保持不变。
+    human_parser: {}
+  # G6 人体解析通过 Gateway 统一入口，不在 ModelHub 选择原生路径。
   aws_g6_human_parser:
+    vision_gateway: wgdl_model_gateway_exhibition
     models: [Vmind_human_parse_v1.0]
-    human_parser:
-      base_url: http://172.31.43.7:18280/human-parser
+    human_parser: {}
   aws_g6_cloth_yolo:
     models: [cloth-yolo]
     cloth_yolo:
       base_url: http://172.31.43.7:18280/cloth-yolo
   aws_g6_facesim:
+    vision_gateway: wgdl_model_gateway_exhibition
     models: [facesim]
-    facesim:
-      base_url: http://172.31.43.7:18280/facesim
+    facesim: {}
   # 阿里云 1:1 人脸比对。模型 ID 不下发上游。
   阿里云人脸人体_facebody_compare:
     models: [facebody-compare-face]

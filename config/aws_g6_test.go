@@ -7,11 +7,11 @@ import (
 )
 
 func TestG6AnonymousProvidersAndEndpointMethods(t *testing.T) {
-	c := validConfig()
+	c := gatewayVisionTestConfig()
 	c.Providers["g6-cloth"] = ProviderConfig{Models: []string{models.ClothYOLO}, ClothYOLO: &ClothYOLOProviderConfig{BaseURL: "http://172.31.43.7:18280/cloth-yolo"}}
-	c.Providers["g6-face"] = ProviderConfig{Models: []string{models.FaceSim}, FaceSim: &FaceSimProviderConfig{BaseURL: "http://172.31.43.7:18280/facesim"}}
-	c.Providers["g6-human"] = ProviderConfig{Models: []string{models.HumanYOLO}, HumanYOLO: &HumanYOLOProviderConfig{BaseURL: "http://172.31.43.7:18280/human-yolo"}}
-	c.Providers["g6-segment"] = ProviderConfig{Models: []string{models.SegmentPersonBria, models.SegmentSubjectBria}, SegmentPerson: &SegmentPersonProviderConfig{BaseURL: "http://172.31.43.7:18280/segment-person", PersonMethod: "person-birefnet-portrait", SubjectMethod: "person-bria-rmbg"}}
+	c.Providers["g6-face"] = ProviderConfig{Models: []string{models.FaceSim}, VisionGateway: "gateway", FaceSim: &FaceSimProviderConfig{}}
+	c.Providers["g6-human"] = ProviderConfig{Models: []string{models.HumanYOLO}, VisionGateway: "gateway", HumanYOLO: &HumanYOLOProviderConfig{}}
+	c.Providers["g6-segment"] = ProviderConfig{Models: []string{models.SegmentPersonBria, models.SegmentSubjectBria}, VisionGateway: "gateway", SegmentPerson: &SegmentPersonProviderConfig{PersonMethod: "person-birefnet-portrait", SubjectMethod: "person-bria-rmbg"}}
 	if err := c.Validate(); err != nil {
 		t.Fatal(err)
 	}
@@ -21,9 +21,9 @@ func TestG6AnonymousProvidersAndEndpointMethods(t *testing.T) {
 		}
 	}
 	y := c.Providers["g6-human"]
-	y.HumanYOLO.Username = "user"
+	y.VisionGateway = ""
 	c.Providers["g6-human"] = y
 	if err := c.Validate(); err == nil {
-		t.Fatal("partial credentials must be rejected")
+		t.Fatal("missing Gateway must be rejected")
 	}
 }

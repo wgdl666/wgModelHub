@@ -41,6 +41,7 @@ func (o *mediaTransportObjects) Put(_ context.Context, key, _ string, data []byt
 }
 
 func TestMediaRequestGRPCRoundTrip(t *testing.T) {
+	t.Setenv("MODEL_GATEWAY_API_TOKEN", "local")
 	encodePNG := func(c color.NRGBA) []byte {
 		img := image.NewNRGBA(image.Rect(0, 0, 3, 2))
 		img.SetNRGBA(0, 0, c)
@@ -61,8 +62,8 @@ func TestMediaRequestGRPCRoundTrip(t *testing.T) {
 		image, stream                         bool
 	}{
 		{name: "GPT_image_multipart", model: models.GPTImage2, path: "/v1/images/edits", image: true, response: `{"data":[{"b64_json":"` + outputBase64 + `"}]}`},
-		{name: "segment_base64_form", model: models.SegmentPersonBria, path: "/api/segment", image: true, response: `{"refined_png_b64":"` + outputBase64 + `"}`},
-		{name: "parser_base64_JSON", model: models.HumanParse, path: "/human_parser/predict", response: parserResponse, wantText: parserResponse},
+		{name: "segment_base64_form", model: models.SegmentPersonBria, path: "/v1/gateway/requests/" + models.SegmentPersonBria, image: true, response: `{"refined_png_b64":"` + outputBase64 + `"}`},
+		{name: "parser_base64_JSON", model: models.HumanParse, path: "/v1/gateway/requests/" + models.HumanParse, response: parserResponse, wantText: parserResponse},
 		{name: "OpenAI_vision_stream", model: models.GPT56Sol, path: "/v1/chat/completions", stream: true, wantText: "识别成功", response: "data: {\"choices\":[{\"delta\":{\"content\":\"识别成功\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":2,\"total_tokens\":7}}\n\ndata: [DONE]\n\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -88,34 +89,25 @@ func TestMediaRequestGRPCRoundTrip(t *testing.T) {
 				}
 				t.Logf("upstream_snapshot case=%s canonical_sha256=%x raw_bytes=%d raw_sha256=%x", tc.name, snapshot, len(raw), sha256.Sum256(raw))
 				r.Body = io.NopCloser(bytes.NewReader(raw))
-				if tc.image {
+				if tc.model == models.GPTImage2 {
 					if err := r.ParseMultipartForm(1 << 20); err != nil {
 						t.Error(err)
 						w.WriteHeader(400)
 						return
 					}
 					defer r.MultipartForm.RemoveAll()
-					if tc.model == models.GPTImage2 {
-						file, header, err := r.FormFile("image")
-						if err != nil {
-							t.Error(err)
-							w.WriteHeader(400)
-							return
-						}
-						defer file.Close()
-						data, err := io.ReadAll(file)
-						if err != nil || !bytes.Equal(data, inputPNG) || header.Header.Get("Content-Type") != "image/png" || r.FormValue("prompt") != prompt || r.FormValue("model") != tc.model || r.Header.Get("Authorization") != "Bearer local" {
-							t.Error("GPT multipart fields or media changed")
-							w.WriteHeader(400)
-							return
-						}
-					} else {
-						user, pass, ok := r.BasicAuth()
-						if r.FormValue("image") != inputBase64 || r.FormValue("method") != "birefnet" || r.FormValue("output") != "b64" || r.FormValue("preprocess") != "false" || !ok || user != "local" || pass != "local" {
-							t.Error("segment form fields or media changed")
-							w.WriteHeader(400)
-							return
-						}
+					file, header, err := r.FormFile("image")
+					if err != nil {
+						t.Error(err)
+						w.WriteHeader(400)
+						return
+					}
+					defer file.Close()
+					data, err := io.ReadAll(file)
+					if err != nil || !bytes.Equal(data, inputPNG) || header.Header.Get("Content-Type") != "image/png" || r.FormValue("prompt") != prompt || r.FormValue("model") != tc.model || r.Header.Get("Authorization") != "Bearer local" {
+						t.Error("GPT multipart changed")
+						w.WriteHeader(400)
+						return
 					}
 				} else {
 					var payload map[string]any
@@ -126,13 +118,19 @@ func TestMediaRequestGRPCRoundTrip(t *testing.T) {
 					}
 					if tc.stream {
 						if payload["model"] != tc.model || payload["stream"] != true || !bytes.Contains(raw, []byte("data:image/png;base64,"+inputBase64)) || r.Header.Get("Authorization") != "Bearer local" {
-							t.Error("vision JSON fields or media changed")
+							t.Error("OpenAI vision JSON changed")
 							w.WriteHeader(400)
 							return
 						}
 					} else {
-						if payload["image"] != inputBase64 {
-							t.Error("parser image changed")
+						input, ok := payload["input"].(map[string]any)
+						if !ok || input["image"] != inputBase64 || r.Header.Get("Authorization") != "Bearer local" || r.Header.Get("Idempotency-Key") == "" {
+							t.Error("Gateway JSON input changed")
+							w.WriteHeader(400)
+							return
+						}
+						if tc.model == models.SegmentPersonBria && (input["person_method"] != "birefnet" || input["subject_method"] != "birefnet" || input["output"] != "b64") {
+							t.Error("segment input changed")
 							w.WriteHeader(400)
 							return
 						}
@@ -149,9 +147,10 @@ func TestMediaRequestGRPCRoundTrip(t *testing.T) {
 			}))
 			defer upstream.Close()
 			cfg := config.Config{Providers: map[string]config.ProviderConfig{
+				"gateway": {VMindGateway: &config.VMindGatewayProviderConfig{BaseURL: upstream.URL, Token: "local", PollInterval: 1, ResultStorage: config.ObjectStorageConfig{Provider: "s3", Region: "us-east-2", Bucket: "fixture", AccessKeyID: "test-only", AccessKeySecret: "test-only"}}},
 				"openai":  {Models: []string{models.GPTImage2, models.GPT56Sol}, OpenAI: &config.OpenAIProviderConfig{BaseURL: upstream.URL + "/v1", APIKey: "local"}},
-				"segment": {Models: []string{models.SegmentPersonBria}, SegmentPerson: &config.SegmentPersonProviderConfig{BaseURL: upstream.URL, Username: "local", Password: "local", Method: "birefnet"}},
-				"parser":  {Models: []string{models.HumanParse}, HumanParser: &config.HumanParserProviderConfig{BaseURL: upstream.URL}},
+				"segment": {VisionGateway: "gateway", Models: []string{models.SegmentPersonBria}, SegmentPerson: &config.SegmentPersonProviderConfig{Method: "birefnet"}},
+				"parser":  {VisionGateway: "gateway", Models: []string{models.HumanParse}, HumanParser: &config.HumanParserProviderConfig{}},
 			}}
 			live := config.NewLiveConfig(cfg)
 			sets, err := factory.BuildLive(context.Background(), live)

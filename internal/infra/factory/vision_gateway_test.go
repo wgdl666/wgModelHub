@@ -5,11 +5,12 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/google/uuid"
 	"github.com/wgdl666/kangaroo/callmeta"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/wgdl666/wgModelHub/config"
@@ -17,7 +18,7 @@ import (
 	"github.com/wgdl666/wgModelHub/models"
 )
 
-func TestVisionGatewayPreservesAdapterProtocol(t *testing.T) {
+func TestVisionAdaptersSubmitUnifiedJSON(t *testing.T) {
 	const image = "image fixture"
 	const token = "existing-gateway-api-token"
 	t.Setenv("MODEL_GATEWAY_API_TOKEN", token)
@@ -32,77 +33,76 @@ func TestVisionGatewayPreservesAdapterProtocol(t *testing.T) {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		if r.Header.Get("X-Model-Key") == "" {
-			t.Error("vision request lost registered model key")
+		model := strings.TrimPrefix(r.URL.Path, "/proxy/v1/gateway/requests/")
+		if _, err := uuid.Parse(r.Header.Get("Idempotency-Key")); err != nil {
+			t.Error("missing UUID request identity")
+		}
+		if r.Header.Get("X-Model-Key") != "" || r.Header.Get("Content-Type") != "application/json" {
+			t.Error("adapter emitted a legacy request")
+		}
+		if model == r.URL.Path || model == "" {
+			t.Errorf("not a unified model submission: %s", r.URL.Path)
+		}
+		var envelope struct {
+			Input json.RawMessage `json:"input"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&envelope); err != nil {
+			t.Error(err)
+			return
+		}
+		var body map[string]any
+		if err := json.Unmarshal(envelope.Input, &body); err != nil {
+			t.Error(err)
+			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		switch r.URL.Path {
-		case "/v1/vision/human-parser/human_parser/predict":
-			var body map[string]string
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body["image"] != encoded {
-				t.Error("parser lost its inline JSON image")
+		switch model {
+		case models.HumanParse, "parser-v2":
+			if body["image"] != encoded {
+				t.Error("parser lost image")
 			}
 			fmt.Fprint(w, `{"success":true,"pred_shape":[1,1]}`)
-		case "/v1/vision/human-yolo/predict":
-			file, _, err := r.FormFile("file")
-			if err != nil {
-				t.Error("YOLO lost its multipart file")
-				w.WriteHeader(http.StatusBadRequest)
-				return
-			}
-			defer file.Close()
-			body, err := io.ReadAll(file)
-			if err != nil || string(body) != image || r.FormValue("conf") != "0.35" || r.FormValue("iou") != "0.45" {
-				t.Error("YOLO file or detection thresholds changed")
+		case models.HumanYOLO, "detector-v2":
+			if body["file"] != encoded || body["conf"] != "0.35" || body["iou"] != "0.45" {
+				t.Errorf("YOLO input changed: %+v", body)
 			}
 			fmt.Fprint(w, `{"persons":[{"confidence":0.9}]}`)
-		case "/v1/vision/segment-person/api/matte":
-			var body map[string]string
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body["image"] != encoded || body["output"] != "b64" ||
-				body["person_method"] != "person-bria-rmbg" || body["subject_method"] != "person-bria-rmbg" {
-				t.Error("segmenter lost its image or configured algorithms")
+		case models.SegmentPersonBria, models.SegmentSubjectBria, "subject-v2":
+			if body["image"] != encoded || body["output"] != "b64" || body["person_method"] != "person-bria-rmbg" || body["subject_method"] != "person-bria-rmbg" {
+				t.Errorf("segment input changed: %+v", body)
 			}
-			// 人物/商品入口由测试网关登记决定，ModelHub 无需先获知协议。
-			path := "/v1/vision/segment-person/api/segment"
-			if model := r.Header.Get("X-Model-Key"); model == models.SegmentSubjectBria || model == "subject-v2" {
+			path := "segment-result"
+			if model == models.SegmentSubjectBria || model == "subject-v2" {
 				path += "_subject"
 			}
 			fmt.Fprintf(w, `{"refined_png_b64":%q}`, base64.StdEncoding.EncodeToString([]byte(path)))
-		case "/v1/vision/facesim/compare":
-			if r.FormValue("image_a") != encoded || r.FormValue("image_b") != encoded {
-				t.Error("facesim lost one of its inline images")
+		case models.FaceSim:
+			if body["image_a"] != encoded || body["image_b"] != encoded {
+				t.Error("facesim lost images")
 			}
 			fmt.Fprint(w, `{"success":true,"similarity":0.7}`)
-		case "/v1/vision/lens_distortion_correction/correct":
-			var body struct {
-				Base64 string `json:"base64"`
-				Mirror *bool  `json:"mirror_lens"`
-				Crop   bool   `json:"crop"`
+		case models.LensDistortionCorrection, "lens-v2":
+			if body["base64"] != encoded || body["mirror_lens"] != false || body["crop"] != true {
+				t.Errorf("lens input changed: %+v", body)
 			}
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Base64 != encoded ||
-				body.Mirror == nil || *body.Mirror || !body.Crop {
-				t.Error("lens correction lost the image or explicit false option")
-			}
-			fmt.Fprintf(w, `{"content_type":"image/png","image_base64":%q}`, base64.StdEncoding.EncodeToString([]byte(r.URL.Path)))
+			fmt.Fprintf(w, `{"content_type":"image/png","image_base64":%q}`, base64.StdEncoding.EncodeToString([]byte("lens-result")))
 		default:
-			t.Errorf("unexpected gateway path %q", r.URL.Path)
-			w.WriteHeader(http.StatusNotFound)
+			t.Errorf("unexpected model %s", model)
+			w.WriteHeader(404)
 		}
 	}))
 	defer gateway.Close()
 
-	const direct = "http://127.0.0.1:1"
 	sets, err := Build(context.Background(), config.Config{Providers: map[string]config.ProviderConfig{
-		"gateway": {VMindGateway: &config.VMindGatewayProviderConfig{BaseURL: gateway.URL, PollInterval: 1,
+		"gateway": {VMindGateway: &config.VMindGatewayProviderConfig{BaseURL: gateway.URL + "/proxy", PollInterval: 1,
 			ResultStorage: config.ObjectStorageConfig{Provider: "s3", Region: "us-east-2", Bucket: "fixture",
 				AccessKeyID: "test-only", AccessKeySecret: "test-only"}}},
 		"parser": {VisionGateway: "gateway", Models: []string{models.HumanParse},
-			HumanParser: &config.HumanParserProviderConfig{BaseURL: direct}},
-		"yolo": {VisionGateway: "gateway", HumanYOLO: &config.HumanYOLOProviderConfig{
-			BaseURL: direct, Username: "old-user", Password: "old-password"}},
-		"segment": {VisionGateway: "gateway", SegmentPerson: &config.SegmentPersonProviderConfig{BaseURL: direct, Method: "person-bria-rmbg"}},
-		"face":    {VisionGateway: "gateway", FaceSim: &config.FaceSimProviderConfig{BaseURL: direct, Username: "old", Password: "old"}},
-		"lens":    {VisionGateway: "gateway", LensCorrection: &config.LensCorrectionProviderConfig{BaseURL: direct}},
+			HumanParser: &config.HumanParserProviderConfig{}},
+		"yolo":    {VisionGateway: "gateway", HumanYOLO: &config.HumanYOLOProviderConfig{}},
+		"segment": {VisionGateway: "gateway", SegmentPerson: &config.SegmentPersonProviderConfig{Method: "person-bria-rmbg"}},
+		"face":    {VisionGateway: "gateway", FaceSim: &config.FaceSimProviderConfig{}},
+		"lens":    {VisionGateway: "gateway", LensCorrection: &config.LensCorrectionProviderConfig{}},
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -126,12 +126,12 @@ func TestVisionGatewayPreservesAdapterProtocol(t *testing.T) {
 		{"parser", models.HumanParse, `"success":true`},
 		{"parser", "parser-v2", `"success":true`},
 		{"yolo", "detector-v2", `"persons"`},
-		{"segment", "subject-v2", "/v1/vision/segment-person/api/segment_subject"},
-		{"lens", "lens-v2", "/v1/vision/lens_distortion_correction/correct"},
+		{"segment", "subject-v2", "segment-result_subject"},
+		{"lens", "lens-v2", "lens-result"},
 		{"yolo", models.HumanYOLO, `"persons"`},
-		{"segment", models.SegmentPersonBria, "/v1/vision/segment-person/api/segment"},
-		{"segment", models.SegmentSubjectBria, "/v1/vision/segment-person/api/segment_subject"},
-		{"lens", models.LensDistortionCorrection, "/v1/vision/lens_distortion_correction/correct"},
+		{"segment", models.SegmentPersonBria, "segment-result"},
+		{"segment", models.SegmentSubjectBria, "segment-result_subject"},
+		{"lens", models.LensDistortionCorrection, "lens-result"},
 	} {
 		t.Run(test.model, func(t *testing.T) {
 			set := sets[test.instance]
@@ -149,4 +149,126 @@ func TestVisionGatewayPreservesAdapterProtocol(t *testing.T) {
 			}
 		})
 	}
+}
+
+// 输入映射由上面的成功用例覆盖；这里保留迁移前的结果校验和错误边界。
+func TestGatewayVisionResultValidation(t *testing.T) {
+	t.Setenv("MODEL_GATEWAY_API_TOKEN", "fixture-token")
+	for _, tc := range []struct {
+		name, adapter, body, want string
+		status                    int
+		failed                    bool
+	}{
+		{"parser success", "parser", `{"success":true,"labels":[1]}`, `"labels":[1]`, 200, false},
+		{"parser business failure", "parser", `{"success":false,"message":"bad image"}`, "", 200, true},
+		{"parser malformed", "parser", `invalid`, "", 200, true},
+		{"negative face cosine", "face", `{"success":true,"similarity":-0.25}`, `"cosine_similarity":-0.25`, 200, false},
+		{"missing face", "face", `{"success":false,"similarity":null}`, "", 200, true},
+		{"missing face score", "face", `{"success":true}`, "", 200, true},
+		{"face score range", "face", `{"success":true,"similarity":1.5}`, "", 200, true},
+		{"invalid segment JSON", "segment", `invalid`, "", 200, true},
+		{"invalid segment image", "segment", `{"refined_png_b64":"%%%"}`, "", 200, true},
+		{"segment success", "segment", `{"refined_png_b64":"cG5n"}`, "png", 200, false},
+		{"lens JPEG passthrough", "lens", `{"content_type":"image/jpeg","image_base64":"anBlZw==","mirror_lens":false}`, "jpeg", 200, false},
+		{"lens invalid JSON", "lens", `invalid`, "", 200, true},
+		{"lens empty image", "lens", `{"image_base64":""}`, "", 200, true},
+		{"lens failure once", "lens", `private-input`, "", 503, true},
+		{"segment failure once", "segment", `failed`, "", 503, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var calls atomic.Int32
+			gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls.Add(1)
+				if r.URL.Path != "/v1/gateway/requests/registered-model" || r.Header.Get("Authorization") != "Bearer fixture-token" {
+					t.Error("not a Gateway request")
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tc.status)
+				fmt.Fprint(w, tc.body)
+			}))
+			defer gateway.Close()
+			sets, err := Build(context.Background(), visionFixtureConfig(gateway.URL))
+			if err != nil {
+				t.Fatal(err)
+			}
+			request := visionFixtureRequest(1)
+			if tc.adapter == "face" {
+				request = visionFixtureRequest(2)
+			}
+			var event *modelhubv2.GenerateEvent
+			if sets[tc.adapter].Text != nil {
+				event, err = sets[tc.adapter].Text.Generate(t.Context(), "registered-model", request)
+			} else {
+				event, err = sets[tc.adapter].Image.GenerateImage(t.Context(), "registered-model", request)
+			}
+			if (err != nil) != tc.failed {
+				t.Fatalf("event=%v err=%v", event, err)
+			}
+			if calls.Load() != 1 {
+				t.Fatalf("Gateway called %d times", calls.Load())
+			}
+			if tc.want != "" {
+				item := event.GetItems()[0]
+				if item.GetImage() != nil {
+					if string(item.GetImage().GetData()) != tc.want {
+						t.Fatalf("image=%q", item.GetImage().GetData())
+					}
+				} else if !strings.Contains(item.GetText(), tc.want) {
+					t.Fatalf("text=%s", item.GetText())
+				}
+			}
+		})
+	}
+}
+
+func TestGatewayVisionInvalidInputDoesNotSend(t *testing.T) {
+	t.Setenv("MODEL_GATEWAY_API_TOKEN", "fixture-token")
+	var calls atomic.Int32
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1); w.WriteHeader(500) }))
+	defer gateway.Close()
+	sets, err := Build(context.Background(), visionFixtureConfig(gateway.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"parser", "yolo", "face", "segment", "lens"} {
+		t.Run(name, func(t *testing.T) {
+			empty := &modelhubv2.GenerateRequest{Input: &modelhubv2.Input{}}
+			var err error
+			if sets[name].Text != nil {
+				_, err = sets[name].Text.Generate(t.Context(), "registered-model", empty)
+			} else {
+				_, err = sets[name].Image.GenerateImage(t.Context(), "registered-model", empty)
+			}
+			if err == nil {
+				t.Fatal("empty input accepted")
+			}
+		})
+	}
+	invalid := visionFixtureRequest(1)
+	invalid.Input.ModelTraits = `{"mirror_lens":`
+	if _, err := sets["lens"].Image.GenerateImage(t.Context(), "registered-model", invalid); err == nil {
+		t.Fatal("invalid lens traits accepted")
+	}
+	if calls.Load() != 0 {
+		t.Fatalf("invalid input sent %d requests", calls.Load())
+	}
+}
+
+func visionFixtureRequest(count int) *modelhubv2.GenerateRequest {
+	parts := make([]*modelhubv2.ContentPart, 0, count)
+	for i := 0; i < count; i++ {
+		parts = append(parts, &modelhubv2.ContentPart{Content: &modelhubv2.ContentPart_Image{Image: &modelhubv2.Media{MimeType: "image/png", Source: &modelhubv2.Media_Data{Data: []byte("input image")}}}})
+	}
+	return &modelhubv2.GenerateRequest{Input: &modelhubv2.Input{Items: []*modelhubv2.InputItem{{Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{Role: modelhubv2.Role_ROLE_USER, Parts: parts}}}}}}
+}
+
+func visionFixtureConfig(base string) config.Config {
+	return config.Config{Providers: map[string]config.ProviderConfig{
+		"gateway": {VMindGateway: &config.VMindGatewayProviderConfig{BaseURL: base, Token: "fixture-token", PollInterval: 1, ResultStorage: config.ObjectStorageConfig{Provider: "s3", Region: "us-east-2", Bucket: "fixture", AccessKeyID: "test-only", AccessKeySecret: "test-only"}}},
+		"parser":  {VisionGateway: "gateway", HumanParser: &config.HumanParserProviderConfig{}},
+		"yolo":    {VisionGateway: "gateway", HumanYOLO: &config.HumanYOLOProviderConfig{}},
+		"face":    {VisionGateway: "gateway", FaceSim: &config.FaceSimProviderConfig{}},
+		"segment": {VisionGateway: "gateway", SegmentPerson: &config.SegmentPersonProviderConfig{Method: "bria"}},
+		"lens":    {VisionGateway: "gateway", LensCorrection: &config.LensCorrectionProviderConfig{}},
+	}}
 }

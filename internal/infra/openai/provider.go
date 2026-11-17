@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/google/uuid"
+	"github.com/wgdl666/kangaroo/callmeta"
 	"github.com/wgdl666/kangaroo/logs"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
@@ -608,15 +610,33 @@ func roleString(role modelhubv2.Role) string {
 }
 
 func (p *Provider) doRequest(ctx context.Context, body map[string]any) (io.ReadCloser, error) {
-	encoded, err := httpbody.JSON(body, false)
+	endpoint := p.baseURL + "/chat/completions"
+	var payload any = body
+	if p.ModelGateway {
+		model, _ := body["model"].(string)
+		endpoint = strings.TrimSuffix(p.baseURL, "/v1") + "/v1/gateway/requests/" + url.PathEscape(model)
+		// 模型由路径选定；保留已有 protobuf 转换产生的全部参数，不复制 Gateway 的校验规则。
+		input := make(map[string]any, len(body))
+		for key, value := range body {
+			if key != "model" {
+				input[key] = value
+			}
+		}
+		payload = map[string]any{"input": input}
+	}
+	encoded, err := httpbody.JSON(payload, false)
 	if err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" marshal failed", err)
 	}
-	httpReq, err := encoded.NewRequest(ctx, http.MethodPost, p.baseURL+"/chat/completions")
+	httpReq, err := encoded.NewRequest(ctx, http.MethodPost, endpoint)
 	if err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" create request failed", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	if p.ModelGateway {
+		httpReq.Header.Set("Idempotency-Key", uuid.NewString())
+		callmeta.Propagator{}.Inject(ctx, callmeta.HTTPHeaders(httpReq.Header))
+	}
 	if p.apiKey != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 	}
