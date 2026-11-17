@@ -5,6 +5,7 @@ package dashscopeembed
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -50,20 +51,37 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 	if model != models.Qwen3VLEmbedding {
 		return nil, provider.Errorf(provider.ErrorInvalidArgument, "dashscope embedding does not serve model %q", model)
 	}
-	texts, err := provider.EmbeddingBatchTexts(request.GetInput(), 0, 0)
+	input := request.GetInput()
+	texts, err := provider.EmbeddingBatchTexts(input, 0, 0)
+	if err != nil {
+		return nil, err
+	}
+	parameters := map[string]any{"dimension": vectorDim, "output_type": "dense"}
+	var contents []map[string]string
+	if texts != nil {
+		// 调用方已准备好批次，每条 contents 都计算独立向量。
+		parameters["enable_fusion"] = false
+		contents = make([]map[string]string, len(texts))
+		for i, text := range texts {
+			contents[i] = map[string]string{"text": text}
+		}
+	} else {
+		content, err := embedContent(input)
+		if err != nil {
+			return nil, err
+		}
+		contents = []map[string]string{content}
+	}
+	rows, err := p.post(ctx, map[string]any{
+		"model":      model,
+		"input":      map[string]any{"contents": contents},
+		"parameters": parameters,
+	})
 	if err != nil {
 		return nil, err
 	}
 	if texts != nil {
-		return p.forwardBatch(ctx, model, texts)
-	}
-	content, err := embedContent(request)
-	if err != nil {
-		return nil, err
-	}
-	rows, err := p.post(ctx, model, []map[string]string{content}, false)
-	if err != nil {
-		return nil, err
+		return batchEmbeddingEvent(rows, len(texts))
 	}
 	if len(rows) == 0 || len(rows[0].Embedding) != vectorDim {
 		return nil, provider.New(provider.ErrorInvalidResponse, "dashscope embedding must return 1024 floats")
@@ -71,21 +89,12 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 	return embeddingEvent("embedding", rows[0].Embedding)
 }
 
-func (p *Provider) forwardBatch(ctx context.Context, model string, texts []string) (*modelhubv2.GenerateEvent, error) {
-	// 批次由调用方准备，一个 ModelHub 请求对应一个百炼请求体。
-	contents := make([]map[string]string, len(texts))
-	for i, text := range texts {
-		contents[i] = map[string]string{"text": text}
-	}
-	rows, err := p.post(ctx, model, contents, true)
-	if err != nil {
-		return nil, err
-	}
-	if len(rows) != len(contents) {
-		return nil, provider.Errorf(provider.ErrorInvalidResponse, "dashscope embedding count is %d, want %d", len(rows), len(contents))
+func batchEmbeddingEvent(rows []embeddingRow, count int) (*modelhubv2.GenerateEvent, error) {
+	if len(rows) != count {
+		return nil, provider.Errorf(provider.ErrorInvalidResponse, "dashscope embedding count is %d, want %d", len(rows), count)
 	}
 
-	vectors := make([][]float64, len(texts))
+	vectors := make([][]float64, count)
 	// 百炼用 index 标识输入位置，响应数组可以乱序。
 	for _, row := range rows {
 		if row.Index == nil || *row.Index < 0 || *row.Index >= len(vectors) || vectors[*row.Index] != nil {
@@ -104,20 +113,25 @@ func (p *Provider) GenerateStream(ctx context.Context, model string, request *mo
 	if err != nil {
 		return nil, err
 	}
-	return emitText(event, emit)
+	if emit != nil {
+		if err := emit(provider.TextDeltaEvent(event.GetItems()[0].GetText())); err != nil {
+			return nil, err
+		}
+	}
+	return provider.MetadataFinalEvent("", "", nil), nil
 }
 
-func embedContent(request *modelhubv2.GenerateRequest) (map[string]string, error) {
-	var input *modelhubv2.Input
-	if request != nil {
-		input = request.GetInput()
-	}
+func embedContent(input *modelhubv2.Input) (map[string]string, error) {
 	if image := provider.FirstImageMedia(input); image != nil {
 		data, ok := provider.InlineImageBytes(image)
 		if !ok {
 			return nil, provider.New(provider.ErrorInvalidArgument, "embedding image must be inline bytes")
 		}
-		return map[string]string{"image": "data:" + imageMime(image) + ";base64," + encodeBase64(data)}, nil
+		mime := image.GetMimeType()
+		if mime == "" {
+			mime = "image/jpeg"
+		}
+		return map[string]string{"image": "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(data)}, nil
 	}
 	text := strings.TrimSpace(provider.UserText(input))
 	if text == "" {
@@ -131,16 +145,7 @@ type embeddingRow struct {
 	Embedding []float64 `json:"embedding"`
 }
 
-func (p *Provider) post(ctx context.Context, model string, contents []map[string]string, batch bool) ([]embeddingRow, error) {
-	parameters := map[string]any{"dimension": vectorDim, "output_type": "dense"}
-	if batch {
-		parameters["enable_fusion"] = false
-	}
-	payload := map[string]any{
-		"model":      model,
-		"input":      map[string]any{"contents": contents},
-		"parameters": parameters,
-	}
+func (p *Provider) post(ctx context.Context, payload map[string]any) ([]embeddingRow, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" encode embedding", err)
@@ -164,11 +169,10 @@ func (p *Provider) post(ctx context.Context, model string, contents []map[string
 		return nil, provider.Errorf(provider.ErrorUnavailable, "%s embedding HTTP %d", p.name, resp.StatusCode)
 	}
 	var decoded struct {
-		Output *struct {
+		Output struct {
 			Embeddings []embeddingRow `json:"embeddings"`
 		} `json:"output"`
-		Code    string `json:"code"`
-		Message string `json:"message"`
+		Code string `json:"code"`
 	}
 	if err := json.Unmarshal(raw, &decoded); err != nil {
 		return nil, provider.Wrap(provider.ErrorInvalidResponse, p.name+" decode embedding", err)
@@ -176,8 +180,13 @@ func (p *Provider) post(ctx context.Context, model string, contents []map[string
 	if decoded.Code != "" {
 		return nil, provider.Errorf(provider.ErrorUnavailable, "%s embedding %s", p.name, decoded.Code)
 	}
-	if decoded.Output == nil {
-		return nil, provider.New(provider.ErrorInvalidResponse, "dashscope embedding response has no output")
-	}
 	return decoded.Output.Embeddings, nil
+}
+
+func embeddingEvent(key string, value any) (*modelhubv2.GenerateEvent, error) {
+	body, err := json.Marshal(map[string]any{key: value})
+	if err != nil {
+		return nil, provider.Wrap(provider.ErrorUnavailable, "encode embedding", err)
+	}
+	return provider.TextFinalEvent(string(body), nil, "", "", nil), nil
 }

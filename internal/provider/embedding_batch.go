@@ -9,14 +9,16 @@ import (
 
 // EmbeddingBatchTexts 解析现有批量查询协议。普通单条返回 nil，预算为零表示沿用 RPC 整体限制。
 func EmbeddingBatchTexts(input *modelhubv2.Input, maxTexts, maxTextBytes int) ([]string, error) {
+	rawTraits := strings.TrimSpace(input.GetModelTraits())
+	if rawTraits == "" {
+		return nil, nil
+	}
 	var traits struct {
 		Batch     bool   `json:"embedding_batch"`
 		InputType string `json:"input_type"`
 	}
-	if raw := strings.TrimSpace(input.GetModelTraits()); raw != "" {
-		if err := json.Unmarshal([]byte(raw), &traits); err != nil || raw == "null" {
-			return nil, NotAttempted(ErrorInvalidArgument, "invalid embedding model_traits")
-		}
+	if err := json.Unmarshal([]byte(rawTraits), &traits); err != nil || rawTraits == "null" {
+		return nil, NotAttempted(ErrorInvalidArgument, "invalid embedding model_traits")
 	}
 	if !traits.Batch {
 		return nil, nil
@@ -24,17 +26,19 @@ func EmbeddingBatchTexts(input *modelhubv2.Input, maxTexts, maxTextBytes int) ([
 	if traits.InputType != "search_query" {
 		return nil, NotAttempted(ErrorInvalidArgument, "batch embedding requires input_type search_query")
 	}
-	if len(input.GetItems()) == 0 || (maxTexts > 0 && len(input.GetItems()) > maxTexts) {
+	items := input.GetItems()
+	if len(items) == 0 || (maxTexts > 0 && len(items) > maxTexts) {
 		return nil, NotAttempted(ErrorInvalidArgument, "batch embedding exceeds request text count budget")
 	}
-	texts := make([]string, 0, len(input.GetItems()))
+	texts := make([]string, len(items))
 	textBytes := 0
-	for _, item := range input.GetItems() {
+	for i, item := range items {
 		message := item.GetMessage()
-		if message.GetRole() != modelhubv2.Role_ROLE_USER || len(message.GetParts()) != 1 || len(message.GetToolCalls()) != 0 {
+		parts := message.GetParts()
+		if message.GetRole() != modelhubv2.Role_ROLE_USER || len(parts) != 1 || len(message.GetToolCalls()) != 0 {
 			return nil, NotAttempted(ErrorInvalidArgument, "batch embedding requires one user text per item")
 		}
-		raw := message.GetParts()[0].GetText()
+		raw := parts[0].GetText()
 		text := strings.TrimSpace(raw)
 		if text == "" {
 			return nil, NotAttempted(ErrorInvalidArgument, "batch embedding requires non-empty text parts")
@@ -43,7 +47,7 @@ func EmbeddingBatchTexts(input *modelhubv2.Input, maxTexts, maxTextBytes int) ([
 		if maxTextBytes > 0 && textBytes > maxTextBytes {
 			return nil, NotAttempted(ErrorInvalidArgument, "batch embedding exceeds request text byte budget")
 		}
-		texts = append(texts, text)
+		texts[i] = text
 	}
 	return texts, nil
 }
