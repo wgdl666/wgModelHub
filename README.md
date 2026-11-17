@@ -23,52 +23,18 @@ AssemblyAI 的 Error 帧或 WebSocket 关闭码 `3008` 统一返回 gRPC `Unavai
 调用方 wgHub 复用现有的有界断流恢复，重新建立 ASR 子流；ModelHub 不在同一 RPC 内自动重连。
 不新增期限字段或定时切流，其他供应商错误的分类保持原有行为。
 
-## Qwen 批量查询向量
+## Embedding
 
-`qwen3-vl-embedding` 复用 `Generate` 的批量查询输入。在 `input.model_traits` 中传
-`{"embedding_batch":true,"input_type":"search_query"}`，在 `input.items` 中按序放置每条恰好一个非空文本的 USER message。
-Wardrobe 根据供应商上限拆分请求、合并结果。ModelHub 将每批映射为一个百炼 HTTP 请求体，关闭向量融合，
-根据百炼响应的 `index` 恢复输入顺序，并返回文本 JSON `{"embeddings":[[...],...]}`。
+`qwen3-vl-embedding`、`embed-v4.0` 和 `us.cohere.embed-v4:0` 在 `Generate` 中读取 `input.embedding`。
+`texts` 可以放一条或多条文本，也可以改用 `image` 传一张内联图。每项对应一个 1024 维向量。
+文本默认用作查询，建索引的文本设置 `search_document: true`。Cohere 系列把图片按建索引用途编码。
+`GenerateEvent.items[0].text` 中的 JSON 固定为 `{"embeddings":[[...],...]}`，顺序和输入一致。
 
-## Cohere 批量查询向量
+Wardrobe 按供应商上限拆批并合并结果，每个 RPC 对应一个供应商请求体。Qwen 使用独立向量，
+按百炼响应的 `index` 恢复本批顺序。Cohere 和 Bedrock 直接发送文本列表。Cohere 单次 HTTP
+完整响应仍限时 3 秒，单次超时重发一次。服务层沿用现有瞬态错误重试规则。
 
-`Generate` 的 `model=embed-v4.0` 支持显式批量 query：在 `input.model_traits` 中传
-`{"embedding_batch":true,"input_type":"search_query"}` JSON 字符串，在 `input.items` 中按序放置 USER message，
-每条恰好一个非空 text part。批量不接受图片、工具内容或文档模式。Wardrobe 去重后一次提交完整逻辑请求，
-不感知供应商单批限制，也不在超限后拆小重发。
-
-ModelHub 先校验完整批量请求的条数/原始文本字节数，再按 `cohere_embedding.max_batch_size` 顺序拆批，
-调用 Cohere `/v2/embed` 的 `texts[]`，并按输入顺序合并。500条默认拆为96×5+20，依次调用6次；
-任一批失败就停止，不发布部分结果。一个逻辑请求同一时刻最多执行一个批次，不放大调用方并发。
-不同RPC之间不设共享并发池；请求并发、业务排队及总deadline由调用方管理。
-
-配置位于每个 Cohere provider 的 `cohere_embedding`：
-
-```yaml
-max_batch_size: 96               # 缺省96，范围1..96；供应商单次请求容量
-max_request_texts: 512           # 缺省512，范围1..1024；单个逻辑批量请求准入上限
-max_request_text_bytes: 1048576  # 缺省1 MiB，最大4 MiB；批量文本的原始UTF-8总字节
-```
-
-配置由Provider启动时读取，修改需重启。超出整单条数或文本字节上限时，出站前直接拒绝。
-512条1024维向量按每个数32字节保守估算约16 MiB，最大1024条约32 MiB，为64 MiB RPC保留包装空间。
-每批HTTP响应限4 MiB，完整结果限32 MiB；校验行数、1024维、有限值和null，避免文本与向量错位。
-返回文本 JSON 为 `{"embeddings":[[...],[...]]}`，单元素批次也保留复数键。
-
-Provider不新增退避、工作协程或整单超时配置。单次HTTP上限为3秒（原20秒）：等满3秒仍没有完整响应时，
-Provider立即把同一个请求体重发一次，仍超时才返回超时；调用方已取消或deadline已到时不重发。
-这条规则对单条和每个批量分片相同，只覆盖“单次超时”。限流、5xx和连接错误不在Provider重发，
-仍由已有Service文本重试机制处理，可能重新执行整个逻辑请求，包括之前成功的分片；
-取消、最终超时和非瞬态错误遵守原Service规则。这里不承诺分片续算或失败后仅重算失败片。
-`cohere.embedding.batch_request`记录条数、批次数，原有`provider.http`记录每次上游耗时，
-不记录文本、向量或密钥。
-
-只有显式批量标志才拆分输入。普通多段文本仍合成单个输入，以 `{` 开头的商品文本仍走
-`search_document`，图片保留单图路径，继续返回 `{"embedding":[...]}`；单条调用不新增并发，最坏耗时为两次3秒。
-批量容量限制只作用于批量输入；`model_traits`若非空仍须是合法JSON对象。
-未新增RPC、模型ID、凭据或自动切换向量空间；只接入官方Cohere Provider，Bedrock/DashScope保持原实现。
-应先发布此协议，再发布Wardrobe并开启其默认关闭的 `deep_recommend.batch_embedding_enabled`。
-关闭调用方开关后新冻结恢复单条协议。本PR不修改线上配置、不部署。
+这三个模型的旧 USER 消息请求会返回 InvalidArgument，调用方需要切换到 `input.embedding`。
 
 ## Gemini 4 Argon / Carbon
 

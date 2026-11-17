@@ -16,6 +16,7 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/internal/taskstore"
+	"github.com/wgdl666/wgModelHub/models"
 	"github.com/wgdl666/wgModelHub/protocol"
 )
 
@@ -607,6 +608,22 @@ func validateGenerateRequest(request *modelhubv2.GenerateRequest, capability str
 	}
 	if request.GetModel() == "" {
 		return provider.NotAttempted(provider.ErrorInvalidArgument, "model is required")
+	}
+	if input := request.GetInput().GetEmbedding(); input != nil {
+		// 向量字段只交给读取它的适配器，避免其他模型静默丢弃输入。
+		switch request.GetModel() {
+		case models.Qwen3VLEmbedding, models.CohereEmbedV4, models.CohereEmbedV4Bedrock:
+		default:
+			return provider.NotAttempted(provider.ErrorInvalidArgument, "model does not support input.embedding")
+		}
+		if capability != config.CapabilityText {
+			return provider.NotAttempted(provider.ErrorInvalidArgument, "embedding requires text output")
+		}
+		if image := input.GetImage(); image != nil {
+			if err := validateMedia(image, provider.ErrorInvalidArgument); err != nil {
+				return err
+			}
+		}
 	}
 	if err := validateInput(request.GetInput()); err != nil {
 		return err

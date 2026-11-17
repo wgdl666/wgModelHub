@@ -31,16 +31,12 @@ func TestEmbedTextReturns1024(t *testing.T) {
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(string(body))), Header: make(http.Header)}, nil
 	})
 	event, err := provider.Generate(context.Background(), models.Qwen3VLEmbedding, &modelhubv2.GenerateRequest{
-		Input: &modelhubv2.Input{Items: []*modelhubv2.InputItem{{
-			Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{Parts: []*modelhubv2.ContentPart{{
-				Content: &modelhubv2.ContentPart_Text{Text: "black jacket"},
-			}}}},
-		}}},
+		Input: &modelhubv2.Input{Embedding: &modelhubv2.EmbeddingInput{Texts: []string{"black jacket"}}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(event.GetItems()[0].GetText(), "0.5") {
+	if !strings.Contains(event.GetItems()[0].GetText(), `"embeddings":[[0.5`) {
 		t.Fatalf("text %s", event.GetItems()[0].GetText())
 	}
 }

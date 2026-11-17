@@ -391,6 +391,14 @@ func redactGenerateRequestMedia(req *modelhubv2.GenerateRequest) []Blob {
 		return nil
 	}
 	var blobs []Blob
+	if embedding := req.GetInput().GetEmbedding(); embedding.GetImage() != nil {
+		// 向量图片复用媒体归档，账本只存占位引用。
+		stored, blob := stashMedia("in", embedding.GetImage(), len(blobs))
+		if blob != nil {
+			blobs = append(blobs, *blob)
+		}
+		embedding.Image = stored
+	}
 	for _, item := range req.GetInput().GetItems() {
 		switch value := item.GetItem().(type) {
 		case *modelhubv2.InputItem_Message:

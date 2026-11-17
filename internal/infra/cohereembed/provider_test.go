@@ -13,17 +13,22 @@ import (
 
 	"github.com/wgdl666/wgModelHub/config"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
 )
 
-func textRequest(traits string, texts ...string) *modelhubv2.GenerateRequest {
-	input := &modelhubv2.Input{ModelTraits: traits}
-	for _, text := range texts {
-		input.Items = append(input.Items, &modelhubv2.InputItem{Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
-			Role: modelhubv2.Role_ROLE_USER, Parts: []*modelhubv2.ContentPart{{Content: &modelhubv2.ContentPart_Text{Text: text}}},
-		}}})
-	}
-	return &modelhubv2.GenerateRequest{Input: input}
+func logicalRequest(texts ...string) *modelhubv2.GenerateRequest {
+	return &modelhubv2.GenerateRequest{Input: &modelhubv2.Input{
+		Embedding: &modelhubv2.EmbeddingInput{Texts: texts},
+	}}
+}
+
+func imageRequest() *modelhubv2.GenerateRequest {
+	return &modelhubv2.GenerateRequest{Input: &modelhubv2.Input{
+		Embedding: &modelhubv2.EmbeddingInput{Image: &modelhubv2.Media{
+			MimeType: "image/png", Source: &modelhubv2.Media_Data{Data: []byte("png")},
+		}},
+	}}
 }
 
 func testVectors(count int) [][]float64 {
@@ -35,103 +40,80 @@ func testVectors(count int) [][]float64 {
 	return rows
 }
 
-func TestGeneratePreservesSingleAndExplicitBatchContracts(t *testing.T) {
+func TestGenerateUsesUnifiedEmbeddingContract(t *testing.T) {
+	document := logicalRequest("衣物商品描述")
+	document.Input.Embedding.SearchDocument = true
 	for _, tc := range []struct {
-		name, traits, inputType string
-		texts, want             []string
-		batch                   bool
+		name, inputType string
+		request         *modelhubv2.GenerateRequest
+		texts, images   []string
 	}{
-		{name: "single", texts: []string{" coat "}, want: []string{"coat"}, inputType: "search_query"},
-		{name: "document", texts: []string{`{"color":"red"}`}, want: []string{`{"color":"red"}`}, inputType: "search_document"},
-		{name: "ordinary multiple messages remain one vector", texts: []string{"red", "coat"}, want: []string{"red\ncoat"}, inputType: "search_query"},
-		{name: "batch one retains plural output", traits: `{"embedding_batch":true,"input_type":"search_query"}`, texts: []string{"coat"}, want: []string{"coat"}, inputType: "search_query", batch: true},
-		{name: "batch ordered even JSON text is query", traits: `{"embedding_batch":true,"input_type":"search_query"}`, texts: []string{"coat", `{look}`}, want: []string{"coat", `{look}`}, inputType: "search_query", batch: true},
+		{name: "single", inputType: "search_query", request: logicalRequest(" coat "), texts: []string{"coat"}},
+		{name: "batch", inputType: "search_query", request: logicalRequest("coat", "{look}"), texts: []string{"coat", "{look}"}},
+		{name: "index document", inputType: "search_document", request: document, texts: []string{"衣物商品描述"}},
+		{name: "index image", inputType: "search_document", request: imageRequest(), images: []string{"data:image/png;base64,cG5n"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var calls atomic.Int64
+			want := testVectors(len(tc.texts) + len(tc.images))
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				calls.Add(1)
-				if r.URL.Path != "/v2/embed" || r.Header.Get("authorization") != "Bearer test-key" {
-					t.Error("wrong provider request")
-				}
 				var payload struct {
 					Texts     []string `json:"texts"`
+					Images    []string `json:"images"`
 					InputType string   `json:"input_type"`
 					Dimension int      `json:"output_dimension"`
 				}
 				if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 					t.Error(err)
 				}
-				if !reflect.DeepEqual(payload.Texts, tc.want) || payload.InputType != tc.inputType || payload.Dimension != 1024 {
+				if !reflect.DeepEqual(payload.Texts, tc.texts) || !reflect.DeepEqual(payload.Images, tc.images) ||
+					payload.InputType != tc.inputType || payload.Dimension != 1024 {
 					t.Errorf("payload=%+v", payload)
 				}
-				_ = json.NewEncoder(w).Encode(map[string]any{"embeddings": map[string]any{"float": testVectors(len(tc.want))}})
+				_ = json.NewEncoder(w).Encode(map[string]any{"embeddings": map[string]any{"float": want}})
 			}))
 			defer server.Close()
 			p, err := New("cohere", &config.CohereEmbeddingProviderConfig{BaseURL: server.URL, APIKey: "test-key"})
 			if err != nil {
 				t.Fatal(err)
 			}
-			event, err := p.Generate(context.Background(), models.CohereEmbedV4, textRequest(tc.traits, tc.texts...))
+			event, err := p.Generate(context.Background(), models.CohereEmbedV4, tc.request)
 			if err != nil {
 				t.Fatal(err)
 			}
-			var result map[string]json.RawMessage
+			var result struct {
+				Embeddings [][]float64 `json:"embeddings"`
+			}
 			if err := json.Unmarshal([]byte(event.GetItems()[0].GetText()), &result); err != nil {
 				t.Fatal(err)
 			}
-			if tc.batch {
-				var rows [][]float64
-				if err := json.Unmarshal(result["embeddings"], &rows); err != nil {
-					t.Fatal(err)
-				}
-				if !reflect.DeepEqual(rows, testVectors(len(tc.want))) || result["embedding"] != nil {
-					t.Fatal("batch lost order or returned single shape")
-				}
-			} else if result["embedding"] == nil || result["embeddings"] != nil {
-				t.Fatal("single shape changed")
-			}
-			if calls.Load() != 1 {
-				t.Fatalf("calls=%d", calls.Load())
+			if calls.Load() != 1 || !reflect.DeepEqual(result.Embeddings, want) {
+				t.Fatalf("calls=%d rows=%d, want one call and %d rows", calls.Load(), len(result.Embeddings), len(want))
 			}
 		})
 	}
 }
 
-func TestPayloadImageAndBatchValidation(t *testing.T) {
-	p, _ := New("cohere", &config.CohereEmbeddingProviderConfig{BaseURL: "http://example.invalid", APIKey: "test"})
-	image := textRequest("")
-	image.Input.Items = []*modelhubv2.InputItem{{Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{Role: modelhubv2.Role_ROLE_USER, Parts: []*modelhubv2.ContentPart{{Content: &modelhubv2.ContentPart_Image{Image: &modelhubv2.Media{MimeType: "image/png", Source: &modelhubv2.Media_Data{Data: []byte("png")}}}}}}}}}
-	payload, batch, err := p.coherePayload(models.CohereEmbedV4, image)
-	if err != nil || batch || payload["input_type"] != "search_document" || payload["images"].([]string)[0] != "data:image/png;base64,cG5n" {
-		t.Fatalf("image payload=%v batch=%v err=%v", payload, batch, err)
-	}
-	for _, traits := range []string{`{`, `[]`, `null`, `{"embedding_batch":"true"}`, `{"embedding_batch":true}`, `{"embedding_batch":true,"input_type":"search_document"}`} {
-		if _, _, err := p.coherePayload(models.CohereEmbedV4, textRequest(traits, "coat")); err == nil {
-			t.Errorf("accepted invalid traits %q", traits)
+func TestGenerateRejectsLegacyAndMixedInputsBeforeHTTP(t *testing.T) {
+	p := mustProvider(t, config.CohereEmbeddingProviderConfig{})
+	p.client = embeddingDoer(func(*http.Request) (*http.Response, error) {
+		t.Fatal("invalid input reached the provider")
+		return nil, nil
+	})
+	mixed := imageRequest()
+	mixed.Input.Embedding.Texts = []string{"coat"}
+	legacy := &modelhubv2.GenerateRequest{Input: &modelhubv2.Input{
+		ModelTraits: `{"embedding_batch":true,"input_type":"search_query"}`,
+		Items: []*modelhubv2.InputItem{{Item: &modelhubv2.InputItem_Message{Message: &modelhubv2.Message{
+			Role: modelhubv2.Role_ROLE_USER, Parts: []*modelhubv2.ContentPart{{Content: &modelhubv2.ContentPart_Text{Text: "coat"}}},
+		}}}},
+	}}
+	for _, request := range []*modelhubv2.GenerateRequest{legacy, mixed, logicalRequest(), logicalRequest(" ")} {
+		_, err := p.Generate(context.Background(), models.CohereEmbedV4, request)
+		if provider.Kind(err) != provider.ErrorInvalidArgument || !provider.IsNotAttempted(err) {
+			t.Fatalf("invalid request error=%v", err)
 		}
-	}
-	traits := `{"embedding_batch":true,"input_type":"search_query"}`
-	for _, texts := range [][]string{nil, {" "}, make([]string, 97)} {
-		if _, _, err := p.coherePayload(models.CohereEmbedV4, textRequest(traits, texts...)); err == nil {
-			t.Errorf("accepted invalid batch length %d", len(texts))
-		}
-	}
-	texts := make([]string, 96)
-	for i := range texts {
-		texts[i] = "coat"
-	}
-	if _, _, err := p.coherePayload(models.CohereEmbedV4, textRequest(traits, texts...)); err != nil {
-		t.Fatal(err)
-	}
-	image.Input.ModelTraits = traits
-	if _, _, err := p.coherePayload(models.CohereEmbedV4, image); err == nil {
-		t.Fatal("accepted image in query batch")
-	}
-	multiple := textRequest(traits, "coat")
-	multiple.Input.Items[0].GetMessage().Parts = append(multiple.Input.Items[0].GetMessage().Parts, &modelhubv2.ContentPart{Content: &modelhubv2.ContentPart_Text{Text: "red"}})
-	if _, _, err := p.coherePayload(models.CohereEmbedV4, multiple); err == nil {
-		t.Fatal("accepted ambiguous multi-part batch item")
 	}
 }
 

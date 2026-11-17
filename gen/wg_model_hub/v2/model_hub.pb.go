@@ -1449,7 +1449,8 @@ type Input struct {
 	Caching *CachingConfig `protobuf:"bytes,5,opt,name=caching,proto3" json:"caching,omitempty"`
 	// 模型特性。JSON 字符串，不是提示词，也不进文本 part。
 	// 各模型只读自己认识的键。体模读 gender，只允许 male、female。
-	ModelTraits   string `protobuf:"bytes,7,opt,name=model_traits,json=modelTraits,proto3" json:"model_traits,omitempty"`
+	ModelTraits   string          `protobuf:"bytes,7,opt,name=model_traits,json=modelTraits,proto3" json:"model_traits,omitempty"`
+	Embedding     *EmbeddingInput `protobuf:"bytes,8,opt,name=embedding,proto3" json:"embedding,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1524,6 +1525,13 @@ func (x *Input) GetModelTraits() string {
 		return x.ModelTraits
 	}
 	return ""
+}
+
+func (x *Input) GetEmbedding() *EmbeddingInput {
+	if x != nil {
+		return x.Embedding
+	}
+	return nil
 }
 
 type ResponseFormat struct {
@@ -4072,6 +4080,68 @@ func (x *TranscribeSpeechTranscript) GetSessionSpeakers() []string {
 	return nil
 }
 
+// EmbeddingInput 接受有序文本列表或一张内联图，每个输入对应一个向量。
+type EmbeddingInput struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Texts []string               `protobuf:"bytes,1,rep,name=texts,proto3" json:"texts,omitempty"`
+	Image *Media                 `protobuf:"bytes,2,opt,name=image,proto3" json:"image,omitempty"`
+	// 查询默认使用 search_query。建索引的文本显式设置 true，图片按建索引处理。
+	SearchDocument bool `protobuf:"varint,3,opt,name=search_document,json=searchDocument,proto3" json:"search_document,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *EmbeddingInput) Reset() {
+	*x = EmbeddingInput{}
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[49]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EmbeddingInput) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EmbeddingInput) ProtoMessage() {}
+
+func (x *EmbeddingInput) ProtoReflect() protoreflect.Message {
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[49]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EmbeddingInput.ProtoReflect.Descriptor instead.
+func (*EmbeddingInput) Descriptor() ([]byte, []int) {
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{49}
+}
+
+func (x *EmbeddingInput) GetTexts() []string {
+	if x != nil {
+		return x.Texts
+	}
+	return nil
+}
+
+func (x *EmbeddingInput) GetImage() *Media {
+	if x != nil {
+		return x.Image
+	}
+	return nil
+}
+
+func (x *EmbeddingInput) GetSearchDocument() bool {
+	if x != nil {
+		return x.SearchDocument
+	}
+	return false
+}
+
 var File_wg_model_hub_v2_model_hub_proto protoreflect.FileDescriptor
 
 const file_wg_model_hub_v2_model_hub_proto_rawDesc = "" +
@@ -4135,7 +4205,7 @@ const file_wg_model_hub_v2_model_hub_proto_rawDesc = "" +
 	"\amessage\x18\x01 \x01(\v2\x18.wg_model_hub.v2.MessageH\x00R\amessage\x12>\n" +
 	"\vtool_output\x18\x02 \x01(\v2\x1b.wg_model_hub.v2.ToolOutputH\x00R\n" +
 	"toolOutputB\x06\n" +
-	"\x04item\"\xc9\x02\n" +
+	"\x04item\"\x88\x03\n" +
 	"\x05Input\x120\n" +
 	"\x05items\x18\x01 \x03(\v2\x1a.wg_model_hub.v2.InputItemR\x05items\x12+\n" +
 	"\x05tools\x18\x02 \x03(\v2\x15.wg_model_hub.v2.ToolR\x05tools\x12<\n" +
@@ -4143,7 +4213,8 @@ const file_wg_model_hub_v2_model_hub_proto_rawDesc = "" +
 	"toolChoice\x120\n" +
 	"\x14previous_response_id\x18\x04 \x01(\tR\x12previousResponseId\x128\n" +
 	"\acaching\x18\x05 \x01(\v2\x1e.wg_model_hub.v2.CachingConfigR\acaching\x12!\n" +
-	"\fmodel_traits\x18\a \x01(\tR\vmodelTraitsJ\x04\b\x06\x10\aR\x0ecached_content\"~\n" +
+	"\fmodel_traits\x18\a \x01(\tR\vmodelTraits\x12=\n" +
+	"\tembedding\x18\b \x01(\v2\x1f.wg_model_hub.v2.EmbeddingInputR\tembeddingJ\x04\b\x06\x10\aR\x0ecached_content\"~\n" +
 	"\x0eResponseFormat\x127\n" +
 	"\x04type\x18\x01 \x01(\x0e2#.wg_model_hub.v2.ResponseFormatTypeR\x04type\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1f\n" +
@@ -4357,7 +4428,11 @@ const file_wg_model_hub_v2_model_hub_proto_rawDesc = "" +
 	"confidence\x12\x18\n" +
 	"\aspeaker\x18\a \x01(\tR\aspeaker\x12\x1a\n" +
 	"\bspeakers\x18\b \x03(\tR\bspeakers\x12)\n" +
-	"\x10session_speakers\x18\t \x03(\tR\x0fsessionSpeakers*\xa3\x04\n" +
+	"\x10session_speakers\x18\t \x03(\tR\x0fsessionSpeakers\"}\n" +
+	"\x0eEmbeddingInput\x12\x14\n" +
+	"\x05texts\x18\x01 \x03(\tR\x05texts\x12,\n" +
+	"\x05image\x18\x02 \x01(\v2\x16.wg_model_hub.v2.MediaR\x05image\x12'\n" +
+	"\x0fsearch_document\x18\x03 \x01(\bR\x0esearchDocument*\xa3\x04\n" +
 	"\rModelCategory\x12\x1e\n" +
 	"\x1aMODEL_CATEGORY_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12MODEL_CATEGORY_LLM\x10\x01\x12\x1d\n" +
@@ -4442,7 +4517,7 @@ func file_wg_model_hub_v2_model_hub_proto_rawDescGZIP() []byte {
 }
 
 var file_wg_model_hub_v2_model_hub_proto_enumTypes = make([]protoimpl.EnumInfo, 9)
-var file_wg_model_hub_v2_model_hub_proto_msgTypes = make([]protoimpl.MessageInfo, 49)
+var file_wg_model_hub_v2_model_hub_proto_msgTypes = make([]protoimpl.MessageInfo, 50)
 var file_wg_model_hub_v2_model_hub_proto_goTypes = []any{
 	(ModelCategory)(0),                    // 0: wg_model_hub.v2.ModelCategory
 	(Role)(0),                             // 1: wg_model_hub.v2.Role
@@ -4502,9 +4577,10 @@ var file_wg_model_hub_v2_model_hub_proto_goTypes = []any{
 	(*GetModelCallMediaRequest)(nil),      // 55: wg_model_hub.v2.GetModelCallMediaRequest
 	(*GetModelCallMediaResponse)(nil),     // 56: wg_model_hub.v2.GetModelCallMediaResponse
 	(*TranscribeSpeechTranscript)(nil),    // 57: wg_model_hub.v2.TranscribeSpeechTranscript
-	(*status.Status)(nil),                 // 58: google.rpc.Status
-	(*timestamppb.Timestamp)(nil),         // 59: google.protobuf.Timestamp
-	(*structpb.Struct)(nil),               // 60: google.protobuf.Struct
+	(*EmbeddingInput)(nil),                // 58: wg_model_hub.v2.EmbeddingInput
+	(*status.Status)(nil),                 // 59: google.rpc.Status
+	(*timestamppb.Timestamp)(nil),         // 60: google.protobuf.Timestamp
+	(*structpb.Struct)(nil),               // 61: google.protobuf.Struct
 }
 var file_wg_model_hub_v2_model_hub_proto_depIdxs = []int32{
 	0,  // 0: wg_model_hub.v2.ListModelsRequest.category:type_name -> wg_model_hub.v2.ModelCategory
@@ -4528,72 +4604,74 @@ var file_wg_model_hub_v2_model_hub_proto_depIdxs = []int32{
 	18, // 18: wg_model_hub.v2.Input.tools:type_name -> wg_model_hub.v2.Tool
 	24, // 19: wg_model_hub.v2.Input.tool_choice:type_name -> wg_model_hub.v2.ToolChoice
 	25, // 20: wg_model_hub.v2.Input.caching:type_name -> wg_model_hub.v2.CachingConfig
-	3,  // 21: wg_model_hub.v2.ResponseFormat.type:type_name -> wg_model_hub.v2.ResponseFormatType
-	4,  // 22: wg_model_hub.v2.ToolChoice.mode:type_name -> wg_model_hub.v2.ToolChoiceMode
-	23, // 23: wg_model_hub.v2.TextOutput.response_format:type_name -> wg_model_hub.v2.ResponseFormat
-	2,  // 24: wg_model_hub.v2.TextOutput.thinking:type_name -> wg_model_hub.v2.ThinkingMode
-	6,  // 25: wg_model_hub.v2.TextOutput.thinking_level:type_name -> wg_model_hub.v2.ThinkingLevel
-	5,  // 26: wg_model_hub.v2.ImageOutput.output_modalities:type_name -> wg_model_hub.v2.ImageOutputModality
-	6,  // 27: wg_model_hub.v2.ImageOutput.thinking_level:type_name -> wg_model_hub.v2.ThinkingLevel
-	26, // 28: wg_model_hub.v2.OutputSpec.text:type_name -> wg_model_hub.v2.TextOutput
-	27, // 29: wg_model_hub.v2.OutputSpec.image:type_name -> wg_model_hub.v2.ImageOutput
-	28, // 30: wg_model_hub.v2.OutputSpec.video:type_name -> wg_model_hub.v2.VideoOutput
-	14, // 31: wg_model_hub.v2.OutputItem.image:type_name -> wg_model_hub.v2.Media
-	14, // 32: wg_model_hub.v2.OutputItem.video:type_name -> wg_model_hub.v2.Media
-	19, // 33: wg_model_hub.v2.OutputItem.tool_call:type_name -> wg_model_hub.v2.ToolCall
-	32, // 34: wg_model_hub.v2.GenerateEvent.items:type_name -> wg_model_hub.v2.OutputItem
-	30, // 35: wg_model_hub.v2.GenerateEvent.usage:type_name -> wg_model_hub.v2.Usage
-	31, // 36: wg_model_hub.v2.GenerateEvent.safety:type_name -> wg_model_hub.v2.SafetyFeedback
-	13, // 37: wg_model_hub.v2.SubmitGenerationRequest.request:type_name -> wg_model_hub.v2.GenerateRequest
-	7,  // 38: wg_model_hub.v2.GenerationTask.state:type_name -> wg_model_hub.v2.GenerationTaskState
-	7,  // 39: wg_model_hub.v2.GenerationTaskStatus.state:type_name -> wg_model_hub.v2.GenerationTaskState
-	58, // 40: wg_model_hub.v2.GenerationTaskStatus.error:type_name -> google.rpc.Status
-	37, // 41: wg_model_hub.v2.GenerationTaskEvent.status:type_name -> wg_model_hub.v2.GenerationTaskStatus
-	33, // 42: wg_model_hub.v2.GenerationTaskEvent.output:type_name -> wg_model_hub.v2.GenerateEvent
-	12, // 43: wg_model_hub.v2.SynthesizeSpeechRequest.business_metadata:type_name -> wg_model_hub.v2.BusinessMetadata
-	14, // 44: wg_model_hub.v2.SynthesizeSpeechResponse.audio:type_name -> wg_model_hub.v2.Media
-	42, // 45: wg_model_hub.v2.TranscribeSpeechClientMessage.start:type_name -> wg_model_hub.v2.TranscribeSpeechStart
-	45, // 46: wg_model_hub.v2.TranscribeSpeechClientMessage.audio:type_name -> wg_model_hub.v2.TranscribeSpeechAudio
-	46, // 47: wg_model_hub.v2.TranscribeSpeechClientMessage.finalize:type_name -> wg_model_hub.v2.TranscribeSpeechFinalize
-	47, // 48: wg_model_hub.v2.TranscribeSpeechClientMessage.stop:type_name -> wg_model_hub.v2.TranscribeSpeechStop
-	12, // 49: wg_model_hub.v2.TranscribeSpeechStart.business_metadata:type_name -> wg_model_hub.v2.BusinessMetadata
-	8,  // 50: wg_model_hub.v2.TranscribeSpeechStart.encoding:type_name -> wg_model_hub.v2.AudioEncoding
-	43, // 51: wg_model_hub.v2.TranscribeSpeechStart.turn_silence:type_name -> wg_model_hub.v2.TurnSilence
-	44, // 52: wg_model_hub.v2.TranscribeSpeechStart.features:type_name -> wg_model_hub.v2.ASRFeatures
-	49, // 53: wg_model_hub.v2.TranscribeSpeechServerMessage.session:type_name -> wg_model_hub.v2.TranscribeSpeechSession
-	57, // 54: wg_model_hub.v2.TranscribeSpeechServerMessage.transcript:type_name -> wg_model_hub.v2.TranscribeSpeechTranscript
-	59, // 55: wg_model_hub.v2.ListModelCallsRequest.from:type_name -> google.protobuf.Timestamp
-	59, // 56: wg_model_hub.v2.ListModelCallsRequest.to:type_name -> google.protobuf.Timestamp
-	59, // 57: wg_model_hub.v2.ModelCallSummary.started_at:type_name -> google.protobuf.Timestamp
-	51, // 58: wg_model_hub.v2.ListModelCallsResponse.calls:type_name -> wg_model_hub.v2.ModelCallSummary
-	51, // 59: wg_model_hub.v2.GetModelCallResponse.summary:type_name -> wg_model_hub.v2.ModelCallSummary
-	60, // 60: wg_model_hub.v2.GetModelCallResponse.input:type_name -> google.protobuf.Struct
-	60, // 61: wg_model_hub.v2.GetModelCallResponse.output:type_name -> google.protobuf.Struct
-	13, // 62: wg_model_hub.v2.ModelHubService.Generate:input_type -> wg_model_hub.v2.GenerateRequest
-	34, // 63: wg_model_hub.v2.ModelHubService.SubmitGeneration:input_type -> wg_model_hub.v2.SubmitGenerationRequest
-	35, // 64: wg_model_hub.v2.ModelHubService.GetGeneration:input_type -> wg_model_hub.v2.GetGenerationRequest
-	39, // 65: wg_model_hub.v2.ModelHubService.SynthesizeSpeech:input_type -> wg_model_hub.v2.SynthesizeSpeechRequest
-	39, // 66: wg_model_hub.v2.ModelHubService.SynthesizeSpeechStream:input_type -> wg_model_hub.v2.SynthesizeSpeechRequest
-	41, // 67: wg_model_hub.v2.ModelHubService.TranscribeSpeechStream:input_type -> wg_model_hub.v2.TranscribeSpeechClientMessage
-	9,  // 68: wg_model_hub.v2.ModelHubService.ListModels:input_type -> wg_model_hub.v2.ListModelsRequest
-	50, // 69: wg_model_hub.v2.ModelHubService.ListModelCalls:input_type -> wg_model_hub.v2.ListModelCallsRequest
-	53, // 70: wg_model_hub.v2.ModelHubService.GetModelCall:input_type -> wg_model_hub.v2.GetModelCallRequest
-	55, // 71: wg_model_hub.v2.ModelHubService.GetModelCallMedia:input_type -> wg_model_hub.v2.GetModelCallMediaRequest
-	33, // 72: wg_model_hub.v2.ModelHubService.Generate:output_type -> wg_model_hub.v2.GenerateEvent
-	36, // 73: wg_model_hub.v2.ModelHubService.SubmitGeneration:output_type -> wg_model_hub.v2.GenerationTask
-	38, // 74: wg_model_hub.v2.ModelHubService.GetGeneration:output_type -> wg_model_hub.v2.GenerationTaskEvent
-	40, // 75: wg_model_hub.v2.ModelHubService.SynthesizeSpeech:output_type -> wg_model_hub.v2.SynthesizeSpeechResponse
-	40, // 76: wg_model_hub.v2.ModelHubService.SynthesizeSpeechStream:output_type -> wg_model_hub.v2.SynthesizeSpeechResponse
-	48, // 77: wg_model_hub.v2.ModelHubService.TranscribeSpeechStream:output_type -> wg_model_hub.v2.TranscribeSpeechServerMessage
-	11, // 78: wg_model_hub.v2.ModelHubService.ListModels:output_type -> wg_model_hub.v2.ListModelsResponse
-	52, // 79: wg_model_hub.v2.ModelHubService.ListModelCalls:output_type -> wg_model_hub.v2.ListModelCallsResponse
-	54, // 80: wg_model_hub.v2.ModelHubService.GetModelCall:output_type -> wg_model_hub.v2.GetModelCallResponse
-	56, // 81: wg_model_hub.v2.ModelHubService.GetModelCallMedia:output_type -> wg_model_hub.v2.GetModelCallMediaResponse
-	72, // [72:82] is the sub-list for method output_type
-	62, // [62:72] is the sub-list for method input_type
-	62, // [62:62] is the sub-list for extension type_name
-	62, // [62:62] is the sub-list for extension extendee
-	0,  // [0:62] is the sub-list for field type_name
+	58, // 21: wg_model_hub.v2.Input.embedding:type_name -> wg_model_hub.v2.EmbeddingInput
+	3,  // 22: wg_model_hub.v2.ResponseFormat.type:type_name -> wg_model_hub.v2.ResponseFormatType
+	4,  // 23: wg_model_hub.v2.ToolChoice.mode:type_name -> wg_model_hub.v2.ToolChoiceMode
+	23, // 24: wg_model_hub.v2.TextOutput.response_format:type_name -> wg_model_hub.v2.ResponseFormat
+	2,  // 25: wg_model_hub.v2.TextOutput.thinking:type_name -> wg_model_hub.v2.ThinkingMode
+	6,  // 26: wg_model_hub.v2.TextOutput.thinking_level:type_name -> wg_model_hub.v2.ThinkingLevel
+	5,  // 27: wg_model_hub.v2.ImageOutput.output_modalities:type_name -> wg_model_hub.v2.ImageOutputModality
+	6,  // 28: wg_model_hub.v2.ImageOutput.thinking_level:type_name -> wg_model_hub.v2.ThinkingLevel
+	26, // 29: wg_model_hub.v2.OutputSpec.text:type_name -> wg_model_hub.v2.TextOutput
+	27, // 30: wg_model_hub.v2.OutputSpec.image:type_name -> wg_model_hub.v2.ImageOutput
+	28, // 31: wg_model_hub.v2.OutputSpec.video:type_name -> wg_model_hub.v2.VideoOutput
+	14, // 32: wg_model_hub.v2.OutputItem.image:type_name -> wg_model_hub.v2.Media
+	14, // 33: wg_model_hub.v2.OutputItem.video:type_name -> wg_model_hub.v2.Media
+	19, // 34: wg_model_hub.v2.OutputItem.tool_call:type_name -> wg_model_hub.v2.ToolCall
+	32, // 35: wg_model_hub.v2.GenerateEvent.items:type_name -> wg_model_hub.v2.OutputItem
+	30, // 36: wg_model_hub.v2.GenerateEvent.usage:type_name -> wg_model_hub.v2.Usage
+	31, // 37: wg_model_hub.v2.GenerateEvent.safety:type_name -> wg_model_hub.v2.SafetyFeedback
+	13, // 38: wg_model_hub.v2.SubmitGenerationRequest.request:type_name -> wg_model_hub.v2.GenerateRequest
+	7,  // 39: wg_model_hub.v2.GenerationTask.state:type_name -> wg_model_hub.v2.GenerationTaskState
+	7,  // 40: wg_model_hub.v2.GenerationTaskStatus.state:type_name -> wg_model_hub.v2.GenerationTaskState
+	59, // 41: wg_model_hub.v2.GenerationTaskStatus.error:type_name -> google.rpc.Status
+	37, // 42: wg_model_hub.v2.GenerationTaskEvent.status:type_name -> wg_model_hub.v2.GenerationTaskStatus
+	33, // 43: wg_model_hub.v2.GenerationTaskEvent.output:type_name -> wg_model_hub.v2.GenerateEvent
+	12, // 44: wg_model_hub.v2.SynthesizeSpeechRequest.business_metadata:type_name -> wg_model_hub.v2.BusinessMetadata
+	14, // 45: wg_model_hub.v2.SynthesizeSpeechResponse.audio:type_name -> wg_model_hub.v2.Media
+	42, // 46: wg_model_hub.v2.TranscribeSpeechClientMessage.start:type_name -> wg_model_hub.v2.TranscribeSpeechStart
+	45, // 47: wg_model_hub.v2.TranscribeSpeechClientMessage.audio:type_name -> wg_model_hub.v2.TranscribeSpeechAudio
+	46, // 48: wg_model_hub.v2.TranscribeSpeechClientMessage.finalize:type_name -> wg_model_hub.v2.TranscribeSpeechFinalize
+	47, // 49: wg_model_hub.v2.TranscribeSpeechClientMessage.stop:type_name -> wg_model_hub.v2.TranscribeSpeechStop
+	12, // 50: wg_model_hub.v2.TranscribeSpeechStart.business_metadata:type_name -> wg_model_hub.v2.BusinessMetadata
+	8,  // 51: wg_model_hub.v2.TranscribeSpeechStart.encoding:type_name -> wg_model_hub.v2.AudioEncoding
+	43, // 52: wg_model_hub.v2.TranscribeSpeechStart.turn_silence:type_name -> wg_model_hub.v2.TurnSilence
+	44, // 53: wg_model_hub.v2.TranscribeSpeechStart.features:type_name -> wg_model_hub.v2.ASRFeatures
+	49, // 54: wg_model_hub.v2.TranscribeSpeechServerMessage.session:type_name -> wg_model_hub.v2.TranscribeSpeechSession
+	57, // 55: wg_model_hub.v2.TranscribeSpeechServerMessage.transcript:type_name -> wg_model_hub.v2.TranscribeSpeechTranscript
+	60, // 56: wg_model_hub.v2.ListModelCallsRequest.from:type_name -> google.protobuf.Timestamp
+	60, // 57: wg_model_hub.v2.ListModelCallsRequest.to:type_name -> google.protobuf.Timestamp
+	60, // 58: wg_model_hub.v2.ModelCallSummary.started_at:type_name -> google.protobuf.Timestamp
+	51, // 59: wg_model_hub.v2.ListModelCallsResponse.calls:type_name -> wg_model_hub.v2.ModelCallSummary
+	51, // 60: wg_model_hub.v2.GetModelCallResponse.summary:type_name -> wg_model_hub.v2.ModelCallSummary
+	61, // 61: wg_model_hub.v2.GetModelCallResponse.input:type_name -> google.protobuf.Struct
+	61, // 62: wg_model_hub.v2.GetModelCallResponse.output:type_name -> google.protobuf.Struct
+	14, // 63: wg_model_hub.v2.EmbeddingInput.image:type_name -> wg_model_hub.v2.Media
+	13, // 64: wg_model_hub.v2.ModelHubService.Generate:input_type -> wg_model_hub.v2.GenerateRequest
+	34, // 65: wg_model_hub.v2.ModelHubService.SubmitGeneration:input_type -> wg_model_hub.v2.SubmitGenerationRequest
+	35, // 66: wg_model_hub.v2.ModelHubService.GetGeneration:input_type -> wg_model_hub.v2.GetGenerationRequest
+	39, // 67: wg_model_hub.v2.ModelHubService.SynthesizeSpeech:input_type -> wg_model_hub.v2.SynthesizeSpeechRequest
+	39, // 68: wg_model_hub.v2.ModelHubService.SynthesizeSpeechStream:input_type -> wg_model_hub.v2.SynthesizeSpeechRequest
+	41, // 69: wg_model_hub.v2.ModelHubService.TranscribeSpeechStream:input_type -> wg_model_hub.v2.TranscribeSpeechClientMessage
+	9,  // 70: wg_model_hub.v2.ModelHubService.ListModels:input_type -> wg_model_hub.v2.ListModelsRequest
+	50, // 71: wg_model_hub.v2.ModelHubService.ListModelCalls:input_type -> wg_model_hub.v2.ListModelCallsRequest
+	53, // 72: wg_model_hub.v2.ModelHubService.GetModelCall:input_type -> wg_model_hub.v2.GetModelCallRequest
+	55, // 73: wg_model_hub.v2.ModelHubService.GetModelCallMedia:input_type -> wg_model_hub.v2.GetModelCallMediaRequest
+	33, // 74: wg_model_hub.v2.ModelHubService.Generate:output_type -> wg_model_hub.v2.GenerateEvent
+	36, // 75: wg_model_hub.v2.ModelHubService.SubmitGeneration:output_type -> wg_model_hub.v2.GenerationTask
+	38, // 76: wg_model_hub.v2.ModelHubService.GetGeneration:output_type -> wg_model_hub.v2.GenerationTaskEvent
+	40, // 77: wg_model_hub.v2.ModelHubService.SynthesizeSpeech:output_type -> wg_model_hub.v2.SynthesizeSpeechResponse
+	40, // 78: wg_model_hub.v2.ModelHubService.SynthesizeSpeechStream:output_type -> wg_model_hub.v2.SynthesizeSpeechResponse
+	48, // 79: wg_model_hub.v2.ModelHubService.TranscribeSpeechStream:output_type -> wg_model_hub.v2.TranscribeSpeechServerMessage
+	11, // 80: wg_model_hub.v2.ModelHubService.ListModels:output_type -> wg_model_hub.v2.ListModelsResponse
+	52, // 81: wg_model_hub.v2.ModelHubService.ListModelCalls:output_type -> wg_model_hub.v2.ListModelCallsResponse
+	54, // 82: wg_model_hub.v2.ModelHubService.GetModelCall:output_type -> wg_model_hub.v2.GetModelCallResponse
+	56, // 83: wg_model_hub.v2.ModelHubService.GetModelCallMedia:output_type -> wg_model_hub.v2.GetModelCallMediaResponse
+	74, // [74:84] is the sub-list for method output_type
+	64, // [64:74] is the sub-list for method input_type
+	64, // [64:64] is the sub-list for extension type_name
+	64, // [64:64] is the sub-list for extension extendee
+	0,  // [0:64] is the sub-list for field type_name
 }
 
 func init() { file_wg_model_hub_v2_model_hub_proto_init() }
@@ -4651,7 +4729,7 @@ func file_wg_model_hub_v2_model_hub_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_wg_model_hub_v2_model_hub_proto_rawDesc), len(file_wg_model_hub_v2_model_hub_proto_rawDesc)),
 			NumEnums:      9,
-			NumMessages:   49,
+			NumMessages:   50,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
