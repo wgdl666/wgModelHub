@@ -10,10 +10,10 @@ import (
 	"github.com/wgdl666/kangaroo/logs"
 )
 
-const TTL = time.Hour
+const TTL = 24 * time.Hour
 
-// Manager only registers/reuses resources. It does not renew them or persist
-// prompts. Bounded workers retain the current request's static input in memory.
+// Manager registers resources and non-cacheable prefixes. It does not renew
+// resources or persist prompts. Bounded workers retain static input in memory.
 type Manager struct {
 	store  Store
 	ctx    context.Context
@@ -46,17 +46,17 @@ func (m *Manager) Lookup(ctx context.Context, key string) *Entry {
 		logs.Default().WarnContext(ctx, "modelhub_prefix_cache_store_failed", "operation", "lookup", "error", err)
 		return nil
 	}
-	if entry.Usable(time.Now()) {
+	if entry != nil && (entry.ExpiresAt == nil || entry.Usable(time.Now())) {
 		return entry
 	}
 	return nil
 }
 
-func (m *Manager) Invalidate(ctx context.Context, entry *Entry) {
+func (m *Manager) invalidate(ctx context.Context, key, name string) {
 	ctx, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
 	defer cancel()
-	_, err := m.store.WithLock(ctx, lockID(entry.Key), func(store Store) error {
-		return store.Invalidate(ctx, entry.Key, entry.Name)
+	_, err := m.store.WithLock(ctx, lockID(key), func(store Store) error {
+		return store.Invalidate(ctx, key, name)
 	})
 	if err != nil {
 		// The full-prompt fallback is still usable during a registry outage.
@@ -64,7 +64,9 @@ func (m *Manager) Invalidate(ctx context.Context, entry *Entry) {
 	}
 }
 
-func (m *Manager) ScheduleCreate(key string, create func(context.Context) (*Entry, error)) {
+// ScheduleCreate invalidates rejectedName, when supplied, before creating a cache.
+// Both operations use the manager's context and never wait on the request path.
+func (m *Manager) ScheduleCreate(key, rejectedName string, create func(context.Context) (*Entry, error)) {
 	m.mu.Lock()
 	if m.ctx.Err() != nil {
 		m.mu.Unlock()
@@ -85,17 +87,22 @@ func (m *Manager) ScheduleCreate(key string, create func(context.Context) (*Entr
 		}()
 		ctx, cancel := context.WithTimeout(m.ctx, 25*time.Second)
 		defer cancel()
+		if rejectedName != "" {
+			// Commit invalidation separately so a failed create cannot restore the
+			// rejected entry through a transaction rollback.
+			m.invalidate(ctx, key, rejectedName)
+		}
 		_, err := m.store.WithLock(ctx, lockID(key), func(store Store) error {
 			// Another process may have filled the registry since the request's lookup.
 			entry, err := store.Get(ctx, key)
-			if err != nil || entry.Usable(time.Now()) {
+			if err != nil || (entry != nil && (entry.ExpiresAt == nil || entry.Usable(time.Now()))) {
 				return err
 			}
 			entry, err = create(ctx)
 			if err != nil {
 				return err
 			}
-			if !entry.Usable(time.Now()) {
+			if entry == nil || (entry.ExpiresAt != nil && !entry.Usable(time.Now())) {
 				return nil
 			}
 			entry.Key = key

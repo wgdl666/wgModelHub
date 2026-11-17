@@ -87,11 +87,11 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 	if !ok || len(data.Data) == 0 {
 		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "rekognition-detect requires inline image bytes")
 	}
-	decoded, _, err := image.Decode(bytes.NewReader(data.Data))
+	dimensions, _, err := image.DecodeConfig(bytes.NewReader(data.Data))
 	if err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, "decode person-detect image", err)
 	}
-	width, height := decoded.Bounds().Dx(), decoded.Bounds().Dy()
+	width, height := dimensions.Width, dimensions.Height
 	payload, err := fitBytes(data.Data)
 	if err != nil {
 		return nil, err

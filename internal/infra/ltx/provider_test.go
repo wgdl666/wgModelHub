@@ -62,7 +62,7 @@ func submitGetRead(ctx context.Context, p provider.VideoProvider, model string, 
 func TestProviderRetriesSubmitOn404(t *testing.T) {
 	var submitCalls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.URL.Path != "/v2/videos/vton" {
+		if request.URL.Path != "/vton" {
 			t.Fatalf("unexpected path %s", request.URL.Path)
 		}
 		if submitCalls.Add(1) == 1 {
@@ -355,13 +355,13 @@ func TestProviderRejectsLegacyModelBeforeHTTP(t *testing.T) {
 	}
 }
 
-func TestSubmitVideoUsesMinimalV2Contract(t *testing.T) {
+func TestSubmitVideoUsesVtonGatewayContract(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseMultipartForm(1 << 20); err != nil {
 			t.Fatal(err)
 		}
-		if r.URL.Path != "/v2/videos/vton" {
-			t.Fatalf("path=%s", r.URL.Path)
+		if r.Method != http.MethodPost || r.URL.Path != "/vton" {
+			t.Fatalf("request=%s %s", r.Method, r.URL.Path)
 		}
 		for _, field := range []string{"model", "resolution", "duration", "fps", "seed", "audio", "inference_profile"} {
 			if r.Form.Has(field) {

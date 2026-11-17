@@ -11,8 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wgdl666/kangaroo/logs"
-	"github.com/wgdl666/wgModelHub/config"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
@@ -31,20 +29,12 @@ type Provider struct {
 	client   httpDoer
 	endpoint string
 	apiKey   string
-	limits   config.DashScopeEmbeddingProviderConfig
 }
 
-func New(name string, cfg *config.DashScopeEmbeddingProviderConfig) (*Provider, error) {
-	if cfg == nil {
-		return nil, provider.New(provider.ErrorConfiguration, "dashscope embedding config is required")
-	}
-	limits := cfg.Resolved()
-	if err := limits.ValidateExecutionLimits(); err != nil {
-		return nil, provider.Wrap(provider.ErrorConfiguration, "dashscope embedding execution limits", err)
-	}
+func New(name, baseURL, apiKey string) (*Provider, error) {
 	name = strings.TrimSpace(name)
-	baseURL := strings.TrimRight(strings.TrimSpace(limits.BaseURL), "/")
-	apiKey := strings.TrimSpace(limits.APIKey)
+	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	apiKey = strings.TrimSpace(apiKey)
 	if name == "" || baseURL == "" || apiKey == "" {
 		return nil, provider.New(provider.ErrorConfiguration, "dashscope embedding requires base_url and api_key")
 	}
@@ -53,7 +43,6 @@ func New(name string, cfg *config.DashScopeEmbeddingProviderConfig) (*Provider, 
 		client:   telemetry.NewTimedHTTPClient(20 * time.Second),
 		endpoint: baseURL + "/services/embeddings/multimodal-embedding/multimodal-embedding",
 		apiKey:   apiKey,
-		limits:   limits,
 	}, nil
 }
 
@@ -61,12 +50,12 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 	if model != models.Qwen3VLEmbedding {
 		return nil, provider.Errorf(provider.ErrorInvalidArgument, "dashscope embedding does not serve model %q", model)
 	}
-	texts, err := provider.EmbeddingBatchTexts(request.GetInput(), p.limits.MaxRequestTexts, p.limits.MaxRequestTextBytes)
+	texts, err := provider.EmbeddingBatchTexts(request.GetInput(), 0, 0)
 	if err != nil {
 		return nil, err
 	}
 	if texts != nil {
-		return p.embedBatch(ctx, model, texts)
+		return p.forwardBatch(ctx, model, texts)
 	}
 	content, err := embedContent(request)
 	if err != nil {
@@ -82,43 +71,30 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 	return embeddingEvent("embedding", rows[0].Embedding)
 }
 
-func (p *Provider) embedBatch(ctx context.Context, model string, texts []string) (*modelhubv2.GenerateEvent, error) {
-	ctx, span := logs.StartSpan(ctx, "dashscope.embedding.batch_request")
-	defer span.End()
-	batchSize := p.limits.MaxBatchSize
-	span.SetInt("embedding.text_count", len(texts))
-	span.SetInt("embedding.batch_count", (len(texts)+batchSize-1)/batchSize)
+func (p *Provider) forwardBatch(ctx context.Context, model string, texts []string) (*modelhubv2.GenerateEvent, error) {
+	// 批次由调用方准备，一个 ModelHub 请求对应一个百炼请求体。
+	contents := make([]map[string]string, len(texts))
+	for i, text := range texts {
+		contents[i] = map[string]string{"text": text}
+	}
+	rows, err := p.post(ctx, model, contents, true)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) != len(contents) {
+		return nil, provider.Errorf(provider.ErrorInvalidResponse, "dashscope embedding count is %d, want %d", len(rows), len(contents))
+	}
 
 	vectors := make([][]float64, len(texts))
-	for start := 0; start < len(texts); start += batchSize {
-		if err := ctx.Err(); err != nil {
-			if start == 0 {
-				return nil, provider.WrapNotAttempted(provider.ErrorTimeout, "dashscope embedding canceled before request", err)
-			}
-			return nil, provider.Wrap(provider.ErrorTimeout, "dashscope embedding canceled between batches", err)
+	// 百炼用 index 标识输入位置，响应数组可以乱序。
+	for _, row := range rows {
+		if row.Index == nil || *row.Index < 0 || *row.Index >= len(vectors) || vectors[*row.Index] != nil {
+			return nil, provider.New(provider.ErrorInvalidResponse, "dashscope embedding returned an invalid or duplicate index")
 		}
-		end := min(start+batchSize, len(texts))
-		contents := make([]map[string]string, 0, end-start)
-		for _, text := range texts[start:end] {
-			contents = append(contents, map[string]string{"text": text})
+		if len(row.Embedding) != vectorDim {
+			return nil, provider.Errorf(provider.ErrorInvalidResponse, "dashscope embedding dimension is %d, want %d", len(row.Embedding), vectorDim)
 		}
-		rows, err := p.post(ctx, model, contents, true)
-		if err != nil {
-			return nil, err
-		}
-		if len(rows) != len(contents) {
-			return nil, provider.Errorf(provider.ErrorInvalidResponse, "dashscope embedding count is %d, want %d", len(rows), len(contents))
-		}
-		// 百炼的 index 是当前分片的位置，不能依赖响应数组顺序。
-		for _, row := range rows {
-			if row.Index == nil || *row.Index < 0 || *row.Index >= len(contents) || vectors[start+*row.Index] != nil {
-				return nil, provider.New(provider.ErrorInvalidResponse, "dashscope embedding returned an invalid or duplicate index")
-			}
-			if len(row.Embedding) != vectorDim {
-				return nil, provider.Errorf(provider.ErrorInvalidResponse, "dashscope embedding dimension is %d, want %d", len(row.Embedding), vectorDim)
-			}
-			vectors[start+*row.Index] = row.Embedding
-		}
+		vectors[*row.Index] = row.Embedding
 	}
 	return embeddingEvent("embeddings", vectors)
 }

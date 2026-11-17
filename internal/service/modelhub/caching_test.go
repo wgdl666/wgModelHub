@@ -11,13 +11,18 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wgdl666/wgModelHub/config"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/llmmetric"
 	"github.com/wgdl666/wgModelHub/internal/infra/metricserver"
 	"github.com/wgdl666/wgModelHub/internal/provider"
+	"github.com/wgdl666/wgModelHub/models"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestTextCachingMode(t *testing.T) {
@@ -35,59 +40,54 @@ func TestTextCachingMode(t *testing.T) {
 	}
 }
 
-func TestApplyTextCachingPolicy(t *testing.T) {
-	plainArk := config.ProviderConfig{Ark: &config.ArkProviderConfig{APIKey: "k"}}
-	endpointArk := config.ProviderConfig{Ark: &config.ArkProviderConfig{APIKey: "k", EndpointID: "ep-test"}}
+func TestTextCachingModeForProviderDoesNotMutateRequest(t *testing.T) {
+	for _, endpoint := range []string{"", "ep-test"} {
+		cfg := config.ProviderConfig{Ark: &config.ArkProviderConfig{APIKey: "k", EndpointID: endpoint}}
+		for _, tc := range []struct {
+			name  string
+			input *modelhubv2.Input
+			mode  string
+		}{
+			{"nil_input", nil, cachingModeDefaultEnabled},
+			{"omitted", &modelhubv2.Input{}, cachingModeDefaultEnabled},
+			{"explicit_on", &modelhubv2.Input{Caching: &modelhubv2.CachingConfig{Enabled: true, ExpireAtUnix: 99}}, cachingModeExplicitEnabled},
+			{"explicit_off", &modelhubv2.Input{Caching: &modelhubv2.CachingConfig{Enabled: false, ExpireAtUnix: 99}}, cachingModeExplicitDisabled},
+		} {
+			t.Run(endpoint+"/"+tc.name, func(t *testing.T) {
+				req := &modelhubv2.GenerateRequest{Input: tc.input}
+				before := proto.Clone(req)
+				want := tc.mode
+				if endpoint != "" {
+					want = cachingModeImplicitAutomatic
+				}
+				if got := textCachingModeForProvider(req, cfg); got != want {
+					t.Fatalf("mode=%s want=%s", got, want)
+				}
+				if !proto.Equal(req, before) {
+					t.Fatal("cache telemetry mutated caller request")
+				}
+			})
+		}
+	}
+}
 
-	req := &modelhubv2.GenerateRequest{}
-	if mode := applyTextCachingPolicy(req, plainArk); mode != cachingModeDefaultEnabled {
-		t.Fatalf("nil input mode = %q", mode)
-	}
-	if !req.GetInput().GetCaching().GetEnabled() {
-		t.Fatalf("nil input should default enable: %#v", req.Input)
-	}
-
-	req = &modelhubv2.GenerateRequest{Input: &modelhubv2.Input{}}
-	if mode := applyTextCachingPolicy(req, plainArk); mode != cachingModeDefaultEnabled {
-		t.Fatalf("omit mode = %q", mode)
-	}
-	if !req.Input.Caching.Enabled || req.Input.Caching.ExpireAtUnix != 0 {
-		t.Fatalf("omit caching should enable without inventing expire: %#v", req.Input.Caching)
-	}
-
-	req = &modelhubv2.GenerateRequest{Input: &modelhubv2.Input{Caching: &modelhubv2.CachingConfig{Enabled: true, ExpireAtUnix: 99}}}
-	if mode := applyTextCachingPolicy(req, plainArk); mode != cachingModeExplicitEnabled {
-		t.Fatalf("plain explicit on mode = %q", mode)
-	}
-	if !req.Input.Caching.Enabled || req.Input.Caching.ExpireAtUnix != 99 {
-		t.Fatalf("explicit enabled must keep expire_at: %#v", req.Input.Caching)
-	}
-
-	req = &modelhubv2.GenerateRequest{Input: &modelhubv2.Input{Caching: &modelhubv2.CachingConfig{Enabled: false, ExpireAtUnix: 99}}}
-	if mode := applyTextCachingPolicy(req, plainArk); mode != cachingModeExplicitDisabled {
-		t.Fatalf("plain explicit off mode = %q", mode)
-	}
-	if req.Input.Caching.Enabled {
-		t.Fatalf("explicit disabled must stay off: %#v", req.Input.Caching)
-	}
-
-	for _, tc := range []struct {
-		name string
-		cfg  *modelhubv2.CachingConfig
-	}{
-		{name: "omit", cfg: nil},
-		{name: "explicit_on", cfg: &modelhubv2.CachingConfig{Enabled: true, ExpireAtUnix: 99}},
-		{name: "explicit_off", cfg: &modelhubv2.CachingConfig{Enabled: false, ExpireAtUnix: 99}},
-	} {
-		t.Run("endpoint_"+tc.name, func(t *testing.T) {
-			req := &modelhubv2.GenerateRequest{Input: &modelhubv2.Input{Caching: tc.cfg}}
-			if mode := applyTextCachingPolicy(req, endpointArk); mode != cachingModeImplicitAutomatic {
-				t.Fatalf("mode = %q want %q", mode, cachingModeImplicitAutomatic)
+func TestGemini4CachingModeIsImplicitOnBothChannels(t *testing.T) {
+	for _, model := range []string{models.Gemini4Argon, models.Gemini4Carbon} {
+		for _, cfg := range []config.ProviderConfig{
+			{Gemini: &config.GeminiProviderConfig{APIKey: "k"}},
+			{VertexAI: &config.VertexAIProviderConfig{Project: "p"}},
+		} {
+			for _, caching := range []*modelhubv2.CachingConfig{nil, {Enabled: true}, {Enabled: false}} {
+				req := &modelhubv2.GenerateRequest{Model: model, Input: &modelhubv2.Input{Caching: caching}}
+				before := proto.Clone(req)
+				if mode := textCachingModeForProvider(req, cfg); mode != cachingModeImplicitAutomatic {
+					t.Fatalf("mode=%s: caller switch cannot control implicit cache", mode)
+				}
+				if !proto.Equal(req, before) {
+					t.Fatal("cache telemetry mutated caller request")
+				}
 			}
-			if req.Input.Caching != nil {
-				t.Fatalf("endpoint-bound must omit explicit caching field: %#v", req.Input.Caching)
-			}
-		})
+		}
 	}
 }
 
@@ -244,11 +244,12 @@ func TestGenerateTextDefaultsCachingAndRecordsUsage(t *testing.T) {
 		},
 	}, map[string]provider.Set{"ark": {Text: text}}, nil)
 
-	if err := service.Generate(textRequest("chat-model", "do"), &generateRecorder{ctx: context.Background()}); err != nil {
+	req := textRequest("chat-model", "do")
+	if err := service.Generate(req, &generateRecorder{ctx: context.Background()}); err != nil {
 		t.Fatal(err)
 	}
-	if text.request.GetInput().GetCaching() == nil || !text.request.GetInput().GetCaching().GetEnabled() {
-		t.Fatalf("provider should see default enabled caching: %#v", text.request.GetInput())
+	if text.request != req || req.GetInput().GetCaching() != nil {
+		t.Fatal("service must forward the original request without materializing caching defaults")
 	}
 	body := scrape()
 	base := map[string]string{"model": "chat-model", "provider": "ark", "stream": "false"}
@@ -328,8 +329,8 @@ func TestGenerateTextEndpointBoundUsesImplicitAutomatic(t *testing.T) {
 	if err := service.Generate(req, &generateRecorder{ctx: context.Background()}); err != nil {
 		t.Fatal(err)
 	}
-	if text.request.GetInput().GetCaching() != nil {
-		t.Fatalf("provider must see nil caching: %#v", text.request.GetInput().GetCaching())
+	if text.request != req || req.GetInput().GetCaching() == nil || req.GetInput().GetCaching().GetEnabled() {
+		t.Fatal("service must preserve the explicit caller switch; Ark adapter handles endpoint policy")
 	}
 	body := scrape()
 	if metricValue(t, body, "wg_modelhub_llm_cache_requests_total", map[string]string{
@@ -489,7 +490,7 @@ func TestGenerateTextOutcomes(t *testing.T) {
 		{name: "failed", err: errors.New("boom"), outcome: "failed"},
 		// 真实契约：供应商侧 context 取消/超时经 ToStatus 后再 MapOutcome；不伪造裸 gRPC status。
 		{name: "cancelled", err: context.Canceled, outcome: "cancelled"},
-		{name: "deadline", err: context.DeadlineExceeded, outcome: "cancelled"},
+		{name: "deadline", err: context.DeadlineExceeded, outcome: "failed"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -508,6 +509,61 @@ func TestGenerateTextOutcomes(t *testing.T) {
 			}
 			if metricSum(t, body, "wg_modelhub_llm_usage_reports_total") != 0 {
 				t.Fatal("failed request must not record usage")
+			}
+		})
+	}
+}
+
+// gRPC 的流关闭定时器可先调用 cancel，使已到截止时间的 Context.Err 仍为 Canceled。
+type canceledDeadlineContext struct {
+	context.Context
+	deadline time.Time
+}
+
+func (c canceledDeadlineContext) Deadline() (time.Time, bool) { return c.deadline, true }
+
+func TestGenerateTextDeadlineWithCanceledSend(t *testing.T) {
+	for _, tc := range []struct {
+		name                       string
+		expired, transportCanceled bool
+	}{
+		{name: "no_deadline"},
+		{name: "context_deadline", expired: true},
+		{name: "grpc_close_after_deadline", expired: true, transportCanceled: true},
+		{name: "caller_cancel_before_deadline", transportCanceled: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			scrape := installMetricScraper(t)
+			ctx := context.Background()
+			want := "cancelled"
+			if tc.expired {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithDeadline(ctx, time.Now().Add(-time.Second))
+				defer cancel()
+				want = "failed"
+			}
+			if tc.transportCanceled {
+				cancelled, cancel := context.WithCancel(context.Background())
+				cancel()
+				deadline := time.Now().Add(time.Hour)
+				if tc.expired {
+					deadline = time.Now().Add(-time.Second)
+				}
+				ctx = canceledDeadlineContext{Context: cancelled, deadline: deadline}
+			}
+			service := newTestService(config.Config{Providers: map[string]config.ProviderConfig{
+				"ark": {Models: []string{"chat-model"}, Ark: &config.ArkProviderConfig{APIKey: "k"}},
+			}}, map[string]provider.Set{"ark": {Text: &usageText{}}}, nil)
+			request := textRequest("chat-model", "do")
+			request.Output.Stream = true
+			// 线上 HTTP/2 截止后 Send 仍可能只报 Canceled；必须结合请求上下文区分超时与主动取消。
+			err := service.Generate(request, &sendFailRecorder{ctx: ctx, err: status.Error(codes.Canceled, "context canceled")})
+			if status.Code(err) != codes.Canceled {
+				t.Fatalf("unexpected send error: %v", err)
+			}
+			body := scrape()
+			if metricSum(t, body, "wg_modelhub_llm_terminals_total") != 1 || metricValue(t, body, "wg_modelhub_llm_terminals_total", map[string]string{"outcome": want}) != 1 {
+				t.Fatalf("want one %s terminal\n%s", want, body)
 			}
 		})
 	}

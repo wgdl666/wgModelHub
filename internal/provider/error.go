@@ -10,16 +10,20 @@ import (
 	"unicode/utf8"
 )
 
+// CodeResultObjectRead 标识结果存储读取失败，RPC reason 仍沿用 PROVIDER_UNAVAILABLE。
+const CodeResultObjectRead int32 = 50201
+
 type ErrorKind string
 
 const (
-	ErrorInvalidArgument ErrorKind = "INVALID_ARGUMENT"
-	ErrorConfiguration   ErrorKind = "CONFIGURATION_ERROR"
-	ErrorRateLimited     ErrorKind = "RATE_LIMITED"
-	ErrorContentBlocked  ErrorKind = "CONTENT_BLOCKED"
-	ErrorUnavailable     ErrorKind = "PROVIDER_UNAVAILABLE"
-	ErrorTimeout         ErrorKind = "TIMEOUT"
-	ErrorInvalidResponse ErrorKind = "INVALID_RESPONSE"
+	ErrorInvalidArgument   ErrorKind = "INVALID_ARGUMENT"
+	ErrorConfiguration     ErrorKind = "CONFIGURATION_ERROR"
+	ErrorRateLimited       ErrorKind = "RATE_LIMITED"
+	ErrorContentBlocked    ErrorKind = "CONTENT_BLOCKED"
+	ErrorUnavailable       ErrorKind = "PROVIDER_UNAVAILABLE"
+	ErrorTimeout           ErrorKind = "TIMEOUT"
+	ErrorInvalidResponse   ErrorKind = "INVALID_RESPONSE"
+	ErrorASRSessionExpired ErrorKind = "ASR_SESSION_EXPIRED"
 	// ErrorSubmitOutcomeUnknown：Submit 受理结果不确定（timeout/cancel/unavailable）时落库 FAILED 的稳定 reason；禁止自动重提。
 	ErrorSubmitOutcomeUnknown ErrorKind = "SUBMIT_OUTCOME_UNKNOWN"
 )

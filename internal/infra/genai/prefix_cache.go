@@ -9,10 +9,12 @@ import (
 	"os"
 	"strings"
 
+	"github.com/wgdl666/kangaroo/logs"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/callledger"
 	"github.com/wgdl666/wgModelHub/internal/prefixcache"
 	"github.com/wgdl666/wgModelHub/internal/provider"
+	"github.com/wgdl666/wgModelHub/models"
 	genaisdk "google.golang.org/genai"
 )
 
@@ -50,6 +52,10 @@ func (p *Provider) prefixKey(ctx context.Context, model string, config *genaisdk
 }
 
 func (p *Provider) preparePrefixCache(ctx context.Context, model string, request *modelhubv2.GenerateRequest, original *genaisdk.GenerateContentConfig) (*genaisdk.GenerateContentConfig, *prefixcache.Entry) {
+	// Argon/Carbon 不支持创建或引用显式缓存，即使配置为全部 Google 模型开启也只走隐式缓存。
+	if model == models.Gemini4Argon || model == models.Gemini4Carbon {
+		return original, nil
+	}
 	if p.cache == nil || p.cacheEnabled == nil || !p.cacheEnabled(model) || ctx.Err() != nil {
 		return original, nil
 	}
@@ -64,6 +70,9 @@ func (p *Provider) preparePrefixCache(ctx context.Context, model string, request
 		return original, nil
 	}
 	if entry := p.cache.Lookup(ctx, key); entry != nil {
+		if entry.ExpiresAt == nil {
+			return original, nil
+		}
 		cached := *original
 		cached.CachedContent = entry.Name
 		cached.SystemInstruction = nil
@@ -71,18 +80,18 @@ func (p *Provider) preparePrefixCache(ctx context.Context, model string, request
 		cached.ToolConfig = nil
 		return &cached, entry
 	}
-	p.schedulePrefixCache(ctx, model, original, key)
+	p.schedulePrefixCache(ctx, model, original, key, "")
 	return original, nil
 }
 
-func (p *Provider) schedulePrefixCache(ctx context.Context, model string, original *genaisdk.GenerateContentConfig, key string) {
+func (p *Provider) schedulePrefixCache(ctx context.Context, model string, original *genaisdk.GenerateContentConfig, key, rejectedName string) {
 	if ctx.Err() != nil {
 		return
 	}
 	// Only static, already-converted fields are retained. Dynamic messages/media
 	// and the caller's canceled request context are not held by the background job.
 	prefix := staticPrefix{SystemInstruction: original.SystemInstruction, Tools: original.Tools, ToolConfig: original.ToolConfig}
-	p.cache.ScheduleCreate(key, func(createCtx context.Context) (*prefixcache.Entry, error) {
+	p.cache.ScheduleCreate(key, rejectedName, func(createCtx context.Context) (*prefixcache.Entry, error) {
 		if p.cacheEnabled == nil || !p.cacheEnabled(model) {
 			return nil, nil
 		}
@@ -93,21 +102,39 @@ func (p *Provider) schedulePrefixCache(ctx context.Context, model string, origin
 			ToolConfig:        prefix.ToolConfig,
 		})
 		if err != nil {
+			// 同 key 的静态前缀不变，持久登记过短，后续直接使用完整输入。
+			if insufficientCachedContentTokens(err) {
+				logs.Default().WarnContext(createCtx, "modelhub_prefix_cache_too_short", "key", key, "error", err)
+				return &prefixcache.Entry{}, nil
+			}
 			return nil, err
 		}
 		if cached == nil || cached.Name == "" || cached.ExpireTime.IsZero() {
 			return nil, provider.New(provider.ErrorInvalidResponse, "cache creation returned no resource name or expiry")
 		}
-		return &prefixcache.Entry{Name: cached.Name, ExpiresAt: cached.ExpireTime}, nil
+		return &prefixcache.Entry{Name: cached.Name, ExpiresAt: &cached.ExpireTime}, nil
 	})
 }
 
-func missingCachedContent(err error) bool {
+func cachedContentError(err error) bool {
 	var apiError genaisdk.APIError
-	if !errors.As(err, &apiError) || (apiError.Code != 400 && apiError.Code != 404) {
+	if !errors.As(err, &apiError) || (apiError.Code != 400 && apiError.Code != 403 && apiError.Code != 404) {
 		return false
 	}
 	message := strings.ToLower(apiError.Message)
-	mentionsCache := strings.Contains(message, "cached content") || strings.Contains(message, "cachedcontent") || strings.Contains(message, "cached_content")
-	return mentionsCache && (strings.Contains(message, "not found") || strings.Contains(message, "not_found") || strings.Contains(message, "expired") || strings.Contains(message, "does not exist"))
+	return strings.Contains(message, "cache content") || strings.Contains(message, "cached content") ||
+		strings.Contains(message, "cachecontent") || strings.Contains(message, "cachedcontent") ||
+		strings.Contains(message, "cache_content") || strings.Contains(message, "cached_content")
+}
+
+// 仅将明确的缓存 token 下限 400 视为短前缀，504 等故障仍走原错误路径。
+func insufficientCachedContentTokens(err error) bool {
+	var apiError genaisdk.APIError
+	if !errors.As(err, &apiError) || apiError.Code != 400 {
+		return false
+	}
+	message := strings.ToLower(apiError.Message)
+	return strings.Contains(message, "cached content") &&
+		(strings.Contains(message, "minimum token count to start explicit caching") ||
+			(strings.Contains(message, "too small") && strings.Contains(message, "min_total_token_count")))
 }

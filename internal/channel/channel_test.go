@@ -351,6 +351,37 @@ func TestSameProtocolWithoutFamilyUsesHost(t *testing.T) {
 	}
 }
 
+func TestVMindGatewayChannelIncludesImageAndVideo(t *testing.T) {
+	cfg := config.ProviderConfig{
+		Models:       []string{models.VWorldOutfit10, models.VWorldOutfitVideo10},
+		VMindGateway: &config.VMindGatewayProviderConfig{BaseURL: "http://model-gateway:18580"},
+	}
+	// 启动时先发布渠道指标。统一供应商必须同时支持这两个模型族的归因。
+	id, err := Of(cfg)
+	if err != nil || id.Protocol != "vmind_gateway" || id.Host != "model-gateway" || id.Channel != channelWeiguang || id.instance != instanceWeiguangGateway {
+		t.Fatalf("identity=%+v err=%v", id, err)
+	}
+}
+
+func TestVMindSynchronousVisionChannels(t *testing.T) {
+	// 两个正式模型改名后，启动阶段的渠道指标必须继续按检测/矫正协议归因。
+	providers := map[string]config.ProviderConfig{
+		"gateway": {Models: []string{models.VMindDreamV1}, VMindGateway: &config.VMindGatewayProviderConfig{BaseURL: "http://model-gateway:18580"}},
+		"detect":  {Models: []string{models.HumanYOLO}, VisionGateway: "gateway", HumanYOLO: &config.HumanYOLOProviderConfig{BaseURL: "http://172.31.43.7:18280/human-yolo"}},
+		"correct": {Models: []string{models.LensDistortionCorrection}, VisionGateway: "gateway", LensCorrection: &config.LensCorrectionProviderConfig{BaseURL: "http://172.31.43.7:18280/lens_distortion_correction"}},
+	}
+	for name, want := range map[string]string{"detect": instanceHumanYOLO, "correct": instanceLensCorrection} {
+		resolved, _, err := providers[name].ResolveVisionGateway(providers)
+		if err != nil {
+			t.Fatal(err)
+		}
+		identity, err := Of(resolved)
+		if err != nil || identity.Channel != channelWeiguang || identity.instance != want || identity.Host != "model-gateway" {
+			t.Fatalf("%s identity=%+v err=%v", name, identity, err)
+		}
+	}
+}
+
 func TestNewFamilyIDsUseWeiguangException(t *testing.T) {
 	// 同族新 ID 不在 models 常量里，仍按例外归薇光，并按协议落到对应实例键。
 	person := config.ProviderConfig{

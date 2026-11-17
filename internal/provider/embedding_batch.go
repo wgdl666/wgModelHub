@@ -7,7 +7,7 @@ import (
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 )
 
-// EmbeddingBatchTexts 统一批量查询的准入规则，普通单条调用返回 nil。
+// EmbeddingBatchTexts 解析现有批量查询协议。普通单条返回 nil，预算为零表示沿用 RPC 整体限制。
 func EmbeddingBatchTexts(input *modelhubv2.Input, maxTexts, maxTextBytes int) ([]string, error) {
 	var traits struct {
 		Batch     bool   `json:"embedding_batch"`
@@ -24,7 +24,7 @@ func EmbeddingBatchTexts(input *modelhubv2.Input, maxTexts, maxTextBytes int) ([
 	if traits.InputType != "search_query" {
 		return nil, NotAttempted(ErrorInvalidArgument, "batch embedding requires input_type search_query")
 	}
-	if len(input.GetItems()) == 0 || len(input.GetItems()) > maxTexts {
+	if len(input.GetItems()) == 0 || (maxTexts > 0 && len(input.GetItems()) > maxTexts) {
 		return nil, NotAttempted(ErrorInvalidArgument, "batch embedding exceeds request text count budget")
 	}
 	texts := make([]string, 0, len(input.GetItems()))
@@ -40,7 +40,7 @@ func EmbeddingBatchTexts(input *modelhubv2.Input, maxTexts, maxTextBytes int) ([
 			return nil, NotAttempted(ErrorInvalidArgument, "batch embedding requires non-empty text parts")
 		}
 		textBytes += len(raw)
-		if textBytes > maxTextBytes {
+		if maxTextBytes > 0 && textBytes > maxTextBytes {
 			return nil, NotAttempted(ErrorInvalidArgument, "batch embedding exceeds request text byte budget")
 		}
 		texts = append(texts, text)

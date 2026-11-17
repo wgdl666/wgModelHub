@@ -91,6 +91,9 @@ func (s *Service) SubmitGeneration(ctx context.Context, req *modelhubv2.SubmitGe
 		telemetry.RecordError(ctx, statusErr)
 		return nil, statusErr
 	}
+	if err := injectDrillFault(ctx, bound.model); err != nil {
+		return nil, err
+	}
 	// 落库 provider 必须取 resolve 已选定实例；视频任务跨 Pod 查询只认当时写入名，不受重启后 model_routes 改写。
 	providerName := bound.provider
 
@@ -149,7 +152,7 @@ func (s *Service) SubmitGeneration(ctx context.Context, req *modelhubv2.SubmitGe
 		tracked.Finish(&rec, nil)
 	}()
 
-	providerTaskID, submitErr := bound.set.Video.SubmitVideo(ctx, bound.model, generateReq)
+	providerTaskID, submitErr := bound.set.Video.SubmitVideo(provider.WithSubmissionID(ctx, stored.TaskID), bound.model, generateReq)
 	submitFinished := time.Now()
 	providerErr = submitErr
 	persistCtx, persistCancel := detachPersistContext(ctx)

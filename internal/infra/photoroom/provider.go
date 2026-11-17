@@ -5,16 +5,14 @@ package photoroom
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"image/png"
 	"io"
-	"mime/multipart"
 	"net/http"
-	"net/textproto"
 	"net/url"
 	"strings"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/protocol"
@@ -204,29 +202,16 @@ func normalizedImageMIME(contentType string) string {
 }
 
 func (p *Provider) doSegment(ctx context.Context, data []byte, mimeType string) ([]byte, error) {
-	var buf bytes.Buffer
-	writer := multipart.NewWriter(&buf)
-	// 与现网 Muse /v1/segment 契约一致：只发送 image_file，不下发 format 等推测字段。
-	partHeader := make(textproto.MIMEHeader)
-	partHeader.Set("Content-Disposition", fmt.Sprintf(`form-data; name="image_file"; filename="%s"`, inputImageFilename(mimeType)))
-	partHeader.Set("Content-Type", mimeType)
-	part, err := writer.CreatePart(partHeader)
+	body, err := httpbody.Multipart([]httpbody.Part{
+		httpbody.File("image_file", inputImageFilename(mimeType), mimeType, data),
+	})
 	if err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" build segment request failed", err)
 	}
-	if _, err := part.Write(data); err != nil {
-		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" build segment request failed", err)
-	}
-	contentType := writer.FormDataContentType()
-	if err := writer.Close(); err != nil {
-		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" build segment request failed", err)
-	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.segmentURL(), &buf)
+	httpReq, err := body.NewRequest(ctx, http.MethodPost, p.segmentURL())
 	if err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" create request failed", err)
 	}
-	httpReq.Header.Set("Content-Type", contentType)
 	httpReq.Header.Set("x-api-key", p.apiKey)
 
 	resp, err := p.client.Do(httpReq)

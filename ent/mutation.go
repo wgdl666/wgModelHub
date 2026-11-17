@@ -4809,7 +4809,7 @@ func (m *PrefixCacheMutation) ExpiresAt() (r time.Time, exists bool) {
 // OldExpiresAt returns the old "expires_at" field's value of the PrefixCache entity.
 // If the PrefixCache object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *PrefixCacheMutation) OldExpiresAt(ctx context.Context) (v time.Time, err error) {
+func (m *PrefixCacheMutation) OldExpiresAt(ctx context.Context) (v *time.Time, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldExpiresAt is only allowed on UpdateOne operations")
 	}
@@ -4823,9 +4823,22 @@ func (m *PrefixCacheMutation) OldExpiresAt(ctx context.Context) (v time.Time, er
 	return oldValue.ExpiresAt, nil
 }
 
+// ClearExpiresAt clears the value of the "expires_at" field.
+func (m *PrefixCacheMutation) ClearExpiresAt() {
+	m.expires_at = nil
+	m.clearedFields[prefixcache.FieldExpiresAt] = struct{}{}
+}
+
+// ExpiresAtCleared returns if the "expires_at" field was cleared in this mutation.
+func (m *PrefixCacheMutation) ExpiresAtCleared() bool {
+	_, ok := m.clearedFields[prefixcache.FieldExpiresAt]
+	return ok
+}
+
 // ResetExpiresAt resets all changes to the "expires_at" field.
 func (m *PrefixCacheMutation) ResetExpiresAt() {
 	m.expires_at = nil
+	delete(m.clearedFields, prefixcache.FieldExpiresAt)
 }
 
 // Where appends a list predicates to the PrefixCacheMutation builder.
@@ -4946,7 +4959,11 @@ func (m *PrefixCacheMutation) AddField(name string, value ent.Value) error {
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
 func (m *PrefixCacheMutation) ClearedFields() []string {
-	return nil
+	var fields []string
+	if m.FieldCleared(prefixcache.FieldExpiresAt) {
+		fields = append(fields, prefixcache.FieldExpiresAt)
+	}
+	return fields
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
@@ -4959,6 +4976,11 @@ func (m *PrefixCacheMutation) FieldCleared(name string) bool {
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
 func (m *PrefixCacheMutation) ClearField(name string) error {
+	switch name {
+	case prefixcache.FieldExpiresAt:
+		m.ClearExpiresAt()
+		return nil
+	}
 	return fmt.Errorf("unknown PrefixCache nullable field %s", name)
 }
 

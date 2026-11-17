@@ -2,29 +2,30 @@
 package facesim
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"io"
 	"math"
-	"mime/multipart"
 	"net/http"
 	"strings"
 	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
 )
 
 type Provider struct {
+	// Gateway 启用登记模型路由，直连供应商继续使用原有契约。
+	Gateway                           bool
 	name, baseURL, username, password string
 	client                            *http.Client
 }
 
-func New(name, baseURL, username, password string) (*Provider, error) {
+func New(name, baseURL, username, password string, options ...telemetry.HTTPClientOption) (*Provider, error) {
 	name = strings.TrimSpace(name)
 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	username = strings.TrimSpace(username)
@@ -35,21 +36,21 @@ func New(name, baseURL, username, password string) (*Provider, error) {
 	if (username == "") != (password == "") {
 		return nil, provider.New(provider.ErrorConfiguration, "facesim username and password must be configured together")
 	}
-	client := telemetry.NewHTTPClient()
+	// 网关凭据通过共享 HTTP 选项注入，模型服务不接收业务鉴权。
+	client := telemetry.NewHTTPClient(options...)
 	client.Timeout = 60 * time.Second
 	return &Provider{name: name, baseURL: baseURL, username: username, password: password, client: client}, nil
 }
 
 func (p *Provider) Generate(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
-	if model != models.FaceSim {
+	if !p.Gateway && model != models.FaceSim {
 		return nil, provider.NotAttemptedf(provider.ErrorInvalidArgument, "facesim does not serve model %q", model)
 	}
 	images := provider.ImageMedias(request.GetInput())
 	if len(images) != 2 {
 		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "facesim requires exactly two inline images")
 	}
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
+	parts := make([]httpbody.Part, 0, len(images))
 	for i, image := range images {
 		data, ok := image.Source.(*modelhubv2.Media_Data)
 		if !ok || len(data.Data) == 0 {
@@ -59,20 +60,21 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 		if i == 1 {
 			field = "image_b"
 		}
-		if err := writer.WriteField(field, base64.StdEncoding.EncodeToString(data.Data)); err != nil {
-			return nil, provider.WrapNotAttempted(provider.ErrorUnavailable, "build facesim image", err)
-		}
+		parts = append(parts, httpbody.Field(field, base64.StdEncoding.EncodeToString(data.Data)))
 	}
-	if err := writer.Close(); err != nil {
-		return nil, provider.WrapNotAttempted(provider.ErrorUnavailable, "finish facesim request", err)
+	body, err := httpbody.Multipart(parts)
+	if err != nil {
+		return nil, provider.WrapNotAttempted(provider.ErrorUnavailable, "build facesim image", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/compare", &body)
+	req, err := body.NewRequest(ctx, http.MethodPost, p.baseURL+"/compare")
 	if err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, "create facesim request", err)
 	}
-	req.Header.Set("content-type", writer.FormDataContentType())
 	if p.username != "" {
 		req.SetBasicAuth(p.username, p.password)
+	}
+	if p.Gateway {
+		req.Header.Set("X-Model-Key", model)
 	}
 	response, err := p.client.Do(req)
 	if err != nil {

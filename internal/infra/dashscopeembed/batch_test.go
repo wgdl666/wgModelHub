@@ -5,35 +5,26 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"reflect"
 	"strconv"
 	"strings"
 	"testing"
 
-	"github.com/wgdl666/wgModelHub/config"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
 )
 
-func TestEmbedBatchSplitsAndOrdersByIndex(t *testing.T) {
-	for _, tc := range []struct {
-		name      string
-		maxBatch  int
-		wantSizes []int
-	}{
-		{name: "default", wantSizes: []int{20, 1}},
-		{name: "configured", maxBatch: 10, wantSizes: []int{10, 10, 1}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			p, err := New("qwen", &config.DashScopeEmbeddingProviderConfig{
-				BaseURL: "https://dashscope.example/api/v1", APIKey: "key", MaxBatchSize: tc.maxBatch,
-			})
+func TestEmbedBatchForwardsOnceAndOrdersByIndex(t *testing.T) {
+	// 让模拟上游接受 21 条，以验证适配器不会按之前的 20 条上限切分。
+	for _, count := range []int{1, 21} {
+		t.Run(strconv.Itoa(count), func(t *testing.T) {
+			p, err := New("qwen", "https://dashscope.example/api/v1", "key")
 			if err != nil {
 				t.Fatal(err)
 			}
-			var sizes []int
+			calls := 0
 			p.client = roundTrip(func(req *http.Request) (*http.Response, error) {
+				calls++
 				var payload struct {
 					Model string `json:"model"`
 					Input struct {
@@ -52,7 +43,9 @@ func TestEmbedBatchSplitsAndOrdersByIndex(t *testing.T) {
 					t.Fatalf("unexpected batch payload: %+v", payload)
 				}
 				contents := payload.Input.Contents
-				sizes = append(sizes, len(contents))
+				if len(contents) != count {
+					t.Fatalf("HTTP request has %d texts, want %d", len(contents), count)
+				}
 				rows := make([]embeddingRow, len(contents))
 				for i, item := range contents {
 					value, err := strconv.Atoi(item.Text)
@@ -65,12 +58,12 @@ func TestEmbedBatchSplitsAndOrdersByIndex(t *testing.T) {
 				}
 				return embeddingResponse(t, rows), nil
 			})
-			event, err := p.Generate(context.Background(), models.Qwen3VLEmbedding, batchRequest(21))
+			event, err := p.Generate(context.Background(), models.Qwen3VLEmbedding, batchRequest(count))
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !reflect.DeepEqual(sizes, tc.wantSizes) {
-				t.Fatalf("HTTP batch sizes = %v, want %v", sizes, tc.wantSizes)
+			if calls != 1 {
+				t.Fatalf("got %d HTTP requests, want one", calls)
 			}
 			var result struct {
 				Embeddings [][]float64 `json:"embeddings"`
@@ -78,8 +71,8 @@ func TestEmbedBatchSplitsAndOrdersByIndex(t *testing.T) {
 			if err := json.Unmarshal([]byte(event.GetItems()[0].GetText()), &result); err != nil {
 				t.Fatal(err)
 			}
-			if len(result.Embeddings) != 21 {
-				t.Fatalf("got %d vectors", len(result.Embeddings))
+			if len(result.Embeddings) != count {
+				t.Fatalf("got %d vectors, want %d", len(result.Embeddings), count)
 			}
 			for i, row := range result.Embeddings {
 				if len(row) != vectorDim || row[0] != float64(i) {
@@ -90,26 +83,19 @@ func TestEmbedBatchSplitsAndOrdersByIndex(t *testing.T) {
 	}
 }
 
-func TestEmbedBatchRejectsDuplicateIndexWithoutPublishingPartialResult(t *testing.T) {
-	p, err := New("qwen", &config.DashScopeEmbeddingProviderConfig{
-		BaseURL: "https://dashscope.example/api/v1", APIKey: "key", MaxBatchSize: 2,
-	})
+func TestEmbedBatchRejectsDuplicateIndex(t *testing.T) {
+	p, err := New("qwen", "https://dashscope.example/api/v1", "key")
 	if err != nil {
 		t.Fatal(err)
 	}
-	calls := 0
 	p.client = roundTrip(func(req *http.Request) (*http.Response, error) {
-		calls++
-		first, second := 0, 1
-		if calls == 2 {
-			second = first
-		}
+		index := 0
 		vector := make([]float64, vectorDim)
-		return embeddingResponse(t, []embeddingRow{{Index: &first, Embedding: vector}, {Index: &second, Embedding: vector}}), nil
+		return embeddingResponse(t, []embeddingRow{{Index: &index, Embedding: vector}, {Index: &index, Embedding: vector}}), nil
 	})
-	event, err := p.Generate(context.Background(), models.Qwen3VLEmbedding, batchRequest(5))
-	if event != nil || provider.Kind(err) != provider.ErrorInvalidResponse || calls != 2 {
-		t.Fatalf("event=%v err=%v calls=%d", event, err, calls)
+	event, err := p.Generate(context.Background(), models.Qwen3VLEmbedding, batchRequest(2))
+	if event != nil || provider.Kind(err) != provider.ErrorInvalidResponse {
+		t.Fatalf("event=%v err=%v", event, err)
 	}
 }
 

@@ -28,7 +28,7 @@ const (
 	CacheDisabled = "disabled"
 	CacheUnknown  = "unknown"
 
-	// 与 applyTextCachingPolicy 返回值对齐；仅 explicit_disabled 才能标 cache=disabled。
+	// 与文本缓存遥测模式对齐；仅 explicit_disabled 才能标 cache=disabled。
 	CachingModeExplicitDisabled = "explicit_disabled"
 )
 
@@ -49,11 +49,13 @@ type recorder struct {
 	reasoningTokens otelmetric.Int64Counter
 	usageReports    otelmetric.Int64Counter
 	cacheRequests   otelmetric.Int64Counter
+	imageTerminals  otelmetric.Int64Counter
 }
 
 var current atomic.Pointer[recorder]
 
 // Labels 只允许 model/provider/stream 与必要的 outcome；禁止 ID 与正文。
+// Provider 是逻辑路由入口；race 的赢家写账本/trace，不拆分一次请求的指标归属。
 type Labels struct {
 	Model    string
 	Provider string
@@ -146,6 +148,14 @@ func Configure(meter otelmetric.Meter) error {
 	if err != nil {
 		return fmt.Errorf("create wg.modelhub.llm.cache.requests: %w", err)
 	}
+	// 名字带 llm 前缀，才能过 ADOT 白名单 wg_modelhub_llm_.*；导出为 wg_modelhub_llm_image_terminals_total。
+	imageTerminals, err := meter.Int64Counter(
+		"wg.modelhub.llm.image.terminals",
+		otelmetric.WithDescription("Image generation provider call outcomes"),
+	)
+	if err != nil {
+		return fmt.Errorf("create wg.modelhub.llm.image.terminals: %w", err)
+	}
 	current.Store(&recorder{
 		requests:        requests,
 		terminals:       terminals,
@@ -158,6 +168,7 @@ func Configure(meter otelmetric.Meter) error {
 		reasoningTokens: reasoningTokens,
 		usageReports:    usageReports,
 		cacheRequests:   cacheRequests,
+		imageTerminals:  imageTerminals,
 	})
 	return nil
 }
@@ -189,6 +200,19 @@ func RecordTerminal(ctx context.Context, l Labels, totalDuration time.Duration) 
 	attrs := append(baseAttrs(l), attribute.String("outcome", l.Outcome))
 	r.terminals.Add(ctx, 1, otelmetric.WithAttributes(attrs...))
 	r.duration.Record(ctx, totalDuration.Seconds(), otelmetric.WithAttributes(attrs...))
+}
+
+// RecordImageTerminal 记录一次图片生成供应商调用的 outcome；只看供应商结果，回传调用方失败不算模型失败。
+func RecordImageTerminal(ctx context.Context, model, provider, outcome string) {
+	r := current.Load()
+	if r == nil {
+		return
+	}
+	r.imageTerminals.Add(ctx, 1, otelmetric.WithAttributes(
+		attribute.String("model", model),
+		attribute.String("provider", provider),
+		attribute.String("outcome", outcome),
+	))
 }
 
 // RecordTTFT 仅流式请求在首个非空 text / tool name 时记录一次。
@@ -241,16 +265,16 @@ func ClassifyCache(cachingMode string, usage *modelhubv2.Usage) string {
 	return CacheUnknown
 }
 
-// MapOutcome：Canceled / DeadlineExceeded 归 cancelled，其余非 nil 错误归 failed。
+// MapOutcome：主动取消单列；超时仍是失败，不能在成功率排除取消时被一并隐藏。
 func MapOutcome(err error) string {
 	if err == nil {
 		return OutcomeSucceeded
 	}
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+	if errors.Is(err, context.Canceled) {
 		return OutcomeCancelled
 	}
 	switch status.Code(err) {
-	case codes.Canceled, codes.DeadlineExceeded:
+	case codes.Canceled:
 		return OutcomeCancelled
 	default:
 		return OutcomeFailed

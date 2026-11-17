@@ -4,17 +4,20 @@
 package segmentperson
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
-	"mime/multipart"
+	"net"
 	"net/http"
 	"strings"
+	"syscall"
 	"time"
 
+	"github.com/wgdl666/kangaroo/logs"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
@@ -30,6 +33,8 @@ const (
 
 // Provider 只实现 ImageProvider。model 选择端点，不进入上游请求体。
 type Provider struct {
+	// Gateway 启用登记模型路由，直连供应商继续使用原有契约。
+	Gateway       bool
 	name          string
 	baseURL       string
 	username      string
@@ -45,7 +50,7 @@ func New(name, baseURL, username, password, method string) (*Provider, error) {
 }
 
 // NewWithMethods preserves legacy method while allowing endpoint-specific algorithms.
-func NewWithMethods(name, baseURL, username, password, method, personMethod, subjectMethod string) (*Provider, error) {
+func NewWithMethods(name, baseURL, username, password, method, personMethod, subjectMethod string, options ...telemetry.HTTPClientOption) (*Provider, error) {
 	name = strings.TrimSpace(name)
 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	username = strings.TrimSpace(username)
@@ -62,7 +67,7 @@ func NewWithMethods(name, baseURL, username, password, method, personMethod, sub
 	if (username == "") != (password == "") {
 		return nil, provider.New(provider.ErrorConfiguration, "segment-person username and password must be configured together")
 	}
-	client := telemetry.NewHTTPClient()
+	client := telemetry.NewHTTPClient(options...)
 	client.Timeout = requestTimeout
 	return &Provider{
 		name:          name,
@@ -82,6 +87,10 @@ func (p *Provider) GenerateImage(ctx context.Context, model string, request *mod
 		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "generate request is required")
 	}
 	endpoint, person, err := endpointFor(model)
+	if p.Gateway {
+		// 人物/商品分流由网关登记决定，ModelHub 不再逐次查询或猜测模型名称。
+		endpoint, person, err = "/api/matte", false, nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +102,7 @@ func (p *Provider) GenerateImage(ctx context.Context, model string, request *mod
 	if err != nil {
 		return nil, err
 	}
-	raw, err := p.doSegment(ctx, endpoint, data, person)
+	raw, err := p.doSegment(ctx, model, endpoint, data, person)
 	if err != nil {
 		return nil, err
 	}
@@ -154,13 +163,16 @@ func (p *Provider) methodFor(person bool) string {
 	return p.method
 }
 
-func (p *Provider) doSegment(ctx context.Context, endpoint string, imageBytes []byte, person bool) ([]byte, error) {
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
+func (p *Provider) doSegment(ctx context.Context, model, endpoint string, imageBytes []byte, person bool) ([]byte, error) {
+	parts := make([]httpbody.Part, 0, 5)
 	fields := map[string]string{
 		"image":  base64.StdEncoding.EncodeToString(imageBytes),
 		"method": p.methodFor(person),
 		"output": "b64",
+	}
+	if p.Gateway {
+		// 两种既有算法配置一起提交，由网关按登记协议选择，保留直连配置语义。
+		fields["person_method"], fields["subject_method"] = p.methodFor(true), p.methodFor(false)
 	}
 	// 人物接口沿用现网约定：preprocess 字段存在且值为字符串 "false"。商品接口不带该字段。
 	if person {
@@ -172,27 +184,67 @@ func (p *Provider) doSegment(ctx context.Context, endpoint string, imageBytes []
 		fields["trace_id"] = traceID
 	}
 	for name, value := range fields {
-		if err := writer.WriteField(name, value); err != nil {
-			return nil, provider.WrapNotAttempted(provider.ErrorUnavailable, p.name+" build segment request", err)
+		parts = append(parts, httpbody.Field(name, value))
+	}
+	var body *httpbody.Body
+	var err error
+	if p.Gateway {
+		// 网关接收同一种抠图输入，再按登记决定人物/商品原生表单。
+		body, err = httpbody.JSON(fields, true)
+	} else {
+		body, err = httpbody.Multipart(parts)
+	}
+	if err != nil {
+		return nil, provider.WrapNotAttempted(provider.ErrorUnavailable, p.name+" build segment request", err)
+	}
+	// 抠图没有持久化副作用，瞬时连接故障允许最多三次请求；业务流程重跑仍由调用方负责。
+	// 每次重建请求体，避免 broken pipe 后复用已消耗的 multipart 流。
+	var response *http.Response
+	for attempt := 1; attempt <= 3; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return nil, err
 		}
-	}
-	if err := writer.Close(); err != nil {
-		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" finish segment request", err)
-	}
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+endpoint, &body)
-	if err != nil {
-		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" create segment request", err)
-	}
-	httpReq.Header.Set("content-type", writer.FormDataContentType())
-	if p.username != "" {
-		httpReq.SetBasicAuth(p.username, p.password)
-	}
-	response, err := p.client.Do(httpReq)
-	if err != nil {
+		httpReq, err := body.NewRequest(ctx, http.MethodPost, p.baseURL+endpoint)
+		if err != nil {
+			return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" create segment request", err)
+		}
+		if p.username != "" {
+			httpReq.SetBasicAuth(p.username, p.password)
+		}
+		if p.Gateway {
+			httpReq.Header.Set("X-Model-Key", model)
+		}
+		response, err = p.client.Do(httpReq)
 		if ctx.Err() != nil {
+			if response != nil {
+				response.Body.Close()
+			}
 			return nil, ctx.Err()
 		}
-		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" segment request failed", err)
+		retryable := transientConnectionError(err)
+		statusCode := 0
+		if err == nil {
+			statusCode = response.StatusCode
+			retryable = statusCode == 429 || statusCode == 500 || statusCode == 502 || statusCode == 503 || statusCode == 504
+		}
+		if !retryable || attempt == 3 {
+			if err != nil {
+				return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" segment request failed", err)
+			}
+			break
+		}
+		if response != nil {
+			response.Body.Close()
+		}
+		logs.Default().WarnContext(ctx, "modelhub_segment_retry", "provider", p.name, "endpoint", endpoint, "attempt", attempt, "status_code", statusCode)
+		// 退避共用调用方期限；取消、超时不能继续消耗算法资源。
+		timer := time.NewTimer(time.Duration(attempt) * 300 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
@@ -210,4 +262,16 @@ func (p *Provider) doSegment(ctx context.Context, endpoint string, imageBytes []
 		return nil, provider.New(provider.ErrorInvalidResponse, p.name+" response is missing refined_png_b64")
 	}
 	return cutout, nil
+}
+
+// 只重试明确的连接中断，避免把参数、证书、DNS 配置和超时错误当作瞬时故障。
+func transientConnectionError(err error) bool {
+	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	var networkError net.Error
+	if errors.As(err, &networkError) && networkError.Timeout() {
+		return false
+	}
+	return errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, net.ErrClosed) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)
 }

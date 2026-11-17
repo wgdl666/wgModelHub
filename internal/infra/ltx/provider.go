@@ -5,13 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"mime/multipart"
 	"net/http"
 	"strings"
 	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
+	"github.com/wgdl666/wgModelHub/internal/infra/vmindgateway"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
 	"github.com/wgdl666/wgModelHub/protocol"
@@ -30,6 +31,14 @@ type Provider struct {
 	seed         int
 	pollInterval time.Duration
 	client       *http.Client
+	gateway      *vmindgateway.Client
+}
+
+func NewGateway(name string, gateway *vmindgateway.Client, pollInterval float64) *Provider {
+	return &Provider{
+		name: name, gateway: gateway, pollInterval: time.Duration(pollInterval * float64(time.Second)),
+		client: telemetry.NewHTTPClient(),
+	}
 }
 
 func New(name, baseURL, token string, duration float64, fps, seed int, pollInterval float64) (*Provider, error) {
@@ -54,10 +63,9 @@ func New(name, baseURL, token string, duration float64, fps, seed int, pollInter
 	}, nil
 }
 
-// SubmitVideo 只受理当前穿搭视频模型，避免旧 ID 意外创建新任务。
-// 提交、查询和下载使用相同模型边界，旧 ltx 任务不再访问上游。
+// SubmitVideo 直接提交视频输入，模型登记与协议由网关受理时校验。
 func (p *Provider) SubmitVideo(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (string, error) {
-	if model != models.VWorldOutfitVideo10 {
+	if p.gateway == nil && model != models.VWorldOutfitVideo10 {
 		return "", provider.NotAttempted(provider.ErrorInvalidArgument, "unsupported video model: "+model)
 	}
 	if request == nil {
@@ -71,6 +79,21 @@ func (p *Provider) SubmitVideo(ctx context.Context, model string, request *model
 	imageBytes, err := p.loadFirstFrame(ctx, firstFrame)
 	if err != nil {
 		return "", err
+	}
+	if p.gateway != nil {
+		mimeType := strings.TrimSpace(firstFrame.GetMimeType())
+		if mimeType == "" {
+			mimeType = http.DetectContentType(imageBytes)
+		}
+		input := map[string]any{
+			"prompt": provider.JoinedText(request.GetInput()),
+			"images": []vmindgateway.Image{{MIMEType: mimeType, Data: imageBytes}},
+		}
+		if motionTips != "" {
+			input["motion_tips"] = motionTips
+		}
+		task, err := p.gateway.Submit(ctx, model, provider.SubmissionID(ctx), input, http.StatusAccepted)
+		return task.RequestID, err
 	}
 	return p.submit(ctx, imageBytes, provider.JoinedText(request.GetInput()), motionTips)
 }
@@ -102,19 +125,29 @@ func (p *Provider) GetVideo(ctx context.Context, model string, providerTaskID st
 	if model == "VWorld_outfit_video_1.0" {
 		model = models.VWorldOutfitVideo10
 	}
-	// 更早的 ltx ID 已下线，仍拒绝进入供应商查询。
-	if model != models.VWorldOutfitVideo10 {
+	// 直连仍拒绝已下线的 ltx ID；网关任务按持久化的任务 ID 查询。
+	if p.gateway == nil && model != models.VWorldOutfitVideo10 {
 		return provider.VideoJob{}, provider.New(provider.ErrorInvalidArgument, "unsupported video model: "+model)
 	}
-	job, err := p.getJob(ctx, providerTaskID)
-	if err != nil {
-		return provider.VideoJob{}, err
-	}
 	pollMs := int32(p.pollInterval / time.Millisecond)
-	switch job["status"] {
-	case "done":
+	var state string
+	if p.gateway != nil {
+		task, err := p.gateway.Get(ctx, providerTaskID)
+		if err != nil {
+			return provider.VideoJob{}, err
+		}
+		state = task.State
+	} else {
+		job, err := p.getJob(ctx, providerTaskID)
+		if err != nil {
+			return provider.VideoJob{}, err
+		}
+		state, _ = job["status"].(string)
+	}
+	switch state {
+	case "done", "succeeded":
 		return provider.VideoJob{State: provider.VideoJobSucceeded, PollAfterMs: pollMs}, nil
-	case "error", "cancelled", "interrupted":
+	case "error", "cancelled", "interrupted", "failed":
 		// 三方错误正文可能包含输入片段，只保留稳定分类，不写入 gRPC status 或遥测。
 		return provider.VideoJob{
 			State:       provider.VideoJobFailed,
@@ -132,9 +165,24 @@ func (p *Provider) ReadVideoResult(ctx context.Context, model string, providerTa
 	if model == "VWorld_outfit_video_1.0" {
 		model = models.VWorldOutfitVideo10
 	}
-	// 结果读取遵守当前模型目录，避免绕过旧模型停用边界。
-	if model != models.VWorldOutfitVideo10 {
+	// 直连结果遵守原模型边界；网关校验任务所属的结果对象。
+	if p.gateway == nil && model != models.VWorldOutfitVideo10 {
 		return provider.New(provider.ErrorInvalidArgument, "unsupported video model: "+model)
+	}
+	if p.gateway != nil {
+		task, err := p.gateway.Get(ctx, providerTaskID)
+		if err != nil {
+			return err
+		}
+		if task.State != "succeeded" || len(task.Result.Files) != 1 {
+			return provider.New(provider.ErrorInvalidResponse, "VMind video task has no successful object result")
+		}
+		_, reader, err := p.gateway.OpenResult(ctx, task.RequestID, task.Result.Files[0])
+		if err != nil {
+			return err
+		}
+		defer reader.Close()
+		return provider.EmitVideoChunksFromReader(reader, videoMIMEType, providerTaskID, 0, emit)
 	}
 	job, err := p.getJob(ctx, providerTaskID)
 	if err != nil {
@@ -211,18 +259,10 @@ func (p *Provider) loadFirstFrame(ctx context.Context, media *modelhubv2.Media) 
 }
 
 func (p *Provider) submit(ctx context.Context, imageBytes []byte, prompt, motionTips string) (string, error) {
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
-	imagePart, err := writer.CreateFormFile("image", "first_frame.png")
-	if err != nil {
-		return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "create multipart image", err)
-	}
-	if _, err := imagePart.Write(imageBytes); err != nil {
-		return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "write multipart image", err)
-	}
-	endpoint := "/v2/videos/vton"
+	parts := []httpbody.Part{httpbody.File("image", "first_frame.png", "application/octet-stream", imageBytes)}
+	endpoint := "/vton"
 	fields := map[string]string{"prompt": prompt}
-	// 新建任务统一走 v2，模型和推理规格由上游固定，不再发送旧 LTX 参数。
+	// 当前视频网关只提供 /vton；保留服务端模型与推理默认值，避免与网关规格漂移。
 	if motionTips != "" {
 		fields["motion_tips"] = motionTips
 	}
@@ -231,24 +271,20 @@ func (p *Provider) submit(ctx context.Context, imageBytes []byte, prompt, motion
 		fields["trace_id"] = traceID
 	}
 	for name, value := range fields {
-		if err := writer.WriteField(name, value); err != nil {
-			return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "write multipart field", err)
-		}
+		parts = append(parts, httpbody.Field(name, value))
 	}
-	if err := writer.Close(); err != nil {
-		return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "close multipart body", err)
+	body, err := httpbody.Multipart(parts)
+	if err != nil {
+		return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "build multipart request", err)
 	}
-	contentType := writer.FormDataContentType()
-	payload := append([]byte(nil), body.Bytes()...)
 	for attempt := 1; attempt <= 3; attempt++ {
 		if err := ctx.Err(); err != nil {
 			return "", err
 		}
-		request, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+endpoint, bytes.NewReader(payload))
+		request, err := body.NewRequest(ctx, http.MethodPost, p.baseURL+endpoint)
 		if err != nil {
 			return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "create submit request", err)
 		}
-		request.Header.Set("Content-Type", contentType)
 		p.setToken(request)
 		response, err := p.client.Do(request)
 		if err != nil {

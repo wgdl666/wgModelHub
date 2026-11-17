@@ -1,6 +1,7 @@
 # 仅为该环境的 provider 配置片段，须并入完整配置后随新适配器发布；不自动修改现网。
 providers:
   wgdl_lens_correction:
-    models: [lens-distortion-correction]
+    vision_gateway: wgdl_model_gateway_exhibition
+    models: [Vmind_lens_distortion_correction_v1.0]
     lens_distortion_correction:
       base_url: http://172.31.43.7:18280/lens_distortion_correction

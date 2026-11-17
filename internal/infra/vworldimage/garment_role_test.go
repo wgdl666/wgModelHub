@@ -30,7 +30,7 @@ func TestRegistrationForwardsExplicitRoleWithoutCrop(t *testing.T) {
 	}))
 	defer server.Close()
 	p := newTestProvider(t, server.URL)
-	if _, err := p.GenerateImage(context.Background(), models.VWorldWardrobe10, wardrobeRequest(pngBytes(t), `{"garment_name":"Black Embellished Sandals","garment_role":"shoes"}`)); err != nil {
+	if _, err := p.GenerateImage(context.Background(), models.VWorldClothGen10, wardrobeRequest(pngBytes(t), `{"garment_name":"Black Embellished Sandals","garment_role":"shoes"}`)); err != nil {
 		t.Fatal(err)
 	}
 	if calls != 1 {
@@ -69,8 +69,10 @@ func TestExplicitRolesPassThroughToModelService(t *testing.T) {
 			defer server.Close()
 			p := newTestProvider(t, server.URL)
 			meta := map[string]any{"garment_name": "shoe", "garment_role": tc.role, "inventory_slot": tc.slot}
+			model := models.VWorldClothGen10
 			var masks [][]byte
 			if tc.crop {
+				model = models.VWorldWardrobe10
 				meta["parse_labels"] = map[string]string{"1": "feet"}
 				masks = append(masks, []byte("mask"))
 			}
@@ -78,7 +80,7 @@ func TestExplicitRolesPassThroughToModelService(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, err = p.GenerateImage(context.Background(), models.VWorldWardrobe10, wardrobeRequest(pngBytes(t), string(data), masks...))
+			_, err = p.GenerateImage(context.Background(), model, wardrobeRequest(pngBytes(t), string(data), masks...))
 			if calls != 1 || err == nil || provider.IsNotAttempted(err) || !strings.Contains(err.Error(), "unsupported garment_role") {
 				t.Fatalf("calls=%d err=%v", calls, err)
 			}

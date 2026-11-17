@@ -41,7 +41,7 @@ func TestMinimalBusinessContracts(t *testing.T) {
 		fields            map[string]string
 		files             map[string][]byte
 	}{
-		{"product", models.VWorldWardrobe10, productGenerationPath,
+		{"product", models.VWorldClothGen10, productGenerationPath,
 			wardrobeRequest(source, `{"garment_name":"White shirt","garment_role":"clothing::top/full"}`),
 			map[string]string{"garment_name": "White shirt", "garment_role": "clothing::top/full"}, map[string][]byte{"image": source}},
 		{"extraction", models.VWorldWardrobe10, garmentExtractionPath,
@@ -132,7 +132,7 @@ func TestServerOwnsMissingAndInvalidBusinessFields(t *testing.T) {
 		model   string
 		request *modelhubv2.GenerateRequest
 	}{
-		{models.VWorldWardrobe10, wardrobeRequest(pngBytes(t), `{"garment_name":"","garment_role":"future-role"}`)},
+		{models.VWorldClothGen10, wardrobeRequest(pngBytes(t), `{"garment_name":"","garment_role":"future-role"}`)},
 		{models.VWorldWardrobe10, wardrobeRequest(pngBytes(t), `{"garment_name":"shoe"}`, []byte("mask"))},
 		{models.VWorldWardrobe10, wardrobeRequest(pngBytes(t), `{"garment_name":"shoe","parse_labels":{"15":"feet"}}`)},
 		{models.VWorldBodyModel10, wardrobeRequest(pngBytes(t), "")},
@@ -156,6 +156,12 @@ func TestServerOwnsMissingAndInvalidBusinessFields(t *testing.T) {
 func TestRejectsWrongImageCountsAndUnknownModel(t *testing.T) {
 	pngData := pngBytes(t)
 	p := newTestProvider(t, "https://vmind-image.example")
+	if _, err := p.GenerateImage(context.Background(), models.VWorldWardrobe10, wardrobeRequest(pngData, `{"garment_name":"x"}`)); !provider.IsNotAttempted(err) {
+		t.Fatalf("extraction key must reject product input before calling upstream: %v", err)
+	}
+	if _, err := p.GenerateImage(context.Background(), models.VWorldClothGen10, wardrobeRequest(pngData, `{"garment_name":"x","bbox":[0,0,1,1]}`)); !provider.IsNotAttempted(err) {
+		t.Fatalf("product key must reject extraction input before calling upstream: %v", err)
+	}
 	if _, err := p.GenerateImage(context.Background(), models.VWorldWardrobe10, wardrobeRequest(pngData, `{"garment_name":"x"}`, pngData, pngData)); err == nil {
 		t.Fatal("expected extra image error")
 	}
@@ -251,11 +257,11 @@ func TestBaseURLFollowsResolverOnNextRequest(t *testing.T) {
 	}
 	p.client = http.DefaultClient
 	req := wardrobeRequest(src, `{"garment_name":"白色衬衫","garment_category":"tops.shirts"}`)
-	if _, err := p.GenerateImage(context.Background(), models.VWorldWardrobe10, req); err != nil {
+	if _, err := p.GenerateImage(context.Background(), models.VWorldClothGen10, req); err != nil {
 		t.Fatal(err)
 	}
 	current = second.URL
-	if _, err := p.GenerateImage(context.Background(), models.VWorldWardrobe10, req); err != nil {
+	if _, err := p.GenerateImage(context.Background(), models.VWorldClothGen10, req); err != nil {
 		t.Fatal(err)
 	}
 	if len(hits) != 2 || hits[0] != "startup" || hits[1] != "hot" {

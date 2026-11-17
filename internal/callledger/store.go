@@ -284,6 +284,10 @@ func (p *Postgres) UpdateResult(ctx context.Context, rec Record) error {
 		SetOutputPayload(nonNilMap(rec.OutputPayload)).
 		SetUsageDetail(nonNilMap(rec.UsageDetail)).
 		SetLatencyMs(rec.LatencyMS)
+	// pending 时只知道默认路由；首次终态才可确认 race 赢家，后续补写不能改掉赢家。
+	if !isTerminalStatus(existing.Status) && isTerminalStatus(rec.Status) && rec.Provider != "" {
+		upd.SetProvider(rec.Provider)
+	}
 	if rec.FinishedAt != nil {
 		upd.SetFinishedAt(*rec.FinishedAt)
 	}
@@ -717,6 +721,10 @@ func mergeCallResult(prev, next Record) Record {
 		return prev
 	}
 	out := prev
+	// 与 Postgres UpdateResult 一致：最终赢家替换 pending 的默认实例，终态后保持归属。
+	if !isTerminalStatus(prev.Status) && isTerminalStatus(next.Status) && next.Provider != "" {
+		out.Provider = next.Provider
+	}
 	if next.Status != "" {
 		out.Status = next.Status
 	}

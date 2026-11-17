@@ -10,20 +10,35 @@ import (
 type EmitEvent func(*modelhubv2.GenerateEvent) error
 
 // TextProvider 只接收调用方传入的真实供应商模型 ID；供应商地址与凭据不会进入 RPC。
+// GenerateRequest 只读，可由多个竞速分支共享；供应商参数和缓存默认值在适配器内构造。
 type TextProvider interface {
 	Generate(context.Context, string, *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error)
 	GenerateStream(context.Context, string, *modelhubv2.GenerateRequest, EmitEvent) (*modelhubv2.GenerateEvent, error)
 }
 
+// ImageProvider 返回的媒体字节交付后不再修改或复用，供 gRPC 与异步账本只读共享。
 type ImageProvider interface {
 	GenerateImage(context.Context, string, *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error)
 }
 
 // VideoProvider 只暴露 Submit/Get/ReadResult；异步任务账本与对外 RPC 经 Service 编排，禁止同步 GenerateVideo 包装。
+// ReadVideoResult 发出的媒体分块交付后不再修改或复用，允许账本在回调结束后保留引用。
 type VideoProvider interface {
 	SubmitVideo(context.Context, string, *modelhubv2.GenerateRequest) (providerTaskID string, err error)
 	GetVideo(context.Context, string, string) (VideoJob, error)
 	ReadVideoResult(context.Context, string, string, EmitEvent) error
+}
+
+type submissionIDKey struct{}
+
+// WithSubmissionID 让需要 UUID 幂等键的供应商沿用已经持久化的 ModelHub 任务 ID。
+func WithSubmissionID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, submissionIDKey{}, id)
+}
+
+func SubmissionID(ctx context.Context) string {
+	id, _ := ctx.Value(submissionIDKey{}).(string)
+	return id
 }
 
 // Set 表示一个已配置供应商真正实现的能力，不用空实现伪装未支持的 RPC。

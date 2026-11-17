@@ -463,7 +463,7 @@ func (p *Provider) loadMediaBytes(ctx context.Context, media *modelhubv2.Media, 
 		if len(data.Data) > maxBytes {
 			return nil, "", provider.NotAttemptedf(provider.ErrorInvalidArgument, "media exceeds %d bytes", maxBytes)
 		}
-		return append([]byte(nil), data.Data...), mimeType, nil
+		return data.Data, mimeType, nil
 	}
 	if uri := provider.MediaURI(media); uri != "" {
 		// 提交前拉输入媒体；共享下载函数不标 Local，由此处认定未触达生成。

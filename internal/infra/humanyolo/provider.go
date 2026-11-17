@@ -3,15 +3,14 @@
 package humanyolo
 
 import (
-	"bytes"
 	"context"
 	"io"
-	"mime/multipart"
 	"net/http"
 	"strings"
 	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
@@ -26,6 +25,8 @@ const (
 
 // Provider 只实现 TextProvider，返回上游 JSON，裁图留在衣橱。
 type Provider struct {
+	// Gateway 启用登记模型路由，直连供应商继续使用原有契约。
+	Gateway  bool
 	name     string
 	baseURL  string
 	username string
@@ -33,7 +34,7 @@ type Provider struct {
 	client   *http.Client
 }
 
-func New(name, baseURL, username, password string) (*Provider, error) {
+func New(name, baseURL, username, password string, options ...telemetry.HTTPClientOption) (*Provider, error) {
 	name = strings.TrimSpace(name)
 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	username = strings.TrimSpace(username)
@@ -44,7 +45,7 @@ func New(name, baseURL, username, password string) (*Provider, error) {
 	if (username == "") != (password == "") {
 		return nil, provider.New(provider.ErrorConfiguration, "human-yolo username and password must be configured together")
 	}
-	client := telemetry.NewHTTPClient()
+	client := telemetry.NewHTTPClient(options...)
 	client.Timeout = timeout
 	return &Provider{
 		name:     name,
@@ -56,14 +57,14 @@ func New(name, baseURL, username, password string) (*Provider, error) {
 }
 
 func (p *Provider) Generate(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
-	if model != models.HumanYOLO {
+	if !p.Gateway && model != models.HumanYOLO {
 		return nil, provider.NotAttemptedf(provider.ErrorInvalidArgument, "human-yolo does not serve model %q", model)
 	}
 	imageBytes, err := oneInlineImage(request.GetInput())
 	if err != nil {
 		return nil, err
 	}
-	body, err := p.post(ctx, imageBytes)
+	body, err := p.post(ctx, model, imageBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -87,26 +88,23 @@ func (p *Provider) GenerateStream(ctx context.Context, model string, request *mo
 	return provider.MetadataFinalEvent("", "", nil), nil
 }
 
-func (p *Provider) post(ctx context.Context, imageBytes []byte) ([]byte, error) {
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
-	file, err := writer.CreateFormFile("file", "person.png")
+func (p *Provider) post(ctx context.Context, model string, imageBytes []byte) ([]byte, error) {
+	body, err := httpbody.Multipart([]httpbody.Part{
+		httpbody.File("file", "person.png", "application/octet-stream", imageBytes),
+		httpbody.Field("conf", confidence), httpbody.Field("iou", iou),
+	})
 	if err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorUnavailable, p.name+" build yolo request", err)
 	}
-	if _, err := file.Write(imageBytes); err != nil {
-		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" write yolo image", err)
-	}
-	if err := writer.WriteField("conf", confidence); err != nil || writer.WriteField("iou", iou) != nil || writer.Close() != nil {
-		return nil, provider.New(provider.ErrorUnavailable, p.name+" finish yolo request")
-	}
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+predictPath, &body)
+	httpReq, err := body.NewRequest(ctx, http.MethodPost, p.baseURL+predictPath)
 	if err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" create yolo request", err)
 	}
-	httpReq.Header.Set("content-type", writer.FormDataContentType())
 	if p.username != "" {
 		httpReq.SetBasicAuth(p.username, p.password)
+	}
+	if p.Gateway {
+		httpReq.Header.Set("X-Model-Key", model)
 	}
 	response, err := p.client.Do(httpReq)
 	if err != nil {

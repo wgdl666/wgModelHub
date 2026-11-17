@@ -23,7 +23,7 @@ func TestSubmitVideoMotionTipsMultipart(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path != "/v2/videos/vton" {
+				if r.URL.Path != "/vton" {
 					t.Errorf("path=%s", r.URL.Path)
 				}
 				if err := r.ParseMultipartForm(1 << 20); err != nil {

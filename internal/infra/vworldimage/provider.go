@@ -3,20 +3,19 @@
 package vworldimage
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
-	"mime/multipart"
 	"net/http"
-	"net/textproto"
 	"strings"
 	"time"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
+	"github.com/wgdl666/wgModelHub/internal/infra/vmindgateway"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
 	"github.com/wgdl666/wgModelHub/protocol"
@@ -30,15 +29,20 @@ const (
 	requestTimeout        = 900 * time.Second
 )
 
-// Provider 只实现 ImageProvider。两个模型共用同一个入口，靠路径与 LoRA 分流。
+// Provider 按模型 ID 选择图片操作；直连和 Go 网关使用相同的模型划分。
 type Provider struct {
 	name     string
 	baseURL  string
 	username string
 	password string
 	client   *http.Client
+	gateway  *vmindgateway.Client
 	// resolveBaseURL 每次请求重读入口。路演要把国内公网切到俄亥俄 G6，不能把地址冻在进程启动时。
 	resolveBaseURL func() string
+}
+
+func NewGateway(name string, gateway *vmindgateway.Client) *Provider {
+	return &Provider{name: name, gateway: gateway}
 }
 
 func New(name, baseURL, username, password string) (*Provider, error) {
@@ -99,22 +103,31 @@ func (p *Provider) GenerateImage(ctx context.Context, model string, request *mod
 	if request == nil {
 		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "generate request is required")
 	}
-	switch model {
-	case models.VWorldWardrobe10:
-		return p.generateGarmentExtraction(ctx, request)
-	case models.VWorldOutfit10:
-		return p.generateVTON(ctx, request)
-	case models.VWorldBodyModel10:
-		return p.generateBodyModel(ctx, request)
+	if p.gateway != nil {
+		// 只传统一输入；具体图像协议的选择与字段校验由网关在入队前完成。
+		return p.generateThroughGateway(ctx, model, request)
+	}
+	// 直连供应商保留既有协议约定，不受网关受理边界调整影响。
+	kind := map[string]string{
+		models.VWorldWardrobe10: "garment_extraction", models.VWorldClothGen10: "product_generation",
+		models.VWorldOutfit10: "vton", models.VWorldBodyModel10: "body_model",
+	}[model]
+	switch kind {
+	case "garment_extraction", "product_generation":
+		return p.generateWardrobe(ctx, model, kind == "garment_extraction", request)
+	case "vton":
+		return p.generateVTON(ctx, model, request)
+	case "body_model":
+		return p.generateBodyModel(ctx, model, request)
 	default:
-		return nil, provider.NotAttemptedf(provider.ErrorInvalidArgument, "vworld-image does not serve model %q", model)
+		return nil, provider.NotAttemptedf(provider.ErrorInvalidArgument, "unsupported image protocol %q", kind)
 	}
 }
 
-func (p *Provider) generateGarmentExtraction(ctx context.Context, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
+func (p *Provider) generateWardrobe(ctx context.Context, model string, extraction bool, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
 	images := provider.ImageMedias(request.GetInput())
 	if len(images) < 1 || len(images) > 2 {
-		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "Vmind_wardrobe_v1.0 requires source image and optionally parser mask")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "wardrobe image requires a source image and optionally a parser mask")
 	}
 	source, mime, err := inlineImage(images[0])
 	if err != nil {
@@ -131,8 +144,11 @@ func (p *Provider) generateGarmentExtraction(ctx context.Context, request *model
 	}
 	uploads := []imageUpload{{data: source, mimeType: mime, filename: "source.png"}}
 	path := productGenerationPath
-	// Route by the supplied bbox or parser payload, without inferring roles or checking taxonomy.
-	if len(images) == 2 || meta.ParseLabels != nil || meta.BBox != nil {
+	// 操作已由登记协议选定。输入不符时拒绝，避免拆衣请求误跑成商品图。
+	if extraction {
+		if len(images) == 1 && meta.BBox == nil && meta.ParseLabels == nil {
+			return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "garment extraction requires bbox or parser input")
+		}
 		path = garmentExtractionPath
 		if meta.BBox != nil {
 			// 坐标是否归一化、是否越界由上游按 bbox_format 判定；这里只原样转成 JSON 数组。
@@ -159,22 +175,16 @@ func (p *Provider) generateGarmentExtraction(ctx context.Context, request *model
 			}
 			uploads = append(uploads, imageUpload{field: "parse_mask", filename: "human_parse_labels.png", data: mask, mimeType: mime})
 		}
+	} else if len(images) != 1 || meta.ParseLabels != nil || meta.BBox != nil || meta.BBoxFormat != "" {
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "product generation requires one image and no extraction fields")
 	}
-	raw, err := p.doMultipart(ctx, path, fields, uploads)
-	if err != nil {
-		return nil, err
-	}
-	parsed, err := decodeImageResponse(raw)
-	if err != nil {
-		return nil, err
-	}
-	return imageEvent(parsed.Data)
+	return p.generate(ctx, model, path, fields, uploads)
 }
 
-func (p *Provider) generateVTON(ctx context.Context, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
+func (p *Provider) generateVTON(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
 	images := provider.ImageMedias(request.GetInput())
 	if len(images) != 2 {
-		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "Vmind_outfit_v1.0 requires person image then garment collage")
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "vton requires person image then garment collage")
 	}
 	uploads := make([]imageUpload, 0, 2)
 	for index, media := range images {
@@ -190,7 +200,27 @@ func (p *Provider) generateVTON(ctx context.Context, request *modelhubv2.Generat
 	}
 	// Preserve prompt whitespace; the model service validates without rewriting it.
 	fields := map[string]string{"prompt": provider.JoinedText(request.GetInput())}
-	raw, err := p.doMultipart(ctx, vtonPath, fields, uploads)
+	return p.generate(ctx, model, vtonPath, fields, uploads)
+}
+
+func (p *Provider) generateBodyModel(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
+	images := provider.ImageMedias(request.GetInput())
+	if len(images) != 1 {
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "body_model requires exactly one person image")
+	}
+	gender, err := bodyModelGender(request.GetInput().GetModelTraits())
+	if err != nil {
+		return nil, err
+	}
+	data, mime, err := inlineImage(images[0])
+	if err != nil {
+		return nil, err
+	}
+	return p.generate(ctx, model, bodyModelPath, map[string]string{"gender": gender}, []imageUpload{{data: data, mimeType: mime}})
+}
+
+func (p *Provider) generate(ctx context.Context, model, path string, fields map[string]string, uploads []imageUpload) (*modelhubv2.GenerateEvent, error) {
+	raw, err := p.doMultipart(ctx, path, fields, uploads)
 	if err != nil {
 		return nil, err
 	}
@@ -201,28 +231,48 @@ func (p *Provider) generateVTON(ctx context.Context, request *modelhubv2.Generat
 	return imageEvent(parsed.Data)
 }
 
-func (p *Provider) generateBodyModel(ctx context.Context, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
-	images := provider.ImageMedias(request.GetInput())
-	if len(images) != 1 {
-		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "Vmind_bodymodel_v1.0 requires exactly one person image")
+func (p *Provider) generateThroughGateway(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
+	media := provider.ImageMedias(request.GetInput())
+	images := make([]vmindgateway.Image, 0, len(media))
+	for _, image := range media {
+		data, mimeType, err := inlineImage(image)
+		if err != nil {
+			return nil, err
+		}
+		images = append(images, vmindgateway.Image{MIMEType: mimeType, Data: data})
 	}
-	gender, err := bodyModelGender(request.GetInput().GetModelTraits())
+	input := map[string]any{"images": images, "text": provider.JoinedText(request.GetInput())}
+	if traits := request.GetInput().GetModelTraits(); strings.TrimSpace(traits) != "" {
+		input["model_traits"] = json.RawMessage(traits)
+	}
+	task, err := p.gateway.Submit(ctx, model, "", input, http.StatusOK)
 	if err != nil {
 		return nil, err
 	}
-	data, mime, err := inlineImage(images[0])
-	if err != nil {
-		return nil, err
+	if task.State != "succeeded" || len(task.Result.Files) == 0 {
+		return nil, provider.New(provider.ErrorInvalidResponse, "VMind image task has no successful object results")
 	}
-	raw, err := p.doMultipart(ctx, bodyModelPath, map[string]string{"gender": gender}, []imageUpload{{data: data, mimeType: mime}})
-	if err != nil {
-		return nil, err
+	event := &modelhubv2.GenerateEvent{Final: true}
+	total := 0
+	for _, ref := range task.Result.Files {
+		_, reader, err := p.gateway.OpenResult(ctx, task.RequestID, ref)
+		if err != nil {
+			return nil, err
+		}
+		data, err := io.ReadAll(io.LimitReader(reader, protocol.MaxMediaBytes+1))
+		_ = reader.Close()
+		if err != nil {
+			return nil, provider.New(provider.ErrorUnavailable, "cannot read VMind image result")
+		}
+		total += len(data)
+		if len(data) == 0 || len(data) > protocol.MaxMediaBytes || total > protocol.MaxRPCMessageBytes {
+			return nil, provider.New(provider.ErrorInvalidResponse, "VMind image result size is invalid")
+		}
+		event.Items = append(event.Items, &modelhubv2.OutputItem{Item: &modelhubv2.OutputItem_Image{Image: &modelhubv2.Media{
+			MimeType: sniffImageMIME(data), Source: &modelhubv2.Media_Data{Data: data},
+		}}})
 	}
-	parsed, err := decodeImageResponse(raw)
-	if err != nil {
-		return nil, err
-	}
-	return imageEvent(parsed.Data)
+	return event, nil
 }
 
 // Only decode the shared traits envelope. The upstream service owns gender validation.
@@ -252,16 +302,11 @@ func (p *Provider) doMultipart(ctx context.Context, path string, fields map[stri
 	if traceID := telemetry.TraceID(ctx); traceID != "" {
 		fields["trace_id"] = traceID
 	}
-	var buf bytes.Buffer
-	writer := multipart.NewWriter(&buf)
+	parts := make([]httpbody.Part, 0, len(fields)+len(images))
 	for name, value := range fields {
-		if err := writer.WriteField(name, value); err != nil {
-			_ = writer.Close()
-			return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" build request failed", err)
-		}
+		parts = append(parts, httpbody.Field(name, value))
 	}
 	for i, image := range images {
-		// 换衣两张图都叫 image。拆衣服的第二张是人体解析标签图，上游只认 parse_mask 这个字段名。
 		name := image.field
 		if name == "" {
 			name = "image"
@@ -270,29 +315,16 @@ func (p *Provider) doMultipart(ctx context.Context, path string, fields map[stri
 		if filename == "" {
 			filename = referenceFilename(image.mimeType, i)
 		}
-		partHeader := make(textproto.MIMEHeader)
-		partHeader.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, name, filename))
-		partHeader.Set("Content-Type", image.mimeType)
-		part, err := writer.CreatePart(partHeader)
-		if err != nil {
-			_ = writer.Close()
-			return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" build request failed", err)
-		}
-		if _, err := part.Write(image.data); err != nil {
-			_ = writer.Close()
-			return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" build request failed", err)
-		}
+		parts = append(parts, httpbody.File(name, filename, image.mimeType, image.data))
 	}
-	contentType := writer.FormDataContentType()
-	if err := writer.Close(); err != nil {
+	body, err := httpbody.Multipart(parts)
+	if err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" build request failed", err)
 	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.currentBaseURL()+path, &buf)
+	httpReq, err := body.NewRequest(ctx, http.MethodPost, p.currentBaseURL()+path)
 	if err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" create request failed", err)
 	}
-	httpReq.Header.Set("Content-Type", contentType)
 	httpReq.SetBasicAuth(p.username, p.password)
 
 	resp, err := p.client.Do(httpReq)
@@ -320,7 +352,7 @@ type garmentMeta struct {
 	Name        string            `json:"garment_name"`
 	GarmentRole string            `json:"garment_role"`
 	ParseLabels map[string]string `json:"parse_labels"`
-	// BBox 是人物图上这件衣服的 [x1,y1,x2,y2]。给了 bbox 就走 garment_extraction，不需要解析标签图。
+	// BBox 给人物拆衣提供 [x1,y1,x2,y2]，可替代解析标签图。
 	BBox       []float64 `json:"bbox"`
 	BBoxFormat string    `json:"bbox_format"`
 }
@@ -329,7 +361,7 @@ type garmentMeta struct {
 func parseGarmentMeta(text string) (garmentMeta, error) {
 	var meta garmentMeta
 	if err := json.Unmarshal([]byte(text), &meta); err != nil {
-		return meta, provider.WrapNotAttempted(provider.ErrorInvalidArgument, "Vmind_wardrobe_v1.0 text part must be JSON metadata", err)
+		return meta, provider.WrapNotAttempted(provider.ErrorInvalidArgument, "wardrobe image text part must be JSON metadata", err)
 	}
 	return meta, nil
 }

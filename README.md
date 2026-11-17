@@ -16,17 +16,33 @@ rpc SynthesizeSpeech(SynthesizeSpeechRequest) returns (SynthesizeSpeechResponse)
 rpc SynthesizeSpeechStream(SynthesizeSpeechRequest) returns (stream SynthesizeSpeechResponse);
 ```
 
-## 批量查询向量
+## ASR 会话到期
 
-`Generate` 对 Cohere、百炼和 Bedrock 使用同一个批量文本查询协议。在 `input.model_traits` 中传
+AssemblyAI 的 Error 帧或 WebSocket 关闭码 `3008` 统一返回 gRPC `Unavailable`，
+`ErrorInfo.reason=ASR_SESSION_EXPIRED`，domain=`wg.modelhub`，保留原始供应商原因。
+调用方 wgHub 复用现有的有界断流恢复，重新建立 ASR 子流；ModelHub 不在同一 RPC 内自动重连。
+不新增期限字段或定时切流，其他供应商错误的分类保持原有行为。
+
+## Qwen 批量查询向量
+
+`qwen3-vl-embedding` 复用 `Generate` 的批量查询输入。在 `input.model_traits` 中传
+`{"embedding_batch":true,"input_type":"search_query"}`，在 `input.items` 中按序放置每条恰好一个非空文本的 USER message。
+Wardrobe 根据供应商上限拆分请求、合并结果。ModelHub 将每批映射为一个百炼 HTTP 请求体，关闭向量融合，
+根据百炼响应的 `index` 恢复输入顺序，并返回文本 JSON `{"embeddings":[[...],...]}`。
+
+## Cohere 批量查询向量
+
+`Generate` 的 `model=embed-v4.0` 支持显式批量 query：在 `input.model_traits` 中传
 `{"embedding_batch":true,"input_type":"search_query"}` JSON 字符串，在 `input.items` 中按序放置 USER message，
 每条恰好一个非空 text part。批量不接受图片、工具内容或文档模式。Wardrobe 去重后一次提交完整逻辑请求，
 不感知供应商单批限制，也不在超限后拆小重发。
 
-ModelHub 先校验整单条数与原始文本字节数，再按供应商容量顺序拆批。Cohere 调用 `/v2/embed` 的 `texts[]`。百炼发送 `input.contents[]` 并按响应 `index` 恢复每个分片的输入顺序。Bedrock 沿用逐条调用。任一批失败就停止，不发布部分结果。
+ModelHub 先校验完整批量请求的条数/原始文本字节数，再按 `cohere_embedding.max_batch_size` 顺序拆批，
+调用 Cohere `/v2/embed` 的 `texts[]`，并按输入顺序合并。500条默认拆为96×5+20，依次调用6次；
+任一批失败就停止，不发布部分结果。一个逻辑请求同一时刻最多执行一个批次，不放大调用方并发。
 不同RPC之间不设共享并发池；请求并发、业务排队及总deadline由调用方管理。
 
-容量配置位于对应供应商的 `cohere_embedding` 或 `dashscope_embedding`。Cohere 默认 96 条一批，百炼默认 20 条一批。以下是 Cohere 配置示例。
+配置位于每个 Cohere provider 的 `cohere_embedding`：
 
 ```yaml
 max_batch_size: 96               # 缺省96，范围1..96；供应商单次请求容量
@@ -36,26 +52,60 @@ max_request_text_bytes: 1048576  # 缺省1 MiB，最大4 MiB；批量文本的�
 
 配置由Provider启动时读取，修改需重启。超出整单条数或文本字节上限时，出站前直接拒绝。
 512条1024维向量按每个数32字节保守估算约16 MiB，最大1024条约32 MiB，为64 MiB RPC保留包装空间。
-Cohere 每批 HTTP 响应限 4 MiB，完整结果限 32 MiB。百炼沿用单次 HTTP 响应 1 MiB 上限，校验批量行数、索引和 1024 维。
+每批HTTP响应限4 MiB，完整结果限32 MiB；校验行数、1024维、有限值和null，避免文本与向量错位。
 返回文本 JSON 为 `{"embeddings":[[...],[...]]}`，单元素批次也保留复数键。
 
-Provider不新增分片重试、退避、工作协程或整单超时配置。保留原有单次HTTP 20秒超时及调用方deadline。
-瞬态失败仍由已有Service文本重试机制处理，可能重新执行整个逻辑请求，包括之前成功的分片；
-取消、超时和非瞬态错误遵守原Service规则。这里不承诺分片续算或失败后仅重算失败片。
-`cohere.embedding.batch_request` 和 `dashscope.embedding.batch_request` 记录条数、批次数，原有`provider.http`记录每次上游耗时，
+Provider不新增退避、工作协程或整单超时配置。单次HTTP上限为3秒（原20秒）：等满3秒仍没有完整响应时，
+Provider立即把同一个请求体重发一次，仍超时才返回超时；调用方已取消或deadline已到时不重发。
+这条规则对单条和每个批量分片相同，只覆盖“单次超时”。限流、5xx和连接错误不在Provider重发，
+仍由已有Service文本重试机制处理，可能重新执行整个逻辑请求，包括之前成功的分片；
+取消、最终超时和非瞬态错误遵守原Service规则。这里不承诺分片续算或失败后仅重算失败片。
+`cohere.embedding.batch_request`记录条数、批次数，原有`provider.http`记录每次上游耗时，
 不记录文本、向量或密钥。
 
 只有显式批量标志才拆分输入。普通多段文本仍合成单个输入，以 `{` 开头的商品文本仍走
-`search_document`，图片保留单图路径，继续返回 `{"embedding":[...]}`；单条调用不新增并发和总超时预算。
+`search_document`，图片保留单图路径，继续返回 `{"embedding":[...]}`；单条调用不新增并发，最坏耗时为两次3秒。
 批量容量限制只作用于批量输入；`model_traits`若非空仍须是合法JSON对象。
-先发布支持批量协议的 ModelHub，再发布统一批量入口的 Wardrobe。
+未新增RPC、模型ID、凭据或自动切换向量空间；只接入官方Cohere Provider，Bedrock/DashScope保持原实现。
+应先发布此协议，再发布Wardrobe并开启其默认关闭的 `deep_recommend.batch_embedding_enabled`。
+关闭调用方开关后新冻结恢复单条协议。本PR不修改线上配置、不部署。
+
+## Gemini 4 Argon / Carbon
+
+`models.Gemini4Argon`（`gemini-4-argon`）和 `models.Gemini4Carbon`（`gemini-4-carbon`）复用现有 Generate 文本链路，支持多模态输入、
+Function Calling 和 JSON Schema；ListModels 将它列为 MULTIMODAL，同一模型双渠道只列一条。
+示例同时登记 Gemini Developer API（API Key）和 Vertex AI（ADC，global），
+`model_routes` 中这两个模型的 `default` 均选 `Gemini_Developer_API_gemini_main`，不配置 race。
+需要切到已有 Vertex 实例时，将 default 改为 `Vertex_AI_chat`，可通过现有配置加载机制热更新；
+不增加自动 failover。已有工具会话的签名跨渠道兼容性未验证，切换渠道时使用新会话。
+
+思考仅发 LOW/MEDIUM/HIGH；DISABLED 和 MINIMAL 映射为 LOW，数字 thinking_budget 不下发。
+未指定档位时保留上游 MEDIUM 默认值。temperature/top_p 按 optional 契约原样传递，但 Argon/Carbon 会忽略它们。
+Argon/Carbon 只使用隐式缓存，不创建或引用显式缓存；即使 explicit_cache 对全部模型开启也跳过它们。
+input.caching.enabled=false 不能关闭供应商隐式缓存；缓存遥测标记为 implicit_automatic，
+实际命中仍看 usage.cached_tokens。工具调用和回执原样透传 ID；上游未返回 ID 时保持为空，
+不再用工具名代替，发回 Google 的 FunctionCall/FunctionResponse 也不写入空 ID。
+
+本次不接入 long decode，保留当前带本地补丁的 GenAI SDK；不承诺跨段续写。
+max_output_tokens 包含思考与最终输出，使用前应按场景确认预算，避免沿用小预算导致截断。
+真实账号权限、配额和响应耗时需要在部署后分别验证；本地协议测试不证明 Google API 可用。
+
+参考：[模型说明](https://aistudio.google.com/docs/models/gemini-4-argon)、
+[Carbon 模型说明](https://docs.cloud.google.cn/gemini-enterprise-agent-platform/models/gemini/4-carbon)、
+[接入规则](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/guides/gemini-4-argon)、
+[Long decode](https://aistudio.google.com/docs/long-decode?generate-content=true)。
 
 ## Google 文本自动显式缓存
 
 Nacos/AppConfig 可配置 `explicit_cache.enabled: true`（默认关闭，可通过现有配置加载机制更新）。
-可选 `explicit_cache.models: [gemini-3.7-flash, gemini-3.8-flash]` 限定启用模型；省略或空列表表示不限制 Google 文本模型。
+可选 `explicit_cache.models: [gemini-3.7-flash, gemini-3.8-flash]` 限定启用模型；省略或空列表表示不限制支持显式缓存的 Google 文本模型，Argon/Carbon 始终跳过。
 先通过独立迁移入口创建 `modelhub.prefix_cache`，再开启配置；服务启动不会创建表。
-表只保存 `cache_key`、`cached_content`、`expires_at`，不保存 prompt 或媒体正文。
+本版本须先执行 `010_prefix_cache_expiry_nullable.sql`（正式 migration 命令已包含），再更新服务。
+表仍只保存 `cache_key`、`cached_content`、`expires_at`，不保存 prompt 或媒体正文。
+普通缓存的资源有效期为24小时，使用前保留10分钟余量。
+上游明确以400拒绝创建、原因是静态前缀 token 不足时，后台写入资源名为空字符串、过期时间为 NULL 的记录。
+后续所有实例读到过期时间为 NULL 的记录后直接发送完整输入，不再创建缓存；
+标记无 TTL，重启不会丢失。前缀或模型等隔离维度变化会生成新 key；同 key 需要重试时删除该标记。
 
 Gemini/Vertex 的文本 Generate 自动将实际出站的 system instruction、工具定义与工具模式
 作为固定前缀。key 隔离部署区域、调用身份、供应商连接身份和模型；动态内容与输出 Schema
@@ -63,14 +113,16 @@ Gemini/Vertex 的文本 Generate 自动将实际出站的 system instruction、�
 明确的 `input.caching.enabled=false` 不进入自动管理。图片、视频和其他供应商不受影响。
 
 无有效缓存时，本次完整调用，后台使用 PostgreSQL 非阻塞事务 advisory lock 按 key
-协调创建，TTL 固定1小时，不自动续期。取得锁后再次查询，避免正常并发重复创建。
-创建失败不写入缓存表，不维护进程内失败冷却或 key 去重表；后续请求未命中时再次尝试，
+协调创建，TTL 固定24小时。剩余有效期不超过10分钟时，本次使用完整输入，后台创建新资源替换旧登记；
+重建由请求触发，空闲时不主动执行，不延长旧资源有效期。取得锁后再次查询，避免正常并发重复创建。
+除上述短前缀标记外，创建失败不写入缓存表，不维护进程内失败冷却或 key 去重表；后续请求未命中时再次尝试，
 同 key 创建由数据库锁协调，后台仍有并发上限。缓存查询、失效和后台创建失败日志直接记录 error。
-数据库不可用仍完整调用。缓存使用在途可能过期：只有明确指向 CachedContent 的
-不存在/过期错误，且尚未发出增量，才作废对应旧 ID、完整补发一次并安排重建。
+数据库不可用仍完整调用。缓存使用在途可能过期：托管缓存请求收到400/403/404，
+且错误消息包含 cache content、cached content、cachecontent、cachedcontent、cache_content 或 cached_content
+（忽略大小写）时，若请求未取消、流式尚未发出增量，则完整补发一次，并在后台作废对应旧 ID、重建缓存。
 普通404、限流、超时、取消和已经输出后的失败不会走该缓存补发路径。
 
-缓存创建成功但记录尚未提交时实例异常退出，可能留下未登记的上游缓存，按1小时 TTL
+缓存创建成功但记录尚未提交时实例异常退出，可能留下未登记的上游缓存，按24小时 TTL
 自然过期；数据库锁不提供跨 Google/PostgreSQL 的严格一次语义。创建任务有超时与并发上限，
 进程退出会取消后台任务。生成流结束和 usage 继续遵守现有协议，实际命中仍以 cached_tokens
 为准，不把查到注册记录等同于命中。
@@ -120,8 +172,8 @@ AWS 新加坡 dev 仅通过 VPC 内的 `modelhub.internal.dev:50053` 提供 gRPC
 调用方必须已连接 dev VPC/VPN，并且输出文件的父目录必须已存在。内部端口 `50053`
 不需要 authorization header。下面的命令默认超时为五分钟；如要替换已有输出文件，
 追加 `--force`。每次成功到达服务的调用都会产生一次供应商图片生成费用。
-`--model` 可选值为 `gpt-image-2`、`gpt-image-2.5-flare`、
-`gpt-image-2.5-sunburst`，省略时保持兼容并使用 `gpt-image-2`。
+`--model` 可选值为 `gpt-image-2`、`gpt-image-2.5-flare`、`gpt-image-2.5-sunburst`、
+`gpt-image-2.6-flare`、`gpt-image-2.6-sunburst`，默认使用 `gpt-image-2`。
 
 ```bash
 ./scripts/examples/gpt-image-2.sh \
@@ -231,7 +283,7 @@ go run ./cmd/g6-smoke -image /path/to/portrait.jpg -out artifacts/g6-smoke
 该命令在进程内启动候选 ModelHub gRPC 服务，检查上述七个 ID 的真实上游结果，并保存 JSON 和透明 PNG；不修改线上部署或 Nacos。FaceSim 使用同图自比。耗时包含适配器和上游请求，不能代表跨区域调用延迟。
 
 `models.Flux2Klein9B` 当前仅支持带参考图的 image edit（i2i），须绑定独立 OpenAI Images 实例。
-`models.GPTImage2` / `models.GPTImage25Flare` / `models.GPTImage25Sunburst` 走 OpenAI Images API（generations/edits），示例与审计目标实例键都是 `AIG_openai`（`https://api.aig-ai.com/v1`），不能并入 Gemini generateContent 生图实例。
+`gpt-image-2` 及 2.5 / 2.6 的 Flare、Sunburst 都走 `AIG_openai`（`https://api.aig-ai.com/v1`）的 Images API。文生图和参考图编辑都从 `GenerateRequest.output.image` 原样透传可选的 `quality`。2.6 两个模型还透传可选的 `complexity`。省略字段时由上游选用默认值。
 `models.GeminiNanoBanana21`（`gemini-nano-banana-2.1`）走 Vertex 的现有 Generate 图片链路，示例实例是 `Vertex_AI_nano_banana`。调用方使用 `request.model` 加 `OutputSpec.image`。Vertex 生图固定 `locations/global`，必须显式配置 `vertexai.project`，不从上游错误文案中探测项目。分辨率原样传 `1K` / `2K` / `4K`；思考推荐 `MINIMAL` / `MEDIUM` / `HIGH`，`LOW` 和 `temperature` 原样下发，由上游决定是否接受。
 
 ### Vertex 文本、生图与 Google rerank 统一 ADC

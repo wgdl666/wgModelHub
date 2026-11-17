@@ -202,7 +202,8 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 	if !ok {
 		t.Fatal("missing provider wgdl_image")
 	}
-	if len(vworld.Models) != 3 || vworld.Models[0] != models.VWorldWardrobe10 || vworld.Models[1] != models.VWorldOutfit10 || vworld.Models[2] != models.VWorldBodyModel10 {
+	if len(vworld.Models) != 4 || vworld.Models[0] != models.VWorldWardrobe10 || vworld.Models[1] != models.VWorldClothGen10 ||
+		vworld.Models[2] != models.VWorldOutfit10 || vworld.Models[3] != models.VWorldBodyModel10 {
 		t.Fatalf("wgdl_image models=%v", vworld.Models)
 	}
 	if vworld.VWorldImage == nil ||
@@ -220,7 +221,10 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 	if !ok {
 		t.Fatal("missing provider AIG_openai")
 	}
-	wantGPTModels := []string{models.GPT56Sol, models.GPT56Luna, models.GPT56Terra, models.GPT6Astra, models.GPT6Sol, models.GPT6Luna, models.GPT61Sol, models.GPTImage2, models.GPTImage25Flare, models.GPTImage25Sunburst}
+	wantGPTModels := []string{
+		models.GPT56Sol, models.GPT56Luna, models.GPT56Terra, models.GPT6Astra, models.GPT6Sol, models.GPT6Luna, models.GPT61Sol,
+		models.GPTImage2, models.GPTImage25Flare, models.GPTImage25Sunburst, models.GPTImage26Flare, models.GPTImage26Sunburst,
+	}
 	if !slices.Equal(asyncGPT.Models, wantGPTModels) {
 		t.Fatalf("AIG_openai models=%v, want %v", asyncGPT.Models, wantGPTModels)
 	}
@@ -233,8 +237,8 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 	if !ok {
 		t.Fatal("missing provider Vertex_AI_chat")
 	}
-	if len(vertexChat.Models) != 2 || vertexChat.Models[0] != models.Gemini20Flash001 || vertexChat.Models[1] != models.Gemini35FlashLite {
-		t.Fatalf("Vertex_AI_chat models=%v, want [%q %q]", vertexChat.Models, models.Gemini20Flash001, models.Gemini35FlashLite)
+	if !slices.Equal(vertexChat.Models, []string{models.Gemini20Flash001, models.Gemini35FlashLite, models.Gemini4Argon, models.Gemini4Carbon}) {
+		t.Fatalf("Vertex_AI_chat models=%v", vertexChat.Models)
 	}
 	vertexRace, ok := parsed.Providers["Vertex_AI_chat_race"]
 	if !ok {
@@ -275,7 +279,7 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 	if !ok {
 		t.Fatal("missing provider Gemini_Developer_API_gemini_main")
 	}
-	for _, want := range []string{models.Gemini38Flash} {
+	for _, want := range []string{models.Gemini38Flash, models.Gemini4Argon, models.Gemini4Carbon} {
 		found := false
 		for _, m := range gemini.Models {
 			if m == want {
@@ -285,6 +289,12 @@ func TestExampleYAMLUsesExactlyKnownModelIDs(t *testing.T) {
 		}
 		if !found {
 			t.Fatalf("Gemini_Developer_API_gemini_main missing %q in %v", want, gemini.Models)
+		}
+	}
+	for _, model := range []string{models.Gemini4Argon, models.Gemini4Carbon} {
+		route := parsed.ModelRoutes[model]
+		if route.Default != "Gemini_Developer_API_gemini_main" || len(route.Race) != 0 {
+			t.Fatalf("%s must use Developer API by default without racing: %#v", model, route)
 		}
 	}
 	hubChat, ok := parsed.Providers["阿里云百炼_openai_hub_chat"]

@@ -2,10 +2,16 @@ package modelhub
 
 import (
 	"context"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/wgdl666/wgModelHub/config"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/infra/factory"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/internal/taskstore"
 	"github.com/wgdl666/wgModelHub/models"
@@ -21,6 +27,135 @@ import (
 // newTestService 为单测构造带 LiveConfig 的 Service，与生产 Listen 路径一致。
 func newTestService(cfg config.Config, providers map[string]provider.Set, tasks taskstore.Store) *Service {
 	return New(config.NewLiveConfig(cfg), providers, tasks)
+}
+
+func TestVMindModelsUseModelGatewayAfterModelListReload(t *testing.T) {
+	const chatModel, decisionModel = "registered-chat-v2", "registered-decision-v2"
+	decisionPNG := []byte("\x89PNG\r\n\x1a\n")
+	const decisionResult = `{"prediction":{"label":"标准商品图","probability":0.8},"options":[],"timings_ms":{"total":2}}`
+	t.Setenv("MODEL_GATEWAY_API_TOKEN", "test-gateway-token")
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+		if r.Method != http.MethodPost || r.Header.Get("Authorization") != "Bearer test-gateway-token" {
+			t.Error("VMind calls must use the injected gateway token")
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/v1/gateway/requests/") {
+			// 文本模型误用图片能力也应到网关受理边界被拒绝，不做逐次预查询。
+			http.Error(w, `{"error":{"code":"invalid_protocol"}}`, http.StatusBadRequest)
+			return
+		}
+
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Errorf("unexpected VMind gateway path %s", r.URL.Path)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		var request struct {
+			Model    string          `json:"model"`
+			Messages json.RawMessage `json:"messages"`
+			Traits   json.RawMessage `json:"model_traits"`
+			Stream   bool            `json:"stream"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatal(err)
+		}
+		if request.Model == models.VWorldOutfit10 {
+			http.Error(w, `{"error":{"code":"invalid_protocol"}}`, http.StatusBadRequest)
+			return
+		}
+		if request.Model == decisionModel {
+			if !strings.Contains(string(request.Messages), "data:image/png;base64,iVBORw0KGgo=") || string(request.Traits) != `{"task":"image_type"}` {
+				t.Error("Decision input must reach the gateway without a protocol lookup")
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]string{"content": decisionResult}, "finish_reason": "stop"}}})
+			return
+		}
+		if request.Model != chatModel || !strings.Contains(string(request.Messages), "data:image/png;base64,AQID") {
+			t.Error("gateway request must preserve the model ID and inline image")
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		_, _ = io.WriteString(w, `{"id":"test-vlm","choices":[{"message":{"content":"Red"},"finish_reason":"stop"}]}`)
+	}))
+	defer gateway.Close()
+
+	ctx := context.Background()
+	const instance = "wgdl_model_gateway_exhibition"
+	mediaProvider := config.ProviderConfig{
+		Models: []string{models.VWorldOutfit10, models.VWorldOutfitVideo10},
+		VMindGateway: &config.VMindGatewayProviderConfig{
+			BaseURL: gateway.URL + "/", PollInterval: 1,
+			ResultStorage: config.ObjectStorageConfig{
+				Provider: "s3", Region: "us-east-2", Bucket: "test-results",
+				AccessKeyID: "test-key", AccessKeySecret: "test-secret",
+			},
+		},
+	}
+	cfg := config.Config{
+		Logfire:   config.LogfireConfig{Token: "t", Env: "test", Service: "wg-model-hub"},
+		Database:  config.DatabaseConfig{DSN: "postgres://unused"},
+		Providers: map[string]config.ProviderConfig{instance: mediaProvider},
+	}
+	live := config.NewLiveConfig(cfg)
+	sets, err := factory.BuildLive(ctx, live)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := New(live, sets, nil)
+	if _, err := service.resolve(chatModel, config.CapabilityText); err == nil {
+		t.Fatal("VLM must require an explicit model registration")
+	}
+	mediaProvider.Models = []string{models.VWorldOutfit10, models.VWorldOutfitVideo10, chatModel, decisionModel}
+	cfg.Providers = map[string]config.ProviderConfig{instance: mediaProvider}
+	raw, err := yaml.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	live.ApplyYAML(string(raw))
+	// 输出契约在同一次网关受理中校验，不能靠 Service 的模型名单或额外查询决定。
+	for _, model := range []string{chatModel, decisionModel} {
+		req := textRequest(model, "test")
+		if _, err := sets[instance].Image.GenerateImage(ctx, model, req); err == nil {
+			t.Fatal("text model accepted image output")
+		}
+	}
+	if _, err := sets[instance].Text.Generate(ctx, models.VWorldOutfit10, textRequest(models.VWorldOutfit10, "test")); err == nil {
+		t.Fatal("image model accepted text output")
+	}
+
+	request := textRequest(chatModel, "Which color is this?")
+	message := request.Input.Items[0].GetMessage()
+	message.Parts = append(message.Parts, &modelhubv2.ContentPart{
+		Content: &modelhubv2.ContentPart_Image{Image: &modelhubv2.Media{
+			MimeType: "image/png", Source: &modelhubv2.Media_Data{Data: []byte{1, 2, 3}},
+		}},
+	})
+	stream := &generateRecorder{ctx: ctx}
+	if err := service.Generate(request, stream); err != nil {
+		t.Fatal(err)
+	}
+	if len(stream.events) != 1 || !stream.events[0].GetFinal() ||
+		len(stream.events[0].GetItems()) != 1 || stream.events[0].GetItems()[0].GetText() != "Red" {
+		t.Fatal("ModelHub must return a single final text event for image understanding")
+	}
+
+	decision := textRequest(decisionModel, "")
+	decision.Input.ModelTraits = `{"task":"image_type"}`
+	decision.Input.Items[0].GetMessage().Parts = []*modelhubv2.ContentPart{{
+		Content: &modelhubv2.ContentPart_Image{Image: &modelhubv2.Media{
+			MimeType: "image/png", Source: &modelhubv2.Media_Data{Data: decisionPNG},
+		}},
+	}}
+	stream = &generateRecorder{ctx: ctx}
+	if err := service.Generate(decision, stream); err != nil {
+		t.Fatal(err)
+	}
+	if len(stream.events) != 1 || !stream.events[0].GetFinal() ||
+		len(stream.events[0].GetItems()) != 1 || stream.events[0].GetItems()[0].GetText() != decisionResult {
+		t.Fatal("ModelHub must return the native Decision prediction as a final text event")
+	}
 }
 
 func TestServiceHotReloadModelsEnterResolveAndListModels(t *testing.T) {

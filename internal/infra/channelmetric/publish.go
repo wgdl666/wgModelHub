@@ -30,7 +30,11 @@ func New(registerer prometheus.Registerer) (*Publisher, error) {
 func (p *Publisher) Publish(providers map[string]config.ProviderConfig) error {
 	next := make([]prometheus.Labels, 0, len(providers))
 	for name, provider := range providers {
-		id, err := channel.Of(provider)
+		resolved, _, err := provider.ResolveVisionGateway(providers)
+		if err != nil {
+			return fmt.Errorf("provider %s: %w", name, err)
+		}
+		id, err := channel.Of(resolved)
 		if err != nil {
 			return fmt.Errorf("provider %s: %w", name, err)
 		}

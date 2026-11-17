@@ -196,6 +196,37 @@ func TestListModelsRejectsUnknownCategory(t *testing.T) {
 	}
 }
 
+func TestListModelsListsGemini4OnceWithEitherDefaultChannel(t *testing.T) {
+	for _, model := range []string{models.Gemini4Argon, models.Gemini4Carbon} {
+		for _, selected := range []string{"gemini", "vertex"} {
+			t.Run(model+"/"+selected, func(t *testing.T) {
+				service := newTestService(config.Config{
+					Providers: map[string]config.ProviderConfig{
+						"gemini": {Models: []string{model}, Gemini: &config.GeminiProviderConfig{APIKey: "k"}},
+						"vertex": {Models: []string{model}, VertexAI: &config.VertexAIProviderConfig{Project: "p"}},
+					},
+					ModelRouteOverrides: map[string]config.ModelRoute{model: {Default: selected}},
+				}, nil, nil)
+				for _, filter := range []modelhubv2.ModelCategory{
+					modelhubv2.ModelCategory_MODEL_CATEGORY_UNSPECIFIED,
+					modelhubv2.ModelCategory_MODEL_CATEGORY_MULTIMODAL,
+				} {
+					resp, err := service.ListModels(context.Background(), &modelhubv2.ListModelsRequest{Category: filter})
+					if err != nil {
+						t.Fatal(err)
+					}
+					if len(resp.Models) != 1 || resp.Models[0].Model != model || resp.Models[0].Category != modelhubv2.ModelCategory_MODEL_CATEGORY_MULTIMODAL {
+						t.Fatalf("model must have one multimodal entry: %v", resp)
+					}
+				}
+				if routes := service.live.Load(); routes.ModelRoutes()[model] != selected || len(routes.RaceProviders(model)) != 0 {
+					t.Fatal("model must use only the selected default channel")
+				}
+			})
+		}
+	}
+}
+
 func listModelIDs(resp *modelhubv2.ListModelsResponse) []string {
 	out := make([]string, 0, len(resp.GetModels()))
 	for _, item := range resp.GetModels() {

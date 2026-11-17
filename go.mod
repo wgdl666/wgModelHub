@@ -160,10 +160,13 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.63.0
 	github.com/aws/aws-sdk-go-v2/service/sts v1.51.0
 	github.com/tencentcloud/tencentcloud-speech-sdk-go v1.0.19
-	github.com/wgdl666/kangaroo/callmeta v0.1.0
+	github.com/wgdl666/kangaroo/callmeta v0.2.0
 )
 
-require github.com/satori/go.uuid v1.2.0 // indirect
+require (
+	github.com/satori/go.uuid v1.2.0 // indirect
+	github.com/wgdl666/kangaroo/bizerr v0.0.0-20260805125009-85ddf2d025e0
+)
 
 require (
 	github.com/aliyun/alibabacloud-oss-go-sdk-v2 v1.5.3
@@ -171,3 +174,5 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.18.15 // indirect
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.79.2
 )
+
+replace google.golang.org/genai v1.43.0 => ./third_party/go-genai

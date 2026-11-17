@@ -32,6 +32,14 @@ func (_c *PrefixCacheCreate) SetExpiresAt(v time.Time) *PrefixCacheCreate {
 	return _c
 }
 
+// SetNillableExpiresAt sets the "expires_at" field if the given value is not nil.
+func (_c *PrefixCacheCreate) SetNillableExpiresAt(v *time.Time) *PrefixCacheCreate {
+	if v != nil {
+		_c.SetExpiresAt(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *PrefixCacheCreate) SetID(v string) *PrefixCacheCreate {
 	_c.mutation.SetID(v)
@@ -75,9 +83,6 @@ func (_c *PrefixCacheCreate) check() error {
 	if _, ok := _c.mutation.CachedContent(); !ok {
 		return &ValidationError{Name: "cached_content", err: errors.New(`ent: missing required field "PrefixCache.cached_content"`)}
 	}
-	if _, ok := _c.mutation.ExpiresAt(); !ok {
-		return &ValidationError{Name: "expires_at", err: errors.New(`ent: missing required field "PrefixCache.expires_at"`)}
-	}
 	return nil
 }
 
@@ -120,7 +125,7 @@ func (_c *PrefixCacheCreate) createSpec() (*PrefixCache, *sqlgraph.CreateSpec) {
 	}
 	if value, ok := _c.mutation.ExpiresAt(); ok {
 		_spec.SetField(prefixcache.FieldExpiresAt, field.TypeTime, value)
-		_node.ExpiresAt = value
+		_node.ExpiresAt = &value
 	}
 	return _node, _spec
 }

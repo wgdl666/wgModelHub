@@ -10,7 +10,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// RewriteYAML 只改 providers 的键，以及 model_routes 里指向这些键的字符串、default 和 race。
+// RewriteYAML 只改 providers 的键及 model_routes、vision_gateway 对这些键的引用。
 // 其余节点原样保留，包括未知字段、注释和凭据。输入输出都是本地 YAML，不访问网络。
 // 新键冲突、路由指向不存在的实例，或一份文件里有多段文档时拒绝写出。
 func RewriteYAML(content []byte) ([]byte, map[string]string, error) {
@@ -43,8 +43,18 @@ func RewriteYAML(content []byte) ([]byte, map[string]string, error) {
 		if len(renames) != 0 {
 			return nil, nil, fmt.Errorf("providers are missing")
 		}
-	} else if err := renameMappingKeys(providers, renames); err != nil {
-		return nil, nil, err
+	} else {
+		if err := renameMappingKeys(providers, renames); err != nil {
+			return nil, nil, err
+		}
+		for i := 1; i < len(providers.Content); i += 2 {
+			// 网关引用也要随实例键改名，否则发布后无法找到该实例的地址。
+			if ref := mappingChild(providers.Content[i], "vision_gateway"); ref != nil && strings.TrimSpace(ref.Value) != "" {
+				if err := replaceProviderScalar(ref, renames); err != nil {
+					return nil, nil, fmt.Errorf("vision_gateway: %w", err)
+				}
+			}
+		}
 	}
 	if routes := mappingChild(root, "model_routes"); routes != nil {
 		if err := renameRoutes(routes, renames); err != nil {

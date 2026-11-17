@@ -124,6 +124,9 @@ func (s *Service) Generate(request *modelhubv2.GenerateRequest, stream modelhubv
 		telemetry.RecordError(ctx, statusErr)
 		return statusErr
 	}
+	if err := injectDrillFault(ctx, request.GetModel()); err != nil {
+		return err
+	}
 	// 竞速只由 model_routes.race 决定，调用方不传开关。没配名单就走原来的单路。
 	if capability == config.CapabilityText {
 		if names := s.live.Load().RaceProviders(request.GetModel()); len(names) >= 2 {
@@ -166,7 +169,7 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 	// 供应商耗时仍由下方 stampCallTiming 用 provider 边界重写，Finish 时 UpdateResult 一并落库。
 	callStarted := time.Now()
 	rec := s.baseRecord(ctx, request.GetBusinessMetadata(), callledger.OperationGenerateText, callledger.CapabilityText, binding.model, binding.provider, callStarted)
-	// 输入快照必须在缓存策略改写请求之前，保留调用方原始参数。
+	// 输入快照保留调用方原始参数；适配器只读该请求。
 	var inBlobs []callledger.Blob
 	rec.InputPayload, inBlobs = callledger.BuildGenerateInput(request)
 	var providerErr error
@@ -174,16 +177,21 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 	tracked := s.track(ctx, &rec, inBlobs)
 	defer s.endTrack(tracked, &rec, &providerErr, &outBlobs)
 	announceCall(stream, tracked, rec.CallID)
-	// 应用文本缓存策略（普通缺省开启 / endpoint-bound Ark 隐式自动）；返回实际生效遥测模式。
+	// 只计算缓存遥测模式；普通缺省开启 / endpoint-bound Ark 隐式自动由适配器处理。
 	// 实例改名后 binding.provider 是新键，类型和 endpoint 以当前配置为准，不读启动快照。
 	providerCfg, _ := s.providerConfig(binding.provider)
-	cachingMode := applyTextCachingPolicy(request, providerCfg)
+	cachingMode := textCachingModeForProvider(request, providerCfg)
 	streamMode := request.GetOutput().GetStream()
 	labels := llmmetric.Labels{Model: binding.model, Provider: binding.provider, Stream: streamMode}
 	// 文本能力已路由成功：真实供应商调用前计一次 request。
 	llmmetric.RecordRequest(ctx, labels)
 	defer func() {
-		labels.Outcome = llmmetric.MapOutcome(retErr)
+		outcomeErr := retErr
+		// gRPC 的流关闭定时器可能先把 ctx 标成 Canceled；按实际截止时间识别超时，不能排除出成功率分母。
+		if deadline, ok := ctx.Deadline(); retErr != nil && ok && !time.Now().Before(deadline) {
+			outcomeErr = context.DeadlineExceeded
+		}
+		labels.Outcome = llmmetric.MapOutcome(outcomeErr)
 		llmmetric.RecordTerminal(ctx, labels, time.Since(metricStarted))
 	}()
 
@@ -197,10 +205,10 @@ func (s *Service) generateText(ctx context.Context, binding binding, request *mo
 			if event == nil || event.GetFinal() {
 				return nil
 			}
-			// 竞速在首字出现时才知道赢家；指标和账本从这一刻改记赢家，不再记 default。
+			// 账本保留真实赢家；逻辑调用指标始终归属路由入口，与 request 使用同一标签。
+			// 否则同供应商的 race 分支会拆成不同成功率，且请求数与终态数无法对应。
 			if raced, ok := binding.set.Text.(*raceText); ok {
 				if winner := raced.winner(); winner != "" {
-					labels.Provider = winner
 					rec.Provider = winner
 				}
 			}
@@ -449,6 +457,15 @@ func (s *Service) generateImage(ctx context.Context, binding binding, request *m
 	tracked := s.track(ctx, &rec, inBlobs)
 	defer s.endTrack(tracked, &rec, &providerErr, &outBlobs)
 	announceCall(stream, tracked, rec.CallID)
+	// 成功率口径与文本一致：调用方主动取消（如试穿主备竞速输掉的一路）单列 cancelled，不进成功率分母；
+	// 超过截止时间仍算失败。providerErr 涵盖调用失败和空图校验失败；回传调用方失败不算模型失败。
+	defer func() {
+		outcomeErr := providerErr
+		if deadline, ok := ctx.Deadline(); outcomeErr != nil && ok && !time.Now().Before(deadline) {
+			outcomeErr = context.DeadlineExceeded
+		}
+		llmmetric.RecordImageTerminal(ctx, binding.model, binding.provider, llmmetric.MapOutcome(outcomeErr))
+	}()
 	callStarted = time.Now()
 	event, err := binding.set.Image.GenerateImage(ctx, binding.model, request)
 	callFinished := time.Now()
@@ -517,7 +534,8 @@ func (s *Service) resolve(model, capability string) (binding, error) {
 	}
 	// 连接在启动时建好。models 热更新不重建客户端；实例改名时按连接参数找回原客户端。
 	// Vertex 图片是否放行看当前请求的真实模型，不看实例列表里有没有别的生图 ID。
-	if !config.ProviderSupports(providerCfg, capability) || !config.VertexImageRequestAllowed(providerCfg, model, capability) {
+	allowed := config.ProviderSupports(providerCfg, capability) && config.VertexImageRequestAllowed(providerCfg, model, capability)
+	if !allowed {
 		return binding{}, provider.Errorf(
 			provider.ErrorInvalidArgument,
 			"model %s provider %s does not support output %s",

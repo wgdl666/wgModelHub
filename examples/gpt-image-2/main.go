@@ -62,7 +62,7 @@ func parseArgs(args []string) (clientConfig, *smokeFailure) {
 
 func isSupportedImageModel(model string) bool {
 	switch model {
-	case models.GPTImage2, models.GPTImage25Flare, models.GPTImage25Sunburst:
+	case models.GPTImage2, models.GPTImage25Flare, models.GPTImage25Sunburst, models.GPTImage26Flare, models.GPTImage26Sunburst:
 		return true
 	default:
 		return false

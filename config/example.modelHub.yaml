@@ -17,7 +17,7 @@ database:
 # 仅 Gemini/Vertex 文本 Generate；TTL 固定1小时，后台创建，不自动续期。
 explicit_cache:
   enabled: false
-  # 可选：仅为指定真实模型启用；省略或空列表表示不限制 Google 文本模型。
+  # 可选：仅为指定真实模型启用；省略或空列表表示不限制支持显式缓存的 Google 文本模型。Argon/Carbon 始终跳过。
   models: [gemini-3.7-flash, gemini-3.8-flash]
 # 每个 provider 实例声明其承载的真实模型 ID；同一模型可被多个实例声明，但必须由顶层 model_routes 显式选定当前走哪一个。
 # 字面量清单见 models 包，调用方引用 github.com/wgdl666/wgModelHub/models，禁止在这里发明 alias。
@@ -30,7 +30,7 @@ providers:
       no_auth: true
   Gemini_Developer_API_gemini_main:
     # 3.8 与既有 Gemini 文本共用这一实例。3.5-flash-lite 不放这里：它的签名不能拿去和 Vertex 竞速。
-    models: [gemini-3.5-flash, gemini-3.1-pro-preview, gemini-2.5-flash, gemini-3.7-flash, gemini-3.8-flash]
+    models: [gemini-3.5-flash, gemini-3.1-pro-preview, gemini-2.5-flash, gemini-3.7-flash, gemini-3.8-flash, gemini-4-argon, gemini-4-carbon]
     gemini:
       api_key: "${GEMINI_API_KEY}"
       proxy_url: ""
@@ -60,7 +60,7 @@ providers:
   # Vertex 文本与生图统一 ADC：不填 api_key；运行环境提供凭据文件，与 google_rerank 共用。
   # GOOGLE_APPLICATION_CREDENTIALS 指向只读凭据文件；文本与生图均固定 locations/global。
   Vertex_AI_chat:
-    models: [gemini-2.0-flash-001, gemini-3.5-flash-lite]
+    models: [gemini-2.0-flash-001, gemini-3.5-flash-lite, gemini-4-argon, gemini-4-carbon]
     vertexai:
       project: "${VERTEX_PROJECT}"
   # 意图竞速的第二路。与 Vertex_AI_chat 同一个项目、同一条 locations/global 路径，签名才能互通。
@@ -248,7 +248,7 @@ providers:
     gemini:
       api_key: "${AWS_GEMINI_API_KEY}"
       # base_url 留空：google.golang.org/genai BackendGeminiAPI 默认官方 endpoint。
-  # GPT Image 2 / 2.5：实例键是 AIG_openai（api.aig-ai.com OpenAI-compatible Images）；已实测 flare/sunburst generations。不要再复制旧键 async_gpt_image。
+  # GPT Image 2 / 2.5 / 2.6 复用 AIG_openai 的 OpenAI-compatible Images；不要再复制旧键 async_gpt_image。
   # 无参考图 generations、有参考图 edits；不能并入上方 Gemini generateContent 生图实例，也不能与 FLUX.2 共用。
   # GPT 文本复用此实例的 Chat Completions；完整模型 ID 已通过供应商清单与文本调用核验。
   AIG_openai:
@@ -263,6 +263,8 @@ providers:
       - gpt-image-2
       - gpt-image-2.5-flare
       - gpt-image-2.5-sunburst
+      - gpt-image-2.6-flare
+      - gpt-image-2.6-sunburst
     openai:
       api_key: "${ASYNC_GPT_IMAGE_API_KEY}"
       base_url: https://api.aig-ai.com/v1
@@ -272,15 +274,26 @@ providers:
     openai:
       api_key: "${FLUX2_KLEIN_API_KEY}"
       base_url: https://uu847021-9507-702f766a.bjb2.seetacloud.com:8443/flux2/v1
-  # 薇光点亮公网 FLUX：拆衣服 Vmind_wardrobe_v1.0、虚拟换衣 Vmind_outfit_v1.0、体模 Vmind_bodymodel_v1.0。
+  # 薇光点亮公网 FLUX：人物拆衣和单件商品图分别使用独立的模型 ID。
   # 体模走 /v1/images/body_model，提示词和 1024x1536 由上游固定，与拆衣服/换衣不能共用请求字段。
   # Basic Auth；不要写内网 10.200.* 或本机 127.0.0.1，也不要并入上方 SeeTacloud FLUX.2 实例。
   wgdl_image:
-    models: [Vmind_wardrobe_v1.0, Vmind_outfit_v1.0, Vmind_bodymodel_v1.0]
+    models: [Vmind_wardrobe_v1.0, Vmind_cloth_gen_v1.0, Vmind_outfit_v1.0, Vmind_bodymodel_v1.0]
     vworld_image:
       base_url: https://vmind-image.model.wgdl.tech
       username: wgdl
       password: "${VWORLD_IMAGE_PASSWORD}"
+  # 美东路演的对话与图片预测复用 Go 网关入口，凭据由 MODEL_GATEWAY_API_TOKEN 注入。
+  wgdl_model_gateway_exhibition:
+    models: [Vmind_dream_v1, Vmind_decision_v1]
+    model_gateway:
+      base_url: http://model-gateway.tomirro.prod:18580
+      token: "${MODEL_GATEWAY_API_TOKEN}"
+      poll_interval: 1
+      result_storage:
+        provider: s3
+        region: us-east-2
+        bucket: model-gateway-results-example
   # Photoroom Remove Background：官方 POST /v1/segment；models 常量仅作路由，不发上游。
   # proxy_url 未配置时保持原有默认 HTTP transport 行为；CN 等需经出口代理访问官方 SDK 时再填（与 Gemini 同语义，属连接资源，变更须重启）。
   Photoroom:
@@ -291,7 +304,7 @@ providers:
       proxy_url: ""
   # 镜头校正独立服务；国内用此地址，美东路演用 aws-exhibition-lens.providers.yaml 的 VPC 前缀。
   wgdl_lens_correction:
-    models: [lens-distortion-correction]
+    models: [Vmind_lens_distortion_correction_v1.0]
     lens_distortion_correction:
       base_url: https://mirror-lens.model.wgdl.tech
   # 国内自建抠图。两个模型 ID 分别对应人物 /api/segment 与商品主体 /api/segment_subject。
@@ -304,7 +317,7 @@ providers:
       subject_method: person-bria-rmbg
   # 自建人体检测。conf/iou 固定在供应商代码里。
   aws_g6_human_yolo:
-    models: [human-yolo]
+    models: [Vmind_human_yolo_v1.0]
     human_yolo:
       base_url: http://172.31.43.7:18280/human-yolo
   # 自建人体解析。username/password 成对省略则匿名。国内和新加坡继续用这个 ID。
@@ -351,9 +364,6 @@ providers:
     dashscope_embedding:
       base_url: https://dashscope.aliyuncs.com/api/v1
       api_key: "${DASHSCOPE_API_KEY}"
-      max_batch_size: 20
-      max_request_texts: 512
-      max_request_text_bytes: 1048576
   Cohere_embedding:
     models: [embed-v4.0]
     cohere_embedding:
@@ -478,9 +488,14 @@ providers:
       proxy_url: ""
       auth_header: x-goog-api-key
       poll_interval: 5
-# 多 provider 声明同一真实模型时必须显式选定；切换渠道只改这里并重启，无自动 failover。
+# 多 provider 声明同一真实模型时必须显式选定；已有实例间切换渠道只改这里，可热更新，无自动 failover。
 # 切到 AWS workflow 备用渠道（底层直连 Google 官方 Gemini）时改为 Gemini_Developer_API_aws_gemini。
 model_routes:
+  # Argon/Carbon 双渠道接入，默认只走 Developer API，不配 race。
+  gemini-4-argon:
+    default: Gemini_Developer_API_gemini_main
+  gemini-4-carbon:
+    default: Gemini_Developer_API_gemini_main
   gemini-2.5-flash-image: AIG_gemini
   gemini-3.1-flash-image: AIG_gemini
   # 两路都是同一个 Vertex 项目。非流式走 default，流式按首字竞速。

@@ -180,7 +180,7 @@ func convertImageResponse(response *genaisdk.GenerateContentResponse) *modelhubv
 			if part.InlineData != nil && len(part.InlineData.Data) > 0 {
 				result.Items = append(result.Items, &modelhubv2.OutputItem{Item: &modelhubv2.OutputItem_Image{Image: &modelhubv2.Media{
 					MimeType: part.InlineData.MIMEType,
-					Source:   &modelhubv2.Media_Data{Data: append([]byte(nil), part.InlineData.Data...)},
+					Source:   &modelhubv2.Media_Data{Data: part.InlineData.Data},
 				}}})
 			}
 		}

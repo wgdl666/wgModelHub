@@ -15,7 +15,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
-	"github.com/wgdl666/wgModelHub/config"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/provider"
@@ -62,44 +61,10 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 	if model != models.CohereEmbedV4Bedrock {
 		return nil, provider.Errorf(provider.ErrorInvalidArgument, "bedrock embedding does not serve model %q", model)
 	}
-	texts, err := provider.EmbeddingBatchTexts(request.GetInput(), config.DefaultEmbeddingRequestTexts, config.DefaultEmbeddingRequestTextBytes)
+	payload, err := bedrockPayload(request)
 	if err != nil {
 		return nil, err
 	}
-	result := make(map[string]any, 1)
-	if texts == nil {
-		payload, err := bedrockPayload(request)
-		if err != nil {
-			return nil, err
-		}
-		vector, err := p.embed(ctx, model, payload)
-		if err != nil {
-			return nil, err
-		}
-		result["embedding"] = vector
-	} else {
-		// 保留已有 Bedrock 单条协议，调用方只需认识统一的批量 RPC。
-		vectors := make([][]float64, 0, len(texts))
-		for _, text := range texts {
-			if err := ctx.Err(); err != nil {
-				return nil, provider.Wrap(provider.ErrorTimeout, "bedrock embedding canceled", err)
-			}
-			vector, err := p.embed(ctx, model, bedrockTextPayload(text))
-			if err != nil {
-				return nil, err
-			}
-			vectors = append(vectors, vector)
-		}
-		result["embeddings"] = vectors
-	}
-	encoded, err := json.Marshal(result)
-	if err != nil {
-		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" encode embedding", err)
-	}
-	return provider.TextFinalEvent(string(encoded), nil, "", "", nil), nil
-}
-
-func (p *Provider) embed(ctx context.Context, model string, payload map[string]any) ([]float64, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" encode embedding", err)
@@ -120,7 +85,11 @@ func (p *Provider) embed(ctx context.Context, model string, payload map[string]a
 	if len(vector) != vectorDim {
 		return nil, provider.Errorf(provider.ErrorInvalidResponse, "bedrock embedding dimension is %d, want %d", len(vector), vectorDim)
 	}
-	return vector, nil
+	encoded, err := json.Marshal(map[string]any{"embedding": vector})
+	if err != nil {
+		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" encode embedding", err)
+	}
+	return provider.TextFinalEvent(string(encoded), nil, "", "", nil), nil
 }
 
 func (p *Provider) GenerateStream(ctx context.Context, model string, request *modelhubv2.GenerateRequest, emit provider.EmitEvent) (*modelhubv2.GenerateEvent, error) {
@@ -152,8 +121,8 @@ func bedrockPayload(request *modelhubv2.GenerateRequest) (map[string]any, error)
 			mime = "image/jpeg"
 		}
 		return map[string]any{
-			"input_type":      "search_document",
-			"images":          []string{"data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(data)},
+			"input_type": "search_document",
+			"images":     []string{"data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(data)},
 			"embedding_types": []string{"float"}, "output_dimension": vectorDim,
 		}, nil
 	}
@@ -161,10 +130,6 @@ func bedrockPayload(request *modelhubv2.GenerateRequest) (map[string]any, error)
 	if text == "" {
 		return nil, provider.New(provider.ErrorInvalidArgument, "embedding requires an image or text")
 	}
-	return bedrockTextPayload(text), nil
-}
-
-func bedrockTextPayload(text string) map[string]any {
 	inputType := "search_query"
 	if strings.HasPrefix(text, "{") {
 		inputType = "search_document"
@@ -172,7 +137,7 @@ func bedrockTextPayload(text string) map[string]any {
 	return map[string]any{
 		"input_type": inputType, "texts": []string{text},
 		"embedding_types": []string{"float"}, "output_dimension": vectorDim,
-	}
+	}, nil
 }
 
 func decodeFloatEmbedding(raw []byte) ([]float64, error) {

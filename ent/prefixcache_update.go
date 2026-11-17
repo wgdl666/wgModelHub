@@ -57,6 +57,12 @@ func (_u *PrefixCacheUpdate) SetNillableExpiresAt(v *time.Time) *PrefixCacheUpda
 	return _u
 }
 
+// ClearExpiresAt clears the value of the "expires_at" field.
+func (_u *PrefixCacheUpdate) ClearExpiresAt() *PrefixCacheUpdate {
+	_u.mutation.ClearExpiresAt()
+	return _u
+}
+
 // Mutation returns the PrefixCacheMutation object of the builder.
 func (_u *PrefixCacheUpdate) Mutation() *PrefixCacheMutation {
 	return _u.mutation
@@ -103,6 +109,9 @@ func (_u *PrefixCacheUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	}
 	if value, ok := _u.mutation.ExpiresAt(); ok {
 		_spec.SetField(prefixcache.FieldExpiresAt, field.TypeTime, value)
+	}
+	if _u.mutation.ExpiresAtCleared() {
+		_spec.ClearField(prefixcache.FieldExpiresAt, field.TypeTime)
 	}
 	_spec.Node.Schema = _u.schemaConfig.PrefixCache
 	ctx = internal.NewSchemaConfigContext(ctx, _u.schemaConfig)
@@ -151,6 +160,12 @@ func (_u *PrefixCacheUpdateOne) SetNillableExpiresAt(v *time.Time) *PrefixCacheU
 	if v != nil {
 		_u.SetExpiresAt(*v)
 	}
+	return _u
+}
+
+// ClearExpiresAt clears the value of the "expires_at" field.
+func (_u *PrefixCacheUpdateOne) ClearExpiresAt() *PrefixCacheUpdateOne {
+	_u.mutation.ClearExpiresAt()
 	return _u
 }
 
@@ -230,6 +245,9 @@ func (_u *PrefixCacheUpdateOne) sqlSave(ctx context.Context) (_node *PrefixCache
 	}
 	if value, ok := _u.mutation.ExpiresAt(); ok {
 		_spec.SetField(prefixcache.FieldExpiresAt, field.TypeTime, value)
+	}
+	if _u.mutation.ExpiresAtCleared() {
+		_spec.ClearField(prefixcache.FieldExpiresAt, field.TypeTime)
 	}
 	_spec.Node.Schema = _u.schemaConfig.PrefixCache
 	ctx = internal.NewSchemaConfigContext(ctx, _u.schemaConfig)

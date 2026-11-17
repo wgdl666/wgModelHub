@@ -1,6 +1,7 @@
 package httpserver_test
 
 import (
+	"compress/gzip"
 	"context"
 	"fmt"
 	"io"
@@ -12,7 +13,7 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/infra/httpserver"
 )
 
-func TestHealthzAndMetrics(t *testing.T) {
+func TestMonitoringEndpoints(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -51,6 +52,25 @@ func TestHealthzAndMetrics(t *testing.T) {
 	body, _ := io.ReadAll(metricsResp.Body)
 	if string(body) != "ok_metrics\n" {
 		t.Fatalf("metrics body=%q", body)
+	}
+
+	for _, path := range []string{"/debug/pprof/heap", "/debug/pprof/profile?seconds=1"} {
+		profileResp, err := http.Get(base + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer profileResp.Body.Close()
+		if profileResp.StatusCode != http.StatusOK {
+			t.Fatalf("profile status=%d", profileResp.StatusCode)
+		}
+		profile, err := gzip.NewReader(profileResp.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer profile.Close()
+		if size, err := io.Copy(io.Discard, profile); err != nil || size == 0 {
+			t.Fatalf("profile %s size=%d, err=%v", path, size, err)
+		}
 	}
 }
 

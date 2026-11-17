@@ -21,25 +21,28 @@ const (
 	vertexDefaultHost = "aiplatform.googleapis.com"
 
 	// 下列缺省主机与对应适配器的默认地址一致，只取主机名，路径不参与渠道。
-	openaiDefaultHost     = "api.openai.com"
-	arkDefaultHost        = "ark.cn-beijing.volces.com"
-	dashscopeDefaultHost  = "dashscope.aliyuncs.com"
-	ominilinkVideoHost    = "vg-api.aig-ai.com"
-	photoroomDefaultHost  = "sdk.photoroom.com"
-	elevenLabsDefaultHost = "api.elevenlabs.io"
-	minimaxDefaultHost    = "api.minimaxi.com"
-	volcengineDefaultHost = "openspeech.bytedance.com"
-	assemblyAIDefaultHost = "streaming.assemblyai.com"
-	deepgramDefaultHost   = "api.deepgram.com"
-	sonioxDefaultHost     = "stt-rt.soniox.com"
-	tencentDefaultHost    = "asr.cloud.tencent.com"
-	aliyunNLSDefaultHost  = "nls-gateway.cn-shanghai.aliyuncs.com"
-	maasBeijingSuffix     = ".cn-beijing.maas.aliyuncs.com"
-	channelWeiguang       = "薇光点亮"
-	instanceSegmentPerson = "wgdl_segment_person"
-	instanceWeiguangImage = "wgdl_image"
-	instanceWeiguangVideo = "wgdl_video"
-	instanceHumanParser   = "wgdl_human_parser"
+	openaiDefaultHost       = "api.openai.com"
+	arkDefaultHost          = "ark.cn-beijing.volces.com"
+	dashscopeDefaultHost    = "dashscope.aliyuncs.com"
+	ominilinkVideoHost      = "vg-api.aig-ai.com"
+	photoroomDefaultHost    = "sdk.photoroom.com"
+	elevenLabsDefaultHost   = "api.elevenlabs.io"
+	minimaxDefaultHost      = "api.minimaxi.com"
+	volcengineDefaultHost   = "openspeech.bytedance.com"
+	assemblyAIDefaultHost   = "streaming.assemblyai.com"
+	deepgramDefaultHost     = "api.deepgram.com"
+	sonioxDefaultHost       = "stt-rt.soniox.com"
+	tencentDefaultHost      = "asr.cloud.tencent.com"
+	aliyunNLSDefaultHost    = "nls-gateway.cn-shanghai.aliyuncs.com"
+	maasBeijingSuffix       = ".cn-beijing.maas.aliyuncs.com"
+	channelWeiguang         = "薇光点亮"
+	instanceSegmentPerson   = "wgdl_segment_person"
+	instanceWeiguangImage   = "wgdl_image"
+	instanceWeiguangVideo   = "wgdl_video"
+	instanceWeiguangGateway = "wgdl_gateway"
+	instanceHumanParser     = "wgdl_human_parser"
+	instanceHumanYOLO       = "wgdl_human_yolo"
+	instanceLensCorrection  = "wgdl_lens_correction"
 )
 
 // Identity 是一个实例的渠道事实。Host 是模型 API 主机，不含端口、路径和代理。
@@ -86,7 +89,11 @@ func Names(providers map[string]config.ProviderConfig) (map[string]string, error
 	channelCount := map[string]int{}
 	groups := map[groupKey][]string{}
 	for name, provider := range providers {
-		id, err := Of(provider)
+		resolved, _, err := provider.ResolveVisionGateway(providers)
+		if err != nil {
+			return nil, fmt.Errorf("provider %s: %w", name, err)
+		}
+		id, err := Of(resolved)
 		if err != nil {
 			return nil, fmt.Errorf("provider %s: %w", name, err)
 		}
@@ -269,14 +276,26 @@ func splitTokens(value string) []string {
 
 // weiguangInstance 只在模型属于点名的族时返回固定实例键。
 // 新模型统一为 Vmind_*；保留旧名称的渠道归因以读取历史审计快照，不提供旧 ID 请求路由。
-// Vmind 的解析、抠图和视频先按各自规则识别，其余归生图；旧 VWorld_* 仍用于历史归因。
+// Vmind 的检测、矫正、解析、抠图和视频先按各自协议识别，避免改名后被前缀规则误归生图并阻断启动。
 // 族确定之后，用协议选择 wgdl_segment_person、wgdl_image 或 wgdl_video。
 func weiguangInstance(provider config.ProviderConfig, protocol string) (string, error) {
+	// Go 网关统一承接图片和视频，渠道归薇光，实例名与直连供应商分开以保留观测口径。
+	if protocol == "vmind_gateway" {
+		return instanceWeiguangGateway, nil
+	}
 	kind, err := weiguangKind(provider.Models)
 	if err != nil || kind == "" {
 		return "", err
 	}
 	switch protocol {
+	case "human_yolo":
+		if kind == "human_yolo" {
+			return instanceHumanYOLO, nil
+		}
+	case "lens_distortion_correction":
+		if kind == "lens_correction" {
+			return instanceLensCorrection, nil
+		}
 	case "human_parser":
 		if kind == "human_parse" {
 			return instanceHumanParser, nil
@@ -314,6 +333,10 @@ func weiguangKind(list []string) (string, error) {
 
 func familyKind(model string) string {
 	switch {
+	case model == models.HumanYOLO:
+		return "human_yolo"
+	case model == models.LensDistortionCorrection:
+		return "lens_correction"
 	case model == models.HumanParse, model == "human_parse":
 		// G7 人体解析归属薇光点亮；只匹配此 ID，避免把旧 human-parser 一并改归属。
 		return "human_parse"
@@ -340,6 +363,8 @@ func endpoint(provider config.ProviderConfig) (protocol, raw string, err error) 
 		return "ark", firstNonEmpty(provider.Ark.BaseURL, "https://"+arkDefaultHost+"/api/v3"), nil
 	case provider.OpenAI != nil:
 		return "openai", firstNonEmpty(provider.OpenAI.BaseURL, "https://"+openaiDefaultHost+"/v1"), nil
+	case provider.VMindGateway != nil:
+		return "vmind_gateway", provider.VMindGateway.BaseURL, nil
 	case provider.LTX != nil:
 		if strings.TrimSpace(provider.LTX.BaseURL) == "" {
 			return "", "", fmt.Errorf("ltx base_url is required")

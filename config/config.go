@@ -54,11 +54,13 @@ type ProviderConfig struct {
 	Fashion *FashionProviderConfig `yaml:"fashion"`
 
 	Models         []string                      `yaml:"models"`
+	VisionGateway  string                        `yaml:"vision_gateway,omitempty"`
 	Gemini         *GeminiProviderConfig         `yaml:"gemini"`
 	VertexAI       *VertexAIProviderConfig       `yaml:"vertexai"`
 	Ark            *ArkProviderConfig            `yaml:"ark"`
 	OpenAI         *OpenAIProviderConfig         `yaml:"openai"`
 	LTX            *LTXProviderConfig            `yaml:"ltx"`
+	VMindGateway   *VMindGatewayProviderConfig   `yaml:"model_gateway"`
 	DashScopeVideo *DashScopeVideoProviderConfig `yaml:"dashscope_video"`
 	OminilinkVideo *OminilinkVideoProviderConfig `yaml:"ominilink_video"`
 	GeminiVideo    *GeminiVideoProviderConfig    `yaml:"gemini_video"`
@@ -364,10 +366,6 @@ type RekognitionCompareProviderConfig struct {
 type DashScopeEmbeddingProviderConfig struct {
 	BaseURL string `yaml:"base_url"`
 	APIKey  string `yaml:"api_key"`
-	// 百炼单次 HTTP 与整个 ModelHub RPC 的容量分别限制。
-	MaxBatchSize        int `yaml:"max_batch_size,omitempty"`
-	MaxRequestTexts     int `yaml:"max_request_texts,omitempty"`
-	MaxRequestTextBytes int `yaml:"max_request_text_bytes,omitempty"`
 }
 
 type CohereEmbeddingProviderConfig struct {
@@ -473,7 +471,7 @@ type Config struct {
 	Server struct {
 		ListenAddress       string
 		PublicListenAddress string
-		// HTTPListenAddress 仅承载 /healthz 与 /metrics；拓扑端口由 WG_SERVER_HTTP_PORT 注入。
+		// HTTPListenAddress 承载内网监控接口，端口由 WG_SERVER_HTTP_PORT 注入。
 		HTTPListenAddress string
 	} `yaml:"-"`
 	Providers map[string]ProviderConfig `yaml:"providers"`
@@ -542,7 +540,7 @@ func (c ObjectStorageConfig) Enabled() bool {
 	return strings.TrimSpace(c.Provider) != "" || strings.TrimSpace(c.Bucket) != "" || strings.TrimSpace(c.Region) != "" || strings.TrimSpace(c.Endpoint) != "" || strings.TrimSpace(c.AccessKeyID) != "" || strings.TrimSpace(c.AccessKeySecret) != ""
 }
 
-func (c ObjectStorageConfig) validate() error {
+func (c ObjectStorageConfig) Validate() error {
 	if !c.Enabled() {
 		return nil
 	}
@@ -556,6 +554,32 @@ func (c ObjectStorageConfig) validate() error {
 		return fmt.Errorf("object_storage requires paired credentials; oss also requires endpoint and static credentials")
 	}
 	return nil
+}
+
+// VMindGatewayProviderConfig 通过 model_gateway 接入独立的 Go 服务，直连供应商保留自己的任务归属。
+type VMindGatewayProviderConfig struct {
+	BaseURL       string              `yaml:"base_url"`
+	Token         string              `yaml:"token"`
+	PollInterval  float64             `yaml:"poll_interval"`
+	ResultStorage ObjectStorageConfig `yaml:"result_storage"`
+}
+
+func (c VMindGatewayProviderConfig) APIToken() string {
+	// 配置中心保存业务路由，网关调用优先使用 ModelHub 专用 Secret 注入的凭据。
+	if token := strings.TrimSpace(os.Getenv("MODEL_GATEWAY_API_TOKEN")); token != "" {
+		return token
+	}
+	return strings.TrimSpace(c.Token)
+}
+
+func (c VMindGatewayProviderConfig) ResultStore() ObjectStorageConfig {
+	store := c.ResultStorage
+	// 读取端使用只读 OSS 凭据，不能借用 Worker 的写入身份。
+	if keyID, ok := os.LookupEnv("MODEL_GATEWAY_OSS_ACCESS_KEY_ID"); ok {
+		store.AccessKeyID = keyID
+		store.AccessKeySecret = os.Getenv("MODEL_GATEWAY_OSS_ACCESS_KEY_SECRET")
+	}
+	return store
 }
 
 func LoadBootstrapFile(path string) (Bootstrap, error) {
@@ -701,7 +725,7 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.Database.DSN) == "" {
 		return fmt.Errorf("database.dsn is required")
 	}
-	if err := c.ObjectStorage.validate(); err != nil {
+	if err := c.ObjectStorage.Validate(); err != nil {
 		return err
 	}
 	if len(c.Providers) == 0 {
@@ -713,6 +737,9 @@ func (c Config) Validate() error {
 	for name, provider := range c.Providers {
 		if err := validateProvider(name, provider); err != nil {
 			return err
+		}
+		if _, _, err := provider.ResolveVisionGateway(c.Providers); err != nil {
+			return fmt.Errorf("provider %s: %w", name, err)
 		}
 		if len(provider.Models) == 0 {
 			return fmt.Errorf("provider %s models are required", name)
@@ -892,6 +919,15 @@ func validateProvider(name string, provider ProviderConfig) error {
 		return fmt.Errorf("provider %s must set exactly one concrete provider type", name)
 	}
 	switch {
+	case provider.VMindGateway != nil:
+		gateway := provider.VMindGateway
+		if strings.TrimSpace(gateway.BaseURL) == "" || gateway.APIToken() == "" ||
+			gateway.PollInterval <= 0 || !gateway.ResultStorage.Enabled() {
+			return fmt.Errorf("provider %s model_gateway configuration is incomplete", name)
+		}
+		if err := gateway.ResultStore().Validate(); err != nil {
+			return fmt.Errorf("provider %s model_gateway result_storage: %w", name, err)
+		}
 	case provider.Gemini != nil:
 		if strings.TrimSpace(provider.Gemini.APIKey) == "" {
 			return fmt.Errorf("provider %s api_key is required", name)
@@ -1074,9 +1110,6 @@ func validateProvider(name string, provider ProviderConfig) error {
 		if strings.TrimSpace(item.BaseURL) == "" || strings.TrimSpace(item.APIKey) == "" {
 			return fmt.Errorf("provider %s dashscope embedding base_url and api_key are required", name)
 		}
-		if err := item.ValidateExecutionLimits(); err != nil {
-			return fmt.Errorf("provider %s: %w", name, err)
-		}
 	case provider.CohereEmbedding != nil:
 		item := provider.CohereEmbedding
 		if strings.TrimSpace(item.BaseURL) == "" || strings.TrimSpace(item.APIKey) == "" {
@@ -1165,6 +1198,9 @@ func countConcreteProviders(provider ProviderConfig) int {
 		n++
 	}
 	if provider.LTX != nil {
+		n++
+	}
+	if provider.VMindGateway != nil {
 		n++
 	}
 	if provider.DashScopeVideo != nil {
@@ -1336,6 +1372,9 @@ func validateVisionHTTP(name, kind, base, user, password string) error {
 // ProviderSupports 根据供应商类型判断能力；ASR/Speech 是专用 RPC，不经过 Generate OutputSpec。
 func ProviderSupports(provider ProviderConfig, capability string) bool {
 	switch {
+	case provider.VMindGateway != nil:
+		// 每个已登记模型的实际输出契约由对应适配器确认。
+		return capability == CapabilityText || capability == CapabilityImage || capability == CapabilityVideo
 	case provider.Gemini != nil, provider.OpenAI != nil:
 		return capability == CapabilityText || capability == CapabilityImage
 	case provider.ImageSeg != nil, provider.Photoroom != nil, provider.LensCorrection != nil, provider.SegmentPerson != nil, provider.VWorldImage != nil:

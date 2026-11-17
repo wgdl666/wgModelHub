@@ -14,7 +14,6 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"google.golang.org/protobuf/proto"
 )
 
 // raceLane 是同一模型的一家供应商。
@@ -32,7 +31,6 @@ type raceOutcome struct {
 // raceText 把多家文本流收成一次 GenerateStream。
 // 首个有效首字决定赢家，其余 context 立即取消；调用方只看到赢家的增量。
 type raceText struct {
-	service  *Service
 	model    string
 	lanes    []raceLane
 	fallback provider.TextProvider
@@ -67,7 +65,7 @@ func (r *raceText) Generate(ctx context.Context, model string, request *modelhub
 }
 
 func (r *raceText) GenerateStream(ctx context.Context, model string, request *modelhubv2.GenerateRequest, emit provider.EmitEvent) (*modelhubv2.GenerateEvent, error) {
-	lanes := r.prepare(request)
+	lanes := r.lanes
 	if len(lanes) < 2 {
 		return nil, provider.Errorf(provider.ErrorConfiguration, "model %s race requires two providers", r.model)
 	}
@@ -96,7 +94,7 @@ func (r *raceText) GenerateStream(ctx context.Context, model string, request *mo
 		laneCtx, cancel := context.WithCancel(ctx)
 		cancels[i] = cancel
 		done[i] = make(chan struct{})
-		go func(i int, lane preparedLane) {
+		go func(i int, lane raceLane) {
 			defer close(done[i])
 			// 首字出现前先按车道攒着。空增量不能提前放行，否则输家的 thought 或占位会混进赢家流。
 			var buffered []*modelhubv2.GenerateEvent
@@ -135,7 +133,7 @@ func (r *raceText) GenerateStream(ctx context.Context, model string, request *mo
 				}
 				return emit(event)
 			}
-			final, err := lane.text.GenerateStream(laneCtx, model, lane.request, laneEmit)
+			final, err := lane.text.GenerateStream(laneCtx, model, request, laneEmit)
 			outcomes[i].final = final
 			outcomes[i].err = err
 			failMu.Lock()
@@ -184,7 +182,7 @@ func (r *raceText) GenerateStream(ctx context.Context, model string, request *mo
 	return outcomes[winner].final, nil
 }
 
-func (r *raceText) logRace(ctx context.Context, started time.Time, lanes []preparedLane, outcomes []raceOutcome) {
+func (r *raceText) logRace(ctx context.Context, started time.Time, lanes []raceLane, outcomes []raceOutcome) {
 	parts := make([]string, 0, len(lanes))
 	for i, lane := range lanes {
 		item := lane.provider
@@ -218,27 +216,6 @@ func firstRaceError(outcomes []raceOutcome) error {
 	return provider.Errorf(provider.ErrorUnavailable, "all race providers failed before the first token")
 }
 
-type preparedLane struct {
-	provider string
-	text     provider.TextProvider
-	request  *modelhubv2.GenerateRequest
-}
-
-// prepare 为每家复制请求并套用它自己的缓存策略。两家不能改同一份 Input。
-func (r *raceText) prepare(request *modelhubv2.GenerateRequest) []preparedLane {
-	cfg := r.service.live.Load()
-	prepared := make([]preparedLane, 0, len(r.lanes))
-	for _, lane := range r.lanes {
-		cloned, _ := proto.Clone(request).(*modelhubv2.GenerateRequest)
-		if cloned == nil {
-			cloned = request
-		}
-		applyTextCachingPolicy(cloned, cfg.Providers[lane.provider])
-		prepared = append(prepared, preparedLane{provider: lane.provider, text: lane.text, request: cloned})
-	}
-	return prepared
-}
-
 // raceBinding 把配置里的 race 名单收成一个文本供应商。default 留作非流式退路。
 func (s *Service) raceBinding(model string, names []string) (binding, error) {
 	cfg := s.live.Load()
@@ -260,7 +237,7 @@ func (s *Service) raceBinding(model string, names []string) (binding, error) {
 		defaultProvider = lanes[0].provider
 	}
 	return binding{
-		set:      provider.Set{Text: &raceText{service: s, model: model, lanes: lanes, fallback: fallback}},
+		set:      provider.Set{Text: &raceText{model: model, lanes: lanes, fallback: fallback}},
 		model:    model,
 		provider: defaultProvider,
 	}, nil

@@ -179,6 +179,16 @@ func ExpiresAtLTE(v time.Time) predicate.PrefixCache {
 	return predicate.PrefixCache(sql.FieldLTE(FieldExpiresAt, v))
 }
 
+// ExpiresAtIsNil applies the IsNil predicate on the "expires_at" field.
+func ExpiresAtIsNil() predicate.PrefixCache {
+	return predicate.PrefixCache(sql.FieldIsNull(FieldExpiresAt))
+}
+
+// ExpiresAtNotNil applies the NotNil predicate on the "expires_at" field.
+func ExpiresAtNotNil() predicate.PrefixCache {
+	return predicate.PrefixCache(sql.FieldNotNull(FieldExpiresAt))
+}
+
 // And groups predicates with the AND operator between them.
 func And(predicates ...predicate.PrefixCache) predicate.PrefixCache {
 	return predicate.PrefixCache(sql.AndPredicates(predicates...))

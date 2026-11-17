@@ -20,7 +20,7 @@ type PrefixCache struct {
 	// CachedContent holds the value of the "cached_content" field.
 	CachedContent string `json:"cached_content,omitempty"`
 	// ExpiresAt holds the value of the "expires_at" field.
-	ExpiresAt    time.Time `json:"expires_at,omitempty"`
+	ExpiresAt    *time.Time `json:"expires_at,omitempty"`
 	selectValues sql.SelectValues
 }
 
@@ -64,7 +64,8 @@ func (_m *PrefixCache) assignValues(columns []string, values []any) error {
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field expires_at", values[i])
 			} else if value.Valid {
-				_m.ExpiresAt = value.Time
+				_m.ExpiresAt = new(time.Time)
+				*_m.ExpiresAt = value.Time
 			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
@@ -105,8 +106,10 @@ func (_m *PrefixCache) String() string {
 	builder.WriteString("cached_content=")
 	builder.WriteString(_m.CachedContent)
 	builder.WriteString(", ")
-	builder.WriteString("expires_at=")
-	builder.WriteString(_m.ExpiresAt.Format(time.ANSIC))
+	if v := _m.ExpiresAt; v != nil {
+		builder.WriteString("expires_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
 	builder.WriteByte(')')
 	return builder.String()
 }
