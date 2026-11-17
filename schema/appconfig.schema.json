@@ -77,6 +77,7 @@
         "openai": { "$ref": "#/definitions/openai" },
         "ltx": { "$ref": "#/definitions/ltx" },
         "model_gateway": { "$ref": "#/definitions/modelGateway" },
+        "vision_gateway": { "type": "string", "pattern": "^\\S(?:.*\\S)?$" },
         "dashscope_video": { "$ref": "#/definitions/dashscopeVideo" },
         "ominilink_video": { "$ref": "#/definitions/ominilinkVideo" },
         "gemini_video": { "$ref": "#/definitions/geminiVideo" },
@@ -114,6 +115,52 @@
         "facebody_library": { "$ref": "#/definitions/facebodyLibrary" },
         "rekognition_faces": { "$ref": "#/definitions/rekognitionFaces" },
         "rekognition_library": { "$ref": "#/definitions/rekognitionLibrary" }
+      },
+      "dependencies": {
+        "human_parser": [
+          "vision_gateway"
+        ],
+        "human_yolo": [
+          "vision_gateway"
+        ],
+        "facesim": [
+          "vision_gateway"
+        ],
+        "segment_person": [
+          "vision_gateway"
+        ],
+        "lens_distortion_correction": [
+          "vision_gateway"
+        ],
+        "vision_gateway": {
+          "oneOf": [
+            {
+              "required": [
+                "human_parser"
+              ]
+            },
+            {
+              "required": [
+                "human_yolo"
+              ]
+            },
+            {
+              "required": [
+                "facesim"
+              ]
+            },
+            {
+              "required": [
+                "segment_person"
+              ]
+            },
+            {
+              "required": [
+                "lens_distortion_correction"
+              ]
+            }
+          ]
+        }
       },
       "oneOf": [
         { "required": ["fashion"] },
@@ -317,25 +364,12 @@
     },
     "lensCorrection": {
       "type": "object",
-      "required": ["base_url"],
-      "properties": { "base_url": { "type": "string", "minLength": 1 } }
+      "properties": {},
+      "additionalProperties": false
     },
     "segmentPerson": {
       "type": "object",
-      "required": [
-        "base_url"
-      ],
       "properties": {
-        "base_url": {
-          "type": "string",
-          "minLength": 1
-        },
-        "username": {
-          "type": "string"
-        },
-        "password": {
-          "type": "string"
-        },
         "method": {
           "type": "string",
           "minLength": 1
@@ -361,7 +395,8 @@
             "subject_method"
           ]
         }
-      ]
+      ],
+      "additionalProperties": false
     },
     "clothYolo": {
       "type": "object",
@@ -383,21 +418,8 @@
     },
     "faceSim": {
       "type": "object",
-      "required": [
-        "base_url"
-      ],
-      "properties": {
-        "base_url": {
-          "type": "string",
-          "minLength": 1
-        },
-        "username": {
-          "type": "string"
-        },
-        "password": {
-          "type": "string"
-        }
-      }
+      "properties": {},
+      "additionalProperties": false
     },
     "vworldImage": {
       "type": "object",
@@ -410,32 +432,13 @@
     },
     "humanYolo": {
       "type": "object",
-      "required": [
-        "base_url"
-      ],
-      "properties": {
-        "base_url": {
-          "type": "string",
-          "minLength": 1
-        },
-        "username": {
-          "type": "string",
-          "minLength": 1
-        },
-        "password": {
-          "type": "string",
-          "minLength": 1
-        }
-      }
+      "properties": {},
+      "additionalProperties": false
     },
     "humanParser": {
       "type": "object",
-      "required": ["base_url"],
-      "properties": {
-        "base_url": { "type": "string", "minLength": 1 },
-        "username": { "type": "string" },
-        "password": { "type": "string" }
-      }
+      "properties": {},
+      "additionalProperties": false
     },
     "rekognitionDetect": {
       "type": "object",

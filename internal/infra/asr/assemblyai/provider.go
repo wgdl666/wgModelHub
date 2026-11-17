@@ -68,11 +68,12 @@ func New(cfg Config) (provider.ASRProvider, error) {
 			h.Set("Authorization", cfg.APIKey)
 			return h
 		},
-		BuildFinalize:     common.JSONControl("ForceEndpoint"),
-		BuildStop:         common.JSONControl("Terminate"),
-		Parse:             parse,
-		SupportsSpeakers:  true,
-		SupportsFormatted: true,
+		BuildFinalize:      common.JSONControl("ForceEndpoint"),
+		BuildStop:          common.JSONControl("Terminate"),
+		Parse:              parse,
+		SessionExpiredCode: "3008",
+		SupportsSpeakers:   true,
+		SupportsFormatted:  true,
 	}), nil
 }
 

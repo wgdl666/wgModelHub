@@ -11,7 +11,9 @@ providers:
     vision_gateway: wgdl_model_gateway_exhibition
     models: [Vmind_human_yolo_v1.0]
     human_yolo: {}
-  aws_g6_legacy_human_parser:
+  # 国内 L20-1 服务，不是 G6 副本。须先完成 Gateway 国内原生协议接入和独立登记。
+  # 本片段仅表达 ModelHub 路由；未完成上游验收前不得据此切换线上。
+  human-parser.model.wgdl.tech:
     vision_gateway: wgdl_model_gateway_exhibition
     models: [human-parser]
     human_parser: {}
@@ -31,7 +33,7 @@ model_routes:
   Vmind_segment_person_bria_v1.0: wgdl_segment_person
   Vmind_segment_subject_bria_v1.0: wgdl_segment_person
   Vmind_human_yolo_v1.0: aws_g6_human_yolo
-  human-parser: aws_g6_legacy_human_parser
+  human-parser: human-parser.model.wgdl.tech
   Vmind_human_parse_v1.0: aws_g6_human_parser
   cloth-yolo: aws_g6_cloth_yolo
   facesim: aws_g6_facesim

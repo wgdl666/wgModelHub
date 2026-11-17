@@ -320,7 +320,8 @@ providers:
     vision_gateway: wgdl_model_gateway_exhibition
     models: [Vmind_human_yolo_v1.0]
     human_yolo: {}
-  # 自建人体解析通过 Gateway；该模型 ID 须先在目标环境登记。
+  # 国内 L20-1 人体解析通过同环境 Gateway；目标仍为 human-parser.model.wgdl.tech/human_parser。
+  # 须先补齐 Gateway 国内原生协议并登记 human-parser；不能复用 G6 模型键或地址。
   human-parser.model.wgdl.tech:
     vision_gateway: wgdl_model_gateway_exhibition
     models: [human-parser]

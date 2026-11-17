@@ -57,7 +57,7 @@ func TestVisionAdaptersSubmitUnifiedJSON(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		switch model {
-		case models.HumanParse, "parser-v2":
+		case models.HumanParse, models.HumanParser, "parser-v2":
 			if body["image"] != encoded {
 				t.Error("parser lost image")
 			}
@@ -124,6 +124,8 @@ func TestVisionAdaptersSubmitUnifiedJSON(t *testing.T) {
 	}
 	for _, test := range []struct{ instance, model, want string }{
 		{"parser", models.HumanParse, `"success":true`},
+		// 国内 human-parser 保留独立模型键，不能被重写成 G6 的 Vmind_human_parse_v1.0。
+		{"parser", models.HumanParser, `"success":true`},
 		{"parser", "parser-v2", `"success":true`},
 		{"yolo", "detector-v2", `"persons"`},
 		{"segment", "subject-v2", "segment-result_subject"},

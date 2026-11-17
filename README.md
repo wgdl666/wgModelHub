@@ -16,6 +16,20 @@ rpc SynthesizeSpeech(SynthesizeSpeechRequest) returns (SynthesizeSpeechResponse)
 rpc SynthesizeSpeechStream(SynthesizeSpeechRequest) returns (stream SynthesizeSpeechResponse);
 ```
 
+## ASR 会话到期
+
+AssemblyAI 的 Error 帧或 WebSocket 关闭码 `3008` 统一返回 gRPC `Unavailable`，
+`ErrorInfo.reason=ASR_SESSION_EXPIRED`，domain=`wg.modelhub`，保留原始供应商原因。
+调用方 wgHub 复用现有的有界断流恢复，重新建立 ASR 子流；ModelHub 不在同一 RPC 内自动重连。
+不新增期限字段或定时切流，其他供应商错误的分类保持原有行为。
+
+## Qwen 批量查询向量
+
+`qwen3-vl-embedding` 复用 `Generate` 的批量查询输入。在 `input.model_traits` 中传
+`{"embedding_batch":true,"input_type":"search_query"}`，在 `input.items` 中按序放置每条恰好一个非空文本的 USER message。
+调用方根据供应商上限准备每批输入并合并结果。ModelHub 将每批映射为一个百炼 HTTP 请求体，关闭向量融合，
+根据百炼响应的 `index` 恢复输入顺序，并返回文本 JSON `{"embeddings":[[...],...]}`。
+
 ## Cohere 批量查询向量
 
 `Generate` 的 `model=embed-v4.0` 支持显式批量 query：在 `input.model_traits` 中传
