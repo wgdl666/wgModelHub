@@ -1,0 +1,163 @@
+{
+  "scope": "Existing production baseline; generation integration candidates not deployed",
+  "probe_task": "4d09c5b5f36240879970c026cb86c4d1",
+  "status": "passed",
+  "network_source": "existing wardrober-service security group",
+  "security_group": "sg-0b9081248eee19351",
+  "cases": [
+    {
+      "case": "body",
+      "model": "Vmind_bodymodel_v1.0",
+      "trace_id": "8f173442ff049c694d51ac8c98d1f27a",
+      "gateway_request_id": "bc6e232c-9576-4499-aa3f-1e04a27a8fa5",
+      "instance_id": "release-6bed1d439a31b2a29055c922",
+      "artifact_digest": null,
+      "pe_status": "disabled",
+      "storage": [
+        {
+          "provider": "s3",
+          "region": "us-east-2",
+          "bucket": "tomirro-model-gateway-results-nlrunoc7mweg",
+          "key": "outputs/bc6e232c-9576-4499-aa3f-1e04a27a8fa5/0.png"
+        }
+      ],
+      "sha256": "639cc589cb79f97cfdba6c6ecef57e9a42e8698dfb9d2904da9c4e3ba81332c1",
+      "bytes": 975849,
+      "hub_seconds": 8.167136107,
+      "media": {
+        "width": 1024,
+        "height": 1536,
+        "full_png_decode": true
+      },
+      "model_version": {
+        "checkpoint": "WGDL/Qwen-Image-2.1-BodyModel-OriginalFine-SFT-20261113",
+        "revision": "74f1ac52208bccea564520f8b654128061dfb652",
+        "sha256": "7af4773e7ebb5f73a2f484bfb22f87c7234cb834300130b99bac9293e7e91d3a"
+      }
+    },
+    {
+      "case": "product",
+      "model": "Vmind_cloth_gen_v1.0",
+      "trace_id": "db8108e1cab544f8231781b01efe573c",
+      "gateway_request_id": "5b1e944e-b17e-40c5-be15-82c264af50a6",
+      "instance_id": "g7e-gpu3-cloth",
+      "artifact_digest": "sha256-4c049b4e11eaafedfb182349c286228d79f6a83ce923ce72638a9ce6171abc4b",
+      "pe_status": "applied",
+      "storage": [
+        {
+          "provider": "s3",
+          "region": "us-east-2",
+          "bucket": "tomirro-model-gateway-results-nlrunoc7mweg",
+          "key": "outputs/5b1e944e-b17e-40c5-be15-82c264af50a6/0.png"
+        }
+      ],
+      "sha256": "006c7231164dd962e3abdbd1abf790a5f1dd82bafda0849fcbb015a0371b14a7",
+      "bytes": 1523975,
+      "hub_seconds": 5.173497896,
+      "media": {
+        "width": 1024,
+        "height": 1024,
+        "full_png_decode": true
+      }
+    },
+    {
+      "case": "wardrobe",
+      "model": "Vmind_wardrobe_v1.0",
+      "trace_id": "e13ac240e843cb54a18ff4cb453cd815",
+      "gateway_request_id": "7f110c26-68d5-4813-9bdd-5c9953054a30",
+      "instance_id": "release-a055d508fd1ebb754912e426",
+      "artifact_digest": null,
+      "pe_status": "applied",
+      "storage": [
+        {
+          "provider": "s3",
+          "region": "us-east-2",
+          "bucket": "tomirro-model-gateway-results-nlrunoc7mweg",
+          "key": "outputs/7f110c26-68d5-4813-9bdd-5c9953054a30/0.png"
+        }
+      ],
+      "sha256": "6c8d9f7a41c923b6123562d905f48d9606f882546e86fdf47eb6e1be1686a912",
+      "bytes": 561872,
+      "hub_seconds": 5.104223693,
+      "media": {
+        "width": 1024,
+        "height": 1024,
+        "full_png_decode": true
+      },
+      "model_version": {
+        "checkpoint": "WGDL/FLUX.2-klein-9B-Wardrobe-v0.6-SFT-Continue-20261112",
+        "revision": "5d72d8f737d9797f665d773380d0d4e8505584d4",
+        "sha256": "eb3f3fbc00f098e95d075ee638768b2d295339172a95099126d0b50337f11b4b"
+      }
+    },
+    {
+      "case": "outfit",
+      "model": "Vmind_outfit_v1.0",
+      "trace_id": "258ed10f0a4d530c5dd1f40be4961f6b",
+      "gateway_request_id": "14ec06c5-7f50-43db-a617-54b45bfa6ec3",
+      "instance_id": "g7e-gpu3-qwen-vton-20261108",
+      "artifact_digest": "sha256-d05710ee041b8b15768cb6995af13a1e88a26ca49f76cbb724e486b21a21d02c",
+      "pe_status": "applied",
+      "storage": [
+        {
+          "provider": "s3",
+          "region": "us-east-2",
+          "bucket": "tomirro-model-gateway-results-nlrunoc7mweg",
+          "key": "outputs/14ec06c5-7f50-43db-a617-54b45bfa6ec3/0.png"
+        }
+      ],
+      "sha256": "7e8fcd4c29f3c6664bf8e3d619004807a2c50efcb2a0b7990014b0912fff5b2d",
+      "bytes": 487603,
+      "hub_seconds": 9.220103417,
+      "media": {
+        "width": 1024,
+        "height": 1536,
+        "full_png_decode": true
+      }
+    },
+    {
+      "case": "video",
+      "model": "Vmind_outfit_video_v1.0",
+      "trace_id": "cdce4af1e0248482867f3e0c9cdcd811",
+      "gateway_request_id": "f5ee866c-d6a0-4e3e-903b-3aae99913e7e",
+      "instance_id": "g7e-gpu0-video",
+      "artifact_digest": "sha256-c7574fafbc54796208f351143cda6a3544c82793cebeafe4c414c0aaf6969b59",
+      "pe_status": "disabled",
+      "storage": [
+        {
+          "provider": "s3",
+          "region": "us-east-2",
+          "bucket": "tomirro-model-gateway-results-nlrunoc7mweg",
+          "key": "outputs/f5ee866c-d6a0-4e3e-903b-3aae99913e7e/0.mp4"
+        }
+      ],
+      "sha256": "33fb2f981b31129752cca825bc7b64d0038042dbff4a94818a8f24319be5a69c",
+      "bytes": 795814,
+      "hub_seconds": 10.151603321,
+      "media": {
+        "programs": [],
+        "streams": [
+          {
+            "codec_name": "h264",
+            "width": 704,
+            "height": 1280,
+            "nb_frames": "97"
+          }
+        ],
+        "full_decode": true
+      }
+    }
+  ],
+  "limitations": [
+    "One case per business model; not a quality or load benchmark",
+    "Current production Wardrobe model already uses v0.6 from another release; this acceptance did not change model deployment",
+    "Image task artifact_digest missing on two new registrations; model-version receipts recorded where available"
+  ],
+  "verified_at": "2026-11-17T17:48:57.639734+08:00",
+  "production_task_definitions": {
+    "modelhub": "tomirro-modelhub:161",
+    "gateway": "tomirro-model-gateway:38"
+  },
+  "probe_final_status": "STOPPED",
+  "probe_exit_code": 0
+}

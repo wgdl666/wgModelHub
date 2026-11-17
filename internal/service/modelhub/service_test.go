@@ -36,6 +36,14 @@ func TestVMindModelsUseModelGatewayAfterModelListReload(t *testing.T) {
 	t.Setenv("MODEL_GATEWAY_API_TOKEN", "test-gateway-token")
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
+		if r.Method == http.MethodGet && r.Header.Get("Authorization") == "Bearer test-gateway-token" {
+			kind := map[string]string{"/v1/models/" + chatModel: "chat_completions", "/v1/models/" + decisionModel: "decision"}[r.URL.Path]
+			if kind == "" {
+				t.Errorf("unexpected model lookup: %s", r.URL.Path)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]string{"protocol": kind})
+			return
+		}
 		if r.Method != http.MethodPost || r.Header.Get("Authorization") != "Bearer test-gateway-token" {
 			t.Error("VMind calls must use the injected gateway token")
 			w.WriteHeader(http.StatusBadRequest)

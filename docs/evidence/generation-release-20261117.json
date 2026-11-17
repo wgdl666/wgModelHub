@@ -1,0 +1,25 @@
+{
+  "artifacts": [
+    {
+      "repository": "wg/model-gateway",
+      "source_revision": "71d45b343324641f8b58809df3eb24bfe2583486",
+      "digest": "sha256:75e02e0c4ada492942c7b6fceb81c1086b40bd10714bc6c27959f05df809d6e3",
+      "pushed_at": "2026-11-17T17:35:44.513000+08:00",
+      "registry_verified": true
+    },
+    {
+      "repository": "wg/modelhub",
+      "source_revision": "19abf1f5d26599bf223278a97a0246b295118cb3",
+      "digest": "sha256:0c6712b4447b4dba3c00caf45a712cd560e1523afdd5d5bc3d484a44819d5186",
+      "pushed_at": "2026-11-17T17:35:45.783000+08:00",
+      "registry_verified": true
+    }
+  ],
+  "gateway_race_all_with_pg_mq": "passed",
+  "cross_repository_contracts": "passed",
+  "hub_linux_dockerfile_all_tests": "passed",
+  "hub_macos_all_tests": "failed in unchanged examples/gpt-image-2 wrapper timing tests; service packages passed",
+  "production_hub_acceptance": "passed: existing production ModelHub -> Gateway -> GPU -> production S3 -> ModelHub, five cases",
+  "production_deployed": false,
+  "production_hub_evidence": "production-hub-acceptance-20261117.json"
+}
