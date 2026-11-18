@@ -164,16 +164,13 @@ func (p *Provider) methodFor(person bool) string {
 }
 
 func (p *Provider) doSegment(ctx context.Context, model string, imageBytes []byte) ([]byte, error) {
-	fields := map[string]string{
-		"image":  base64.StdEncoding.EncodeToString(imageBytes),
-		"output": "b64",
-	}
+	fields := map[string]string{"output": "b64"}
 	// 人物和商品抠图都走薇光点亮。上游不读 traceparent，表单 trace_id 才能和账本对上。
 	// 没有有效 span 时不写空字段，避免上游把空字符串当成一次真实追踪。
 	if traceID := telemetry.TraceID(ctx); traceID != "" {
 		fields["trace_id"] = traceID
 	}
-	response, err := p.post(ctx, model, fields)
+	response, err := p.post(ctx, model, imageBytes, fields)
 	if err != nil {
 		return nil, err
 	}
@@ -195,15 +192,23 @@ func (p *Provider) doSegment(ctx context.Context, model string, imageBytes []byt
 	return cutout, nil
 }
 
-func (p *Provider) post(ctx context.Context, model string, fields map[string]string) (*http.Response, error) {
+func (p *Provider) post(ctx context.Context, model string, imageBytes []byte, fields map[string]string) (*http.Response, error) {
 	if p.gateway != nil {
-		fields["person_method"], fields["subject_method"] = p.methodFor(true), p.methodFor(false)
-		return p.gateway.Invoke(ctx, model, fields, requestTimeout)
+		input := map[string]any{
+			"image":          imageBytes,
+			"person_method":  p.methodFor(true),
+			"subject_method": p.methodFor(false),
+		}
+		for key, value := range fields {
+			input[key] = value
+		}
+		return p.gateway.Invoke(ctx, model, input, requestTimeout)
 	}
 	endpoint, person, err := endpointFor(model)
 	if err != nil {
 		return nil, err
 	}
+	fields["image"] = base64.StdEncoding.EncodeToString(imageBytes)
 	fields["method"] = p.methodFor(person)
 	// 人物接口要求 preprocess=false，商品主体不传该字段。
 	if person {

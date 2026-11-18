@@ -3,9 +3,7 @@ package openai
 import (
 	"bufio"
 	"context"
-	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"io"
 	"maps"
 	"net/http"
@@ -175,7 +173,7 @@ func (p *Provider) buildRequestBody(model string, request *modelhubv2.GenerateRe
 				"content":      value.ToolOutput.GetOutput(),
 			})
 			for _, image := range value.ToolOutput.GetImages() {
-				if url := mediaURL(image); url != "" {
+				if url := mediaURL(image); url != nil {
 					messages = append(messages, map[string]any{
 						"role": "user",
 						"content": []map[string]any{{
@@ -565,7 +563,7 @@ func convertMessage(msg *modelhubv2.Message) map[string]any {
 				parts = append(parts, map[string]any{"type": "text", "text": value.Text})
 			}
 		case *modelhubv2.ContentPart_Image:
-			if url := mediaURL(value.Image); url != "" {
+			if url := mediaURL(value.Image); url != nil {
 				parts = append(parts, map[string]any{"type": "image_url", "image_url": map[string]any{"url": url}})
 			}
 		}
@@ -574,21 +572,18 @@ func convertMessage(msg *modelhubv2.Message) map[string]any {
 	return m
 }
 
-func mediaURL(media *modelhubv2.Media) string {
-	if media == nil {
-		return ""
-	}
-	switch source := media.Source.(type) {
+func mediaURL(media *modelhubv2.Media) any {
+	switch source := media.GetSource().(type) {
 	case *modelhubv2.Media_Uri:
-		return source.Uri
-	case *modelhubv2.Media_Data:
-		if len(source.Data) == 0 || media.MimeType == "" {
-			return ""
+		if source.Uri != "" {
+			return source.Uri
 		}
-		return fmt.Sprintf("data:%s;base64,%s", media.MimeType, base64.StdEncoding.EncodeToString(source.Data))
-	default:
-		return ""
+	case *modelhubv2.Media_Data:
+		if len(source.Data) != 0 && media.MimeType != "" {
+			return httpbody.Base64DataURL{MediaType: media.MimeType, Data: source.Data}
+		}
 	}
+	return nil
 }
 
 func messageText(message *modelhubv2.Message) string {

@@ -3,6 +3,7 @@ package httpbody
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"mime"
@@ -104,7 +105,9 @@ func TestJSONMatchesStandardEncoding(t *testing.T) {
 		map[string]any{"image": string(bytes.Repeat([]byte("YWJj+/="), 100)), "text": "引号\"\\\n\x00<&>\u2028", "raw": json.RawMessage(`{"x":"<tag>"}`), "number": 1.25},
 		map[string]any{"maps": []map[string]any{{"a": "x"}}, "array": []any{true, nil, 2}, "strings": []string{"a", "b"}, "bytes": []byte{0, 255}},
 		map[string]string{"image": "data:image/png;base64,YWJj", "name": "a\"b"},
-		map[string]any{"nil": map[string]any(nil), "bytes": []byte(nil), "array": []any(nil), "strings": []string(nil), "map_strings": map[string]string(nil)},
+		map[string]any{"nil": map[string]any(nil), "bytes": []byte(nil), "empty_bytes": []byte{}, "array": []any(nil), "strings": []string(nil), "map_strings": map[string]string(nil)},
+		Base64DataURL{MediaType: "image/png", Data: []byte{255, 240}},
+		Base64DataURL{MediaType: "image/png; note=\"<&>\u2028\"", Data: []byte{255, 240}},
 		struct {
 			Name string `json:"name,omitempty"`
 		}{Name: "<test>"},
@@ -114,7 +117,11 @@ func TestJSONMatchesStandardEncoding(t *testing.T) {
 			var expected bytes.Buffer
 			encoder := json.NewEncoder(&expected)
 			encoder.SetEscapeHTML(escapeHTML)
-			if err := encoder.Encode(value); err != nil {
+			expectedValue := value
+			if url, ok := value.(Base64DataURL); ok {
+				expectedValue = "data:" + url.MediaType + ";base64," + base64.StdEncoding.EncodeToString(url.Data)
+			}
+			if err := encoder.Encode(expectedValue); err != nil {
 				t.Fatal(err)
 			}
 			body, err := JSON(value, escapeHTML)
