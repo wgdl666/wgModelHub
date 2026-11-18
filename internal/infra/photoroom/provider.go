@@ -1,5 +1,5 @@
 // Package photoroom 实现 Photoroom Remove Background（POST /v1/segment）。
-// 只承接 OutputSpec.image：恰好一张输入图 → 一张内联透明 PNG；裁剪/填充/存储/业务重试留给调用方。
+// 恰好一张输入图。Photoroom 裁掉透明留白，返回一张内联 PNG。填充、存储和业务重试留给调用方。
 package photoroom
 
 import (
@@ -204,6 +204,7 @@ func normalizedImageMIME(contentType string) string {
 func (p *Provider) doSegment(ctx context.Context, data []byte, mimeType string) ([]byte, error) {
 	body, err := httpbody.Multipart([]httpbody.Part{
 		httpbody.File("image_file", inputImageFilename(mimeType), mimeType, data),
+		httpbody.Field("crop", "true"),
 	})
 	if err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" build segment request failed", err)
