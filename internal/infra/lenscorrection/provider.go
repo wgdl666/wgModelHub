@@ -1,8 +1,7 @@
-// Package lenscorrection 适配镜头校正 HTTP 契约并对暂时性传输故障有限重试；对象存储、处理标记和业务任务重试归调用方。
+// Package lenscorrection 适配镜头校正 HTTP 契约。
 package lenscorrection
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -15,29 +14,35 @@ import (
 	"github.com/wgdl666/kangaroo/logs"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
+	"github.com/wgdl666/wgModelHub/internal/infra/vmindgateway"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
 	"github.com/wgdl666/wgModelHub/protocol"
 )
 
+const timeout = 60 * time.Second
+
 type Provider struct {
-	// Gateway 启用登记模型路由，直连供应商继续使用原有契约。
-	Gateway  bool
 	name     string
 	endpoint string
 	client   *http.Client
+	gateway  *vmindgateway.Client
 }
 
-func New(name, baseURL string, options ...telemetry.HTTPClientOption) (*Provider, error) {
+func New(name, baseURL string) (*Provider, error) {
 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	parsed, err := url.Parse(baseURL)
 	if strings.TrimSpace(name) == "" || err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.User != nil {
 		return nil, provider.New(provider.ErrorConfiguration, "lens correction requires name and HTTP(S) base_url without credentials or query")
 	}
-	client := telemetry.NewHTTPClient(options...)
-	client.Timeout = 60 * time.Second
+	client := telemetry.NewTimedHTTPClient(timeout)
 	return &Provider{name: name, endpoint: baseURL + "/correct", client: client}, nil
+}
+
+func NewGateway(name string, gateway *vmindgateway.Client) *Provider {
+	return &Provider{name: name, gateway: gateway}
 }
 
 // 开关缺省 true，但显式 false 必须原样下发，不能用 bool 零值吞掉关闭请求。
@@ -65,7 +70,7 @@ type diagnostics struct {
 }
 
 func (p *Provider) GenerateImage(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
-	if request == nil || (!p.Gateway && model != models.LensDistortionCorrection) {
+	if request == nil || (p.gateway == nil && model != models.LensDistortionCorrection) {
 		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "lens correction requires its model and image request")
 	}
 	images := provider.ImageMedias(request.GetInput())
@@ -82,30 +87,58 @@ func (p *Provider) GenerateImage(ctx context.Context, model string, request *mod
 			return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, "invalid lens correction model_traits", err)
 		}
 	}
-	body, err := json.Marshal(struct {
-		Base64 string `json:"base64"`
-		options
-	}{Base64: base64.StdEncoding.EncodeToString(data), options: opts})
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	input := map[string]any{"base64": data, "mirror_lens": opts.MirrorLens, "crop": opts.Crop}
+	response, err := p.correct(ctx, model, input)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return nil, provider.FromHTTPDetail(p.name, response.StatusCode, "lens correction upstream rejected request")
+	}
+	var payload struct {
+		ImageBase64 string `json:"image_base64"`
+		diagnostics
+	}
+	// JSON 包含 Base64，比图片大约多三分之一；边界必须覆盖允许的最大媒体。
+	if err := json.NewDecoder(io.LimitReader(response.Body, int64(base64.StdEncoding.EncodedLen(protocol.MaxMediaBytes)+(1<<20)))).Decode(&payload); err != nil {
+		return nil, provider.New(provider.ErrorInvalidResponse, "invalid lens correction response JSON")
+	}
+	imageBytes, err := base64.StdEncoding.DecodeString(strings.TrimSpace(payload.ImageBase64))
+	if err != nil || len(imageBytes) == 0 || len(imageBytes) > protocol.MaxMediaBytes {
+		return nil, provider.New(provider.ErrorInvalidResponse, "lens correction response is missing a valid Base64 image payload")
+	}
+	metadata, err := json.Marshal(payload.diagnostics)
+	if err != nil {
+		return nil, provider.Wrap(provider.ErrorInvalidResponse, "encode lens correction diagnostics", err)
+	}
+	// 上游 Base64 解码后原样透传字节和 MIME，不解码图片或限定 PNG；诊断由上游提供。
+	return &modelhubv2.GenerateEvent{Final: true, Items: []*modelhubv2.OutputItem{
+		{Item: &modelhubv2.OutputItem_Image{Image: &modelhubv2.Media{MimeType: payload.ContentType, Source: &modelhubv2.Media_Data{Data: imageBytes}}}},
+		{Item: &modelhubv2.OutputItem_Text{Text: string(metadata)}},
+	}}, nil
+}
+
+func (p *Provider) correct(ctx context.Context, model string, input map[string]any) (*http.Response, error) {
+	if p.gateway != nil {
+		return p.gateway.Invoke(ctx, model, input, 0)
+	}
+	body, err := httpbody.JSON(input, true)
 	if err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, "encode lens correction request", err)
 	}
-	// 校正不创建业务资产，可复用同一原图重试；总预算仍为 60 秒，避免三次调用放大等待时间。
-	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
-	var response *http.Response
+	// 直连校正可复用同一原图重试，所有尝试共享调用期限。
 	for attempt := 1; ; attempt++ {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.endpoint, bytes.NewReader(body))
+		req, err := body.NewRequest(ctx, http.MethodPost, p.endpoint)
 		if err != nil {
 			return nil, provider.WrapNotAttempted(provider.ErrorConfiguration, "create lens correction request", err)
 		}
-		req.Header.Set("Content-Type", "application/json")
-		if p.Gateway {
-			req.Header.Set("X-Model-Key", model)
-		}
-		response, err = p.client.Do(req)
+		response, err := p.client.Do(req)
 		if ctx.Err() != nil {
 			if response != nil {
 				response.Body.Close()
@@ -113,7 +146,7 @@ func (p *Provider) GenerateImage(ctx context.Context, model string, request *mod
 			return nil, ctx.Err()
 		}
 		if err == nil && response.StatusCode == http.StatusOK {
-			break
+			return response, nil
 		}
 		statusCode := 0
 		retryable := err != nil
@@ -140,26 +173,4 @@ func (p *Provider) GenerateImage(ctx context.Context, model string, request *mod
 		case <-timer.C:
 		}
 	}
-	defer response.Body.Close()
-	var payload struct {
-		ImageBase64 string `json:"image_base64"`
-		diagnostics
-	}
-	// JSON 包含 Base64，比图片大约多三分之一；边界必须覆盖允许的最大媒体。
-	if err := json.NewDecoder(io.LimitReader(response.Body, int64(base64.StdEncoding.EncodedLen(protocol.MaxMediaBytes)+(1<<20)))).Decode(&payload); err != nil {
-		return nil, provider.New(provider.ErrorInvalidResponse, "invalid lens correction response JSON")
-	}
-	imageBytes, err := base64.StdEncoding.DecodeString(strings.TrimSpace(payload.ImageBase64))
-	if err != nil || len(imageBytes) == 0 || len(imageBytes) > protocol.MaxMediaBytes {
-		return nil, provider.New(provider.ErrorInvalidResponse, "lens correction response is missing a valid Base64 image payload")
-	}
-	metadata, err := json.Marshal(payload.diagnostics)
-	if err != nil {
-		return nil, provider.Wrap(provider.ErrorInvalidResponse, "encode lens correction diagnostics", err)
-	}
-	// 上游 Base64 解码后原样透传字节和 MIME，不解码图片或限定 PNG；诊断由上游提供。
-	return &modelhubv2.GenerateEvent{Final: true, Items: []*modelhubv2.OutputItem{
-		{Item: &modelhubv2.OutputItem_Image{Image: &modelhubv2.Media{MimeType: payload.ContentType, Source: &modelhubv2.Media_Data{Data: imageBytes}}}},
-		{Item: &modelhubv2.OutputItem_Text{Text: string(metadata)}},
-	}}, nil
 }

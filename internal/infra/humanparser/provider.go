@@ -4,7 +4,6 @@ package humanparser
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -14,6 +13,7 @@ import (
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
+	"github.com/wgdl666/wgModelHub/internal/infra/vmindgateway"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
 )
@@ -30,16 +30,15 @@ const (
 
 // Provider 只实现 TextProvider。账号密码成对出现，两个都空则匿名调用。
 type Provider struct {
-	// Gateway 启用登记模型路由，直连供应商继续使用原有契约。
-	Gateway  bool
 	name     string
 	baseURL  string
 	username string
 	password string
 	client   *http.Client
+	gateway  *vmindgateway.Client
 }
 
-func New(name, baseURL, username, password string, options ...telemetry.HTTPClientOption) (*Provider, error) {
+func New(name, baseURL, username, password string) (*Provider, error) {
 	name = strings.TrimSpace(name)
 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	username = strings.TrimSpace(username)
@@ -50,8 +49,7 @@ func New(name, baseURL, username, password string, options ...telemetry.HTTPClie
 	if (username == "") != (password == "") {
 		return nil, provider.New(provider.ErrorConfiguration, "human-parser username and password must be configured together")
 	}
-	client := telemetry.NewHTTPClient(options...)
-	client.Timeout = timeout
+	client := telemetry.NewTimedHTTPClient(timeout)
 	return &Provider{
 		name:     name,
 		baseURL:  baseURL,
@@ -61,15 +59,11 @@ func New(name, baseURL, username, password string, options ...telemetry.HTTPClie
 	}, nil
 }
 
+func NewGateway(name string, gateway *vmindgateway.Client) *Provider {
+	return &Provider{name: name, gateway: gateway}
+}
+
 func (p *Provider) Generate(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
-	path, checkSuccess, err := predictRoute(model)
-	if p.Gateway {
-		// 固定解析入口只携带原模型名；网关在入队前校验登记与协议。
-		path, checkSuccess, err = g7PredictPath, true, nil
-	}
-	if err != nil {
-		return nil, err
-	}
 	images := provider.ImageMedias(request.GetInput())
 	if len(images) != 1 {
 		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "human-parser requires exactly one input image")
@@ -78,24 +72,9 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 	if !ok || len(data.Data) == 0 {
 		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "human-parser requires inline image bytes")
 	}
-	payload, err := httpbody.JSON(map[string]string{"image": base64.StdEncoding.EncodeToString(data.Data)}, true)
+	response, checkSuccess, err := p.predict(ctx, model, data.Data)
 	if err != nil {
-		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" encode parser image", err)
-	}
-	httpReq, err := payload.NewRequest(ctx, http.MethodPost, p.baseURL+path)
-	if err != nil {
-		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" create parser request", err)
-	}
-	httpReq.Header.Set("content-type", "application/json")
-	if p.username != "" {
-		httpReq.SetBasicAuth(p.username, p.password)
-	}
-	if p.Gateway {
-		httpReq.Header.Set("X-Model-Key", model)
-	}
-	response, err := p.client.Do(httpReq)
-	if err != nil {
-		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" parser request failed", err)
+		return nil, err
 	}
 	defer response.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(response.Body, responseLimit+1))
@@ -115,6 +94,34 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 		}
 	}
 	return provider.TextFinalEvent(string(body), nil, "", "", nil), nil
+}
+
+func (p *Provider) predict(ctx context.Context, model string, image []byte) (*http.Response, bool, error) {
+	input := map[string]any{"image": image}
+	if p.gateway != nil {
+		response, err := p.gateway.Invoke(ctx, model, input, timeout)
+		return response, true, err
+	}
+	path, checkSuccess, err := predictRoute(model)
+	if err != nil {
+		return nil, false, err
+	}
+	payload, err := httpbody.JSON(input, true)
+	if err != nil {
+		return nil, false, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" encode parser image", err)
+	}
+	httpReq, err := payload.NewRequest(ctx, http.MethodPost, p.baseURL+path)
+	if err != nil {
+		return nil, false, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" create parser request", err)
+	}
+	if p.username != "" {
+		httpReq.SetBasicAuth(p.username, p.password)
+	}
+	response, err := p.client.Do(httpReq)
+	if err != nil {
+		return nil, false, provider.Wrap(provider.ErrorUnavailable, p.name+" parser request failed", err)
+	}
+	return response, checkSuccess, nil
 }
 
 // predictRoute 按模型 ID 选路径。旧 ID 保持原样，避免国内和新加坡跟着路演改入口。

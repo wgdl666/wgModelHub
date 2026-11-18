@@ -3,7 +3,6 @@ package factory
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/wgdl666/wgModelHub/config"
 	"github.com/wgdl666/wgModelHub/internal/infra/ark"
@@ -49,7 +48,6 @@ import (
 	"github.com/wgdl666/wgModelHub/internal/infra/rekognitionfaces"
 	"github.com/wgdl666/wgModelHub/internal/infra/rerankinstruction"
 	"github.com/wgdl666/wgModelHub/internal/infra/segmentperson"
-	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
 	"github.com/wgdl666/wgModelHub/internal/infra/vmindgateway"
 	"github.com/wgdl666/wgModelHub/internal/infra/vworldimage"
 	"github.com/wgdl666/wgModelHub/internal/prefixcache"
@@ -94,41 +92,27 @@ func build(ctx context.Context, cfg config.Config, live *config.LiveConfig) (map
 			// 多环境共用配置模板时，只实例化本区真正有凭据的 ASR，避免空密钥占用模型路由。
 			continue
 		}
-		resolved, gateway, err := providerCfg.ResolveVisionGateway(cfg.Providers)
+		_, gatewayCfg, err := providerCfg.ResolveVisionGateway(cfg.Providers)
 		if err != nil {
 			return nil, fmt.Errorf("provider %s: %w", name, err)
 		}
-		var options []telemetry.HTTPClientOption
-		if gateway != nil {
-			options = append(options, withVisionGatewayAuth(gateway.APIToken()))
+		var gateway *vmindgateway.Client
+		if gatewayCfg != nil {
+			gateway, err = vmindgateway.New(name, gatewayCfg.BaseURL, gatewayCfg.APIToken(), nil)
+			if err != nil {
+				return nil, fmt.Errorf("provider %s: %w", name, err)
+			}
 		}
-		set, err := buildProvider(ctx, name, resolved, live, instructions, options...)
+		set, err := buildProvider(ctx, name, providerCfg, live, instructions, gateway)
 		if err != nil {
 			return nil, fmt.Errorf("provider %s: %w", name, err)
-		}
-		if gateway != nil {
-			// 视觉输入沿用已有编码器，模型与协议统一交给网关入队前校验。
-			switch p := set.Text.(type) {
-			case *humanparser.Provider:
-				p.Gateway = true
-			case *humanyolo.Provider:
-				p.Gateway = true
-			case *facesim.Provider:
-				p.Gateway = true
-			}
-			switch p := set.Image.(type) {
-			case *segmentperson.Provider:
-				p.Gateway = true
-			case *lenscorrection.Provider:
-				p.Gateway = true
-			}
 		}
 		sets[name] = set
 	}
 	return sets, nil
 }
 
-func buildProvider(ctx context.Context, name string, providerCfg config.ProviderConfig, live *config.LiveConfig, instructions rerankinstruction.Resolver, options ...telemetry.HTTPClientOption) (provider.Set, error) {
+func buildProvider(ctx context.Context, name string, providerCfg config.ProviderConfig, live *config.LiveConfig, instructions rerankinstruction.Resolver, gateway *vmindgateway.Client) (provider.Set, error) {
 	switch {
 	case providerCfg.VMindGateway != nil:
 		cfg := providerCfg.VMindGateway
@@ -136,19 +120,11 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 		if err != nil {
 			return provider.Set{}, err
 		}
-		token := cfg.APIToken()
-		client, err := vmindgateway.New(name, cfg.BaseURL, token, objects)
+		client, err := vmindgateway.New(name, cfg.BaseURL, cfg.APIToken(), objects)
 		if err != nil {
 			return provider.Set{}, err
 		}
-		// 对话和预测复用网关地址与凭据，热更新模型列表即可开通各自路由。
-		baseURL := strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/") + "/v1"
-		chat, err := openai.New(name, token, baseURL, "")
-		if err != nil {
-			return provider.Set{}, err
-		}
-		chat.ModelGateway = true
-		return provider.Set{Text: chat, Image: vworldimage.NewGateway(name, client), Video: ltx.NewGateway(name, client, cfg.PollInterval)}, nil
+		return provider.Set{Text: openai.NewGateway(name, client), Image: vworldimage.NewGateway(name, client), Video: ltx.NewGateway(name, client, cfg.PollInterval)}, nil
 	case providerCfg.VolcengineASR != nil:
 		cfg := providerCfg.VolcengineASR
 		client, err := volcengineasr.New(volcengineasr.Config{AppKey: cfg.AppKey, AccessKey: cfg.AccessKey, APIKey: cfg.APIKey, ResourceID: cfg.ResourceID, URL: cfg.URL})
@@ -321,22 +297,31 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 		}
 		return provider.Set{Text: client}, nil
 	case providerCfg.FaceSim != nil:
+		if gateway != nil {
+			return provider.Set{Text: facesim.NewGateway(name, gateway)}, nil
+		}
 		cfg := providerCfg.FaceSim
-		client, err := facesim.New(name, cfg.BaseURL, cfg.Username, cfg.Password, options...)
+		client, err := facesim.New(name, cfg.BaseURL, cfg.Username, cfg.Password)
 		if err != nil {
 			return provider.Set{}, err
 		}
 		return provider.Set{Text: client}, nil
 	case providerCfg.HumanYOLO != nil:
+		if gateway != nil {
+			return provider.Set{Text: humanyolo.NewGateway(name, gateway)}, nil
+		}
 		cfg := providerCfg.HumanYOLO
-		client, err := humanyolo.New(name, cfg.BaseURL, cfg.Username, cfg.Password, options...)
+		client, err := humanyolo.New(name, cfg.BaseURL, cfg.Username, cfg.Password)
 		if err != nil {
 			return provider.Set{}, err
 		}
 		return provider.Set{Text: client}, nil
 	case providerCfg.HumanParser != nil:
+		if gateway != nil {
+			return provider.Set{Text: humanparser.NewGateway(name, gateway)}, nil
+		}
 		cfg := providerCfg.HumanParser
-		client, err := humanparser.New(name, cfg.BaseURL, cfg.Username, cfg.Password, options...)
+		client, err := humanparser.New(name, cfg.BaseURL, cfg.Username, cfg.Password)
 		if err != nil {
 			return provider.Set{}, err
 		}
@@ -452,14 +437,20 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 		}
 		return provider.Set{Text: client}, nil
 	case providerCfg.LensCorrection != nil:
-		client, err := lenscorrection.New(name, providerCfg.LensCorrection.BaseURL, options...)
+		if gateway != nil {
+			return provider.Set{Image: lenscorrection.NewGateway(name, gateway)}, nil
+		}
+		client, err := lenscorrection.New(name, providerCfg.LensCorrection.BaseURL)
 		if err != nil {
 			return provider.Set{}, err
 		}
 		return provider.Set{Image: client}, nil
 	case providerCfg.SegmentPerson != nil:
 		cfg := providerCfg.SegmentPerson
-		client, err := segmentperson.NewWithMethods(name, cfg.BaseURL, cfg.Username, cfg.Password, cfg.Method, cfg.PersonMethod, cfg.SubjectMethod, options...)
+		if gateway != nil {
+			return provider.Set{Image: segmentperson.NewGateway(name, gateway, cfg.Method, cfg.PersonMethod, cfg.SubjectMethod)}, nil
+		}
+		client, err := segmentperson.NewWithMethods(name, cfg.BaseURL, cfg.Username, cfg.Password, cfg.Method, cfg.PersonMethod, cfg.SubjectMethod)
 		if err != nil {
 			return provider.Set{}, err
 		}

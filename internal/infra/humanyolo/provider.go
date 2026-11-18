@@ -12,6 +12,7 @@ import (
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
+	"github.com/wgdl666/wgModelHub/internal/infra/vmindgateway"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
 )
@@ -25,16 +26,15 @@ const (
 
 // Provider 只实现 TextProvider，返回上游 JSON，裁图留在衣橱。
 type Provider struct {
-	// Gateway 启用登记模型路由，直连供应商继续使用原有契约。
-	Gateway  bool
 	name     string
 	baseURL  string
 	username string
 	password string
 	client   *http.Client
+	gateway  *vmindgateway.Client
 }
 
-func New(name, baseURL, username, password string, options ...telemetry.HTTPClientOption) (*Provider, error) {
+func New(name, baseURL, username, password string) (*Provider, error) {
 	name = strings.TrimSpace(name)
 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	username = strings.TrimSpace(username)
@@ -45,8 +45,7 @@ func New(name, baseURL, username, password string, options ...telemetry.HTTPClie
 	if (username == "") != (password == "") {
 		return nil, provider.New(provider.ErrorConfiguration, "human-yolo username and password must be configured together")
 	}
-	client := telemetry.NewHTTPClient(options...)
-	client.Timeout = timeout
+	client := telemetry.NewTimedHTTPClient(timeout)
 	return &Provider{
 		name:     name,
 		baseURL:  baseURL,
@@ -56,19 +55,31 @@ func New(name, baseURL, username, password string, options ...telemetry.HTTPClie
 	}, nil
 }
 
+func NewGateway(name string, gateway *vmindgateway.Client) *Provider {
+	return &Provider{name: name, gateway: gateway}
+}
+
 func (p *Provider) Generate(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
-	if !p.Gateway && model != models.HumanYOLO {
+	if p.gateway == nil && model != models.HumanYOLO {
 		return nil, provider.NotAttemptedf(provider.ErrorInvalidArgument, "human-yolo does not serve model %q", model)
 	}
 	imageBytes, err := oneInlineImage(request.GetInput())
 	if err != nil {
 		return nil, err
 	}
-	body, err := p.post(ctx, model, imageBytes)
+	response, err := p.post(ctx, model, imageBytes)
 	if err != nil {
 		return nil, err
 	}
-	return provider.TextFinalEvent(string(body), nil, "", "", nil), nil
+	defer response.Body.Close()
+	payload, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+	if err != nil {
+		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" read yolo response", err)
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return nil, provider.FromHTTPDetail(p.name, response.StatusCode, string(payload))
+	}
+	return provider.TextFinalEvent(string(payload), nil, "", "", nil), nil
 }
 
 func (p *Provider) GenerateStream(ctx context.Context, model string, request *modelhubv2.GenerateRequest, emit provider.EmitEvent) (*modelhubv2.GenerateEvent, error) {
@@ -88,7 +99,10 @@ func (p *Provider) GenerateStream(ctx context.Context, model string, request *mo
 	return provider.MetadataFinalEvent("", "", nil), nil
 }
 
-func (p *Provider) post(ctx context.Context, model string, imageBytes []byte) ([]byte, error) {
+func (p *Provider) post(ctx context.Context, model string, imageBytes []byte) (*http.Response, error) {
+	if p.gateway != nil {
+		return p.gateway.Invoke(ctx, model, map[string]any{"file": imageBytes, "conf": confidence, "iou": iou}, timeout)
+	}
 	body, err := httpbody.Multipart([]httpbody.Part{
 		httpbody.File("file", "person.png", "application/octet-stream", imageBytes),
 		httpbody.Field("conf", confidence), httpbody.Field("iou", iou),
@@ -103,22 +117,11 @@ func (p *Provider) post(ctx context.Context, model string, imageBytes []byte) ([
 	if p.username != "" {
 		httpReq.SetBasicAuth(p.username, p.password)
 	}
-	if p.Gateway {
-		httpReq.Header.Set("X-Model-Key", model)
-	}
 	response, err := p.client.Do(httpReq)
 	if err != nil {
 		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" yolo request failed", err)
 	}
-	defer response.Body.Close()
-	payload, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
-	if err != nil {
-		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" read yolo response", err)
-	}
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, provider.FromHTTPDetail(p.name, response.StatusCode, string(payload))
-	}
-	return payload, nil
+	return response, nil
 }
 
 func oneInlineImage(input *modelhubv2.Input) ([]byte, error) {

@@ -4,7 +4,6 @@ package vmindgateway
 import (
 	"context"
 	"encoding/json"
-	"github.com/wgdl666/kangaroo/callmeta"
 	"io"
 	"maps"
 	"net/http"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/wgdl666/kangaroo/callmeta"
 	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
 	"github.com/wgdl666/wgModelHub/internal/infra/objectstore"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
@@ -37,6 +37,8 @@ type Client struct {
 	http                 *http.Client
 	objects              *objectstore.S3
 }
+
+const requestsPath = "/v1/gateway/requests"
 
 func New(name, baseURL, token string, objects *objectstore.S3) (*Client, error) {
 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
@@ -80,7 +82,18 @@ func (c *Client) Submit(ctx context.Context, model, id string, input map[string]
 	if err != nil {
 		return Task{}, provider.WrapNotAttempted(provider.ErrorInvalidArgument, "encode VMind gateway input", err)
 	}
-	return c.call(ctx, http.MethodPost, "/v1/gateway/requests/"+url.PathEscape(model), id, body, accepted)
+	return c.call(ctx, http.MethodPost, requestsPath+"/"+url.PathEscape(model), id, body, accepted)
+}
+
+// Invoke returns the synchronous executor's response for the adapter to decode.
+func (c *Client) Invoke(ctx context.Context, model string, input any, timeout time.Duration) (*http.Response, error) {
+	body, err := httpbody.JSON(map[string]any{"input": input}, true)
+	if err != nil {
+		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, "encode VMind gateway input", err)
+	}
+	client := *c.http
+	client.Timeout = timeout
+	return c.request(ctx, &client, http.MethodPost, requestsPath+"/"+url.PathEscape(model), uuid.NewString(), body)
 }
 
 func (c *Client) Get(ctx context.Context, id string) (Task, error) {
@@ -88,25 +101,33 @@ func (c *Client) Get(ctx context.Context, id string) (Task, error) {
 	if err != nil || parsed.String() != id {
 		return Task{}, provider.New(provider.ErrorInvalidArgument, "invalid VMind gateway request ID")
 	}
-	return c.call(ctx, http.MethodGet, "/v1/gateway/requests", id, nil, http.StatusOK)
+	return c.call(ctx, http.MethodGet, requestsPath, id, nil, http.StatusOK)
 }
 
-func (c *Client) call(ctx context.Context, method, path, id string, body *httpbody.Body, expected int) (Task, error) {
+func (c *Client) request(ctx context.Context, client *http.Client, method, path, id string, body *httpbody.Body) (*http.Response, error) {
 	req, err := body.NewRequest(ctx, method, c.baseURL+path)
 	if err != nil {
-		return Task{}, provider.Wrap(provider.ErrorConfiguration, c.name+" create request", err)
+		return nil, provider.WrapNotAttempted(provider.ErrorConfiguration, c.name+" create request", err)
 	}
 	// 仅内部 Gateway 接收来源身份；通用供应商 HTTP transport 不传播用户信息。
 	callmeta.Propagator{}.Inject(ctx, callmeta.HTTPHeaders(req.Header))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Idempotency-Key", id)
-	res, err := c.http.Do(req)
+	res, err := client.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
-			return Task{}, ctx.Err()
+			return nil, ctx.Err()
 		}
-		return Task{}, provider.Wrap(provider.ErrorUnavailable, c.name+" gateway call failed", err)
+		return nil, provider.Wrap(provider.ErrorUnavailable, c.name+" gateway call failed", err)
+	}
+	return res, nil
+}
+
+func (c *Client) call(ctx context.Context, method, path, id string, body *httpbody.Body, expected int) (Task, error) {
+	res, err := c.request(ctx, c.http, method, path, id, body)
+	if err != nil {
+		return Task{}, err
 	}
 	defer res.Body.Close()
 	if res.StatusCode != expected {

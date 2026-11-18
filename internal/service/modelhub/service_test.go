@@ -35,7 +35,6 @@ func TestVMindModelsUseModelGatewayAfterModelListReload(t *testing.T) {
 	const decisionResult = `{"prediction":{"label":"标准商品图","probability":0.8},"options":[],"timings_ms":{"total":2}}`
 	t.Setenv("MODEL_GATEWAY_API_TOKEN", "test-gateway-token")
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
 		if r.Method == http.MethodGet && r.Header.Get("Authorization") == "Bearer test-gateway-token" {
 			kind := map[string]string{"/v1/models/" + chatModel: "chat_completions", "/v1/models/" + decisionModel: "decision"}[r.URL.Path]
 			if kind == "" {
@@ -49,38 +48,36 @@ func TestVMindModelsUseModelGatewayAfterModelListReload(t *testing.T) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		if strings.HasPrefix(r.URL.Path, "/v1/gateway/requests/") {
-			// 文本模型误用图片能力也应到网关受理边界被拒绝，不做逐次预查询。
-			http.Error(w, `{"error":{"code":"invalid_protocol"}}`, http.StatusBadRequest)
-			return
-		}
-
-		if r.URL.Path != "/v1/chat/completions" {
+		model, ok := strings.CutPrefix(r.URL.Path, "/v1/gateway/requests/")
+		if !ok {
 			t.Errorf("unexpected VMind gateway path %s", r.URL.Path)
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 		var request struct {
-			Model    string          `json:"model"`
-			Messages json.RawMessage `json:"messages"`
-			Traits   json.RawMessage `json:"model_traits"`
-			Stream   bool            `json:"stream"`
+			Input struct {
+				Messages json.RawMessage `json:"messages"`
+				Traits   json.RawMessage `json:"model_traits"`
+			} `json:"input"`
+			Output string `json:"output"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-			t.Fatal(err)
+			t.Error(err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
 		}
-		if request.Model == models.VWorldOutfit10 {
+		if model == models.VWorldOutfit10 || request.Output != "" {
 			http.Error(w, `{"error":{"code":"invalid_protocol"}}`, http.StatusBadRequest)
 			return
 		}
-		if request.Model == decisionModel {
-			if !strings.Contains(string(request.Messages), "data:image/png;base64,iVBORw0KGgo=") || string(request.Traits) != `{"task":"image_type"}` {
+		if model == decisionModel {
+			if !strings.Contains(string(request.Input.Messages), "data:image/png;base64,iVBORw0KGgo=") || string(request.Input.Traits) != `{"task":"image_type"}` {
 				t.Error("Decision input must reach the gateway without a protocol lookup")
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]string{"content": decisionResult}, "finish_reason": "stop"}}})
 			return
 		}
-		if request.Model != chatModel || !strings.Contains(string(request.Messages), "data:image/png;base64,AQID") {
+		if model != chatModel || !strings.Contains(string(request.Input.Messages), "data:image/png;base64,AQID") {
 			t.Error("gateway request must preserve the model ID and inline image")
 			w.WriteHeader(http.StatusBadRequest)
 			return
@@ -122,7 +119,7 @@ func TestVMindModelsUseModelGatewayAfterModelListReload(t *testing.T) {
 		t.Fatal(err)
 	}
 	live.ApplyYAML(string(raw))
-	// 输出契约在同一次网关受理中校验，不能靠 Service 的模型名单或额外查询决定。
+	// 网关登记与请求能力不匹配时，调用必须失败。
 	for _, model := range []string{chatModel, decisionModel} {
 		req := textRequest(model, "test")
 		if _, err := sets[instance].Image.GenerateImage(ctx, model, req); err == nil {
