@@ -3,10 +3,9 @@ package openai
 import (
 	"bufio"
 	"context"
-	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"strings"
@@ -15,6 +14,7 @@ import (
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/infra/httpbody"
 	"github.com/wgdl666/wgModelHub/internal/infra/telemetry"
+	"github.com/wgdl666/wgModelHub/internal/infra/vmindgateway"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/internal/thinking"
 	"github.com/wgdl666/wgModelHub/models"
@@ -23,15 +23,18 @@ import (
 
 const DefaultBaseURL = "https://api.openai.com/v1"
 
-// Provider 适配 OpenAI-compatible 端点：文本走 /chat/completions，生图按有无参考图走 /images/generations 或 /images/edits。
+// Provider 转换 OpenAI 格式的消息和结果，按配置向供应商或 ModelGateway 发送。
 type Provider struct {
-	// 仅内部网关接收模型参数，第三方 OpenAI-compatible 请求不携带该扩展。
-	ModelGateway  bool
 	name          string
 	apiKey        string
 	baseURL       string
 	upstreamModel string
 	client        *http.Client
+	gateway       *vmindgateway.Client
+}
+
+func NewGateway(name string, gateway *vmindgateway.Client) *Provider {
+	return &Provider{name: name, gateway: gateway}
 }
 
 func New(name, apiKey, baseURL, upstreamModel string) (*Provider, error) {
@@ -50,7 +53,7 @@ func New(name, apiKey, baseURL, upstreamModel string) (*Provider, error) {
 
 func (p *Provider) Generate(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
 	body := p.buildRequestBody(model, request, false)
-	respBody, err := p.doRequest(ctx, body)
+	respBody, err := p.doRequest(ctx, model, body)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +68,7 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 
 func (p *Provider) GenerateStream(ctx context.Context, model string, request *modelhubv2.GenerateRequest, emit provider.EmitEvent) (*modelhubv2.GenerateEvent, error) {
 	body := p.buildRequestBody(model, request, true)
-	respBody, err := p.doRequest(ctx, body)
+	respBody, err := p.doRequest(ctx, model, body)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +154,7 @@ func (p *Provider) buildRequestBody(model string, request *modelhubv2.GenerateRe
 		"model":  p.chatModel(model),
 		"stream": stream,
 	}
-	if p.ModelGateway && strings.TrimSpace(input.GetModelTraits()) != "" {
+	if p.gateway != nil && strings.TrimSpace(input.GetModelTraits()) != "" {
 		body["model_traits"] = json.RawMessage(input.GetModelTraits())
 	}
 	if stream {
@@ -170,7 +173,7 @@ func (p *Provider) buildRequestBody(model string, request *modelhubv2.GenerateRe
 				"content":      value.ToolOutput.GetOutput(),
 			})
 			for _, image := range value.ToolOutput.GetImages() {
-				if url := mediaURL(image); url != "" {
+				if url := mediaURL(image); url != nil {
 					messages = append(messages, map[string]any{
 						"role": "user",
 						"content": []map[string]any{{
@@ -560,7 +563,7 @@ func convertMessage(msg *modelhubv2.Message) map[string]any {
 				parts = append(parts, map[string]any{"type": "text", "text": value.Text})
 			}
 		case *modelhubv2.ContentPart_Image:
-			if url := mediaURL(value.Image); url != "" {
+			if url := mediaURL(value.Image); url != nil {
 				parts = append(parts, map[string]any{"type": "image_url", "image_url": map[string]any{"url": url}})
 			}
 		}
@@ -569,21 +572,18 @@ func convertMessage(msg *modelhubv2.Message) map[string]any {
 	return m
 }
 
-func mediaURL(media *modelhubv2.Media) string {
-	if media == nil {
-		return ""
-	}
-	switch source := media.Source.(type) {
+func mediaURL(media *modelhubv2.Media) any {
+	switch source := media.GetSource().(type) {
 	case *modelhubv2.Media_Uri:
-		return source.Uri
-	case *modelhubv2.Media_Data:
-		if len(source.Data) == 0 || media.MimeType == "" {
-			return ""
+		if source.Uri != "" {
+			return source.Uri
 		}
-		return fmt.Sprintf("data:%s;base64,%s", media.MimeType, base64.StdEncoding.EncodeToString(source.Data))
-	default:
-		return ""
+	case *modelhubv2.Media_Data:
+		if len(source.Data) != 0 && media.MimeType != "" {
+			return httpbody.Base64DataURL{MediaType: media.MimeType, Data: source.Data}
+		}
 	}
+	return nil
 }
 
 func messageText(message *modelhubv2.Message) string {
@@ -607,7 +607,12 @@ func roleString(role modelhubv2.Role) string {
 	}
 }
 
-func (p *Provider) doRequest(ctx context.Context, body map[string]any) (io.ReadCloser, error) {
+func (p *Provider) sendRequest(ctx context.Context, model string, body map[string]any) (*http.Response, error) {
+	if p.gateway != nil {
+		input := maps.Clone(body)
+		delete(input, "model")
+		return p.gateway.Invoke(ctx, model, input, 0)
+	}
 	encoded, err := httpbody.JSON(body, false)
 	if err != nil {
 		return nil, provider.WrapNotAttempted(provider.ErrorInvalidArgument, p.name+" marshal failed", err)
@@ -626,6 +631,14 @@ func (p *Provider) doRequest(ctx context.Context, body map[string]any) (io.ReadC
 			return nil, ctx.Err()
 		}
 		return nil, provider.Wrap(provider.ErrorUnavailable, p.name+" request failed", err)
+	}
+	return resp, nil
+}
+
+func (p *Provider) doRequest(ctx context.Context, model string, body map[string]any) (io.ReadCloser, error) {
+	resp, err := p.sendRequest(ctx, model, body)
+	if err != nil {
+		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
 		// 只读供应商拒因，不回读请求体；否则 Hub 只能看到光秃秃的 HTTP 400。

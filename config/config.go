@@ -735,11 +735,12 @@ func (c Config) Validate() error {
 	// 先校验每个实例，再按真实模型 ID 汇总声明方；单声明可隐式路由，多声明必须靠 model_routes 显式选定。
 	declaredBy := make(map[string][]string)
 	for name, provider := range c.Providers {
-		if err := validateProvider(name, provider); err != nil {
-			return err
-		}
-		if _, _, err := provider.ResolveVisionGateway(c.Providers); err != nil {
+		resolved, _, err := provider.ResolveVisionGateway(c.Providers)
+		if err != nil {
 			return fmt.Errorf("provider %s: %w", name, err)
+		}
+		if err := validateProvider(name, resolved); err != nil {
+			return err
 		}
 		if len(provider.Models) == 0 {
 			return fmt.Errorf("provider %s models are required", name)
