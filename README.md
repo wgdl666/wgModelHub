@@ -133,7 +133,7 @@ Gemini/Vertex 的文本 Generate 自动将实际出站的 system instruction、�
 
 ## VWorld/LTX 视频动作参数
 
-`SubmitGeneration` 调用 `Vmind_outfit_video_v1.0` 时，调用方可在 `request.input.model_traits` 中传 JSON 字符串 `{"motion_tips":"Slowly turn the body 30 degrees."}`。LTX 适配器读取 `motion_tips`，去除首尾空白后写入 `POST /vton` 的独立 multipart 字段；`image`、`prompt` 和上游 `model=ltx` 保持原协议。
+`SubmitGeneration` 调用 `Vmind_outfit_video_v1.0` 时，调用方可在 `request.input.model_traits` 中传 JSON 字符串 `{"motion_tips":"Slowly turn the body 30 degrees.","transparent_background":true}`。两个字段均可选；LTX 将其透传给网关或原生 `/vton`。支持透明视频的实例返回 `video/webm`；省略开关或传 false 返回 `video/mp4`。
 
 该参数可省略；缺失、空串或仅空白时不发送表单字段。非法 JSON、非对象或非字符串值在出站前拒绝；其他模型特性键忽略。ModelHub 只透传调用方的动作文本，不追加业务动作规则，也不把它合并到 `prompt`。动作内容参与已有请求哈希：同一 caller/request_id 改动作会返回 `ALREADY_EXISTS`。
 

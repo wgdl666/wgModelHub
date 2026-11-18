@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"mime"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,9 +20,14 @@ import (
 	"github.com/wgdl666/wgModelHub/protocol"
 )
 
-const (
-	videoMIMEType = "video/mp4"
-)
+// Older workers sometimes serve MP4 downloads without a video Content-Type.
+func resultVideoMIME(contentType string) string {
+	mediaType, _, _ := mime.ParseMediaType(contentType)
+	if mediaType == "video/webm" {
+		return mediaType
+	}
+	return "video/mp4"
+}
 
 type Provider struct {
 	name         string
@@ -71,7 +78,7 @@ func (p *Provider) SubmitVideo(ctx context.Context, model string, request *model
 	if request == nil {
 		return "", provider.NotAttempted(provider.ErrorInvalidArgument, "video request is required")
 	}
-	motionTips, err := videoMotionTips(request.GetInput().GetModelTraits())
+	traits, err := parseVideoTraits(request.GetInput().GetModelTraits())
 	if err != nil {
 		return "", err
 	}
@@ -89,34 +96,43 @@ func (p *Provider) SubmitVideo(ctx context.Context, model string, request *model
 			"prompt": provider.JoinedText(request.GetInput()),
 			"images": []vmindgateway.Image{{MIMEType: mimeType, Data: imageBytes}},
 		}
-		if motionTips != "" {
-			input["motion_tips"] = motionTips
+		if traits.motionTips != "" {
+			input["motion_tips"] = traits.motionTips
+		}
+		if traits.transparentBackground != nil {
+			input["transparent_background"] = *traits.transparentBackground
 		}
 		task, err := p.gateway.Submit(ctx, model, provider.SubmissionID(ctx), input, http.StatusAccepted)
 		return task.RequestID, err
 	}
-	return p.submit(ctx, imageBytes, provider.JoinedText(request.GetInput()), motionTips)
+	return p.submit(ctx, imageBytes, provider.JoinedText(request.GetInput()), traits)
 }
 
-// videoMotionTips 只读取该模型认识的独立动作参数；缺省时保持旧调用行为。
-func videoMotionTips(raw string) (string, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return "", nil
+type videoTraits struct {
+	motionTips            string
+	transparentBackground *bool
+}
+
+func parseVideoTraits(raw string) (videoTraits, error) {
+	var result videoTraits
+	if strings.TrimSpace(raw) == "" {
+		return result, nil
 	}
-	var traits map[string]json.RawMessage
-	if json.Unmarshal([]byte(raw), &traits) != nil || traits == nil {
-		return "", provider.NotAttempted(provider.ErrorInvalidArgument, "video model_traits must be a JSON object with string motion_tips")
+	var fields map[string]json.RawMessage
+	if json.Unmarshal([]byte(raw), &fields) != nil || fields == nil {
+		return result, provider.NotAttempted(provider.ErrorInvalidArgument, "video model_traits must be a JSON object")
 	}
-	value, exists := traits["motion_tips"]
-	if !exists {
-		return "", nil
+	if value, ok := fields["motion_tips"]; ok {
+		if bytes.Equal(value, []byte("null")) || json.Unmarshal(value, &result.motionTips) != nil {
+			return result, provider.NotAttempted(provider.ErrorInvalidArgument, "video model_traits.motion_tips must be a string")
+		}
 	}
-	var motionTips string
-	if bytes.Equal(bytes.TrimSpace(value), []byte("null")) || json.Unmarshal(value, &motionTips) != nil {
-		return "", provider.NotAttempted(provider.ErrorInvalidArgument, "video model_traits.motion_tips must be a string")
+	if value, ok := fields["transparent_background"]; ok {
+		if json.Unmarshal(value, &result.transparentBackground) != nil || result.transparentBackground == nil {
+			return result, provider.NotAttempted(provider.ErrorInvalidArgument, "video model_traits.transparent_background must be a boolean")
+		}
 	}
-	return motionTips, nil
+	return result, nil
 }
 
 // GetVideo 单次查询 /jobs/{id}；done/error/进行中分别映射为 Succeeded/Failed/Running。
@@ -177,12 +193,12 @@ func (p *Provider) ReadVideoResult(ctx context.Context, model string, providerTa
 		if task.State != "succeeded" || len(task.Result.Files) != 1 {
 			return provider.New(provider.ErrorInvalidResponse, "VMind video task has no successful object result")
 		}
-		_, reader, err := p.gateway.OpenResult(ctx, task.RequestID, task.Result.Files[0])
+		contentType, reader, err := p.gateway.OpenResult(ctx, task.RequestID, task.Result.Files[0])
 		if err != nil {
 			return err
 		}
 		defer reader.Close()
-		return provider.EmitVideoChunksFromReader(reader, videoMIMEType, providerTaskID, 0, emit)
+		return provider.EmitVideoChunksFromReader(reader, resultVideoMIME(contentType), providerTaskID, 0, emit)
 	}
 	job, err := p.getJob(ctx, providerTaskID)
 	if err != nil {
@@ -209,7 +225,7 @@ func (p *Provider) ReadVideoResult(ctx context.Context, model string, providerTa
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return provider.TakeHTTPError(p.name, response.StatusCode, response.Body)
 	}
-	return provider.EmitVideoChunksFromReader(response.Body, videoMIMEType, providerTaskID, 0, emit)
+	return provider.EmitVideoChunksFromReader(response.Body, resultVideoMIME(response.Header.Get("Content-Type")), providerTaskID, 0, emit)
 }
 
 func (p *Provider) loadFirstFrame(ctx context.Context, media *modelhubv2.Media) ([]byte, error) {
@@ -258,13 +274,16 @@ func (p *Provider) loadFirstFrame(ctx context.Context, media *modelhubv2.Media) 
 	}
 }
 
-func (p *Provider) submit(ctx context.Context, imageBytes []byte, prompt, motionTips string) (string, error) {
+func (p *Provider) submit(ctx context.Context, imageBytes []byte, prompt string, traits videoTraits) (string, error) {
 	parts := []httpbody.Part{httpbody.File("image", "first_frame.png", "application/octet-stream", imageBytes)}
 	endpoint := "/vton"
 	fields := map[string]string{"prompt": prompt}
 	// 当前视频网关只提供 /vton；保留服务端模型与推理默认值，避免与网关规格漂移。
-	if motionTips != "" {
-		fields["motion_tips"] = motionTips
+	if traits.motionTips != "" {
+		fields["motion_tips"] = traits.motionTips
+	}
+	if traits.transparentBackground != nil {
+		fields["transparent_background"] = strconv.FormatBool(*traits.transparentBackground)
 	}
 	// 穿搭视频和生图一样：上游只认表单参数，不认 traceparent。轮询和下载不带这个字段。
 	if traceID := telemetry.TraceID(ctx); traceID != "" {

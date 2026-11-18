@@ -12,7 +12,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wgdl666/wgModelHub/config"
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
+	"github.com/wgdl666/wgModelHub/internal/infra/objectstore"
+	"github.com/wgdl666/wgModelHub/internal/infra/vmindgateway"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
 	"github.com/wgdl666/wgModelHub/protocol"
@@ -79,7 +82,7 @@ func TestProviderRetriesSubmitOn404(t *testing.T) {
 	}
 	provider.client = server.Client()
 
-	jobID, err := provider.submit(context.Background(), []byte("png"), "prompt", "")
+	jobID, err := provider.submit(context.Background(), []byte("png"), "prompt", videoTraits{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +104,7 @@ func TestProviderDoesNotRetrySubmitOn5xx(t *testing.T) {
 		t.Fatal(err)
 	}
 	p.client = server.Client()
-	_, err = p.submit(context.Background(), []byte("png"), "prompt", "")
+	_, err = p.submit(context.Background(), []byte("png"), "prompt", videoTraits{})
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -149,9 +152,10 @@ func TestReadVideoResultResolvesRelativeVideoURL(t *testing.T) {
 		case "/jobs/job-1":
 			_ = json.NewEncoder(writer).Encode(map[string]string{
 				"status":    "done",
-				"video_url": "/assets/result.mp4",
+				"video_url": "/assets/result.webm",
 			})
-		case "/assets/result.mp4":
+		case "/assets/result.webm":
+			writer.Header().Set("Content-Type", "video/webm")
 			_, _ = writer.Write([]byte("video-bytes"))
 		default:
 			t.Fatalf("unexpected path %s", request.URL.Path)
@@ -168,6 +172,9 @@ func TestReadVideoResultResolvesRelativeVideoURL(t *testing.T) {
 	var got []byte
 	err = p.ReadVideoResult(context.Background(), models.VWorldOutfitVideo10, "job-1", func(ev *modelhubv2.GenerateEvent) error {
 		for _, item := range ev.GetItems() {
+			if item.GetVideo().GetMimeType() != "video/webm" {
+				t.Errorf("unexpected MIME %q", item.GetVideo().GetMimeType())
+			}
 			got = append(got, item.GetVideo().GetData()...)
 		}
 		return nil
@@ -268,7 +275,7 @@ func TestSubmitReadsRequestBodyOnEachRetry(t *testing.T) {
 	}
 	p.client = server.Client()
 
-	if _, err := p.submit(context.Background(), []byte("frame"), "prompt", ""); err != nil {
+	if _, err := p.submit(context.Background(), []byte("frame"), "prompt", videoTraits{}); err != nil {
 		t.Fatal(err)
 	}
 	if len(bodies) != 2 || bodies[0] == 0 || bodies[0] != bodies[1] {
@@ -420,13 +427,13 @@ func TestSubmitSendsTraceIDOnlyWhenSpanIsValid(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.submit(context.Background(), []byte("image"), "prompt", ""); err != nil {
+	if _, err := p.submit(context.Background(), []byte("image"), "prompt", videoTraits{}); err != nil {
 		t.Fatal(err)
 	}
 	tp := sdktrace.NewTracerProvider()
 	ctx, span := tp.Tracer("test").Start(context.Background(), "modelhub.SubmitVideo")
 	defer span.End()
-	if _, err := p.submit(ctx, []byte("image"), "prompt", ""); err != nil {
+	if _, err := p.submit(ctx, []byte("image"), "prompt", videoTraits{}); err != nil {
 		t.Fatal(err)
 	}
 	want := span.SpanContext().TraceID().String()
@@ -471,5 +478,45 @@ func TestHistoricalVWorldVideoCanStillBeRead(t *testing.T) {
 	}
 	if _, err := p.SubmitVideo(context.Background(), old, &modelhubv2.GenerateRequest{}); err == nil {
 		t.Fatal("legacy submit accepted")
+	}
+}
+
+func TestReadGatewayWebMUsesObjectContentType(t *testing.T) {
+	const id = "0b7dd618-90f9-46fd-b5b2-dc818e602b7a"
+	const key = "outputs/" + id + "/0.webm"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/gateway/requests":
+			json.NewEncoder(w).Encode(map[string]any{"request_id": id, "state": "succeeded", "result": map[string]any{"files": []objectstore.Reference{{Provider: "s3", Bucket: "videos", Region: "us-east-1", Key: key}}}})
+		case "/videos/" + key:
+			w.Header().Set("Content-Type", "video/webm")
+			io.WriteString(w, "video bytes")
+		default:
+			t.Errorf("unexpected path %s", r.URL.Path)
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	store, err := objectstore.New(t.Context(), config.ObjectStorageConfig{Provider: "s3", Bucket: "videos", Region: "us-east-1", Endpoint: server.URL, AccessKeyID: "test", AccessKeySecret: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, err := vmindgateway.New("test", server.URL, "test-token", store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var data []byte
+	err = NewGateway("test", client, 1).ReadVideoResult(t.Context(), models.VWorldOutfitVideo10, id, func(ev *modelhubv2.GenerateEvent) error {
+		for _, item := range ev.GetItems() {
+			video := item.GetVideo()
+			if video.GetMimeType() != "video/webm" {
+				t.Errorf("unexpected MIME %q", video.GetMimeType())
+			}
+			data = append(data, video.GetData()...)
+		}
+		return nil
+	})
+	if err != nil || string(data) != "video bytes" {
+		t.Fatalf("data=%q err=%v", data, err)
 	}
 }
