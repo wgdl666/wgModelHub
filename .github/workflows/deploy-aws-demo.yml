@@ -1,0 +1,52 @@
+name: Deploy AWS Demo
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: aws-demo-deploy-modelhub
+  cancel-in-progress: false
+
+# 不设置 jobs.*.environment：IAM 只信任 immutable sub
+# repo:wgdl666@245333630/wgModelHub@1333925233:ref:refs/heads/dev。
+# 这条流水线只发布北弗吉尼亚 tomirro_demo，不改新加坡或俄亥俄。
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/dev'
+    runs-on: codebuild-wg-gha-runner-modelhub-${{ github.run_id }}-${{ github.run_attempt }}
+    timeout-minutes: 180
+    steps:
+      - name: Authenticate to AWS with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::054043816891:role/tomirro-demo-modelhub-github-dispatch
+          role-session-name: modelhub-demo-${{ github.run_id }}
+          aws-region: us-east-2
+          retry-max-attempts: 3
+      - name: Build the dev commit and deploy tomirro_demo
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          build_id=$(aws codebuild start-build \
+            --region us-east-2 \
+            --project-name tomirro-demo-modelhub \
+            --environment-variables-override name=SOURCE_VERSION,value="$SOURCE_SHA",type=PLAINTEXT \
+            --query 'build.id' --output text)
+          echo "CodeBuild $build_id"
+          while true; do
+            status=$(aws codebuild batch-get-builds --region us-east-2 --ids "$build_id" --query 'builds[0].buildStatus' --output text)
+            echo "$status"
+            case "$status" in
+              SUCCEEDED) exit 0 ;;
+              FAILED|FAULT|STOPPED|TIMED_OUT) exit 1 ;;
+            esac
+            sleep 20
+          done
