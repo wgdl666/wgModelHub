@@ -136,6 +136,9 @@ func TestGenerateImageInlinePNGRoundTrip(t *testing.T) {
 			return
 		}
 		defer file.Close()
+		if values := r.MultipartForm.Value["crop"]; len(values) != 1 || values[0] != "true" {
+			t.Errorf("crop=%v, want exactly one true", values)
+		}
 		gotFileName = header.Filename
 		gotFileType = header.Header.Get("Content-Type")
 		gotBody, err = io.ReadAll(file)
