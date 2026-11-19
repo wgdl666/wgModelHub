@@ -27,6 +27,7 @@ func TestGatewayImageSendsSchemaFields(t *testing.T) {
 		{"vton", models.VWorldOutfit10, outfitRequest(source, []byte("garment"), " preserve prompt "), map[string]any{"prompt": " preserve prompt "}, [][]byte{source, []byte("garment")}},
 		{"product", models.VWorldClothGen10, wardrobeRequest(source, `{"garment_name":"shirt","garment_role":"tops"}`), map[string]any{"garment_name": "shirt", "garment_role": "tops"}, [][]byte{source}},
 		{"extraction bbox", models.VWorldWardrobe10, wardrobeRequest(source, `{"garment_name":"pants","bbox":[1,2,3,4],"bbox_format":"xyxy"}`), map[string]any{"garment_name": "pants", "bbox": []any{float64(1), float64(2), float64(3), float64(4)}, "bbox_format": "xyxy"}, [][]byte{source}},
+		{"extraction dual view", models.VWorldWardrobe10, wardrobeRequest(source, `{"garment_name":"pants","bbox":[1,2,3,4],"bbox_only":false}`), map[string]any{"garment_name": "pants", "bbox": []any{float64(1), float64(2), float64(3), float64(4)}, "bbox_only": false}, [][]byte{source}},
 		{"extraction mask", models.VWorldWardrobe10, wardrobeRequest(source, `{"garment_name":"shirt","parse_labels":{"15":"feet"}}`, []byte("mask")), map[string]any{"garment_name": "shirt", "parse_labels": map[string]any{"15": "feet"}}, [][]byte{source, []byte("mask")}},
 		{"body", models.VWorldBodyModel10, bodyRequest, map[string]any{"gender": "female"}, [][]byte{source}},
 		// Product/extraction rules belong to Gateway Schema, so the adapter forwards these fields for rejection there.
@@ -43,7 +44,10 @@ func TestGatewayImageSendsSchemaFields(t *testing.T) {
 						t.Error("incorrect definition lookup")
 					}
 					kind := map[string]string{models.VWorldOutfit10: "vton", models.VWorldClothGen10: "product_generation", models.VWorldWardrobe10: "garment_extraction", models.VWorldBodyModel10: "body_model"}[tc.model]
-					_ = json.NewEncoder(w).Encode(map[string]string{"protocol": kind})
+					_ = json.NewEncoder(w).Encode(map[string]any{
+						"protocol":     kind,
+						"input_schema": map[string]any{"properties": map[string]any{"bbox_only": map[string]string{"type": "boolean"}}},
+					})
 					return
 				}
 				if r.URL.Path != "/v1/gateway/requests/"+tc.model || r.Header.Get("Authorization") != "Bearer fixture-token" {

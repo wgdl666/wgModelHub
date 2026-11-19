@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -152,6 +153,9 @@ func (p *Provider) generateWardrobe(ctx context.Context, model string, extractio
 			return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "garment extraction requires bbox or parser input")
 		}
 		path = garmentExtractionPath
+		if meta.BBoxOnly != nil {
+			fields["bbox_only"] = strconv.FormatBool(*meta.BBoxOnly)
+		}
 		if meta.BBox != nil {
 			// 坐标是否归一化、是否越界由上游按 bbox_format 判定；这里只原样转成 JSON 数组。
 			bbox, err := json.Marshal(meta.BBox)
@@ -177,7 +181,7 @@ func (p *Provider) generateWardrobe(ctx context.Context, model string, extractio
 			}
 			uploads = append(uploads, imageUpload{field: "parse_mask", filename: "human_parse_labels.png", data: mask, mimeType: mime})
 		}
-	} else if len(images) != 1 || meta.ParseLabels != nil || meta.BBox != nil || meta.BBoxFormat != "" {
+	} else if len(images) != 1 || meta.ParseLabels != nil || meta.BBox != nil || meta.BBoxFormat != "" || meta.BBoxOnly != nil {
 		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "product generation requires one image and no extraction fields")
 	}
 	return p.generate(ctx, model, path, fields, uploads)
@@ -265,6 +269,15 @@ func (p *Provider) generateThroughGateway(ctx context.Context, model string, def
 		meta, err := parseGarmentMeta(provider.JoinedText(request.GetInput()))
 		if err != nil {
 			return nil, err
+		}
+		if meta.BBoxOnly != nil {
+			if kind != "garment_extraction" {
+				return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "bbox_only requires garment extraction")
+			}
+			if _, supported := definition.InputSchema.Properties["bbox_only"]; !supported {
+				return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "bbox_only is unavailable for this model")
+			}
+			input["bbox_only"] = *meta.BBoxOnly
 		}
 		input["garment_name"] = meta.Name
 		if meta.GarmentRole != "" {
@@ -417,6 +430,7 @@ type garmentMeta struct {
 	// BBox 给人物拆衣提供 [x1,y1,x2,y2]，可替代解析标签图。
 	BBox       []float64 `json:"bbox"`
 	BBoxFormat string    `json:"bbox_format"`
+	BBoxOnly   *bool     `json:"bbox_only"`
 }
 
 // Decode the transport envelope only; role/name/label validation belongs to VMind-Image.
