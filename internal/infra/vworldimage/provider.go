@@ -104,11 +104,11 @@ func (p *Provider) GenerateImage(ctx context.Context, model string, request *mod
 		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "generate request is required")
 	}
 	if p.gateway != nil {
-		kind, err := p.gateway.ModelProtocol(ctx, model)
+		definition, err := p.gateway.ModelDefinition(ctx, model)
 		if err != nil {
 			return nil, err
 		}
-		return p.generateThroughGateway(ctx, model, kind, request)
+		return p.generateThroughGateway(ctx, model, definition, request)
 	}
 	kind := map[string]string{
 		models.VWorldWardrobe10: "garment_extraction", models.VWorldClothGen10: "product_generation",
@@ -233,7 +233,7 @@ func (p *Provider) generate(ctx context.Context, model, path string, fields map[
 	return imageEvent(parsed.Data)
 }
 
-func (p *Provider) generateThroughGateway(ctx context.Context, model, kind string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
+func (p *Provider) generateThroughGateway(ctx context.Context, model string, definition vmindgateway.ModelDefinition, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
 	media := provider.ImageMedias(request.GetInput())
 	images := make([]vmindgateway.Image, 0, len(media))
 	for _, image := range media {
@@ -245,6 +245,19 @@ func (p *Provider) generateThroughGateway(ctx context.Context, model, kind strin
 	}
 	// protobuf 的文本/traits 在适配器展开为模型字段，Gateway 只校验这一份 JSON 契约。
 	input := map[string]any{"images": images}
+	kind := definition.Protocol
+	if kind == "vton" || kind == "body_model" {
+		// 只有已登记透明出图能力的环境才接收这个字段。
+		if _, supported := definition.InputSchema.Properties["transparent_background"]; supported {
+			transparent, err := transparentImageTrait(request.GetInput().GetModelTraits())
+			if err != nil {
+				return nil, err
+			}
+			if transparent != nil {
+				input["transparent_background"] = *transparent
+			}
+		}
+	}
 	switch kind {
 	case "vton":
 		input["prompt"] = provider.JoinedText(request.GetInput())
@@ -317,6 +330,25 @@ func bodyModelGender(raw string) (string, error) {
 		return "", provider.WrapNotAttempted(provider.ErrorInvalidArgument, "model_traits must be a JSON object", err)
 	}
 	return traits.Gender, nil
+}
+
+func transparentImageTrait(raw string) (*bool, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	var fields map[string]json.RawMessage
+	if json.Unmarshal([]byte(raw), &fields) != nil || fields == nil {
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "image model_traits must be a JSON object")
+	}
+	value, present := fields["transparent_background"]
+	if !present {
+		return nil, nil
+	}
+	var transparent *bool
+	if json.Unmarshal(value, &transparent) != nil || transparent == nil {
+		return nil, provider.NotAttempted(provider.ErrorInvalidArgument, "image model_traits.transparent_background must be a boolean")
+	}
+	return transparent, nil
 }
 
 type imageUpload struct {
