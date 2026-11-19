@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"sync/atomic"
 	"testing"
 
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
@@ -68,6 +69,60 @@ func TestGatewayImageSendsSchemaFields(t *testing.T) {
 			tc.fields["images"] = images
 			if received["output"] != "image" || !reflect.DeepEqual(received["input"], tc.fields) {
 				t.Fatalf("canonical input changed: got %#v, want %#v", received, tc.fields)
+			}
+		})
+	}
+}
+
+func TestGatewayImageTransparentBackgroundFollowsModelSchema(t *testing.T) {
+	for _, tc := range []struct {
+		name, model, protocol, traits string
+		supported                     bool
+		want                          string
+	}{
+		{"outfit transparent", models.VWorldOutfit10, "vton", `{"transparent_background":true}`, true, "true"},
+		{"body explicit opaque", models.VWorldBodyModel10, "body_model", `{"gender":"female","transparent_background":false}`, true, "false"},
+		{"older schema", models.VWorldOutfit10, "vton", `{"transparent_background":true}`, false, ""},
+		{"omitted", models.VWorldBodyModel10, "body_model", `{"gender":"male"}`, true, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var submitted atomic.Bool
+			gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodGet {
+					properties := map[string]any{}
+					if tc.supported {
+						properties["transparent_background"] = map[string]string{"type": "boolean"}
+					}
+					_ = json.NewEncoder(w).Encode(map[string]any{
+						"protocol": tc.protocol, "input_schema": map[string]any{"properties": properties},
+					})
+					return
+				}
+				submitted.Store(true)
+				var received struct {
+					Input map[string]json.RawMessage `json:"input"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+					t.Error(err)
+				}
+				if got := string(received.Input["transparent_background"]); got != tc.want {
+					t.Errorf("transparent_background=%q, want %q", got, tc.want)
+				}
+				w.WriteHeader(http.StatusBadRequest)
+			}))
+			defer gateway.Close()
+			client, err := vmindgateway.New("fixture", gateway.URL, "fixture-token", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			request := wardrobeRequest(pngBytes(t), "prompt")
+			if tc.protocol == "vton" {
+				request = outfitRequest(pngBytes(t), pngBytes(t), "prompt")
+			}
+			request.Input.ModelTraits = tc.traits
+			_, _ = NewGateway("fixture", client).GenerateImage(t.Context(), tc.model, request)
+			if !submitted.Load() {
+				t.Fatal("request did not reach the Gateway")
 			}
 		})
 	}
