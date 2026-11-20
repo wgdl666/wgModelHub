@@ -52,6 +52,9 @@ func New(name, apiKey, baseURL, upstreamModel string) (*Provider, error) {
 }
 
 func (p *Provider) Generate(ctx context.Context, model string, request *modelhubv2.GenerateRequest) (*modelhubv2.GenerateEvent, error) {
+	if model == models.VmindEmbedding8B {
+		return p.generateEmbedding(ctx, model, request)
+	}
 	body := p.buildRequestBody(model, request, false)
 	respBody, err := p.doRequest(ctx, model, body)
 	if err != nil {
@@ -67,6 +70,18 @@ func (p *Provider) Generate(ctx context.Context, model string, request *modelhub
 }
 
 func (p *Provider) GenerateStream(ctx context.Context, model string, request *modelhubv2.GenerateRequest, emit provider.EmitEvent) (*modelhubv2.GenerateEvent, error) {
+	if model == models.VmindEmbedding8B {
+		event, err := p.generateEmbedding(ctx, model, request)
+		if err != nil {
+			return nil, err
+		}
+		if emit != nil {
+			if err := emit(provider.TextDeltaEvent(event.GetItems()[0].GetText())); err != nil {
+				return nil, err
+			}
+		}
+		return provider.MetadataFinalEvent("", "", nil), nil
+	}
 	body := p.buildRequestBody(model, request, true)
 	respBody, err := p.doRequest(ctx, model, body)
 	if err != nil {

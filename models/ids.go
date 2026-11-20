@@ -119,6 +119,7 @@ const (
 	RekognitionCompareFaces = "rekognition-compare-faces"
 	// Qwen3VLEmbedding 是百炼多模态向量。图片和文本必须落在同一 1024 维空间。
 	Qwen3VLEmbedding = "qwen3-vl-embedding"
+	VmindEmbedding8B = "Vmind_embedding_8B_v1"
 	// CohereEmbedV4 是 Cohere 官方 HTTP 的 embed-v4.0。与 Bedrock 推理配置不能互相替代。
 	CohereEmbedV4 = "embed-v4.0"
 	// CohereEmbedV4Bedrock 是 Bedrock 上的 Cohere Embed v4 推理配置。换空间后旧向量不可复用。
@@ -260,7 +261,7 @@ func All() []string {
 		RekognitionDetectLabels,
 		FacebodyCompareFace,
 		RekognitionCompareFaces,
-		Qwen3VLEmbedding,
+		Qwen3VLEmbedding, VmindEmbedding8B,
 		CohereEmbedV4,
 		CohereEmbedV4Bedrock,
 		Qwen37TextRerank,

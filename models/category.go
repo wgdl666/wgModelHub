@@ -78,6 +78,7 @@ var categories = map[string]Category{
 	GLM53Flash:        CategoryMultimodal,
 
 	Qwen3VLEmbedding:     CategoryEmbedding,
+	VmindEmbedding8B:     CategoryEmbedding,
 	CohereEmbedV4:        CategoryEmbedding,
 	CohereEmbedV4Bedrock: CategoryEmbedding,
 
