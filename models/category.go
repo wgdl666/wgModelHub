@@ -30,6 +30,7 @@ const (
 )
 
 var categories = map[string]Category{
+	Gemini38Live:           CategoryMultimodal,
 	Gemini35Flash:          CategoryMultimodal,
 	Gemini31ProPreview:     CategoryMultimodal,
 	Qwen37Plus:             CategoryMultimodal,

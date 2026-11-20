@@ -30,6 +30,7 @@ const (
 	CapabilityVideo  = "video"
 	CapabilitySpeech = "speech"
 	CapabilityASR    = "asr"
+	CapabilityLive   = "live"
 )
 
 // Bootstrap 只保存 Nacos 定位信息；供应商凭据只能存在于受保护的配置正文中。
@@ -1376,7 +1377,9 @@ func ProviderSupports(provider ProviderConfig, capability string) bool {
 	case provider.VMindGateway != nil:
 		// 每个已登记模型的实际输出契约由对应适配器确认。
 		return capability == CapabilityText || capability == CapabilityImage || capability == CapabilityVideo
-	case provider.Gemini != nil, provider.OpenAI != nil:
+	case provider.Gemini != nil:
+		return capability == CapabilityText || capability == CapabilityImage || capability == CapabilityLive
+	case provider.OpenAI != nil:
 		return capability == CapabilityText || capability == CapabilityImage
 	case provider.ImageSeg != nil, provider.Photoroom != nil, provider.LensCorrection != nil, provider.SegmentPerson != nil, provider.VWorldImage != nil:
 		return capability == CapabilityImage

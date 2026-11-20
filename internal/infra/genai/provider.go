@@ -20,6 +20,7 @@ import (
 type Provider struct {
 	name          string
 	client        *genaisdk.Client
+	liveClient    *genaisdk.Client
 	cacheIdentity string
 	cache         *prefixcache.Manager
 	cacheEnabled  func(string) bool
@@ -53,7 +54,14 @@ func NewGemini(ctx context.Context, name, apiKey, endpoint, proxyURL string) (*P
 	if err != nil {
 		return nil, provider.Wrap(provider.ErrorConfiguration, "create "+name+" client", err)
 	}
-	return &Provider{name: name, client: client, cacheIdentity: cacheIdentity("developer", name, endpoint, apiKey)}, nil
+	// Live 使用 v1alpha，普通 Generate 的缓存协议继续保留 v1beta。
+	liveConfig := *cfg
+	liveConfig.HTTPOptions.APIVersion = "v1alpha"
+	liveClient, err := genaisdk.NewClient(ctx, &liveConfig)
+	if err != nil {
+		return nil, provider.Wrap(provider.ErrorConfiguration, "create Live client", err)
+	}
+	return &Provider{name: name, client: client, liveClient: liveClient, cacheIdentity: cacheIdentity("developer", name, endpoint, apiKey)}, nil
 }
 
 // NewVertexAI 统一使用运行环境 ADC，文本/生图共用 locations/global 客户端和 token 缓存。

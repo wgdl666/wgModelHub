@@ -177,7 +177,7 @@ func buildProvider(ctx context.Context, name string, providerCfg config.Provider
 		if err != nil {
 			return provider.Set{}, err
 		}
-		return provider.Set{Text: client, Image: client}, nil
+		return provider.Set{Text: client, Image: client, Live: client}, nil
 	case providerCfg.VertexAI != nil:
 		cfg := providerCfg.VertexAI
 		client, err := genai.NewVertexAI(ctx, name, cfg.Project, cfg.ProxyURL)

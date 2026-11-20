@@ -53,7 +53,7 @@ type Session struct {
 // Preview. Connect establishes a WebSocket connection to the specified
 // model with the given configuration. It sends the initial
 // setup message and returns a [Session] object representing the connection.
-func (r *Live) Connect(context context.Context, model string, config *LiveConnectConfig) (*Session, error) {
+func (r *Live) Connect(ctx context.Context, model string, config *LiveConnectConfig) (*Session, error) {
 	// TODO: b/406076143 - Support per request HTTP options.
 	if config != nil && config.HTTPOptions != nil {
 		return nil, fmt.Errorf("live module does not support httpOptions at request-level in LiveConnectConfig yet. Please use the client-level httpOptions configuration instead")
@@ -78,7 +78,7 @@ func (r *Live) Connect(context context.Context, model string, config *LiveConnec
 	if r.apiClient.clientConfig.Backend == BackendVertexAI {
 		hasStandardAuth := r.apiClient.clientConfig.Project != "" && r.apiClient.clientConfig.Location != ""
 		if r.apiClient.clientConfig.Credentials != nil {
-			token, err := r.apiClient.clientConfig.Credentials.Token(context)
+			token, err := r.apiClient.clientConfig.Credentials.Token(ctx)
 			if err != nil {
 				return nil, fmt.Errorf("failed to get token: %w", err)
 			}
@@ -121,10 +121,19 @@ func (r *Live) Connect(context context.Context, model string, config *LiveConnec
 		}
 	}
 
-	conn, _, err := websocket.DefaultDialer.Dial(u.String(), header)
+	conn, _, err := websocket.DefaultDialer.DialContext(ctx, u.String(), header)
 	if err != nil {
 		return nil, fmt.Errorf("Connect to %s failed: %w", u.String(), err)
 	}
+	// WG: SDK v1.79.1 未将取消传递给 setup 接收；保护尚未返回给业务层的连接。
+	stopCancel := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stopCancel()
+	established := false
+	defer func() {
+		if !established {
+			_ = conn.Close()
+		}
+	}()
 	s := &Session{
 		conn:      conn,
 		apiClient: r.apiClient,
@@ -173,6 +182,7 @@ func (r *Live) Connect(context context.Context, model string, config *LiveConnec
 	s.SetupComplete = setupMessage.SetupComplete
 	s.bufferedMessage = setupMessage
 
+	established = true
 	return s, nil
 }
 

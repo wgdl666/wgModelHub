@@ -12,6 +12,8 @@ option go_package = "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2;wg_model_
 // SynthesizeSpeech 是独立 unary TTS：一次请求返回完整音频或 gRPC error，不进入 OutputSpec。
 // capability 由 OutputSpec oneof 或 Speech RPC 决定，真实供应商模型 ID 经 request.model 路由到唯一 provider 实例。
 service ModelHubService {
+  // LiveStream 传输实时原音、工具和原生语音；业务准入与播放许可归调用方。
+  rpc LiveStream(stream LiveClientMessage) returns (stream LiveServerMessage);
   rpc Generate(GenerateRequest) returns (stream GenerateEvent);
   // SubmitGeneration 第一阶段只接受 output.video；幂等键为 (x-wg-caller-service, request_id)。
   rpc SubmitGeneration(SubmitGenerationRequest) returns (GenerationTask);
@@ -513,4 +515,38 @@ message TranscribeSpeechTranscript {
   string speaker = 7;
   repeated string speakers = 8;
   repeated string session_speakers = 9;
+}
+
+// 一条 Live 流的首包，凭据和供应商地址仍由模型路由持有。
+message LiveStart {
+  string model = 1;
+  Input input = 2;
+  BusinessMetadata business_metadata = 3;
+  string voice = 4;
+}
+message LiveClientMessage {
+  oneof item {
+    LiveStart start = 1;
+    bytes pcm = 2; // 16kHz mono PCM16 little endian，不能发送 WAV 容器。
+    bool activity_start = 3;
+    bool activity_end = 4;
+    string text = 5;
+    ToolOutput tool_response = 6;
+  }
+}
+message LiveTranscript {
+  string text = 1;
+  bool final = 2;
+}
+// 字段并存：一条供应商消息里的音频、转写及工具均不得丢弃。
+message LiveServerMessage {
+  bool ready = 1;
+  LiveTranscript input_transcript = 2;
+  LiveTranscript output_transcript = 3;
+  repeated Media audio = 4;
+  repeated ToolCall tool_calls = 5;
+  repeated string cancelled_call_ids = 6;
+  bool generation_complete = 7;
+  bool turn_complete = 8;
+  bool interrupted = 9;
 }

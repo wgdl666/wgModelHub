@@ -30,7 +30,7 @@ providers:
       no_auth: true
   Gemini_Developer_API_gemini_main:
     # 3.8 与既有 Gemini 文本共用这一实例。3.5-flash-lite 不放这里：它的签名不能拿去和 Vertex 竞速。
-    models: [gemini-3.5-flash, gemini-3.1-pro-preview, gemini-2.5-flash, gemini-3.7-flash, gemini-3.8-flash, gemini-4-argon, gemini-4-carbon]
+    models: [gemini-3.8-live, gemini-3.5-flash, gemini-3.1-pro-preview, gemini-2.5-flash, gemini-3.7-flash, gemini-3.8-flash, gemini-4-argon, gemini-4-carbon]
     gemini:
       api_key: "${GEMINI_API_KEY}"
       proxy_url: ""

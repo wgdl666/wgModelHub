@@ -3,6 +3,8 @@
 package models
 
 const (
+	// Gemini38Live 接收原音并输出工具与原生语音。
+	Gemini38Live       = "gemini-3.8-live"
 	Gemini35Flash      = "gemini-3.5-flash"
 	Gemini31ProPreview = "gemini-3.1-pro-preview"
 	Qwen37Plus         = "qwen3.7-plus"
@@ -214,7 +216,7 @@ const (
 // All 返回当前仓库承认的全部真实模型 ID，顺序稳定便于对照。
 func All() []string {
 	return []string{
-		Gemini35Flash, Gemini31ProPreview, Qwen37Plus, Qwen38Max, GPT54, GPT56Sol, GPT56Luna, GPT56Terra, GPT6Astra, GPT6Sol, GPT6Luna, GPT61Sol, KimiK3, Gemma426BA4BIT,
+		Gemini38Live, Gemini35Flash, Gemini31ProPreview, Qwen37Plus, Qwen38Max, GPT54, GPT56Sol, GPT56Luna, GPT56Terra, GPT6Astra, GPT6Sol, GPT6Luna, GPT61Sol, KimiK3, Gemma426BA4BIT,
 		FashionEmbedding, FashionReranker, AliyunSegmentBody, AliyunSegmentHDBody, AliyunSegmentCommodity, AliyunSegmentCommon,
 		Gemini25Flash,
 		Gemini37Flash,

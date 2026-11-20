@@ -48,6 +48,7 @@ type Set struct {
 	Video  VideoProvider
 	Speech SpeechProvider
 	ASR    ASRProvider
+	Live   LiveProvider
 }
 
 // SpeechProvider 承接同步一次性 TTS；成功必须返回完整音频，半截收集只能以 error 结束。
@@ -78,4 +79,14 @@ type ASRSession interface {
 	Finalize() error
 	Stop() error
 	Errors() <-chan error
+}
+
+// LiveProvider 只做协议适配；工具执行、音频发布许可由调用方持有。
+type LiveProvider interface {
+	OpenLive(context.Context, string, *modelhubv2.LiveStart) (LiveSession, error)
+}
+type LiveSession interface {
+	Send(*modelhubv2.LiveClientMessage) error
+	Receive() (*modelhubv2.LiveServerMessage, error)
+	Close() error
 }
