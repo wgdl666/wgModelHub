@@ -8577,7 +8577,8 @@ type VoiceActivityDetectionSignal struct {
 // Voice activity signal.
 type VoiceActivity struct {
 	// Optional. The type of the voice activity signal.
-	VoiceActivityType VoiceActivityType `json:"voiceActivityType,omitempty"`
+	// WG: Gemini 3.8 实际 wire 字段为 type，SDK v1.79.1 的旧映射会丢失活动边界。
+	VoiceActivityType VoiceActivityType `json:"type,omitempty"`
 	// Optional. The time voice activity detected in audio time, relative to the start of
 	// the audio stream.
 	AudioOffset time.Duration `json:"audioOffset,omitempty"`

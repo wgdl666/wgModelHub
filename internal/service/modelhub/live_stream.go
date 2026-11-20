@@ -58,6 +58,12 @@ func (s *Service) LiveStream(stream v2.ModelHubService_LiveStreamServer) error {
 				errs <- e
 				return
 			}
+			if input := m.GetContext(); input != nil {
+				if e = validateInput(input); e != nil {
+					errs <- e
+					return
+				}
+			}
 			if e = session.Send(m); e != nil {
 				errs <- e
 				return

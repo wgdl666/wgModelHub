@@ -532,11 +532,22 @@ message LiveClientMessage {
     bool activity_end = 4;
     string text = 5;
     ToolOutput tool_response = 6;
+    bool audio_stream_end = 7; // 麦克风流结束，不用于本地静音断句。
+    Input context = 8; // 原生活动开始时更新业务上下文，不重新推断录音。
   }
 }
 message LiveTranscript {
   string text = 1;
   bool final = 2;
+}
+message LiveVoiceActivity {
+  enum Type {
+    UNSPECIFIED = 0;
+    START = 1;
+    END = 2;
+  }
+  Type type = 1;
+  int64 audio_offset_ms = 2;
 }
 // 字段并存：一条供应商消息里的音频、转写及工具均不得丢弃。
 message LiveServerMessage {
@@ -549,4 +560,5 @@ message LiveServerMessage {
   bool generation_complete = 7;
   bool turn_complete = 8;
   bool interrupted = 9;
+  LiveVoiceActivity voice_activity = 10;
 }
