@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.12
 // 	protoc        v7.35.1
-// source: proto/wg_model_hub/v2/model_hub.proto
+// source: wg_model_hub/v2/model_hub.proto
 
 package wg_model_hubv2
 
@@ -107,11 +107,11 @@ func (x ModelCategory) String() string {
 }
 
 func (ModelCategory) Descriptor() protoreflect.EnumDescriptor {
-	return file_proto_wg_model_hub_v2_model_hub_proto_enumTypes[0].Descriptor()
+	return file_wg_model_hub_v2_model_hub_proto_enumTypes[0].Descriptor()
 }
 
 func (ModelCategory) Type() protoreflect.EnumType {
-	return &file_proto_wg_model_hub_v2_model_hub_proto_enumTypes[0]
+	return &file_wg_model_hub_v2_model_hub_proto_enumTypes[0]
 }
 
 func (x ModelCategory) Number() protoreflect.EnumNumber {
@@ -120,7 +120,7 @@ func (x ModelCategory) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ModelCategory.Descriptor instead.
 func (ModelCategory) EnumDescriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{0}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{0}
 }
 
 type Role int32
@@ -159,11 +159,11 @@ func (x Role) String() string {
 }
 
 func (Role) Descriptor() protoreflect.EnumDescriptor {
-	return file_proto_wg_model_hub_v2_model_hub_proto_enumTypes[1].Descriptor()
+	return file_wg_model_hub_v2_model_hub_proto_enumTypes[1].Descriptor()
 }
 
 func (Role) Type() protoreflect.EnumType {
-	return &file_proto_wg_model_hub_v2_model_hub_proto_enumTypes[1]
+	return &file_wg_model_hub_v2_model_hub_proto_enumTypes[1]
 }
 
 func (x Role) Number() protoreflect.EnumNumber {
@@ -172,7 +172,7 @@ func (x Role) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Role.Descriptor instead.
 func (Role) EnumDescriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{1}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{1}
 }
 
 type ThinkingMode int32
@@ -208,11 +208,11 @@ func (x ThinkingMode) String() string {
 }
 
 func (ThinkingMode) Descriptor() protoreflect.EnumDescriptor {
-	return file_proto_wg_model_hub_v2_model_hub_proto_enumTypes[2].Descriptor()
+	return file_wg_model_hub_v2_model_hub_proto_enumTypes[2].Descriptor()
 }
 
 func (ThinkingMode) Type() protoreflect.EnumType {
-	return &file_proto_wg_model_hub_v2_model_hub_proto_enumTypes[2]
+	return &file_wg_model_hub_v2_model_hub_proto_enumTypes[2]
 }
 
 func (x ThinkingMode) Number() protoreflect.EnumNumber {
@@ -221,7 +221,7 @@ func (x ThinkingMode) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ThinkingMode.Descriptor instead.
 func (ThinkingMode) EnumDescriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{2}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{2}
 }
 
 type ResponseFormatType int32
@@ -260,11 +260,11 @@ func (x ResponseFormatType) String() string {
 }
 
 func (ResponseFormatType) Descriptor() protoreflect.EnumDescriptor {
-	return file_proto_wg_model_hub_v2_model_hub_proto_enumTypes[3].Descriptor()
+	return file_wg_model_hub_v2_model_hub_proto_enumTypes[3].Descriptor()
 }
 
 func (ResponseFormatType) Type() protoreflect.EnumType {
-	return &file_proto_wg_model_hub_v2_model_hub_proto_enumTypes[3]
+	return &file_wg_model_hub_v2_model_hub_proto_enumTypes[3]
 }
 
 func (x ResponseFormatType) Number() protoreflect.EnumNumber {
@@ -273,7 +273,7 @@ func (x ResponseFormatType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ResponseFormatType.Descriptor instead.
 func (ResponseFormatType) EnumDescriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{3}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{3}
 }
 
 type ToolChoiceMode int32
@@ -315,11 +315,11 @@ func (x ToolChoiceMode) String() string {
 }
 
 func (ToolChoiceMode) Descriptor() protoreflect.EnumDescriptor {
-	return file_proto_wg_model_hub_v2_model_hub_proto_enumTypes[4].Descriptor()
+	return file_wg_model_hub_v2_model_hub_proto_enumTypes[4].Descriptor()
 }
 
 func (ToolChoiceMode) Type() protoreflect.EnumType {
-	return &file_proto_wg_model_hub_v2_model_hub_proto_enumTypes[4]
+	return &file_wg_model_hub_v2_model_hub_proto_enumTypes[4]
 }
 
 func (x ToolChoiceMode) Number() protoreflect.EnumNumber {
@@ -328,7 +328,7 @@ func (x ToolChoiceMode) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ToolChoiceMode.Descriptor instead.
 func (ToolChoiceMode) EnumDescriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{4}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{4}
 }
 
 type ImageOutputModality int32
@@ -364,11 +364,11 @@ func (x ImageOutputModality) String() string {
 }
 
 func (ImageOutputModality) Descriptor() protoreflect.EnumDescriptor {
-	return file_proto_wg_model_hub_v2_model_hub_proto_enumTypes[5].Descriptor()
+	return file_wg_model_hub_v2_model_hub_proto_enumTypes[5].Descriptor()
 }
 
 func (ImageOutputModality) Type() protoreflect.EnumType {
-	return &file_proto_wg_model_hub_v2_model_hub_proto_enumTypes[5]
+	return &file_wg_model_hub_v2_model_hub_proto_enumTypes[5]
 }
 
 func (x ImageOutputModality) Number() protoreflect.EnumNumber {
@@ -377,7 +377,7 @@ func (x ImageOutputModality) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ImageOutputModality.Descriptor instead.
 func (ImageOutputModality) EnumDescriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{5}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{5}
 }
 
 type ThinkingLevel int32
@@ -419,11 +419,11 @@ func (x ThinkingLevel) String() string {
 }
 
 func (ThinkingLevel) Descriptor() protoreflect.EnumDescriptor {
-	return file_proto_wg_model_hub_v2_model_hub_proto_enumTypes[6].Descriptor()
+	return file_wg_model_hub_v2_model_hub_proto_enumTypes[6].Descriptor()
 }
 
 func (ThinkingLevel) Type() protoreflect.EnumType {
-	return &file_proto_wg_model_hub_v2_model_hub_proto_enumTypes[6]
+	return &file_wg_model_hub_v2_model_hub_proto_enumTypes[6]
 }
 
 func (x ThinkingLevel) Number() protoreflect.EnumNumber {
@@ -432,7 +432,7 @@ func (x ThinkingLevel) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ThinkingLevel.Descriptor instead.
 func (ThinkingLevel) EnumDescriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{6}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{6}
 }
 
 // 公开任务状态；provider/supplier 细节不出现在对外协议。
@@ -475,11 +475,11 @@ func (x GenerationTaskState) String() string {
 }
 
 func (GenerationTaskState) Descriptor() protoreflect.EnumDescriptor {
-	return file_proto_wg_model_hub_v2_model_hub_proto_enumTypes[7].Descriptor()
+	return file_wg_model_hub_v2_model_hub_proto_enumTypes[7].Descriptor()
 }
 
 func (GenerationTaskState) Type() protoreflect.EnumType {
-	return &file_proto_wg_model_hub_v2_model_hub_proto_enumTypes[7]
+	return &file_wg_model_hub_v2_model_hub_proto_enumTypes[7]
 }
 
 func (x GenerationTaskState) Number() protoreflect.EnumNumber {
@@ -488,7 +488,7 @@ func (x GenerationTaskState) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use GenerationTaskState.Descriptor instead.
 func (GenerationTaskState) EnumDescriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{7}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{7}
 }
 
 type AudioEncoding int32
@@ -521,11 +521,11 @@ func (x AudioEncoding) String() string {
 }
 
 func (AudioEncoding) Descriptor() protoreflect.EnumDescriptor {
-	return file_proto_wg_model_hub_v2_model_hub_proto_enumTypes[8].Descriptor()
+	return file_wg_model_hub_v2_model_hub_proto_enumTypes[8].Descriptor()
 }
 
 func (AudioEncoding) Type() protoreflect.EnumType {
-	return &file_proto_wg_model_hub_v2_model_hub_proto_enumTypes[8]
+	return &file_wg_model_hub_v2_model_hub_proto_enumTypes[8]
 }
 
 func (x AudioEncoding) Number() protoreflect.EnumNumber {
@@ -534,7 +534,7 @@ func (x AudioEncoding) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use AudioEncoding.Descriptor instead.
 func (AudioEncoding) EnumDescriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{8}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{8}
 }
 
 type ListModelsRequest struct {
@@ -548,7 +548,7 @@ type ListModelsRequest struct {
 
 func (x *ListModelsRequest) Reset() {
 	*x = ListModelsRequest{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[0]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -560,7 +560,7 @@ func (x *ListModelsRequest) String() string {
 func (*ListModelsRequest) ProtoMessage() {}
 
 func (x *ListModelsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[0]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -573,7 +573,7 @@ func (x *ListModelsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListModelsRequest.ProtoReflect.Descriptor instead.
 func (*ListModelsRequest) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{0}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *ListModelsRequest) GetCategory() ModelCategory {
@@ -594,7 +594,7 @@ type ModelInfo struct {
 
 func (x *ModelInfo) Reset() {
 	*x = ModelInfo{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[1]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -606,7 +606,7 @@ func (x *ModelInfo) String() string {
 func (*ModelInfo) ProtoMessage() {}
 
 func (x *ModelInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[1]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -619,7 +619,7 @@ func (x *ModelInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ModelInfo.ProtoReflect.Descriptor instead.
 func (*ModelInfo) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{1}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *ModelInfo) GetModel() string {
@@ -645,7 +645,7 @@ type ListModelsResponse struct {
 
 func (x *ListModelsResponse) Reset() {
 	*x = ListModelsResponse{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[2]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -657,7 +657,7 @@ func (x *ListModelsResponse) String() string {
 func (*ListModelsResponse) ProtoMessage() {}
 
 func (x *ListModelsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[2]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -670,7 +670,7 @@ func (x *ListModelsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListModelsResponse.ProtoReflect.Descriptor instead.
 func (*ListModelsResponse) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{2}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *ListModelsResponse) GetModels() []*ModelInfo {
@@ -692,7 +692,7 @@ type BusinessMetadata struct {
 
 func (x *BusinessMetadata) Reset() {
 	*x = BusinessMetadata{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[3]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -704,7 +704,7 @@ func (x *BusinessMetadata) String() string {
 func (*BusinessMetadata) ProtoMessage() {}
 
 func (x *BusinessMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[3]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -717,7 +717,7 @@ func (x *BusinessMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BusinessMetadata.ProtoReflect.Descriptor instead.
 func (*BusinessMetadata) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{3}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *BusinessMetadata) GetBusinessLine() string {
@@ -757,7 +757,7 @@ type GenerateRequest struct {
 
 func (x *GenerateRequest) Reset() {
 	*x = GenerateRequest{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[4]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -769,7 +769,7 @@ func (x *GenerateRequest) String() string {
 func (*GenerateRequest) ProtoMessage() {}
 
 func (x *GenerateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[4]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -782,7 +782,7 @@ func (x *GenerateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GenerateRequest.ProtoReflect.Descriptor instead.
 func (*GenerateRequest) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{4}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *GenerateRequest) GetModel() string {
@@ -829,7 +829,7 @@ type Media struct {
 
 func (x *Media) Reset() {
 	*x = Media{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[5]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -841,7 +841,7 @@ func (x *Media) String() string {
 func (*Media) ProtoMessage() {}
 
 func (x *Media) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[5]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -854,7 +854,7 @@ func (x *Media) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Media.ProtoReflect.Descriptor instead.
 func (*Media) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{5}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Media) GetMimeType() string {
@@ -921,7 +921,7 @@ type ContentPart struct {
 
 func (x *ContentPart) Reset() {
 	*x = ContentPart{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[6]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -933,7 +933,7 @@ func (x *ContentPart) String() string {
 func (*ContentPart) ProtoMessage() {}
 
 func (x *ContentPart) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[6]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -946,7 +946,7 @@ func (x *ContentPart) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ContentPart.ProtoReflect.Descriptor instead.
 func (*ContentPart) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{6}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ContentPart) GetContent() isContentPart_Content {
@@ -1047,7 +1047,7 @@ type Message struct {
 
 func (x *Message) Reset() {
 	*x = Message{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[7]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1059,7 +1059,7 @@ func (x *Message) String() string {
 func (*Message) ProtoMessage() {}
 
 func (x *Message) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[7]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1072,7 +1072,7 @@ func (x *Message) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Message.ProtoReflect.Descriptor instead.
 func (*Message) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{7}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *Message) GetRole() Role {
@@ -1107,7 +1107,7 @@ type FunctionDefinition struct {
 
 func (x *FunctionDefinition) Reset() {
 	*x = FunctionDefinition{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[8]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1119,7 +1119,7 @@ func (x *FunctionDefinition) String() string {
 func (*FunctionDefinition) ProtoMessage() {}
 
 func (x *FunctionDefinition) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[8]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1132,7 +1132,7 @@ func (x *FunctionDefinition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FunctionDefinition.ProtoReflect.Descriptor instead.
 func (*FunctionDefinition) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{8}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *FunctionDefinition) GetName() string {
@@ -1165,7 +1165,7 @@ type Tool struct {
 
 func (x *Tool) Reset() {
 	*x = Tool{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[9]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1177,7 +1177,7 @@ func (x *Tool) String() string {
 func (*Tool) ProtoMessage() {}
 
 func (x *Tool) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[9]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1190,7 +1190,7 @@ func (x *Tool) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Tool.ProtoReflect.Descriptor instead.
 func (*Tool) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{9}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *Tool) GetFunction() *FunctionDefinition {
@@ -1215,7 +1215,7 @@ type ToolCall struct {
 
 func (x *ToolCall) Reset() {
 	*x = ToolCall{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[10]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1227,7 +1227,7 @@ func (x *ToolCall) String() string {
 func (*ToolCall) ProtoMessage() {}
 
 func (x *ToolCall) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[10]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1240,7 +1240,7 @@ func (x *ToolCall) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ToolCall.ProtoReflect.Descriptor instead.
 func (*ToolCall) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{10}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ToolCall) GetId() string {
@@ -1292,7 +1292,7 @@ type ToolOutput struct {
 
 func (x *ToolOutput) Reset() {
 	*x = ToolOutput{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[11]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1304,7 +1304,7 @@ func (x *ToolOutput) String() string {
 func (*ToolOutput) ProtoMessage() {}
 
 func (x *ToolOutput) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[11]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1317,7 +1317,7 @@ func (x *ToolOutput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ToolOutput.ProtoReflect.Descriptor instead.
 func (*ToolOutput) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{11}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ToolOutput) GetToolCallId() string {
@@ -1368,7 +1368,7 @@ type InputItem struct {
 
 func (x *InputItem) Reset() {
 	*x = InputItem{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[12]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1380,7 +1380,7 @@ func (x *InputItem) String() string {
 func (*InputItem) ProtoMessage() {}
 
 func (x *InputItem) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[12]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1393,7 +1393,7 @@ func (x *InputItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InputItem.ProtoReflect.Descriptor instead.
 func (*InputItem) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{12}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *InputItem) GetItem() isInputItem_Item {
@@ -1456,7 +1456,7 @@ type Input struct {
 
 func (x *Input) Reset() {
 	*x = Input{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[13]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1468,7 +1468,7 @@ func (x *Input) String() string {
 func (*Input) ProtoMessage() {}
 
 func (x *Input) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[13]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1481,7 +1481,7 @@ func (x *Input) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Input.ProtoReflect.Descriptor instead.
 func (*Input) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{13}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *Input) GetItems() []*InputItem {
@@ -1537,7 +1537,7 @@ type ResponseFormat struct {
 
 func (x *ResponseFormat) Reset() {
 	*x = ResponseFormat{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[14]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1549,7 +1549,7 @@ func (x *ResponseFormat) String() string {
 func (*ResponseFormat) ProtoMessage() {}
 
 func (x *ResponseFormat) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[14]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1562,7 +1562,7 @@ func (x *ResponseFormat) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResponseFormat.ProtoReflect.Descriptor instead.
 func (*ResponseFormat) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{14}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ResponseFormat) GetType() ResponseFormatType {
@@ -1596,7 +1596,7 @@ type ToolChoice struct {
 
 func (x *ToolChoice) Reset() {
 	*x = ToolChoice{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[15]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1608,7 +1608,7 @@ func (x *ToolChoice) String() string {
 func (*ToolChoice) ProtoMessage() {}
 
 func (x *ToolChoice) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[15]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1621,7 +1621,7 @@ func (x *ToolChoice) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ToolChoice.ProtoReflect.Descriptor instead.
 func (*ToolChoice) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{15}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ToolChoice) GetMode() ToolChoiceMode {
@@ -1651,7 +1651,7 @@ type CachingConfig struct {
 
 func (x *CachingConfig) Reset() {
 	*x = CachingConfig{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[16]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1663,7 +1663,7 @@ func (x *CachingConfig) String() string {
 func (*CachingConfig) ProtoMessage() {}
 
 func (x *CachingConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[16]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1676,7 +1676,7 @@ func (x *CachingConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CachingConfig.ProtoReflect.Descriptor instead.
 func (*CachingConfig) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{16}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *CachingConfig) GetEnabled() bool {
@@ -1715,7 +1715,7 @@ type TextOutput struct {
 
 func (x *TextOutput) Reset() {
 	*x = TextOutput{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[17]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1727,7 +1727,7 @@ func (x *TextOutput) String() string {
 func (*TextOutput) ProtoMessage() {}
 
 func (x *TextOutput) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[17]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1740,7 +1740,7 @@ func (x *TextOutput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TextOutput.ProtoReflect.Descriptor instead.
 func (*TextOutput) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{17}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *TextOutput) GetMaxOutputTokens() int32 {
@@ -1809,7 +1809,7 @@ type ImageOutput struct {
 
 func (x *ImageOutput) Reset() {
 	*x = ImageOutput{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[18]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1821,7 +1821,7 @@ func (x *ImageOutput) String() string {
 func (*ImageOutput) ProtoMessage() {}
 
 func (x *ImageOutput) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[18]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1834,7 +1834,7 @@ func (x *ImageOutput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImageOutput.ProtoReflect.Descriptor instead.
 func (*ImageOutput) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{18}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ImageOutput) GetOutputModalities() []ImageOutputModality {
@@ -1901,7 +1901,7 @@ type VideoOutput struct {
 
 func (x *VideoOutput) Reset() {
 	*x = VideoOutput{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[19]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1913,7 +1913,7 @@ func (x *VideoOutput) String() string {
 func (*VideoOutput) ProtoMessage() {}
 
 func (x *VideoOutput) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[19]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1926,7 +1926,7 @@ func (x *VideoOutput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VideoOutput.ProtoReflect.Descriptor instead.
 func (*VideoOutput) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{19}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *VideoOutput) GetResolution() string {
@@ -1980,7 +1980,7 @@ type OutputSpec struct {
 
 func (x *OutputSpec) Reset() {
 	*x = OutputSpec{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[20]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1992,7 +1992,7 @@ func (x *OutputSpec) String() string {
 func (*OutputSpec) ProtoMessage() {}
 
 func (x *OutputSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[20]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2005,7 +2005,7 @@ func (x *OutputSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OutputSpec.ProtoReflect.Descriptor instead.
 func (*OutputSpec) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{20}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *OutputSpec) GetStream() bool {
@@ -2084,7 +2084,7 @@ type Usage struct {
 
 func (x *Usage) Reset() {
 	*x = Usage{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[21]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2096,7 +2096,7 @@ func (x *Usage) String() string {
 func (*Usage) ProtoMessage() {}
 
 func (x *Usage) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[21]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2109,7 +2109,7 @@ func (x *Usage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Usage.ProtoReflect.Descriptor instead.
 func (*Usage) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{21}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *Usage) GetInputTokens() int64 {
@@ -2158,7 +2158,7 @@ type SafetyFeedback struct {
 
 func (x *SafetyFeedback) Reset() {
 	*x = SafetyFeedback{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[22]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2170,7 +2170,7 @@ func (x *SafetyFeedback) String() string {
 func (*SafetyFeedback) ProtoMessage() {}
 
 func (x *SafetyFeedback) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[22]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2183,7 +2183,7 @@ func (x *SafetyFeedback) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SafetyFeedback.ProtoReflect.Descriptor instead.
 func (*SafetyFeedback) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{22}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *SafetyFeedback) GetBlocked() bool {
@@ -2223,7 +2223,7 @@ type OutputItem struct {
 
 func (x *OutputItem) Reset() {
 	*x = OutputItem{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[23]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2235,7 +2235,7 @@ func (x *OutputItem) String() string {
 func (*OutputItem) ProtoMessage() {}
 
 func (x *OutputItem) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[23]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2248,7 +2248,7 @@ func (x *OutputItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OutputItem.ProtoReflect.Descriptor instead.
 func (*OutputItem) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{23}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *OutputItem) GetItem() isOutputItem_Item {
@@ -2340,7 +2340,7 @@ type GenerateEvent struct {
 
 func (x *GenerateEvent) Reset() {
 	*x = GenerateEvent{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[24]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2352,7 +2352,7 @@ func (x *GenerateEvent) String() string {
 func (*GenerateEvent) ProtoMessage() {}
 
 func (x *GenerateEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[24]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2365,7 +2365,7 @@ func (x *GenerateEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GenerateEvent.ProtoReflect.Descriptor instead.
 func (*GenerateEvent) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{24}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *GenerateEvent) GetSequence() uint32 {
@@ -2435,7 +2435,7 @@ type SubmitGenerationRequest struct {
 
 func (x *SubmitGenerationRequest) Reset() {
 	*x = SubmitGenerationRequest{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[25]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2447,7 +2447,7 @@ func (x *SubmitGenerationRequest) String() string {
 func (*SubmitGenerationRequest) ProtoMessage() {}
 
 func (x *SubmitGenerationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[25]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2460,7 +2460,7 @@ func (x *SubmitGenerationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitGenerationRequest.ProtoReflect.Descriptor instead.
 func (*SubmitGenerationRequest) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{25}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *SubmitGenerationRequest) GetRequestId() string {
@@ -2486,7 +2486,7 @@ type GetGenerationRequest struct {
 
 func (x *GetGenerationRequest) Reset() {
 	*x = GetGenerationRequest{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[26]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2498,7 +2498,7 @@ func (x *GetGenerationRequest) String() string {
 func (*GetGenerationRequest) ProtoMessage() {}
 
 func (x *GetGenerationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[26]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2511,7 +2511,7 @@ func (x *GetGenerationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetGenerationRequest.ProtoReflect.Descriptor instead.
 func (*GetGenerationRequest) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{26}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *GetGenerationRequest) GetTaskId() string {
@@ -2532,7 +2532,7 @@ type GenerationTask struct {
 
 func (x *GenerationTask) Reset() {
 	*x = GenerationTask{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[27]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2544,7 +2544,7 @@ func (x *GenerationTask) String() string {
 func (*GenerationTask) ProtoMessage() {}
 
 func (x *GenerationTask) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[27]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2557,7 +2557,7 @@ func (x *GenerationTask) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GenerationTask.ProtoReflect.Descriptor instead.
 func (*GenerationTask) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{27}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *GenerationTask) GetTaskId() string {
@@ -2587,7 +2587,7 @@ type GenerationTaskStatus struct {
 
 func (x *GenerationTaskStatus) Reset() {
 	*x = GenerationTaskStatus{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[28]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2599,7 +2599,7 @@ func (x *GenerationTaskStatus) String() string {
 func (*GenerationTaskStatus) ProtoMessage() {}
 
 func (x *GenerationTaskStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[28]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2612,7 +2612,7 @@ func (x *GenerationTaskStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GenerationTaskStatus.ProtoReflect.Descriptor instead.
 func (*GenerationTaskStatus) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{28}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *GenerationTaskStatus) GetState() GenerationTaskState {
@@ -2650,7 +2650,7 @@ type GenerationTaskEvent struct {
 
 func (x *GenerationTaskEvent) Reset() {
 	*x = GenerationTaskEvent{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[29]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2662,7 +2662,7 @@ func (x *GenerationTaskEvent) String() string {
 func (*GenerationTaskEvent) ProtoMessage() {}
 
 func (x *GenerationTaskEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[29]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2675,7 +2675,7 @@ func (x *GenerationTaskEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GenerationTaskEvent.ProtoReflect.Descriptor instead.
 func (*GenerationTaskEvent) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{29}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *GenerationTaskEvent) GetEvent() isGenerationTaskEvent_Event {
@@ -2736,7 +2736,7 @@ type SynthesizeSpeechRequest struct {
 
 func (x *SynthesizeSpeechRequest) Reset() {
 	*x = SynthesizeSpeechRequest{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[30]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2748,7 +2748,7 @@ func (x *SynthesizeSpeechRequest) String() string {
 func (*SynthesizeSpeechRequest) ProtoMessage() {}
 
 func (x *SynthesizeSpeechRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[30]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2761,7 +2761,7 @@ func (x *SynthesizeSpeechRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SynthesizeSpeechRequest.ProtoReflect.Descriptor instead.
 func (*SynthesizeSpeechRequest) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{30}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *SynthesizeSpeechRequest) GetModel() string {
@@ -2802,7 +2802,7 @@ type SynthesizeSpeechResponse struct {
 
 func (x *SynthesizeSpeechResponse) Reset() {
 	*x = SynthesizeSpeechResponse{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[31]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2814,7 +2814,7 @@ func (x *SynthesizeSpeechResponse) String() string {
 func (*SynthesizeSpeechResponse) ProtoMessage() {}
 
 func (x *SynthesizeSpeechResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[31]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2827,7 +2827,7 @@ func (x *SynthesizeSpeechResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SynthesizeSpeechResponse.ProtoReflect.Descriptor instead.
 func (*SynthesizeSpeechResponse) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{31}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *SynthesizeSpeechResponse) GetAudio() *Media {
@@ -2852,7 +2852,7 @@ type TranscribeSpeechClientMessage struct {
 
 func (x *TranscribeSpeechClientMessage) Reset() {
 	*x = TranscribeSpeechClientMessage{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[32]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2864,7 +2864,7 @@ func (x *TranscribeSpeechClientMessage) String() string {
 func (*TranscribeSpeechClientMessage) ProtoMessage() {}
 
 func (x *TranscribeSpeechClientMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[32]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2877,7 +2877,7 @@ func (x *TranscribeSpeechClientMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TranscribeSpeechClientMessage.ProtoReflect.Descriptor instead.
 func (*TranscribeSpeechClientMessage) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{32}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *TranscribeSpeechClientMessage) GetItem() isTranscribeSpeechClientMessage_Item {
@@ -2969,7 +2969,7 @@ type TranscribeSpeechStart struct {
 
 func (x *TranscribeSpeechStart) Reset() {
 	*x = TranscribeSpeechStart{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[33]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2981,7 +2981,7 @@ func (x *TranscribeSpeechStart) String() string {
 func (*TranscribeSpeechStart) ProtoMessage() {}
 
 func (x *TranscribeSpeechStart) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[33]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2994,7 +2994,7 @@ func (x *TranscribeSpeechStart) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TranscribeSpeechStart.ProtoReflect.Descriptor instead.
 func (*TranscribeSpeechStart) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{33}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *TranscribeSpeechStart) GetModel() string {
@@ -3078,7 +3078,7 @@ type TurnSilence struct {
 
 func (x *TurnSilence) Reset() {
 	*x = TurnSilence{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[34]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3090,7 +3090,7 @@ func (x *TurnSilence) String() string {
 func (*TurnSilence) ProtoMessage() {}
 
 func (x *TurnSilence) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[34]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3103,7 +3103,7 @@ func (x *TurnSilence) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TurnSilence.ProtoReflect.Descriptor instead.
 func (*TurnSilence) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{34}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *TurnSilence) GetMinMs() int32 {
@@ -3131,7 +3131,7 @@ type ASRFeatures struct {
 
 func (x *ASRFeatures) Reset() {
 	*x = ASRFeatures{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[35]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3143,7 +3143,7 @@ func (x *ASRFeatures) String() string {
 func (*ASRFeatures) ProtoMessage() {}
 
 func (x *ASRFeatures) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[35]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3156,7 +3156,7 @@ func (x *ASRFeatures) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ASRFeatures.ProtoReflect.Descriptor instead.
 func (*ASRFeatures) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{35}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *ASRFeatures) GetHotwordTableId() string {
@@ -3189,7 +3189,7 @@ type TranscribeSpeechAudio struct {
 
 func (x *TranscribeSpeechAudio) Reset() {
 	*x = TranscribeSpeechAudio{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[36]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3201,7 +3201,7 @@ func (x *TranscribeSpeechAudio) String() string {
 func (*TranscribeSpeechAudio) ProtoMessage() {}
 
 func (x *TranscribeSpeechAudio) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[36]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3214,7 +3214,7 @@ func (x *TranscribeSpeechAudio) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TranscribeSpeechAudio.ProtoReflect.Descriptor instead.
 func (*TranscribeSpeechAudio) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{36}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *TranscribeSpeechAudio) GetData() []byte {
@@ -3232,7 +3232,7 @@ type TranscribeSpeechFinalize struct {
 
 func (x *TranscribeSpeechFinalize) Reset() {
 	*x = TranscribeSpeechFinalize{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[37]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3244,7 +3244,7 @@ func (x *TranscribeSpeechFinalize) String() string {
 func (*TranscribeSpeechFinalize) ProtoMessage() {}
 
 func (x *TranscribeSpeechFinalize) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[37]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3257,7 +3257,7 @@ func (x *TranscribeSpeechFinalize) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TranscribeSpeechFinalize.ProtoReflect.Descriptor instead.
 func (*TranscribeSpeechFinalize) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{37}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{37}
 }
 
 type TranscribeSpeechStop struct {
@@ -3268,7 +3268,7 @@ type TranscribeSpeechStop struct {
 
 func (x *TranscribeSpeechStop) Reset() {
 	*x = TranscribeSpeechStop{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[38]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3280,7 +3280,7 @@ func (x *TranscribeSpeechStop) String() string {
 func (*TranscribeSpeechStop) ProtoMessage() {}
 
 func (x *TranscribeSpeechStop) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[38]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3293,7 +3293,7 @@ func (x *TranscribeSpeechStop) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TranscribeSpeechStop.ProtoReflect.Descriptor instead.
 func (*TranscribeSpeechStop) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{38}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{38}
 }
 
 type TranscribeSpeechServerMessage struct {
@@ -3309,7 +3309,7 @@ type TranscribeSpeechServerMessage struct {
 
 func (x *TranscribeSpeechServerMessage) Reset() {
 	*x = TranscribeSpeechServerMessage{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[39]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3321,7 +3321,7 @@ func (x *TranscribeSpeechServerMessage) String() string {
 func (*TranscribeSpeechServerMessage) ProtoMessage() {}
 
 func (x *TranscribeSpeechServerMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[39]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3334,7 +3334,7 @@ func (x *TranscribeSpeechServerMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TranscribeSpeechServerMessage.ProtoReflect.Descriptor instead.
 func (*TranscribeSpeechServerMessage) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{39}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *TranscribeSpeechServerMessage) GetItem() isTranscribeSpeechServerMessage_Item {
@@ -3387,7 +3387,7 @@ type TranscribeSpeechSession struct {
 
 func (x *TranscribeSpeechSession) Reset() {
 	*x = TranscribeSpeechSession{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[40]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3399,7 +3399,7 @@ func (x *TranscribeSpeechSession) String() string {
 func (*TranscribeSpeechSession) ProtoMessage() {}
 
 func (x *TranscribeSpeechSession) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[40]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3412,7 +3412,7 @@ func (x *TranscribeSpeechSession) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TranscribeSpeechSession.ProtoReflect.Descriptor instead.
 func (*TranscribeSpeechSession) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{40}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *TranscribeSpeechSession) GetSessionId() string {
@@ -3439,7 +3439,7 @@ type ListModelCallsRequest struct {
 
 func (x *ListModelCallsRequest) Reset() {
 	*x = ListModelCallsRequest{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[41]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3451,7 +3451,7 @@ func (x *ListModelCallsRequest) String() string {
 func (*ListModelCallsRequest) ProtoMessage() {}
 
 func (x *ListModelCallsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[41]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3464,7 +3464,7 @@ func (x *ListModelCallsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListModelCallsRequest.ProtoReflect.Descriptor instead.
 func (*ListModelCallsRequest) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{41}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *ListModelCallsRequest) GetFrom() *timestamppb.Timestamp {
@@ -3546,7 +3546,7 @@ type ModelCallSummary struct {
 
 func (x *ModelCallSummary) Reset() {
 	*x = ModelCallSummary{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[42]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3558,7 +3558,7 @@ func (x *ModelCallSummary) String() string {
 func (*ModelCallSummary) ProtoMessage() {}
 
 func (x *ModelCallSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[42]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3571,7 +3571,7 @@ func (x *ModelCallSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ModelCallSummary.ProtoReflect.Descriptor instead.
 func (*ModelCallSummary) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{42}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *ModelCallSummary) GetCallId() string {
@@ -3682,7 +3682,7 @@ type ListModelCallsResponse struct {
 
 func (x *ListModelCallsResponse) Reset() {
 	*x = ListModelCallsResponse{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[43]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3694,7 +3694,7 @@ func (x *ListModelCallsResponse) String() string {
 func (*ListModelCallsResponse) ProtoMessage() {}
 
 func (x *ListModelCallsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[43]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3707,7 +3707,7 @@ func (x *ListModelCallsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListModelCallsResponse.ProtoReflect.Descriptor instead.
 func (*ListModelCallsResponse) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{43}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *ListModelCallsResponse) GetCalls() []*ModelCallSummary {
@@ -3733,7 +3733,7 @@ type GetModelCallRequest struct {
 
 func (x *GetModelCallRequest) Reset() {
 	*x = GetModelCallRequest{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[44]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3745,7 +3745,7 @@ func (x *GetModelCallRequest) String() string {
 func (*GetModelCallRequest) ProtoMessage() {}
 
 func (x *GetModelCallRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[44]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3758,7 +3758,7 @@ func (x *GetModelCallRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetModelCallRequest.ProtoReflect.Descriptor instead.
 func (*GetModelCallRequest) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{44}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *GetModelCallRequest) GetCallId() string {
@@ -3783,7 +3783,7 @@ type GetModelCallResponse struct {
 
 func (x *GetModelCallResponse) Reset() {
 	*x = GetModelCallResponse{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[45]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3795,7 +3795,7 @@ func (x *GetModelCallResponse) String() string {
 func (*GetModelCallResponse) ProtoMessage() {}
 
 func (x *GetModelCallResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[45]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3808,7 +3808,7 @@ func (x *GetModelCallResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetModelCallResponse.ProtoReflect.Descriptor instead.
 func (*GetModelCallResponse) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{45}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *GetModelCallResponse) GetSummary() *ModelCallSummary {
@@ -3870,7 +3870,7 @@ type GetModelCallMediaRequest struct {
 
 func (x *GetModelCallMediaRequest) Reset() {
 	*x = GetModelCallMediaRequest{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[46]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3882,7 +3882,7 @@ func (x *GetModelCallMediaRequest) String() string {
 func (*GetModelCallMediaRequest) ProtoMessage() {}
 
 func (x *GetModelCallMediaRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[46]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3895,7 +3895,7 @@ func (x *GetModelCallMediaRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetModelCallMediaRequest.ProtoReflect.Descriptor instead.
 func (*GetModelCallMediaRequest) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{46}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *GetModelCallMediaRequest) GetCallId() string {
@@ -3922,7 +3922,7 @@ type GetModelCallMediaResponse struct {
 
 func (x *GetModelCallMediaResponse) Reset() {
 	*x = GetModelCallMediaResponse{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[47]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3934,7 +3934,7 @@ func (x *GetModelCallMediaResponse) String() string {
 func (*GetModelCallMediaResponse) ProtoMessage() {}
 
 func (x *GetModelCallMediaResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[47]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3947,7 +3947,7 @@ func (x *GetModelCallMediaResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetModelCallMediaResponse.ProtoReflect.Descriptor instead.
 func (*GetModelCallMediaResponse) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{47}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *GetModelCallMediaResponse) GetMimeType() string {
@@ -3981,7 +3981,7 @@ type TranscribeSpeechTranscript struct {
 
 func (x *TranscribeSpeechTranscript) Reset() {
 	*x = TranscribeSpeechTranscript{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[48]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3993,7 +3993,7 @@ func (x *TranscribeSpeechTranscript) String() string {
 func (*TranscribeSpeechTranscript) ProtoMessage() {}
 
 func (x *TranscribeSpeechTranscript) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[48]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4006,7 +4006,7 @@ func (x *TranscribeSpeechTranscript) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TranscribeSpeechTranscript.ProtoReflect.Descriptor instead.
 func (*TranscribeSpeechTranscript) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{48}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *TranscribeSpeechTranscript) GetText() string {
@@ -4085,7 +4085,7 @@ type LiveStart struct {
 
 func (x *LiveStart) Reset() {
 	*x = LiveStart{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[49]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4097,7 +4097,7 @@ func (x *LiveStart) String() string {
 func (*LiveStart) ProtoMessage() {}
 
 func (x *LiveStart) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[49]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4110,7 +4110,7 @@ func (x *LiveStart) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LiveStart.ProtoReflect.Descriptor instead.
 func (*LiveStart) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{49}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *LiveStart) GetModel() string {
@@ -4158,7 +4158,7 @@ type LiveClientMessage struct {
 
 func (x *LiveClientMessage) Reset() {
 	*x = LiveClientMessage{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[50]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4170,7 +4170,7 @@ func (x *LiveClientMessage) String() string {
 func (*LiveClientMessage) ProtoMessage() {}
 
 func (x *LiveClientMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[50]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4183,7 +4183,7 @@ func (x *LiveClientMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LiveClientMessage.ProtoReflect.Descriptor instead.
 func (*LiveClientMessage) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{50}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *LiveClientMessage) GetItem() isLiveClientMessage_Item {
@@ -4297,7 +4297,7 @@ type LiveTranscript struct {
 
 func (x *LiveTranscript) Reset() {
 	*x = LiveTranscript{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[51]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4309,7 +4309,7 @@ func (x *LiveTranscript) String() string {
 func (*LiveTranscript) ProtoMessage() {}
 
 func (x *LiveTranscript) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[51]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4322,7 +4322,7 @@ func (x *LiveTranscript) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LiveTranscript.ProtoReflect.Descriptor instead.
 func (*LiveTranscript) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{51}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *LiveTranscript) GetText() string {
@@ -4357,7 +4357,7 @@ type LiveServerMessage struct {
 
 func (x *LiveServerMessage) Reset() {
 	*x = LiveServerMessage{}
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[52]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4369,7 +4369,7 @@ func (x *LiveServerMessage) String() string {
 func (*LiveServerMessage) ProtoMessage() {}
 
 func (x *LiveServerMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[52]
+	mi := &file_wg_model_hub_v2_model_hub_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4382,7 +4382,7 @@ func (x *LiveServerMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LiveServerMessage.ProtoReflect.Descriptor instead.
 func (*LiveServerMessage) Descriptor() ([]byte, []int) {
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{52}
+	return file_wg_model_hub_v2_model_hub_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *LiveServerMessage) GetReady() bool {
@@ -4448,11 +4448,11 @@ func (x *LiveServerMessage) GetInterrupted() bool {
 	return false
 }
 
-var File_proto_wg_model_hub_v2_model_hub_proto protoreflect.FileDescriptor
+var File_wg_model_hub_v2_model_hub_proto protoreflect.FileDescriptor
 
-const file_proto_wg_model_hub_v2_model_hub_proto_rawDesc = "" +
+const file_wg_model_hub_v2_model_hub_proto_rawDesc = "" +
 	"\n" +
-	"%proto/wg_model_hub/v2/model_hub.proto\x12\x0fwg_model_hub.v2\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17google/rpc/status.proto\"O\n" +
+	"\x1fwg_model_hub/v2/model_hub.proto\x12\x0fwg_model_hub.v2\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17google/rpc/status.proto\"O\n" +
 	"\x11ListModelsRequest\x12:\n" +
 	"\bcategory\x18\x01 \x01(\x0e2\x1e.wg_model_hub.v2.ModelCategoryR\bcategory\"]\n" +
 	"\tModelInfo\x12\x14\n" +
@@ -4835,20 +4835,20 @@ const file_proto_wg_model_hub_v2_model_hub_proto_rawDesc = "" +
 	"\x11GetModelCallMedia\x12).wg_model_hub.v2.GetModelCallMediaRequest\x1a*.wg_model_hub.v2.GetModelCallMediaResponseBBZ@github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2;wg_model_hubv2b\x06proto3"
 
 var (
-	file_proto_wg_model_hub_v2_model_hub_proto_rawDescOnce sync.Once
-	file_proto_wg_model_hub_v2_model_hub_proto_rawDescData []byte
+	file_wg_model_hub_v2_model_hub_proto_rawDescOnce sync.Once
+	file_wg_model_hub_v2_model_hub_proto_rawDescData []byte
 )
 
-func file_proto_wg_model_hub_v2_model_hub_proto_rawDescGZIP() []byte {
-	file_proto_wg_model_hub_v2_model_hub_proto_rawDescOnce.Do(func() {
-		file_proto_wg_model_hub_v2_model_hub_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_proto_wg_model_hub_v2_model_hub_proto_rawDesc), len(file_proto_wg_model_hub_v2_model_hub_proto_rawDesc)))
+func file_wg_model_hub_v2_model_hub_proto_rawDescGZIP() []byte {
+	file_wg_model_hub_v2_model_hub_proto_rawDescOnce.Do(func() {
+		file_wg_model_hub_v2_model_hub_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_wg_model_hub_v2_model_hub_proto_rawDesc), len(file_wg_model_hub_v2_model_hub_proto_rawDesc)))
 	})
-	return file_proto_wg_model_hub_v2_model_hub_proto_rawDescData
+	return file_wg_model_hub_v2_model_hub_proto_rawDescData
 }
 
-var file_proto_wg_model_hub_v2_model_hub_proto_enumTypes = make([]protoimpl.EnumInfo, 9)
-var file_proto_wg_model_hub_v2_model_hub_proto_msgTypes = make([]protoimpl.MessageInfo, 53)
-var file_proto_wg_model_hub_v2_model_hub_proto_goTypes = []any{
+var file_wg_model_hub_v2_model_hub_proto_enumTypes = make([]protoimpl.EnumInfo, 9)
+var file_wg_model_hub_v2_model_hub_proto_msgTypes = make([]protoimpl.MessageInfo, 53)
+var file_wg_model_hub_v2_model_hub_proto_goTypes = []any{
 	(ModelCategory)(0),                    // 0: wg_model_hub.v2.ModelCategory
 	(Role)(0),                             // 1: wg_model_hub.v2.Role
 	(ThinkingMode)(0),                     // 2: wg_model_hub.v2.ThinkingMode
@@ -4915,7 +4915,7 @@ var file_proto_wg_model_hub_v2_model_hub_proto_goTypes = []any{
 	(*timestamppb.Timestamp)(nil),         // 63: google.protobuf.Timestamp
 	(*structpb.Struct)(nil),               // 64: google.protobuf.Struct
 }
-var file_proto_wg_model_hub_v2_model_hub_proto_depIdxs = []int32{
+var file_wg_model_hub_v2_model_hub_proto_depIdxs = []int32{
 	0,  // 0: wg_model_hub.v2.ListModelsRequest.category:type_name -> wg_model_hub.v2.ModelCategory
 	0,  // 1: wg_model_hub.v2.ModelInfo.category:type_name -> wg_model_hub.v2.ModelCategory
 	10, // 2: wg_model_hub.v2.ListModelsResponse.models:type_name -> wg_model_hub.v2.ModelInfo
@@ -5015,56 +5015,56 @@ var file_proto_wg_model_hub_v2_model_hub_proto_depIdxs = []int32{
 	0,  // [0:70] is the sub-list for field type_name
 }
 
-func init() { file_proto_wg_model_hub_v2_model_hub_proto_init() }
-func file_proto_wg_model_hub_v2_model_hub_proto_init() {
-	if File_proto_wg_model_hub_v2_model_hub_proto != nil {
+func init() { file_wg_model_hub_v2_model_hub_proto_init() }
+func file_wg_model_hub_v2_model_hub_proto_init() {
+	if File_wg_model_hub_v2_model_hub_proto != nil {
 		return
 	}
-	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[5].OneofWrappers = []any{
+	file_wg_model_hub_v2_model_hub_proto_msgTypes[5].OneofWrappers = []any{
 		(*Media_Data)(nil),
 		(*Media_Uri)(nil),
 	}
-	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[6].OneofWrappers = []any{
+	file_wg_model_hub_v2_model_hub_proto_msgTypes[6].OneofWrappers = []any{
 		(*ContentPart_Text)(nil),
 		(*ContentPart_Image)(nil),
 		(*ContentPart_Video)(nil),
 		(*ContentPart_Audio)(nil),
 		(*ContentPart_File)(nil),
 	}
-	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[10].OneofWrappers = []any{}
-	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[12].OneofWrappers = []any{
+	file_wg_model_hub_v2_model_hub_proto_msgTypes[10].OneofWrappers = []any{}
+	file_wg_model_hub_v2_model_hub_proto_msgTypes[12].OneofWrappers = []any{
 		(*InputItem_Message)(nil),
 		(*InputItem_ToolOutput)(nil),
 	}
-	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[17].OneofWrappers = []any{}
-	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[18].OneofWrappers = []any{}
-	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[19].OneofWrappers = []any{}
-	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[20].OneofWrappers = []any{
+	file_wg_model_hub_v2_model_hub_proto_msgTypes[17].OneofWrappers = []any{}
+	file_wg_model_hub_v2_model_hub_proto_msgTypes[18].OneofWrappers = []any{}
+	file_wg_model_hub_v2_model_hub_proto_msgTypes[19].OneofWrappers = []any{}
+	file_wg_model_hub_v2_model_hub_proto_msgTypes[20].OneofWrappers = []any{
 		(*OutputSpec_Text)(nil),
 		(*OutputSpec_Image)(nil),
 		(*OutputSpec_Video)(nil),
 	}
-	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[23].OneofWrappers = []any{
+	file_wg_model_hub_v2_model_hub_proto_msgTypes[23].OneofWrappers = []any{
 		(*OutputItem_Text)(nil),
 		(*OutputItem_Image)(nil),
 		(*OutputItem_Video)(nil),
 		(*OutputItem_ToolCall)(nil),
 	}
-	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[29].OneofWrappers = []any{
+	file_wg_model_hub_v2_model_hub_proto_msgTypes[29].OneofWrappers = []any{
 		(*GenerationTaskEvent_Status)(nil),
 		(*GenerationTaskEvent_Output)(nil),
 	}
-	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[32].OneofWrappers = []any{
+	file_wg_model_hub_v2_model_hub_proto_msgTypes[32].OneofWrappers = []any{
 		(*TranscribeSpeechClientMessage_Start)(nil),
 		(*TranscribeSpeechClientMessage_Audio)(nil),
 		(*TranscribeSpeechClientMessage_Finalize)(nil),
 		(*TranscribeSpeechClientMessage_Stop)(nil),
 	}
-	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[39].OneofWrappers = []any{
+	file_wg_model_hub_v2_model_hub_proto_msgTypes[39].OneofWrappers = []any{
 		(*TranscribeSpeechServerMessage_Session)(nil),
 		(*TranscribeSpeechServerMessage_Transcript)(nil),
 	}
-	file_proto_wg_model_hub_v2_model_hub_proto_msgTypes[50].OneofWrappers = []any{
+	file_wg_model_hub_v2_model_hub_proto_msgTypes[50].OneofWrappers = []any{
 		(*LiveClientMessage_Start)(nil),
 		(*LiveClientMessage_Pcm)(nil),
 		(*LiveClientMessage_ActivityStart)(nil),
@@ -5076,18 +5076,18 @@ func file_proto_wg_model_hub_v2_model_hub_proto_init() {
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_wg_model_hub_v2_model_hub_proto_rawDesc), len(file_proto_wg_model_hub_v2_model_hub_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_wg_model_hub_v2_model_hub_proto_rawDesc), len(file_wg_model_hub_v2_model_hub_proto_rawDesc)),
 			NumEnums:      9,
 			NumMessages:   53,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_proto_wg_model_hub_v2_model_hub_proto_goTypes,
-		DependencyIndexes: file_proto_wg_model_hub_v2_model_hub_proto_depIdxs,
-		EnumInfos:         file_proto_wg_model_hub_v2_model_hub_proto_enumTypes,
-		MessageInfos:      file_proto_wg_model_hub_v2_model_hub_proto_msgTypes,
+		GoTypes:           file_wg_model_hub_v2_model_hub_proto_goTypes,
+		DependencyIndexes: file_wg_model_hub_v2_model_hub_proto_depIdxs,
+		EnumInfos:         file_wg_model_hub_v2_model_hub_proto_enumTypes,
+		MessageInfos:      file_wg_model_hub_v2_model_hub_proto_msgTypes,
 	}.Build()
-	File_proto_wg_model_hub_v2_model_hub_proto = out.File
-	file_proto_wg_model_hub_v2_model_hub_proto_goTypes = nil
-	file_proto_wg_model_hub_v2_model_hub_proto_depIdxs = nil
+	File_wg_model_hub_v2_model_hub_proto = out.File
+	file_wg_model_hub_v2_model_hub_proto_goTypes = nil
+	file_wg_model_hub_v2_model_hub_proto_depIdxs = nil
 }
