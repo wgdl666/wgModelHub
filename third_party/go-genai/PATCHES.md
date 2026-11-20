@@ -1,8 +1,8 @@
-# Local patch to google.golang.org/genai v1.43.0
+# Local patch to google.golang.org/genai v1.79.1
 
-Upstream: https://github.com/googleapis/go-genai/tree/v1.43.0
+Upstream: https://github.com/googleapis/go-genai/tree/v1.79.1
 
-The unmodified module source and Apache-2.0 LICENSE are retained here so CI and
+The upstream module source and Apache-2.0 LICENSE are retained here so CI and
 container builds use the same code without a developer-local replacement.
 
 Local implementation changes are limited to the two GenerateContent entry points

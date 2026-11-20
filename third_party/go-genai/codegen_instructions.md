@@ -5,7 +5,7 @@ API calling the official libraries and SDKs.
 
 Please follow the following guidelines when generating code.
 
-**Official Documentation:** [ai.google.dev/gemini-api/docs](https://ai.google.dev/gemini-api/docs)
+**Official Documentation:** [aistudio.google.com/docs](https://aistudio.google.com/docs)
 
 ## Golden Rule: Use the Correct and Current SDK
 
@@ -66,8 +66,8 @@ client, err := genai.NewClient(ctx, nil)
     -   **Low Latency & High Volume Tasks:** `gemini-2.5-flash-lite`
     -   **Fast Image Generation and Editing:** `gemini-2.5-flash-image`
     -   **High-Quality Image Generation and Editing:** `gemini-3-pro-image-preview`
-    -   **High-Fidelity Video Generation:** `veo-3.0-generate-001` or `veo-3.1-generate-preview`
-    -   **Fast Video Generation:** `veo-3.0-fast-generate-001` or `veo-3.1-fast-generate-preview`
+    -   **High-Fidelity Video Generation:** `veo-3.0-generate-001` or `veo-3.1-generate-001`
+    -   **Fast Video Generation:** `veo-3.0-fast-generate-001`
 
 -   It is also acceptable to use following models if explicitly requested by the
     user:
@@ -298,12 +298,15 @@ for _, part := range result.Candidates[0].Content.Parts {
 ### Video Generation (Veo)
 
 ```go
-operation, err := client.Models.GenerateVideos(ctx, "veo-3.0-fast-generate-001", "Kitten playing", nil, nil, nil)
+source := &genai.GenerateVideosSource{
+	Prompt: "Kitten playing",
+}
+operation, err := client.Models.GenerateVideosFromSource(ctx, "veo-3.0-fast-generate-001", source, nil)
 
 // Poll for completion
 for !operation.Done {
 	time.Sleep(20 * time.Second)
-	operation, err = client.Operations.Get(ctx, operation.Name, nil)
+	operation, err = client.Operations.GetVideosOperation(ctx, operation, nil)
 }
 
 // Download result
@@ -330,6 +333,6 @@ contents := []*genai.Content{
 
 ## Useful Links
 
--   Documentation: [ai.google.dev/gemini-api/docs](https://ai.google.dev/gemini-api/docs)
--   API Keys: [ai.google.dev/gemini-api/docs/api-key](https://ai.google.dev/gemini-api/docs/api-key)
--   Models: [ai.google.dev/models](https://ai.google.dev/models)
+-   Documentation: [aistudio.google.com/docs](https://aistudio.google.com/docs)
+-   API Keys: [aistudio.google.com/docs/api-key](https://aistudio.google.com/docs/api-key)
+-   Models: [aistudio.google.com/docs/models](https://aistudio.google.com/docs/models)

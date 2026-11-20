@@ -177,12 +177,15 @@ func awaitPrefixPut(t *testing.T, store *prefixMemoryStore) *prefixcache.Entry {
 }
 
 func TestManagedPrefixColdOrExpiringCallDoesNotWaitAndDynamicInputReusesCache(t *testing.T) {
+	t.Setenv("GOOGLE_GENAI_API_VERSION", "")
 	for _, backend := range []genaisdk.Backend{genaisdk.BackendGeminiAPI, genaisdk.BackendVertexAI} {
 		for _, nearExpiry := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/nearExpiry=%v", backend, nearExpiry), func(t *testing.T) {
 				resourceName := "cachedContents/shared"
+				apiPrefix := "/v1beta/"
 				if backend == genaisdk.BackendVertexAI {
 					resourceName = "projects/test-project/locations/global/cachedContents/shared"
+					apiPrefix = "/v1beta1/projects/test-project/locations/global/"
 				}
 				creating := make(chan struct{})
 				release := make(chan struct{})
@@ -191,6 +194,9 @@ func TestManagedPrefixColdOrExpiringCallDoesNotWaitAndDynamicInputReusesCache(t 
 				var cacheCalls atomic.Int32
 				requests := make(chan map[string]any, 4)
 				p, _, store := prefixTestProviderBackend(t, backend, func(w http.ResponseWriter, r *http.Request) {
+					if !strings.HasPrefix(r.URL.Path, apiPrefix) {
+						t.Errorf("unexpected API version in %q, want prefix %q", r.URL.Path, apiPrefix)
+					}
 					body := decodePrefixBody(t, r)
 					if strings.HasSuffix(r.URL.Path, "/cachedContents") {
 						cacheCalls.Add(1)

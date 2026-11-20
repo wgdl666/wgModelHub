@@ -12,7 +12,6 @@ import (
 	modelhubv2 "github.com/wgdl666/wgModelHub/gen/wg_model_hub/v2"
 	"github.com/wgdl666/wgModelHub/internal/provider"
 	"github.com/wgdl666/wgModelHub/models"
-	"google.golang.org/genai"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -38,17 +37,13 @@ func (t *countingTransport) RoundTrip(req *http.Request) (*http.Response, error)
 
 func newTestGeminiProvider(t *testing.T, transport http.RoundTripper) *Provider {
 	t.Helper()
-	client, err := genai.NewClient(context.Background(), &genai.ClientConfig{
-		APIKey:  "test-key-not-used-on-reject",
-		Backend: genai.BackendGeminiAPI,
-		HTTPClient: &http.Client{
-			Transport: transport,
-		},
-	})
+	p, err := NewGemini(context.Background(), "gemini", geminiTestAPIKey, "", "")
 	if err != nil {
 		t.Fatalf("create genai client: %v", err)
 	}
-	return &Provider{name: "gemini", client: client}
+	// 使用生产构造器保留 API 版本，只替换出站 transport。
+	p.client.ClientConfig().HTTPClient.Transport = transport
+	return p
 }
 
 func systemOnlyRequest() *modelhubv2.GenerateRequest {

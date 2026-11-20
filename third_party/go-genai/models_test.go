@@ -1025,3 +1025,197 @@ func TestModelsAllEmptyResponse(t *testing.T) {
 		})
 	}
 }
+
+// TestModelsGenerateContentNullCandidate pins that a null element in a Gemini
+// API candidates array becomes an empty Candidate instead of panicking.
+func TestModelsGenerateContentNullCandidate(t *testing.T) {
+	ctx := context.Background()
+	newClient := func(t *testing.T, body string) *Client {
+		t.Helper()
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			if _, err := w.Write([]byte(body)); err != nil {
+				t.Errorf("Failed to write response: %v", err)
+			}
+		}))
+		t.Cleanup(ts.Close)
+		client, err := NewClient(ctx, &ClientConfig{
+			Backend:     BackendGeminiAPI,
+			HTTPOptions: HTTPOptions{BaseURL: ts.URL},
+			envVarProvider: func() map[string]string {
+				return map[string]string{"GOOGLE_API_KEY": "test-api-key"}
+			},
+		})
+		if err != nil {
+			t.Fatalf("Failed to create client: %v", err)
+		}
+		return client
+	}
+
+	t.Run("GenerateContent", func(t *testing.T) {
+		client := newClient(t, `{"candidates":[null]}`)
+		resp, err := client.Models.GenerateContent(ctx, "gemini-2.5-flash", Text("hi"), nil)
+		if err != nil {
+			t.Fatalf("GenerateContent() err = %v, want nil", err)
+		}
+		if len(resp.Candidates) != 1 {
+			t.Fatalf("len(resp.Candidates) = %d, want 1", len(resp.Candidates))
+		}
+		if resp.Candidates[0] == nil {
+			t.Errorf("resp.Candidates[0] = nil, want an empty Candidate")
+		}
+		if got := resp.Text(); got != "" {
+			t.Errorf("resp.Text() = %q, want empty", got)
+		}
+	})
+
+	t.Run("GenerateContentStream", func(t *testing.T) {
+		client := newClient(t, "data:{\"candidates\":[null]}\n\n")
+		var responses []*GenerateContentResponse
+		for resp, err := range client.Models.GenerateContentStream(ctx, "gemini-2.5-flash", Text("hi"), nil) {
+			if err != nil {
+				t.Fatalf("GenerateContentStream() err = %v, want nil", err)
+			}
+			responses = append(responses, resp)
+		}
+		if len(responses) != 1 {
+			t.Fatalf("len(responses) = %d, want 1", len(responses))
+		}
+		if len(responses[0].Candidates) != 1 || responses[0].Candidates[0] == nil {
+			t.Errorf("responses[0].Candidates = %v, want one non-nil candidate", responses[0].Candidates)
+		}
+	})
+
+	t.Run("NullResponseBody", func(t *testing.T) {
+		client := newClient(t, `null`)
+		resp, err := client.Models.GenerateContent(ctx, "gemini-2.5-flash", Text("hi"), nil)
+		if err != nil {
+			t.Fatalf("GenerateContent() err = %v, want nil", err)
+		}
+		if resp == nil || len(resp.Candidates) != 0 {
+			t.Errorf("GenerateContent() = %+v, want a response with no candidates", resp)
+		}
+	})
+
+	t.Run("NullBeforeRealCandidate", func(t *testing.T) {
+		client := newClient(t, `{"candidates":[null,{"content":{"role":"model","parts":[{"text":"ok"}]}}]}`)
+		resp, err := client.Models.GenerateContent(ctx, "gemini-2.5-flash", Text("hi"), nil)
+		if err != nil {
+			t.Fatalf("GenerateContent() err = %v, want nil", err)
+		}
+		if len(resp.Candidates) != 2 {
+			t.Fatalf("len(resp.Candidates) = %d, want 2", len(resp.Candidates))
+		}
+		if diff := cmp.Diff(&Candidate{}, resp.Candidates[0]); diff != "" {
+			t.Errorf("resp.Candidates[0] mismatch (-want +got):\n%s", diff)
+		}
+		c := resp.Candidates[1]
+		if c == nil || c.Content == nil || len(c.Content.Parts) == 0 {
+			t.Fatalf("resp.Candidates[1] = %+v, want content with parts", c)
+		}
+		if got := c.Content.Parts[0].Text; got != "ok" {
+			t.Errorf("resp.Candidates[1].Content.Parts[0].Text = %q, want %q", got, "ok")
+		}
+	})
+}
+
+func TestEmbedContentEndpointRouting(t *testing.T) {
+	ctx := context.Background()
+	var gotPath string
+	var gotBody map[string]any
+	var nextResp string
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotBody = nil
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("Decode body: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(nextResp))
+	}))
+	defer ts.Close()
+
+	vertexClient, err := NewClient(ctx, &ClientConfig{
+		Backend:     BackendVertexAI,
+		APIKey:      "fake-vertex-key",
+		HTTPOptions: HTTPOptions{BaseURL: ts.URL},
+	})
+	if err != nil {
+		t.Fatalf("NewClient(Vertex): %v", err)
+	}
+	dim := int32(2)
+	cfg := &EmbedContentConfig{OutputDimensionality: &dim, TaskType: "RETRIEVAL_DOCUMENT", Title: "doc"}
+
+	nextResp = `{"embedding":{"values":[0.1,0.2]},"usageMetadata":{"promptTokenCount":4,"trafficType":"PROVISIONED_THROUGHPUT"}}`
+	singleResp, err := vertexClient.Models.EmbedContent(ctx, "gemini-embedding-001", Text("hello"), cfg)
+	if err != nil {
+		t.Fatalf("single EmbedContent: %v", err)
+	}
+	if !strings.HasSuffix(gotPath, "/publishers/google/models/gemini-embedding-001:embedContent") {
+		t.Errorf("single path = %q, want :embedContent", gotPath)
+	}
+	if _, ok := gotBody["content"]; !ok {
+		t.Errorf("single body missing content: %v", gotBody)
+	}
+	if len(singleResp.Embeddings) != 1 {
+		t.Errorf("len(singleResp.Embeddings) = %d, want 1", len(singleResp.Embeddings))
+	}
+	if singleResp.UsageMetadata == nil || singleResp.UsageMetadata.TrafficType != TrafficTypeProvisionedThroughput {
+		t.Errorf("singleResp.UsageMetadata = %+v, want PROVISIONED_THROUGHPUT", singleResp.UsageMetadata)
+	}
+
+	nextResp = `{"embeddings":[{"values":[0.1,0.2]},{"values":[0.3,0.4]}],"usageMetadata":{"promptTokenCount":8,"trafficType":"ON_DEMAND"}}`
+	batchContents := []*Content{NewContentFromText("one", RoleUser), NewContentFromText("two", RoleUser)}
+	batchResp, err := vertexClient.Models.EmbedContent(ctx, "gemini-embedding-001", batchContents, cfg)
+	if err != nil {
+		t.Fatalf("batch EmbedContent: %v", err)
+	}
+	if !strings.HasSuffix(gotPath, "/publishers/google/models/gemini-embedding-001:batchEmbedContents") {
+		t.Errorf("batch path = %q, want :batchEmbedContents", gotPath)
+	}
+	requests, ok := gotBody["requests"].([]any)
+	if !ok || len(requests) != 2 {
+		t.Fatalf("batch body requests = %v, want 2 items", gotBody["requests"])
+	}
+	if len(batchResp.Embeddings) != 2 {
+		t.Errorf("len(batchResp.Embeddings) = %d, want 2", len(batchResp.Embeddings))
+	}
+
+	nextResp = `{"predictions":[{"embeddings":{"values":[0.5,0.6]}}]}`
+	predictResp, err := vertexClient.Models.EmbedContent(ctx, "projects/my-gemini-app/locations/us-central1/publishers/google/models/text-embedding-005", Text("legacy"), cfg)
+	if err != nil {
+		t.Fatalf("predict EmbedContent: %v", err)
+	}
+	if !strings.HasSuffix(gotPath, "/projects/my-gemini-app/locations/us-central1/publishers/google/models/text-embedding-005:predict") {
+		t.Errorf("predict path = %q, want :predict", gotPath)
+	}
+	if _, ok := gotBody["instances"]; !ok {
+		t.Errorf("predict body missing instances: %v", gotBody)
+	}
+	if len(predictResp.Embeddings) != 1 {
+		t.Errorf("len(predictResp.Embeddings) = %d, want 1", len(predictResp.Embeddings))
+	}
+
+	nextResp = `{"embedding":{"values":[0.1,0.2]}}`
+	maasSingleResp, err := vertexClient.Models.EmbedContent(ctx, "publishers/intfloat/models/multilingual-e5-large-instruct-maas", Text("hello"), nil)
+	if err != nil {
+		t.Fatalf("maas single EmbedContent: %v", err)
+	}
+	if !strings.HasSuffix(gotPath, "/publishers/intfloat/models/multilingual-e5-large-instruct-maas:embedContent") {
+		t.Errorf("maas single path = %q, want :embedContent", gotPath)
+	}
+	if len(maasSingleResp.Embeddings) != 1 {
+		t.Errorf("len(maasSingleResp.Embeddings) = %d, want 1", len(maasSingleResp.Embeddings))
+	}
+
+	gotPath = ""
+	_, err = vertexClient.Models.EmbedContent(ctx, "publishers/intfloat/models/multilingual-e5-large-instruct-maas", batchContents, nil)
+	if err == nil || !strings.Contains(err.Error(), "the embedContent API for this model only supports one content at a time") {
+		t.Errorf("maas batch EmbedContent err = %v, want single-content error", err)
+	}
+	if gotPath != "" {
+		t.Errorf("maas batch unexpectedly called server path %q", gotPath)
+	}
+}
