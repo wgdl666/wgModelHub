@@ -28,8 +28,8 @@ const (
 	maxResponseBytes         = 4 << 20
 	maxCombinedResponseBytes = 32 << 20
 
-	// 2026-11 美东路演 7 天成功调用 P95 约 1.7 秒、P99 约 3.6 秒，原先单次等满 20 秒才失败。
-	attemptTimeout = 3 * time.Second
+	// 为供应商短时慢响应留出 5 秒窗口，避免在 3 秒时过早取消。
+	attemptTimeout = 5 * time.Second
 	// 只多发一次：供应商整体变慢时再发也救不回，剩下的交给调用方的业务重试。
 	maxAttempts = 2
 )
