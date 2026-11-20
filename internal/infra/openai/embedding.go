@@ -48,23 +48,21 @@ func (p *Provider) generateEmbedding(ctx context.Context, model string, request 
 		return nil, provider.TakeHTTPError(p.name, response.StatusCode, response.Body)
 	}
 	var result struct {
-		Result struct {
-			Dim        int         `json:"dim"`
-			Embeddings [][]float64 `json:"embeddings"`
-		} `json:"result"`
+		Dim        int         `json:"dim"`
+		Embeddings [][]float64 `json:"embeddings"`
 	}
 	if err := json.NewDecoder(io.LimitReader(response.Body, 8<<20)).Decode(&result); err != nil {
 		return nil, provider.Wrap(provider.ErrorInvalidResponse, "decode Vmind embedding", err)
 	}
-	if result.Result.Dim != 1024 || len(result.Result.Embeddings) != len(inputs) {
+	if result.Dim != 1024 || len(result.Embeddings) != len(inputs) {
 		return nil, provider.New(provider.ErrorInvalidResponse, "invalid Vmind embedding count or dimension")
 	}
-	for _, vector := range result.Result.Embeddings {
+	for _, vector := range result.Embeddings {
 		if len(vector) != 1024 {
 			return nil, provider.New(provider.ErrorInvalidResponse, "Vmind embedding must return 1024 floats")
 		}
 	}
-	raw, err := json.Marshal(map[string]any{"embedding": result.Result.Embeddings[0]})
+	raw, err := json.Marshal(map[string]any{"embedding": result.Embeddings[0]})
 	if err != nil {
 		return nil, provider.Wrap(provider.ErrorInvalidResponse, "encode Vmind embedding", err)
 	}

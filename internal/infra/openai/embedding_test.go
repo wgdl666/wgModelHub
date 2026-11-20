@@ -33,7 +33,7 @@ func TestVmindEmbeddingGatewayContract(t *testing.T) {
 				if len(body.Input.Inputs) != 1 || body.Input.Inputs[0] != "蓝色衬衫" || body.Input.Dim != 1024 || !body.Input.Normalize {
 					t.Errorf("wrong embedding payload: %+v", body)
 				}
-				json.NewEncoder(w).Encode(map[string]any{"result": map[string]any{"dim": dimension, "embeddings": [][]float64{make([]float64, dimension)}}})
+				json.NewEncoder(w).Encode(map[string]any{"dim": dimension, "embeddings": [][]float64{make([]float64, dimension)}})
 			}))
 			defer server.Close()
 			gateway, err := vmindgateway.New("test", server.URL, "test", nil)
@@ -82,7 +82,7 @@ func TestVmindEmbeddingImage(t *testing.T) {
 		}
 		vector := make([]float64, 1024)
 		vector[0] = 1
-		json.NewEncoder(w).Encode(map[string]any{"result": map[string]any{"dim": 1024, "embeddings": [][]float64{vector}}})
+		json.NewEncoder(w).Encode(map[string]any{"dim": 1024, "embeddings": [][]float64{vector}})
 	}))
 	defer server.Close()
 	gateway, err := vmindgateway.New("test", server.URL, "test", nil)
