@@ -16,8 +16,11 @@ package genai
 
 import (
 	"context"
+	"log"
 	"net/http"
+	"net/url"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -74,6 +77,41 @@ func TestNewClient(t *testing.T) {
 			_, err := NewClient(ctx, &ClientConfig{Backend: BackendVertexAI, Credentials: creds, APIKey: "test-api-key"})
 			if err == nil {
 				t.Fatalf("Expected error, got empty")
+			}
+		})
+
+		t.Run("Project and location are not supported for Gemini API backend", func(t *testing.T) {
+			_, err := NewClient(ctx, &ClientConfig{Backend: BackendGeminiAPI, APIKey: "test-api-key", Project: "test-project"})
+			if err == nil {
+				t.Fatalf("Expected error, got nil")
+			}
+			_, err = NewClient(ctx, &ClientConfig{Backend: BackendGeminiAPI, APIKey: "test-api-key", Location: "us-central1"})
+			if err == nil {
+				t.Fatalf("Expected error, got nil")
+			}
+		})
+
+		t.Run("API key with explicit project and location when set VertexAI", func(t *testing.T) {
+			apiKey := "test-api-key"
+			project := "test-project"
+			location := "us-central1"
+			client, err := NewClient(ctx, &ClientConfig{
+				Backend:  BackendVertexAI,
+				APIKey:   apiKey,
+				Project:  project,
+				Location: location,
+			})
+			if err != nil {
+				t.Fatalf("Expected no error, got %v", err)
+			}
+			if client.clientConfig.APIKey != apiKey {
+				t.Errorf("Expected API key %q, got %q", apiKey, client.clientConfig.APIKey)
+			}
+			if client.clientConfig.Project != project {
+				t.Errorf("Expected project %q, got %q", project, client.clientConfig.Project)
+			}
+			if client.clientConfig.Location != location {
+				t.Errorf("Expected location %q, got %q", location, client.clientConfig.Location)
 			}
 		})
 
@@ -840,7 +878,7 @@ func TestNewClient(t *testing.T) {
 			HTTPClient: &http.Client{},
 			HTTPOptions: HTTPOptions{
 				BaseURL:    "https://generativelanguage.googleapis.com/",
-				APIVersion: "v1beta",
+				APIVersion: googleAIAPIDefaultVersion,
 			},
 		}
 		client, err := NewClient(ctx, &ClientConfig{
@@ -926,7 +964,7 @@ func TestClientConfigHTTPOptions(t *testing.T) {
 				},
 			},
 			expectedBaseURL:    "https://generativelanguage.googleapis.com/",
-			expectedAPIVersion: "v1beta",
+			expectedAPIVersion: googleAIAPIDefaultVersion,
 		},
 		{
 			name: "Google AI Backend without API Version",
@@ -936,7 +974,7 @@ func TestClientConfigHTTPOptions(t *testing.T) {
 				Backend:     BackendGeminiAPI,
 			},
 			expectedBaseURL:    "https://generativelanguage.googleapis.com/",
-			expectedAPIVersion: "v1beta",
+			expectedAPIVersion: googleAIAPIDefaultVersion,
 		},
 		{
 			name: "Vertex AI Backend without API Version",
@@ -963,6 +1001,44 @@ func TestClientConfigHTTPOptions(t *testing.T) {
 			expectedAPIVersion: "v1beta1",
 		},
 		{
+			name: "Vertex AI Backend with us location",
+			clientConfig: ClientConfig{
+				Backend:     BackendVertexAI,
+				Project:     "test-project",
+				Location:    "us",
+				HTTPOptions: HTTPOptions{},
+				Credentials: &auth.Credentials{},
+			},
+			expectedBaseURL:    "https://aiplatform.us.rep.googleapis.com/",
+			expectedAPIVersion: "v1beta1",
+		},
+		{
+			name: "Vertex AI Backend with eu location",
+			clientConfig: ClientConfig{
+				Backend:     BackendVertexAI,
+				Project:     "test-project",
+				Location:    "eu",
+				HTTPOptions: HTTPOptions{},
+				Credentials: &auth.Credentials{},
+			},
+			expectedBaseURL:    "https://aiplatform.eu.rep.googleapis.com/",
+			expectedAPIVersion: "v1beta1",
+		},
+		{
+			name: "Vertex AI Backend with us location and base URL override",
+			clientConfig: ClientConfig{
+				Backend:  BackendVertexAI,
+				Project:  "test-project",
+				Location: "us",
+				HTTPOptions: HTTPOptions{
+					BaseURL: "https://my-custom-url.com/",
+				},
+				Credentials: &auth.Credentials{},
+			},
+			expectedBaseURL:    "https://my-custom-url.com/",
+			expectedAPIVersion: "v1beta1",
+		},
+		{
 			name: "Google AI Backend with HTTP Client Timeout and no HTTPOptions",
 			clientConfig: ClientConfig{
 				Backend:     BackendGeminiAPI,
@@ -971,7 +1047,114 @@ func TestClientConfigHTTPOptions(t *testing.T) {
 				HTTPClient:  &http.Client{Timeout: 5000 * time.Millisecond},
 			},
 			expectedBaseURL:    "https://generativelanguage.googleapis.com/",
+			expectedAPIVersion: googleAIAPIDefaultVersion,
+		},
+		{
+			name: "Google AI Backend with GOOGLE_GENAI_API_VERSION env var",
+			clientConfig: ClientConfig{
+				Backend: BackendGeminiAPI,
+				APIKey:  "test-api-key",
+				envVarProvider: func() map[string]string {
+					return map[string]string{
+						"GOOGLE_GENAI_API_VERSION": "v1alpha",
+					}
+				},
+			},
+			expectedBaseURL:    "https://generativelanguage.googleapis.com/",
+			expectedAPIVersion: "v1alpha",
+		},
+		{
+			name: "Vertex AI Backend with GOOGLE_GENAI_API_VERSION env var",
+			clientConfig: ClientConfig{
+				Backend:     BackendVertexAI,
+				Project:     "test-project",
+				Location:    "us-central1",
+				Credentials: &auth.Credentials{},
+				envVarProvider: func() map[string]string {
+					return map[string]string{
+						"GOOGLE_GENAI_API_VERSION": "v1",
+					}
+				},
+			},
+			expectedBaseURL:    "https://us-central1-aiplatform.googleapis.com/",
+			expectedAPIVersion: "v1",
+		},
+		{
+			name: "Google AI Backend with GOOGLE_GENAI_API_VERSION=beta selects v1beta",
+			clientConfig: ClientConfig{
+				Backend: BackendGeminiAPI,
+				APIKey:  "test-api-key",
+				envVarProvider: func() map[string]string {
+					return map[string]string{
+						"GOOGLE_GENAI_API_VERSION": "beta",
+					}
+				},
+			},
+			expectedBaseURL:    "https://generativelanguage.googleapis.com/",
 			expectedAPIVersion: "v1beta",
+		},
+		{
+			name: "Vertex AI Backend with GOOGLE_GENAI_API_VERSION=beta selects v1beta1",
+			clientConfig: ClientConfig{
+				Backend:     BackendVertexAI,
+				Project:     "test-project",
+				Location:    "us-central1",
+				Credentials: &auth.Credentials{},
+				envVarProvider: func() map[string]string {
+					return map[string]string{
+						"GOOGLE_GENAI_API_VERSION": "beta",
+					}
+				},
+			},
+			expectedBaseURL:    "https://us-central1-aiplatform.googleapis.com/",
+			expectedAPIVersion: "v1beta1",
+		},
+		{
+			name: "Explicit HTTPOptions.APIVersion overrides GOOGLE_GENAI_API_VERSION env var",
+			clientConfig: ClientConfig{
+				Backend: BackendGeminiAPI,
+				APIKey:  "test-api-key",
+				HTTPOptions: HTTPOptions{
+					APIVersion: "v1",
+				},
+				envVarProvider: func() map[string]string {
+					return map[string]string{
+						"GOOGLE_GENAI_API_VERSION": "v1alpha",
+					}
+				},
+			},
+			expectedBaseURL:    "https://generativelanguage.googleapis.com/",
+			expectedAPIVersion: "v1",
+		},
+		{
+			name: "Google AI Backend with empty GOOGLE_GENAI_API_VERSION env var uses default",
+			clientConfig: ClientConfig{
+				Backend: BackendGeminiAPI,
+				APIKey:  "test-api-key",
+				envVarProvider: func() map[string]string {
+					return map[string]string{
+						"GOOGLE_GENAI_API_VERSION": "",
+					}
+				},
+			},
+			expectedBaseURL:    "https://generativelanguage.googleapis.com/",
+			expectedAPIVersion: googleAIAPIDefaultVersion,
+		},
+		{
+			name: "Vertex AI Backend with empty GOOGLE_GENAI_API_VERSION env var uses default",
+			clientConfig: ClientConfig{
+				Backend:     BackendVertexAI,
+				Project:     "test-project",
+				Location:    "us-central1",
+				Credentials: &auth.Credentials{},
+				envVarProvider: func() map[string]string {
+					return map[string]string{
+						"GOOGLE_GENAI_API_VERSION": "",
+					}
+				},
+			},
+			expectedBaseURL:    "https://us-central1-aiplatform.googleapis.com/",
+			expectedAPIVersion: "v1beta1",
 		},
 	}
 
@@ -989,6 +1172,492 @@ func TestClientConfigHTTPOptions(t *testing.T) {
 
 			if client.clientConfig.HTTPOptions.APIVersion != tt.expectedAPIVersion {
 				t.Errorf("expected apiVersion %s, got %s", tt.expectedAPIVersion, client.clientConfig.HTTPOptions.APIVersion)
+			}
+		})
+	}
+}
+
+func TestClientInitialization(t *testing.T) {
+	ctx := context.Background()
+	os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", "testdata/credentials.json")
+	t.Cleanup(func() { os.Unsetenv("GOOGLE_APPLICATION_CREDENTIALS") })
+
+	t.Run("Vertex AI Implicit Auth", func(t *testing.T) {
+		t.Setenv("GOOGLE_GENAI_USE_VERTEXAI", "true")
+		t.Setenv("GOOGLE_CLOUD_PROJECT", "test-project")
+		t.Setenv("GOOGLE_CLOUD_LOCATION", "test-location")
+		t.Setenv("GOOGLE_API_KEY", "")
+
+		client, err := NewClient(ctx, nil)
+		if err != nil {
+			t.Fatalf("NewClient failed: %v", err)
+		}
+		if client.clientConfig.Backend != BackendVertexAI {
+			t.Errorf("expected BackendVertexAI, got %v", client.clientConfig.Backend)
+		}
+		if client.clientConfig.Project != "test-project" {
+			t.Errorf("expected project test-project, got %s", client.clientConfig.Project)
+		}
+		if client.clientConfig.Location != "test-location" {
+			t.Errorf("expected location test-location, got %s", client.clientConfig.Location)
+		}
+		expectedURL := "https://test-location-aiplatform.googleapis.com/"
+		if client.clientConfig.HTTPOptions.BaseURL != expectedURL {
+			t.Errorf("expected BaseURL %s, got %s", expectedURL, client.clientConfig.HTTPOptions.BaseURL)
+		}
+	})
+
+	t.Run("Vertex AI Express Mode", func(t *testing.T) {
+		t.Setenv("GOOGLE_GENAI_USE_VERTEXAI", "true")
+		t.Setenv("GOOGLE_API_KEY", "test-api-key")
+		// Project/Location should be ignored/cleared
+		t.Setenv("GOOGLE_CLOUD_PROJECT", "")
+		t.Setenv("GOOGLE_CLOUD_LOCATION", "")
+
+		client, err := NewClient(ctx, nil)
+		if err != nil {
+			t.Fatalf("NewClient failed: %v", err)
+		}
+		if client.clientConfig.Backend != BackendVertexAI {
+			t.Errorf("expected BackendVertexAI, got %v", client.clientConfig.Backend)
+		}
+		// API Key takes precedence, so project/location should be empty
+		if client.clientConfig.Project != "" {
+			t.Errorf("expected empty project, got %s", client.clientConfig.Project)
+		}
+		if client.clientConfig.Location != "" {
+			t.Errorf("expected location empty, got %s", client.clientConfig.Location)
+		}
+		if client.clientConfig.APIKey == "" {
+			t.Errorf("expected API Key to be set")
+		}
+		expectedURL := "https://aiplatform.googleapis.com/"
+		if client.clientConfig.HTTPOptions.BaseURL != expectedURL {
+			t.Errorf("expected BaseURL %s, got %s", expectedURL, client.clientConfig.HTTPOptions.BaseURL)
+		}
+	})
+
+	t.Run("Vertex AI Custom Base URL No Auth", func(t *testing.T) {
+		t.Setenv("GOOGLE_GENAI_USE_VERTEXAI", "true")
+		t.Setenv("GOOGLE_API_KEY", "")
+		t.Setenv("GOOGLE_CLOUD_PROJECT", "")
+		t.Setenv("GOOGLE_CLOUD_LOCATION", "")
+
+		client, err := NewClient(ctx, &ClientConfig{
+			HTTPOptions: HTTPOptions{
+				BaseURL: "https://custom-gateway.com",
+			},
+		})
+		if err != nil {
+			t.Fatalf("NewClient failed: %v", err)
+		}
+		if client.clientConfig.Backend != BackendVertexAI {
+			t.Errorf("expected BackendVertexAI, got %v", client.clientConfig.Backend)
+		}
+		if client.clientConfig.Project != "" {
+			t.Errorf("expected empty project, got %s", client.clientConfig.Project)
+		}
+		if client.clientConfig.Location != "" { // Should be empty as we cleared it
+			t.Errorf("expected empty location, got %s", client.clientConfig.Location)
+		}
+		if client.clientConfig.HTTPOptions.BaseURL != "https://custom-gateway.com" {
+			t.Errorf("expected BaseURL https://custom-gateway.com, got %s", client.clientConfig.HTTPOptions.BaseURL)
+		}
+	})
+
+	t.Run("Gemini API Default", func(t *testing.T) {
+		t.Setenv("GOOGLE_GENAI_USE_VERTEXAI", "false") // or unset
+		t.Setenv("GOOGLE_API_KEY", "test-api-key")
+
+		client, err := NewClient(ctx, nil)
+		if err != nil {
+			t.Fatalf("NewClient failed: %v", err)
+		}
+		if client.clientConfig.Backend != BackendGeminiAPI {
+			t.Errorf("expected BackendGeminiAPI, got %v", client.clientConfig.Backend)
+		}
+		expectedURL := "https://generativelanguage.googleapis.com/"
+		if client.clientConfig.HTTPOptions.BaseURL != expectedURL {
+			t.Errorf("expected BaseURL %s, got %s", expectedURL, client.clientConfig.HTTPOptions.BaseURL)
+		}
+	})
+
+	t.Run("Gemini API Custom Base URL", func(t *testing.T) {
+		t.Setenv("GOOGLE_GENAI_USE_VERTEXAI", "false")
+		t.Setenv("GOOGLE_API_KEY", "test-api-key")
+
+		client, err := NewClient(ctx, &ClientConfig{
+			HTTPOptions: HTTPOptions{
+				BaseURL: "https://custom-gemini.com",
+			},
+		})
+		if err != nil {
+			t.Fatalf("NewClient failed: %v", err)
+		}
+		if client.clientConfig.HTTPOptions.BaseURL != "https://custom-gemini.com" {
+			t.Errorf("expected BaseURL https://custom-gemini.com, got %s", client.clientConfig.HTTPOptions.BaseURL)
+		}
+	})
+
+	t.Run("Env Param Precedence", func(t *testing.T) {
+		t.Setenv("GOOGLE_GENAI_USE_VERTEXAI", "true")
+		t.Setenv("GOOGLE_CLOUD_PROJECT", "env-project")
+		t.Setenv("GOOGLE_CLOUD_LOCATION", "env-data")
+
+		// Explicit config should override env
+		client, err := NewClient(ctx, &ClientConfig{
+			Project:  "explicit-project",
+			Location: "explicit-location",
+		})
+		if err != nil {
+			t.Fatalf("NewClient failed: %v", err)
+		}
+		if client.clientConfig.Project != "explicit-project" {
+			t.Errorf("expected explicit-project, got %s", client.clientConfig.Project)
+		}
+		if client.clientConfig.Location != "explicit-location" {
+			t.Errorf("expected explicit-location, got %s", client.clientConfig.Location)
+		}
+	})
+
+	t.Run("ResourceScopeCollection Path Construction", func(t *testing.T) {
+		// This tests logic in api_client.go via buildRequest/createAPIURL
+		// We can't easily access the internal createAPIURL directly without exporting it or using reflection/internal test package
+		// So we will verify behavior via what's observable or assume logic correctness if buildRequest doesn't error and uses correct URL
+		// For a black-box test, we'd need to mock the HTTP transport and check the requested URL.
+
+		// Setup a custom client with ResourceScopeCollection
+		client, err := NewClient(ctx, &ClientConfig{
+			Backend:  BackendVertexAI,
+			Project:  "test-project",
+			Location: "test-location",
+			HTTPOptions: HTTPOptions{
+				BaseURL:              "https://custom-gateway.com",
+				BaseURLResourceScope: ResourceScopeCollection,
+				APIVersion:           "v1beta1",
+			},
+			HTTPClient: &http.Client{}, // Default client
+		})
+		if err != nil {
+			t.Fatalf("NewClient failed: %v", err)
+		}
+
+		// We need to access the internal apiClient to test createAPIURL or mock the transport.
+		// Since we are in package genai, we CAN see private members if this test is in package genai.
+
+		ac := client.Models.apiClient
+		// Method is GET, path starts with publishers/google/models to trigger one branch, or something else.
+		// Let's test a standard model path
+		path := "models/gemini-pro"
+		method := "POST"
+
+		url, err := ac.createAPIURL(path, method, &client.clientConfig.HTTPOptions)
+		if err != nil {
+			t.Fatalf("createAPIURL failed: %v", err)
+		}
+
+		// With ResourceScopeCollection, we expect NO project/location prefix
+		// URL should be BaseURL + APIVersion + path
+		expectedPath := "v1beta1/models/gemini-pro"
+		if !strings.HasSuffix(url.Path, expectedPath) {
+			t.Errorf("ResourceScopeCollection: expected path suffix %s, got %s", expectedPath, url.Path)
+		}
+
+		// Verify standard behavior (NO ResourceScopeCollection)
+		clientStandard, _ := NewClient(ctx, &ClientConfig{
+			Backend:  BackendVertexAI,
+			Project:  "test-project",
+			Location: "test-location",
+			HTTPOptions: HTTPOptions{
+				BaseURL:    "https://custom-gateway.com",
+				APIVersion: "v1beta1",
+			},
+			HTTPClient: &http.Client{},
+		})
+		acStandard := clientStandard.Models.apiClient
+		urlStandard, _ := acStandard.createAPIURL(path, method, &clientStandard.clientConfig.HTTPOptions)
+
+		// Standard behavior should include project/location
+		if !strings.Contains(urlStandard.Path, "projects/test-project/locations/test-location") {
+			t.Errorf("Standard Scope: expected project/location in path %s, but not found", urlStandard.Path)
+		}
+	})
+}
+
+func TestNewInternalAPIClient_BackendSelection(t *testing.T) {
+	ctx := context.Background()
+	os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", "testdata/credentials.json")
+	t.Cleanup(func() { os.Unsetenv("GOOGLE_APPLICATION_CREDENTIALS") })
+
+	tests := []struct {
+		name              string
+		config            ClientConfig
+		env               map[string]string
+		wantBackend       Backend
+		wantWarning       bool
+		expectErr         bool
+		satisfyVertexReqs bool
+		satisfyGeminiReqs bool
+	}{
+		{
+			name: "Explicit BackendEnterprise in config",
+			config: ClientConfig{
+				Backend: BackendEnterprise,
+			},
+			env:               map[string]string{},
+			wantBackend:       BackendVertexAI,
+			satisfyVertexReqs: true,
+		},
+		{
+			name: "Explicit BackendVertexAI in config",
+			config: ClientConfig{
+				Backend: BackendVertexAI,
+			},
+			env:               map[string]string{},
+			wantBackend:       BackendVertexAI,
+			satisfyVertexReqs: true,
+		},
+		{
+			name: "Explicit BackendGeminiAPI in config",
+			config: ClientConfig{
+				Backend: BackendGeminiAPI,
+			},
+			env:               map[string]string{},
+			wantBackend:       BackendGeminiAPI,
+			satisfyGeminiReqs: true,
+		},
+		{
+			name:              "ENTERPRISE=1 uses VertexAI",
+			config:            ClientConfig{},
+			env:               map[string]string{"GOOGLE_GENAI_USE_ENTERPRISE": "1"},
+			wantBackend:       BackendVertexAI,
+			satisfyVertexReqs: true,
+		},
+		{
+			name:              "ENTERPRISE=true uses VertexAI",
+			config:            ClientConfig{},
+			env:               map[string]string{"GOOGLE_GENAI_USE_ENTERPRISE": "true"},
+			wantBackend:       BackendVertexAI,
+			satisfyVertexReqs: true,
+		},
+		{
+			name:              "ENTERPRISE=0 uses GeminiAPI",
+			config:            ClientConfig{},
+			env:               map[string]string{"GOOGLE_GENAI_USE_ENTERPRISE": "0"},
+			wantBackend:       BackendGeminiAPI,
+			satisfyGeminiReqs: true,
+		},
+		{
+			name:              "ENTERPRISE=false uses GeminiAPI",
+			config:            ClientConfig{},
+			env:               map[string]string{"GOOGLE_GENAI_USE_ENTERPRISE": "false"},
+			wantBackend:       BackendGeminiAPI,
+			satisfyGeminiReqs: true,
+		},
+		{
+			name:              "ENTERPRISE=0 uses GeminiAPI",
+			config:            ClientConfig{},
+			env:               map[string]string{"GOOGLE_GENAI_USE_ENTERPRISE": "0"},
+			wantBackend:       BackendGeminiAPI,
+			satisfyGeminiReqs: true,
+		},
+		{
+			name:              "VERTEXAI=1 uses VertexAI when ENTERPRISE is not set",
+			config:            ClientConfig{},
+			env:               map[string]string{"GOOGLE_GENAI_USE_VERTEXAI": "1"},
+			wantBackend:       BackendVertexAI,
+			satisfyVertexReqs: true,
+		},
+		{
+			name:              "VERTEXAI=true uses VertexAI when ENTERPRISE is not set",
+			config:            ClientConfig{},
+			env:               map[string]string{"GOOGLE_GENAI_USE_VERTEXAI": "true"},
+			wantBackend:       BackendVertexAI,
+			satisfyVertexReqs: true,
+		},
+		{
+			name:              "VERTEXAI=0 uses GeminiAPI when ENTERPRISE is not set",
+			config:            ClientConfig{},
+			env:               map[string]string{"GOOGLE_GENAI_USE_VERTEXAI": "0"},
+			wantBackend:       BackendGeminiAPI,
+			satisfyGeminiReqs: true,
+		},
+		{
+			name:              "No env vars and unspecified backend defaults to GeminiAPI",
+			config:            ClientConfig{},
+			env:               map[string]string{},
+			wantBackend:       BackendGeminiAPI,
+			satisfyGeminiReqs: true,
+		},
+		{
+			name:              "Conflicting env vars (ENTERPRISE=1, VERTEXAI=0), ENTERPRISE wins with warning",
+			config:            ClientConfig{},
+			env:               map[string]string{"GOOGLE_GENAI_USE_ENTERPRISE": "1", "GOOGLE_GENAI_USE_VERTEXAI": "0"},
+			wantBackend:       BackendVertexAI,
+			wantWarning:       true,
+			satisfyVertexReqs: true,
+		},
+		{
+			name:              "Conflicting env vars (ENTERPRISE=false, VERTEXAI=true), ENTERPRISE wins with warning",
+			config:            ClientConfig{},
+			env:               map[string]string{"GOOGLE_GENAI_USE_ENTERPRISE": "false", "GOOGLE_GENAI_USE_VERTEXAI": "true"},
+			wantBackend:       BackendGeminiAPI,
+			wantWarning:       true,
+			satisfyGeminiReqs: true,
+		},
+		{
+			name:              "Non-conflicting env vars (ENTERPRISE=1, VERTEXAI=1), no warning",
+			config:            ClientConfig{},
+			env:               map[string]string{"GOOGLE_GENAI_USE_ENTERPRISE": "1", "GOOGLE_GENAI_USE_VERTEXAI": "1"},
+			wantBackend:       BackendVertexAI,
+			wantWarning:       false,
+			satisfyVertexReqs: true,
+		},
+		{
+			name:              "Non-conflicting env vars (ENTERPRISE=true, VERTEXAI=true), no warning",
+			config:            ClientConfig{},
+			env:               map[string]string{"GOOGLE_GENAI_USE_ENTERPRISE": "true", "GOOGLE_GENAI_USE_VERTEXAI": "true"},
+			wantBackend:       BackendVertexAI,
+			wantWarning:       false,
+			satisfyVertexReqs: true,
+		},
+		{
+			name:              "Non-conflicting env vars (ENTERPRISE=false, VERTEXAI=false), no warning",
+			config:            ClientConfig{},
+			env:               map[string]string{"GOOGLE_GENAI_USE_ENTERPRISE": "false", "GOOGLE_GENAI_USE_VERTEXAI": "false"},
+			wantBackend:       BackendGeminiAPI,
+			wantWarning:       false,
+			satisfyGeminiReqs: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var logBuf strings.Builder
+			log.SetOutput(&logBuf)
+			t.Cleanup(func() {
+				log.SetOutput(os.Stderr)
+			})
+
+			conf := tt.config
+			conf.envVarProvider = func() map[string]string {
+				return tt.env
+			}
+
+			if tt.satisfyVertexReqs {
+				if conf.Project == "" {
+					conf.Project = "test-project"
+				}
+				if conf.Location == "" {
+					conf.Location = "test-location"
+				}
+			}
+			if tt.satisfyGeminiReqs {
+				if conf.APIKey == "" {
+					conf.APIKey = "test-api-key"
+				}
+			}
+
+			client, err := NewInternalAPIClient(ctx, &conf)
+
+			if tt.expectErr {
+				if err == nil {
+					t.Errorf("NewInternalAPIClient() expected an error, but got none")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("NewInternalAPIClient() failed: %v", err)
+			}
+
+			if client.clientConfig.Backend != tt.wantBackend {
+				t.Errorf("Backend mismatch: got %v, want %v", client.clientConfig.Backend, tt.wantBackend)
+			}
+
+			logOutput := logBuf.String()
+			hasWarning := strings.Contains(logOutput, "Warning: Both GOOGLE_GENAI_USE_ENTERPRISE and GOOGLE_GENAI_USE_VERTEXAI are set with conflicting values.")
+			if tt.wantWarning && !hasWarning {
+				t.Errorf("Expected a warning for conflicting env vars, but got none. Log output:\n%s", logOutput)
+			}
+			if !tt.wantWarning && hasWarning {
+				t.Errorf("Expected no warning, but got one. Log output:\n%s", logOutput)
+			}
+		})
+	}
+}
+
+// TestUnescapeAPIVersionSegment checks that only the escaped API version
+// segment gets literal slashes and every other segment keeps its encoding.
+func TestUnescapeAPIVersionSegment(t *testing.T) {
+	const apiVersion = "v1beta1/projects/p/locations/l"
+	tests := []struct {
+		desc    string
+		path    string
+		want    string
+		changed bool
+	}{
+		{
+			desc:    "root route",
+			path:    "/v1beta1%2Fprojects%2Fp%2Flocations%2Fl/interactions",
+			want:    "/v1beta1/projects/p/locations/l/interactions",
+			changed: true,
+		},
+		{
+			desc:    "route with ID",
+			path:    "/v1beta1%2Fprojects%2Fp%2Flocations%2Fl/interactions/abc/cancel",
+			want:    "/v1beta1/projects/p/locations/l/interactions/abc/cancel",
+			changed: true,
+		},
+		{
+			desc:    "upload route",
+			path:    "/upload/v1beta1%2Fprojects%2Fp%2Flocations%2Fl/environments/e/files/a/b.txt",
+			want:    "/upload/v1beta1/projects/p/locations/l/environments/e/files/a/b.txt",
+			changed: true,
+		},
+		{
+			desc:    "base URL with path prefix",
+			path:    "/proxy/v1beta1%2Fprojects%2Fp%2Flocations%2Fl/interactions",
+			want:    "/proxy/v1beta1/projects/p/locations/l/interactions",
+			changed: true,
+		},
+		{
+			desc:    "other segments keep escaping",
+			path:    "/v1beta1%2Fprojects%2Fp%2Flocations%2Fl/environments/e/files/my%20file.txt",
+			want:    "/v1beta1/projects/p/locations/l/environments/e/files/my%20file.txt",
+			changed: true,
+		},
+		{
+			desc:    "escaped segment for a different value",
+			path:    "/v1%2Fother/interactions",
+			want:    "/v1%2Fother/interactions",
+			changed: false,
+		},
+		{
+			desc:    "no match",
+			path:    "/v1beta/interactions",
+			want:    "/v1beta/interactions",
+			changed: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			u, err := url.Parse("https://example.com" + tt.path + "?alt=sse")
+			if err != nil {
+				t.Fatalf("url.Parse() failed: %v", err)
+			}
+			orig := u.String()
+			got, changed := unescapeAPIVersionSegment(u, apiVersion)
+			if changed != tt.changed {
+				t.Errorf("changed = %v, want %v", changed, tt.changed)
+			}
+			if got.EscapedPath() != tt.want {
+				t.Errorf("EscapedPath() = %s, want %s", got.EscapedPath(), tt.want)
+			}
+			if got.RawQuery != "alt=sse" || got.Host != "example.com" {
+				t.Errorf("URL = %s, want host and query unchanged", got)
+			}
+			if u.String() != orig {
+				t.Errorf("input URL = %s, want unchanged %s", u, orig)
 			}
 		})
 	}

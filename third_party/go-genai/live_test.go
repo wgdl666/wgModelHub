@@ -16,8 +16,10 @@ package genai
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -167,6 +169,31 @@ func TestLiveConnect(t *testing.T) {
 			wantRequestBody: `{"setup":{"model":"projects/test-project/locations/test-location/publishers/google/models/test-model"}}`,
 		},
 		{
+			desc: "successful connection vertex express mode",
+			client: func() *Client {
+				c, _ := NewClient(ctx, &ClientConfig{
+					Backend: BackendVertexAI,
+					APIKey:  "test-api-key",
+				})
+				return c
+			}(),
+			wantRequestBody: `{"setup":{"model":"publishers/google/models/test-model"}}`,
+		},
+		{
+			desc: "successful connection vertex custom proxy",
+			client: func() *Client {
+				c, _ := NewClient(ctx, &ClientConfig{
+					Backend: BackendVertexAI,
+					HTTPOptions: HTTPOptions{
+						BaseURL: "ws://custom-proxy-server.com/my-custom-path",
+					},
+				})
+				return c
+			}(),
+			wantRequestBody: `{"setup":{"model":"publishers/google/models/test-model"}}`,
+			wantPath:        "/my-custom-path",
+		},
+		{
 			desc:   "successful connection with config vertex",
 			client: vertexClient,
 			config: &LiveConnectConfig{
@@ -200,7 +227,7 @@ func TestLiveConnect(t *testing.T) {
 				},
 			},
 			wantErr:        true,
-			wantErrMessage: "transparent parameter is not supported in Gemini API",
+			wantErrMessage: "transparent parameter is only supported in Gemini Enterprise Agent Platform mode, not in Gemini Developer API mode.",
 		},
 		{
 			desc:   "successful connection when set transparent using vertex client",
@@ -286,6 +313,7 @@ func TestLiveConnect(t *testing.T) {
 				t.Errorf("Connect() error message = %v, wantErrMessage %v", err.Error(), tt.wantErrMessage)
 				return
 			}
+
 			defer session.Close()
 		})
 	}
@@ -332,6 +360,10 @@ func TestLiveConnect(t *testing.T) {
 					t.Fatalf("Connect failed: %v", err)
 				}
 				defer session.Close()
+
+				if session.SetupComplete == nil {
+					t.Errorf("SetupComplete is nil after Connect")
+				}
 
 				// Test sending the message
 				err = session.SendClientContent(LiveClientContentInput{Turns: Text("client test message")})
@@ -428,6 +460,10 @@ func TestLiveConnect(t *testing.T) {
 				}
 				defer session.Close()
 
+				if session.SetupComplete == nil {
+					t.Errorf("SetupComplete is nil after Connect")
+				}
+
 				// Test sending the message
 				err = session.SendRealtimeInput(tt.realtimeInput)
 				if err != nil {
@@ -498,6 +534,10 @@ func TestLiveConnect(t *testing.T) {
 				}
 				defer session.Close()
 
+				if session.SetupComplete == nil {
+					t.Errorf("SetupComplete is nil after Connect")
+				}
+
 				// Test sending the message
 				err = session.SendToolResponse(LiveToolResponseInput{FunctionResponses: []*FunctionResponse{{Name: "test-function"}}})
 				if err != nil {
@@ -507,6 +547,138 @@ func TestLiveConnect(t *testing.T) {
 				// Construct the expected response
 				serverMessage := &LiveServerMessage{ServerContent: &LiveServerContent{ModelTurn: Text("server test message")[0]}}
 				// Test receiving the response
+				_, err = session.Receive()
+				if err != nil {
+					t.Errorf("Receive failed: %v", err)
+				}
+				gotMessage, err := session.Receive()
+				if err != nil {
+					if tt.wantErr {
+						return
+					}
+					t.Errorf("Receive failed: %v", err)
+				}
+				if diff := cmp.Diff(gotMessage, serverMessage); diff != "" {
+					t.Errorf("Response message mismatch (-want +got):\n%s", diff)
+				}
+			})
+		}
+	})
+
+	t.Run("SendContextUpdate and Receive", func(t *testing.T) {
+		sendReceiveTests := []struct {
+			desc                  string
+			client                *Client
+			contextUpdate         LiveClientContextUpdate
+			wantRequestBodySlice  []string
+			fakeResponseBodySlice []string
+			wantErr               bool
+		}{
+			{
+				desc:   "send systemInstruction contextUpdate to Google AI",
+				client: mldevClient,
+				contextUpdate: LiveClientContextUpdate{
+					SystemInstruction: &Content{Parts: []*Part{{Text: "You are a helpful assistant."}}},
+				},
+				wantRequestBodySlice:  []string{`{"setup":{"model":"models/test-model"}}`, `{"contextUpdate":{"systemInstruction":{"parts":[{"text":"You are a helpful assistant."}]}}}`},
+				fakeResponseBodySlice: []string{`{"setupComplete":{}}`, `{"serverContent":{"modelTurn":{"parts":[{"text":"server test message"}],"role":"user"}}}`},
+			},
+			{
+				desc:   "send systemInstruction contextUpdate to Vertex AI",
+				client: vertexClient,
+				contextUpdate: LiveClientContextUpdate{
+					SystemInstruction: &Content{Parts: []*Part{{Text: "You are a helpful assistant."}}},
+				},
+				wantRequestBodySlice:  []string{`{"setup":{"model":"projects/test-project/locations/test-location/publishers/google/models/test-model"}}`, `{"contextUpdate":{"systemInstruction":{"parts":[{"text":"You are a helpful assistant."}]}}}`},
+				fakeResponseBodySlice: []string{`{"setupComplete":{}}`, `{"serverContent":{"modelTurn":{"parts":[{"text":"server test message"}],"role":"user"}}}`},
+			},
+			{
+				desc:   "send clear tools contextUpdate to Google AI",
+				client: mldevClient,
+				contextUpdate: LiveClientContextUpdate{
+					Tools: &LiveClientContextUpdateTools{Tools: []*Tool{}},
+				},
+				wantRequestBodySlice:  []string{`{"setup":{"model":"models/test-model"}}`, `{"contextUpdate":{"tools":{}}}`},
+				fakeResponseBodySlice: []string{`{"setupComplete":{}}`, `{"serverContent":{"modelTurn":{"parts":[{"text":"server test message"}],"role":"user"}}}`},
+			},
+			{
+				desc:   "send function declaration tools contextUpdate to Google AI",
+				client: mldevClient,
+				contextUpdate: LiveClientContextUpdate{
+					Tools: &LiveClientContextUpdateTools{
+						Tools: []*Tool{
+							{
+								FunctionDeclarations: []*FunctionDeclaration{
+									{Name: "get_current_weather"},
+								},
+							},
+						},
+					},
+				},
+				wantRequestBodySlice:  []string{`{"setup":{"model":"models/test-model"}}`, `{"contextUpdate":{"tools":{"tools":[{"functionDeclarations":[{"name":"get_current_weather"}]}]}}}`},
+				fakeResponseBodySlice: []string{`{"setupComplete":{}}`, `{"serverContent":{"modelTurn":{"parts":[{"text":"server test message"}],"role":"user"}}}`},
+			},
+			{
+				desc:   "send function declaration tools contextUpdate to Vertex AI",
+				client: vertexClient,
+				contextUpdate: LiveClientContextUpdate{
+					Tools: &LiveClientContextUpdateTools{
+						Tools: []*Tool{
+							{
+								FunctionDeclarations: []*FunctionDeclaration{
+									{Name: "get_current_weather"},
+								},
+							},
+						},
+					},
+				},
+				wantRequestBodySlice:  []string{`{"setup":{"model":"projects/test-project/locations/test-location/publishers/google/models/test-model"}}`, `{"contextUpdate":{"tools":{"tools":[{"functionDeclarations":[{"name":"get_current_weather"}]}]}}}`},
+				fakeResponseBodySlice: []string{`{"setupComplete":{}}`, `{"serverContent":{"modelTurn":{"parts":[{"text":"server test message"}],"role":"user"}}}`},
+			},
+			{
+				desc:   "send both systemInstruction and tools contextUpdate to Google AI",
+				client: mldevClient,
+				contextUpdate: LiveClientContextUpdate{
+					SystemInstruction: &Content{Parts: []*Part{{Text: "Updated instruction."}}},
+					Tools: &LiveClientContextUpdateTools{
+						Tools: []*Tool{
+							{
+								FunctionDeclarations: []*FunctionDeclaration{
+									{Name: "get_current_weather"},
+								},
+							},
+						},
+					},
+				},
+				wantRequestBodySlice:  []string{`{"setup":{"model":"models/test-model"}}`, `{"contextUpdate":{"systemInstruction":{"parts":[{"text":"Updated instruction."}]},"tools":{"tools":[{"functionDeclarations":[{"name":"get_current_weather"}]}]}}}`},
+				fakeResponseBodySlice: []string{`{"setupComplete":{}}`, `{"serverContent":{"modelTurn":{"parts":[{"text":"server test message"}],"role":"user"}}}`},
+			},
+		}
+
+		for _, tt := range sendReceiveTests {
+			t.Run(tt.desc, func(t *testing.T) {
+				ts := setupTestWebsocketServer(t, tt.wantRequestBodySlice, tt.fakeResponseBodySlice)
+				defer ts.Close()
+
+				tt.client.Live.apiClient.clientConfig.HTTPOptions.BaseURL = strings.Replace(ts.URL, "http", "ws", 1)
+				tt.client.Live.apiClient.clientConfig.HTTPClient = ts.Client()
+
+				session, err := tt.client.Live.Connect(ctx, "test-model", &LiveConnectConfig{})
+				if err != nil {
+					t.Fatalf("Connect failed: %v", err)
+				}
+				defer session.Close()
+
+				if session.SetupComplete == nil {
+					t.Errorf("SetupComplete is nil after Connect")
+				}
+
+				err = session.SendContextUpdate(tt.contextUpdate)
+				if err != nil {
+					t.Errorf("SendContextUpdate failed: %v", err)
+				}
+
+				serverMessage := &LiveServerMessage{ServerContent: &LiveServerContent{ModelTurn: Text("server test message")[0]}}
 				_, err = session.Receive()
 				if err != nil {
 					t.Errorf("Receive failed: %v", err)
@@ -557,4 +729,109 @@ func setupTestWebsocketServer(t *testing.T, wantRequestBodySlice []string, fakeR
 	}))
 
 	return ts
+}
+
+// TestLiveConnectSDKHeaders pins that the Live WebSocket handshake carries the
+// same SDK User-Agent and x-goog-api-client values as HTTP requests.
+func TestLiveConnectSDKHeaders(t *testing.T) {
+	ctx := context.Background()
+	sdkHeader := fmt.Sprintf("google-genai-sdk/%s gl-go/%s", version, runtime.Version())
+	vertexModulesHeader := fmt.Sprintf("google-genai-sdk/%s+vertex-genai-modules/0.20.0 gl-go/%s", version, runtime.Version())
+	creds := auth.NewCredentials(&auth.CredentialsOptions{
+		TokenProvider: mockCredentials{MockToken: &auth.Token{Value: "fake_access_token"}},
+	})
+
+	tests := []struct {
+		desc          string
+		config        ClientConfig
+		wantUserAgent string
+		wantAPIClient []string
+	}{
+		{
+			desc:          "gemini api",
+			config:        ClientConfig{Backend: BackendGeminiAPI, APIKey: "test-api-key"},
+			wantUserAgent: sdkHeader,
+			wantAPIClient: []string{sdkHeader},
+		},
+		{
+			desc: "vertex ai",
+			config: ClientConfig{
+				Backend:     BackendVertexAI,
+				Project:     "test-project",
+				Location:    "test-location",
+				Credentials: creds,
+			},
+			wantUserAgent: sdkHeader,
+			wantAPIClient: []string{sdkHeader},
+		},
+		{
+			// net/http writes only the first User-Agent value to the wire.
+			desc: "custom user agent",
+			config: ClientConfig{
+				Backend:     BackendGeminiAPI,
+				APIKey:      "test-api-key",
+				HTTPOptions: HTTPOptions{Headers: http.Header{"User-Agent": {"my-custom-agent/1.0"}}},
+			},
+			wantUserAgent: "my-custom-agent/1.0",
+			wantAPIClient: []string{sdkHeader},
+		},
+		{
+			desc: "vertex-genai-modules user agent",
+			config: ClientConfig{
+				Backend:     BackendGeminiAPI,
+				APIKey:      "test-api-key",
+				HTTPOptions: HTTPOptions{Headers: http.Header{"User-Agent": {"vertex-genai-modules/0.20.0"}}},
+			},
+			wantUserAgent: vertexModulesHeader,
+			wantAPIClient: []string{vertexModulesHeader},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			headers := make(chan http.Header, 1)
+			upgrader := websocket.Upgrader{}
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				headers <- r.Header.Clone()
+				conn, err := upgrader.Upgrade(w, r, nil)
+				if err != nil {
+					return
+				}
+				defer conn.Close()
+				mt, _, err := conn.ReadMessage()
+				if err != nil {
+					return
+				}
+				if err := conn.WriteMessage(mt, []byte(`{"setupComplete":{}}`)); err != nil {
+					t.Errorf("WriteMessage: %v", err)
+				}
+			}))
+			defer ts.Close()
+
+			cfg := tt.config
+			cfg.HTTPOptions.BaseURL = "ws" + strings.TrimPrefix(ts.URL, "http")
+			client, err := NewClient(ctx, &cfg)
+			if err != nil {
+				t.Fatalf("NewClient failed: %v", err)
+			}
+			clientHeaders := client.Live.apiClient.clientConfig.HTTPOptions.Headers.Clone()
+
+			session, err := client.Live.Connect(ctx, "test-model", nil)
+			if err != nil {
+				t.Fatalf("Connect failed: %v", err)
+			}
+			session.Close()
+
+			got := <-headers
+			if diff := cmp.Diff(tt.wantUserAgent, got.Get("User-Agent")); diff != "" {
+				t.Errorf("User-Agent mismatch (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(tt.wantAPIClient, got.Values("X-Goog-Api-Client")); diff != "" {
+				t.Errorf("X-Goog-Api-Client mismatch (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(clientHeaders, client.Live.apiClient.clientConfig.HTTPOptions.Headers); diff != "" {
+				t.Errorf("Connect mutated client headers (-before +after):\n%s", diff)
+			}
+		})
+	}
 }

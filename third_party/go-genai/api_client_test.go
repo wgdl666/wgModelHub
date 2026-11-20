@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -105,6 +106,14 @@ func TestSendRequest(t *testing.T) {
 			responseCode: http.StatusOK,
 			responseBody: `invalid json`,
 			wantErr:      fmt.Errorf("deserializeUnaryResponse: error unmarshalling response: invalid character"),
+		},
+		{
+			desc:         "null response body",
+			path:         "foo",
+			method:       http.MethodPost,
+			requestBody:  map[string]any{"key": "value"},
+			responseCode: http.StatusOK,
+			responseBody: `null`,
 		},
 		{
 			desc:          "client timeout",
@@ -907,6 +916,39 @@ func TestBuildRequest(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "Vertex AI express mode with Project, Location, and API key",
+			clientConfig: &ClientConfig{
+				APIKey:     "test-api-key",
+				Project:    "my-project",
+				Location:   "us-central1",
+				Backend:    BackendVertexAI,
+				HTTPClient: &http.Client{},
+			},
+			path:   "publishers/google/models/model-name:generateContent",
+			body:   map[string]any{},
+			method: "POST",
+			httpOptions: &HTTPOptions{
+				BaseURL:    "https://us-central1-aiplatform.googleapis.com",
+				APIVersion: "v1beta1",
+			},
+			want: &http.Request{
+				Method: "POST",
+				URL: &url.URL{
+					Scheme: "https",
+					Host:   "us-central1-aiplatform.googleapis.com",
+					Path:   "/v1beta1/projects/my-project/locations/us-central1/publishers/google/models/model-name:generateContent",
+				},
+				Header: http.Header{
+					"Content-Type":      []string{"application/json"},
+					"User-Agent":        []string{fmt.Sprintf("google-genai-sdk/%s gl-go/%s", version, runtime.Version())},
+					"X-Goog-Api-Client": []string{fmt.Sprintf("google-genai-sdk/%s gl-go/%s", version, runtime.Version())},
+					"X-Goog-Api-Key":    []string{"test-api-key"},
+				},
+				Body: io.NopCloser(strings.NewReader(``)),
+			},
+			wantErr: false,
+		},
+		{
 			name: "MLDev with empty body",
 			clientConfig: &ClientConfig{
 				APIKey:     "test-api-key",
@@ -1153,6 +1195,40 @@ func TestBuildRequest(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "vertex genai modules header",
+			clientConfig: &ClientConfig{
+				APIKey:     "test-api-key",
+				Backend:    BackendVertexAI,
+				HTTPClient: &http.Client{},
+			},
+			path:   "models/test-model:generateContent",
+			body:   map[string]any{"key": "value"},
+			method: "POST",
+			httpOptions: &HTTPOptions{
+				BaseURL:    "https://generativelanguage.googleapis.com",
+				APIVersion: "v1beta",
+				Headers: http.Header{
+					"User-Agent": []string{"vertex-genai-modules/0.20.0"},
+				},
+			},
+			want: &http.Request{
+				Method: "POST",
+				URL: &url.URL{
+					Scheme: "https",
+					Host:   "generativelanguage.googleapis.com",
+					Path:   "/v1beta/models/test-model:generateContent",
+				},
+				Header: http.Header{
+					"Content-Type":      []string{"application/json"},
+					"X-Goog-Api-Key":    []string{"test-api-key"},
+					"User-Agent":        []string{fmt.Sprintf("google-genai-sdk/%s+vertex-genai-modules/0.20.0 gl-go/%s", version, runtime.Version())},
+					"X-Goog-Api-Client": []string{fmt.Sprintf("google-genai-sdk/%s+vertex-genai-modules/0.20.0 gl-go/%s", version, runtime.Version())},
+				},
+				Body: io.NopCloser(strings.NewReader("{\"key\":\"value\"}\n")),
+			},
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -1296,6 +1372,24 @@ func TestPatchHTTPOptions(t *testing.T) {
 			want: &HTTPOptions{
 				Timeout: Ptr(0 * time.Second),
 				Headers: http.Header{"User-Agent": []string{fmt.Sprintf("google-genai-sdk/%s gl-go/%s", version, runtime.Version())}, "X-Goog-Api-Client": []string{fmt.Sprintf("google-genai-sdk/%s gl-go/%s", version, runtime.Version())}},
+			},
+		},
+		{
+			name: "vertex genai modules header",
+			options: HTTPOptions{
+				Headers: http.Header{"User-Agent": []string{"vertex-genai-modules/0.20.0"}},
+			},
+			want: &HTTPOptions{
+				Headers: http.Header{"User-Agent": []string{fmt.Sprintf("google-genai-sdk/%s+vertex-genai-modules/0.20.0 gl-go/%s", version, runtime.Version())}, "X-Goog-Api-Client": []string{fmt.Sprintf("google-genai-sdk/%s+vertex-genai-modules/0.20.0 gl-go/%s", version, runtime.Version())}},
+			},
+		},
+		{
+			name: "with existing user agent",
+			options: HTTPOptions{
+				Headers: http.Header{"User-Agent": []string{"vertex-genai-modules/0.20.0", "existing-agent/1.0"}},
+			},
+			want: &HTTPOptions{
+				Headers: http.Header{"User-Agent": []string{"existing-agent/1.0", fmt.Sprintf("google-genai-sdk/%s+vertex-genai-modules/0.20.0 gl-go/%s", version, runtime.Version())}, "X-Goog-Api-Client": []string{fmt.Sprintf("google-genai-sdk/%s+vertex-genai-modules/0.20.0 gl-go/%s", version, runtime.Version())}},
 			},
 		},
 	}
@@ -1778,5 +1872,668 @@ func TestRecursiveMapMerge(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestUpload_RewritesAbsoluteURL(t *testing.T) {
+	ctx := context.Background()
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// If the request reaches here, it means the URL was rewritten.
+		// We can also verify Path and RawQuery.
+		if r.URL.Path != "/upload/v1beta/files" {
+			t.Errorf("Expected path /upload/v1beta/files, got %s", r.URL.Path)
+		}
+		if r.URL.RawQuery != "uploadType=resumable" {
+			t.Errorf("Expected query uploadType=resumable, got %s", r.URL.RawQuery)
+		}
+
+		w.Header().Set("X-Goog-Upload-Status", "final")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintln(w, `{"file": {"name": "files/test", "sizeBytes": "9", "mimeType": "text/plain"}}`)
+	}))
+	defer ts.Close()
+
+	ac := &apiClient{
+		clientConfig: &ClientConfig{
+			HTTPClient: ts.Client(),
+			APIKey:     "test-key",
+		},
+	}
+
+	// 1. User configures a custom enterprise proxy base URL
+	httpOptions := &HTTPOptions{
+		BaseURL: ts.URL, // Rewrite to our test server
+	}
+
+	// 2. The server returns an absolute Google URL
+	absoluteGoogleURL := "https://generativelanguage.googleapis.com/upload/v1beta/files?uploadType=resumable"
+
+	reader := strings.NewReader("test data")
+
+	_, err := ac.uploadFile(ctx, reader, absoluteGoogleURL, httpOptions)
+	if err != nil {
+		t.Fatalf("uploadFile failed: %v", err)
+	}
+}
+
+func TestUploadToFileSearchStore_RewritesAbsoluteURL(t *testing.T) {
+	ctx := context.Background()
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// If the request reaches here, it means the URL was rewritten.
+		w.Header().Set("X-Goog-Upload-Status", "final")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintln(w, `{"name": "operations/test"}`)
+	}))
+	defer ts.Close()
+
+	ac := &apiClient{
+		clientConfig: &ClientConfig{
+			HTTPClient: ts.Client(),
+			APIKey:     "test-key",
+		},
+	}
+
+	// 1. User configures a custom enterprise proxy base URL
+	httpOptions := &HTTPOptions{
+		BaseURL: ts.URL, // Rewrite to our test server
+	}
+
+	// 2. The server returns an absolute Google URL
+	absoluteGoogleURL := "https://generativelanguage.googleapis.com/upload/v1beta/files?uploadType=resumable"
+
+	reader := strings.NewReader("test data")
+
+	_, err := ac.uploadToFileSearchStore(ctx, reader, absoluteGoogleURL, httpOptions)
+	if err != nil {
+		t.Fatalf("uploadToFileSearchStore failed: %v", err)
+	}
+}
+
+// retryTestServer is a fake backend that returns a scripted sequence of status
+// codes, one per request, and records how many requests it received.
+type retryTestServer struct {
+	mu     sync.Mutex
+	codes  []int
+	served int
+}
+
+func (s *retryTestServer) handler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		s.mu.Lock()
+		i := s.served
+		s.served++
+		s.mu.Unlock()
+
+		code := http.StatusOK
+		if i < len(s.codes) {
+			code = s.codes[i]
+		}
+		w.WriteHeader(code)
+		fmt.Fprintln(w, `{"response": "ok"}`)
+	}
+}
+
+func (s *retryTestServer) requestCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.served
+}
+
+// noBackoffRetryOptions returns opts with the delay fields zeroed, so that
+// tests do not actually sleep.
+func noBackoffRetryOptions(attempts int32, codes ...int32) *HTTPRetryOptions {
+	return &HTTPRetryOptions{
+		Attempts:        Ptr(attempts),
+		InitialDelay:    Ptr(0.0),
+		MaxDelay:        Ptr(0.0),
+		Jitter:          Ptr(0.0),
+		HTTPStatusCodes: codes,
+	}
+}
+
+func TestDoRequestRetries(t *testing.T) {
+	ctx := context.Background()
+	for _, tt := range []struct {
+		desc         string
+		codes        []int
+		retryOptions *HTTPRetryOptions
+		wantRequests int
+		wantErrCode  int
+	}{
+		{
+			desc:         "nil retry options makes a single attempt",
+			codes:        []int{503, 503, 200},
+			retryOptions: nil,
+			wantRequests: 1,
+			wantErrCode:  503,
+		},
+		{
+			desc:         "retries until success",
+			codes:        []int{503, 503, 200},
+			retryOptions: noBackoffRetryOptions(5),
+			wantRequests: 3,
+		},
+		{
+			desc:         "stops after the configured attempts",
+			codes:        []int{503, 503, 503, 503},
+			retryOptions: noBackoffRetryOptions(2),
+			wantRequests: 2,
+			wantErrCode:  503,
+		},
+		{
+			desc:         "attempts of 1 disables retries",
+			codes:        []int{503, 200},
+			retryOptions: noBackoffRetryOptions(1),
+			wantRequests: 1,
+			wantErrCode:  503,
+		},
+		{
+			desc:         "attempts of 0 is coerced to a single attempt",
+			codes:        []int{503, 200},
+			retryOptions: noBackoffRetryOptions(0),
+			wantRequests: 1,
+			wantErrCode:  503,
+		},
+		{
+			desc:         "does not retry a non-retryable status",
+			codes:        []int{400, 200},
+			retryOptions: noBackoffRetryOptions(5),
+			wantRequests: 1,
+			wantErrCode:  400,
+		},
+		{
+			desc:         "honors an explicit status code list",
+			codes:        []int{400, 400, 200},
+			retryOptions: noBackoffRetryOptions(5, 400),
+			wantRequests: 3,
+		},
+		{
+			desc: "a status excluded from the list is not retried",
+			// 503 is retryable by default but absent from the explicit list.
+			codes:        []int{503, 200},
+			retryOptions: noBackoffRetryOptions(5, 429),
+			wantRequests: 1,
+			wantErrCode:  503,
+		},
+	} {
+		t.Run(tt.desc, func(t *testing.T) {
+			server := &retryTestServer{codes: tt.codes}
+			ts := httptest.NewServer(server.handler())
+			defer ts.Close()
+
+			ac := &apiClient{
+				clientConfig: &ClientConfig{
+					HTTPOptions: HTTPOptions{BaseURL: ts.URL},
+					HTTPClient:  ts.Client(),
+				},
+			}
+
+			_, err := sendRequest(ctx, ac, "test-path", http.MethodPost, map[string]any{"key": "value"},
+				&HTTPOptions{BaseURL: ts.URL, RetryOptions: tt.retryOptions})
+
+			if got := server.requestCount(); got != tt.wantRequests {
+				t.Errorf("server received %d requests, want %d", got, tt.wantRequests)
+			}
+			if tt.wantErrCode == 0 {
+				if err != nil {
+					t.Errorf("sendRequest returned unexpected error: %v", err)
+				}
+				return
+			}
+			var apiErr APIError
+			if !errors.As(err, &apiErr) {
+				t.Fatalf("sendRequest error = %v, want APIError", err)
+			}
+			if apiErr.Code != tt.wantErrCode {
+				t.Errorf("APIError.Code = %d, want %d", apiErr.Code, tt.wantErrCode)
+			}
+		})
+	}
+}
+
+func TestDoRequestRetriesResendsBody(t *testing.T) {
+	ctx := context.Background()
+	var mu sync.Mutex
+	var bodies []string
+
+	server := &retryTestServer{codes: []int{503, 200}}
+	inner := server.handler()
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		bodies = append(bodies, string(b))
+		mu.Unlock()
+		inner(w, r)
+	}))
+	defer ts.Close()
+
+	ac := &apiClient{
+		clientConfig: &ClientConfig{
+			HTTPOptions: HTTPOptions{BaseURL: ts.URL},
+			HTTPClient:  ts.Client(),
+		},
+	}
+
+	if _, err := sendRequest(ctx, ac, "test-path", http.MethodPost, map[string]any{"key": "value"},
+		&HTTPOptions{BaseURL: ts.URL, RetryOptions: noBackoffRetryOptions(3)}); err != nil {
+		t.Fatalf("sendRequest returned unexpected error: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(bodies) != 2 {
+		t.Fatalf("server saw %d request bodies, want 2", len(bodies))
+	}
+	// The retried attempt must resend the payload rather than an empty body.
+	if bodies[0] != bodies[1] {
+		t.Errorf("retried body = %q, want it to match the first attempt %q", bodies[1], bodies[0])
+	}
+	if !strings.Contains(bodies[0], `"key"`) {
+		t.Errorf("request body = %q, want it to contain the payload", bodies[0])
+	}
+}
+
+func TestDoRequestRetriesRespectsContextCancellation(t *testing.T) {
+	server := &retryTestServer{codes: []int{503, 503, 503, 503, 503}}
+	ts := httptest.NewServer(server.handler())
+	defer ts.Close()
+
+	ac := &apiClient{
+		clientConfig: &ClientConfig{
+			HTTPOptions: HTTPOptions{BaseURL: ts.URL},
+			HTTPClient:  ts.Client(),
+		},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	// Cancel while the retry loop is backing off.
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		cancel()
+	}()
+
+	_, err := sendRequest(ctx, ac, "test-path", http.MethodPost, map[string]any{"key": "value"},
+		&HTTPOptions{BaseURL: ts.URL, RetryOptions: &HTTPRetryOptions{
+			Attempts:     Ptr(int32(5)),
+			InitialDelay: Ptr(10.0),
+			MaxDelay:     Ptr(10.0),
+			Jitter:       Ptr(0.0),
+		}})
+	if err == nil {
+		t.Fatal("sendRequest returned nil error, want a context cancellation error")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("sendRequest error = %v, want context.Canceled", err)
+	}
+	if got := server.requestCount(); got != 1 {
+		t.Errorf("server received %d requests, want 1 before cancellation", got)
+	}
+}
+
+func TestRetryDelay(t *testing.T) {
+	for _, tt := range []struct {
+		desc    string
+		attempt int
+		opts    *HTTPRetryOptions
+		wantMin time.Duration
+		wantMax time.Duration
+	}{
+		{
+			desc:    "defaults grow exponentially with additive jitter",
+			attempt: 1,
+			opts:    &HTTPRetryOptions{},
+			// 1.0 * 2^0 + U(0, 1)
+			wantMin: 1 * time.Second,
+			wantMax: 2 * time.Second,
+		},
+		{
+			desc:    "third attempt uses the exponential base",
+			attempt: 3,
+			opts:    &HTTPRetryOptions{},
+			// 1.0 * 2^2 + U(0, 1)
+			wantMin: 4 * time.Second,
+			wantMax: 5 * time.Second,
+		},
+		{
+			desc:    "maxDelay caps the result",
+			attempt: 10,
+			opts:    &HTTPRetryOptions{MaxDelay: Ptr(2.5)},
+			wantMin: 2500 * time.Millisecond,
+			wantMax: 2500 * time.Millisecond,
+		},
+		{
+			desc:    "zero jitter is deterministic",
+			attempt: 2,
+			opts:    &HTTPRetryOptions{InitialDelay: Ptr(0.5), ExpBase: Ptr(3.0), Jitter: Ptr(0.0)},
+			// 0.5 * 3^1
+			wantMin: 1500 * time.Millisecond,
+			wantMax: 1500 * time.Millisecond,
+		},
+		{
+			desc:    "explicit zero delay disables backoff",
+			attempt: 4,
+			opts:    &HTTPRetryOptions{InitialDelay: Ptr(0.0), MaxDelay: Ptr(0.0), Jitter: Ptr(0.0)},
+			wantMin: 0,
+			wantMax: 0,
+		},
+	} {
+		t.Run(tt.desc, func(t *testing.T) {
+			// Sample repeatedly since the jitter is random.
+			for i := 0; i < 50; i++ {
+				got := retryDelay(tt.attempt, tt.opts)
+				if got < tt.wantMin || got > tt.wantMax {
+					t.Fatalf("retryDelay(%d) = %v, want within [%v, %v]", tt.attempt, got, tt.wantMin, tt.wantMax)
+				}
+			}
+		})
+	}
+}
+
+func TestDoRequestRetriesClientLevelOptions(t *testing.T) {
+	ctx := context.Background()
+	for _, tt := range []struct {
+		desc                string
+		clientRetryOptions  *HTTPRetryOptions
+		requestRetryOptions *HTTPRetryOptions
+		wantRequests        int
+	}{
+		{
+			desc:               "client level options apply when the request sets none",
+			clientRetryOptions: noBackoffRetryOptions(3),
+			wantRequests:       3,
+		},
+		{
+			desc:                "request level options override the client ones",
+			clientRetryOptions:  noBackoffRetryOptions(5),
+			requestRetryOptions: noBackoffRetryOptions(2),
+			wantRequests:        2,
+		},
+		{
+			desc:                "request level options apply when the client sets none",
+			requestRetryOptions: noBackoffRetryOptions(4),
+			wantRequests:        4,
+		},
+		{
+			desc:         "no retry options anywhere means a single attempt",
+			wantRequests: 1,
+		},
+	} {
+		t.Run(tt.desc, func(t *testing.T) {
+			server := &retryTestServer{codes: []int{503, 503, 503, 503, 503, 503}}
+			ts := httptest.NewServer(server.handler())
+			defer ts.Close()
+
+			ac := &apiClient{
+				clientConfig: &ClientConfig{
+					HTTPOptions: HTTPOptions{
+						BaseURL:      ts.URL,
+						RetryOptions: tt.clientRetryOptions,
+					},
+					HTTPClient: ts.Client(),
+				},
+			}
+
+			_, _ = sendRequest(ctx, ac, "test-path", http.MethodPost, map[string]any{"key": "value"},
+				&HTTPOptions{BaseURL: ts.URL, RetryOptions: tt.requestRetryOptions})
+
+			if got := server.requestCount(); got != tt.wantRequests {
+				t.Errorf("server received %d requests, want %d", got, tt.wantRequests)
+			}
+		})
+	}
+}
+
+func TestDefaultClientTimeout(t *testing.T) {
+	ctx := context.Background()
+	client, err := NewClient(ctx, &ClientConfig{
+		APIKey:  "test-api-key",
+		Backend: BackendGeminiAPI,
+	})
+	if err != nil {
+		t.Fatalf("NewClient failed: %v", err)
+	}
+	if client.clientConfig.HTTPClient == nil {
+		t.Fatal("expected non-nil default HTTPClient")
+	}
+	if client.clientConfig.HTTPClient.Timeout != 0 {
+		t.Errorf("default HTTPClient.Timeout = %v, want 0 (no client-side timeout)", client.clientConfig.HTTPClient.Timeout)
+	}
+	if client.clientConfig.HTTPOptions.Timeout != nil {
+		t.Errorf("default HTTPOptions.Timeout = %v, want nil", client.clientConfig.HTTPOptions.Timeout)
+	}
+}
+
+func TestThirtyMinuteTimeout(t *testing.T) {
+	ctx := context.Background()
+	ac := &apiClient{
+		clientConfig: &ClientConfig{
+			APIKey:     "test-api-key",
+			Backend:    BackendGeminiAPI,
+			HTTPClient: &http.Client{},
+			HTTPOptions: HTTPOptions{
+				BaseURL:    "https://generativelanguage.googleapis.com",
+				APIVersion: "v1beta",
+				Timeout:    Ptr(30 * time.Minute),
+			},
+		},
+	}
+
+	req, patchedOpts, err := buildRequest(ctx, ac, "models/gemini-2.5-flash:generateContent", map[string]any{}, http.MethodPost, &HTTPOptions{})
+	if err != nil {
+		t.Fatalf("buildRequest failed: %v", err)
+	}
+	if got := req.Header.Get("X-Server-Timeout"); got != "1800" {
+		t.Errorf("X-Server-Timeout = %q, want %q", got, "1800")
+	}
+	if patchedOpts.Timeout == nil || *patchedOpts.Timeout != 30*time.Minute {
+		t.Errorf("patchedOpts.Timeout = %v, want 30m", patchedOpts.Timeout)
+	}
+}
+
+func TestDownloadFileTimeout(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("request timeout cancels slow download", func(t *testing.T) {
+		var gotServerTimeoutHeader string
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotServerTimeoutHeader = r.Header.Get("X-Server-Timeout")
+			time.Sleep(200 * time.Millisecond)
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("file-bytes"))
+		}))
+		defer ts.Close()
+
+		ac := &apiClient{
+			clientConfig: &ClientConfig{
+				APIKey:     "test-api-key",
+				Backend:    BackendGeminiAPI,
+				HTTPClient: ts.Client(),
+				HTTPOptions: HTTPOptions{
+					BaseURL:    ts.URL,
+					APIVersion: "v1beta",
+				},
+			},
+		}
+
+		_, err := downloadFile(ctx, ac, "files/test-file:download", &HTTPOptions{
+			Timeout: Ptr(50 * time.Millisecond),
+		})
+		if err == nil || !strings.Contains(err.Error(), "context deadline exceeded") {
+			t.Errorf("downloadFile error = %v, want context deadline exceeded", err)
+		}
+		if gotServerTimeoutHeader != "1" {
+			t.Errorf("X-Server-Timeout = %q, want %q", gotServerTimeoutHeader, "1")
+		}
+	})
+
+	t.Run("client timeout applies to downloadFile", func(t *testing.T) {
+		var gotServerTimeoutHeader string
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotServerTimeoutHeader = r.Header.Get("X-Server-Timeout")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("file-bytes"))
+		}))
+		defer ts.Close()
+
+		ac := &apiClient{
+			clientConfig: &ClientConfig{
+				APIKey:     "test-api-key",
+				Backend:    BackendGeminiAPI,
+				HTTPClient: ts.Client(),
+				HTTPOptions: HTTPOptions{
+					BaseURL:    ts.URL,
+					APIVersion: "v1beta",
+					Timeout:    Ptr(30 * time.Minute),
+				},
+			},
+		}
+
+		data, err := downloadFile(ctx, ac, "files/test-file:download", &HTTPOptions{})
+		if err != nil {
+			t.Fatalf("downloadFile failed: %v", err)
+		}
+		if string(data) != "file-bytes" {
+			t.Errorf("downloadFile data = %q, want %q", string(data), "file-bytes")
+		}
+		if gotServerTimeoutHeader != "1800" {
+			t.Errorf("X-Server-Timeout = %q, want %q", gotServerTimeoutHeader, "1800")
+		}
+	})
+}
+
+func TestClientAPIVersionFromEnv(t *testing.T) {
+	ctx := context.Background()
+	t.Setenv("GOOGLE_GENAI_API_VERSION", "v1alpha")
+
+	client, err := NewClient(ctx, &ClientConfig{
+		APIKey: "test-api-key",
+	})
+	if err != nil {
+		t.Fatalf("NewClient failed: %v", err)
+	}
+	if got := client.ClientConfig().HTTPOptions.APIVersion; got != "v1alpha" {
+		t.Errorf("got APIVersion %q, want %q", got, "v1alpha")
+	}
+
+	// Explicit HTTPOptions.APIVersion overrides GOOGLE_GENAI_API_VERSION without error.
+	clientHTTPOpts, err := NewClient(ctx, &ClientConfig{
+		APIKey: "test-api-key",
+		HTTPOptions: HTTPOptions{
+			APIVersion: "v1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewClient with HTTPOptions.APIVersion failed: %v", err)
+	}
+	if got := clientHTTPOpts.ClientConfig().HTTPOptions.APIVersion; got != "v1" {
+		t.Errorf("got APIVersion %q, want %q", got, "v1")
+	}
+}
+
+// GOOGLE_GENAI_API_VERSION applies to both the Gemini API and Vertex AI
+// backends unless an explicit version is set.
+func TestClientAPIVersionFromEnvForVertex(t *testing.T) {
+	ctx := context.Background()
+	t.Setenv("GOOGLE_GENAI_API_VERSION", "v1alpha")
+
+	geminiClient, err := NewClient(ctx, &ClientConfig{
+		Backend: BackendGeminiAPI,
+		APIKey:  "test-api-key",
+	})
+	if err != nil {
+		t.Fatalf("NewClient (Gemini API) failed: %v", err)
+	}
+	if got := geminiClient.ClientConfig().HTTPOptions.APIVersion; got != "v1alpha" {
+		t.Errorf("Gemini API: got APIVersion %q, want %q", got, "v1alpha")
+	}
+
+	vertexClient, err := NewClient(ctx, &ClientConfig{
+		Backend:     BackendVertexAI,
+		Project:     "test-project",
+		Location:    "us-central1",
+		Credentials: &auth.Credentials{},
+	})
+	if err != nil {
+		t.Fatalf("NewClient (Vertex AI) failed: %v", err)
+	}
+	if got := vertexClient.ClientConfig().HTTPOptions.APIVersion; got != "v1alpha" {
+		t.Errorf("Vertex AI: got APIVersion %q, want %q", got, "v1alpha")
+	}
+
+	vertexExplicit, err := NewClient(ctx, &ClientConfig{
+		Backend:     BackendVertexAI,
+		Project:     "test-project",
+		Location:    "us-central1",
+		Credentials: &auth.Credentials{},
+		HTTPOptions: HTTPOptions{APIVersion: "v1"},
+	})
+	if err != nil {
+		t.Fatalf("NewClient (Vertex AI, explicit APIVersion) failed: %v", err)
+	}
+	if got := vertexExplicit.ClientConfig().HTTPOptions.APIVersion; got != "v1" {
+		t.Errorf("Vertex AI explicit: got APIVersion %q, want %q", got, "v1")
+	}
+}
+
+func TestClientAPIVersionBetaFromEnv(t *testing.T) {
+	ctx := context.Background()
+	t.Setenv("GOOGLE_GENAI_API_VERSION", "beta")
+
+	geminiClient, err := NewClient(ctx, &ClientConfig{
+		Backend: BackendGeminiAPI,
+		APIKey:  "test-api-key",
+	})
+	if err != nil {
+		t.Fatalf("NewClient (Gemini API) failed: %v", err)
+	}
+	if got := geminiClient.ClientConfig().HTTPOptions.APIVersion; got != "v1beta" {
+		t.Errorf("Gemini API: got APIVersion %q, want %q", got, "v1beta")
+	}
+
+	vertexClient, err := NewClient(ctx, &ClientConfig{
+		Backend:     BackendVertexAI,
+		Project:     "test-project",
+		Location:    "us-central1",
+		Credentials: &auth.Credentials{},
+	})
+	if err != nil {
+		t.Fatalf("NewClient (Vertex AI) failed: %v", err)
+	}
+	if got := vertexClient.ClientConfig().HTTPOptions.APIVersion; got != "v1beta1" {
+		t.Errorf("Vertex AI: got APIVersion %q, want %q", got, "v1beta1")
+	}
+}
+
+// Paths templated with "{api_version}" (such as upload endpoints) have the
+// placeholder substituted with the resolved API version instead of prepending
+// the version at the front.
+func TestCreateAPIURLUploadPathWithNonDefaultAPIVersion(t *testing.T) {
+	ctx := context.Background()
+	client, err := NewClient(ctx, &ClientConfig{
+		Backend:     BackendGeminiAPI,
+		APIKey:      "test-api-key",
+		HTTPOptions: HTTPOptions{APIVersion: "v1alpha"},
+	})
+	if err != nil {
+		t.Fatalf("NewClient failed: %v", err)
+	}
+	ac := client.Models.apiClient
+	tests := []struct {
+		path     string
+		wantPath string
+	}{
+		{path: "upload/{api_version}/files", wantPath: "/upload/v1alpha/files"},
+		{path: "upload/{api_version}/fileSearchStores/store:uploadToFileSearchStore", wantPath: "/upload/v1alpha/fileSearchStores/store:uploadToFileSearchStore"},
+		{path: "models/gemini-pro:generateContent", wantPath: "/v1alpha/models/gemini-pro:generateContent"},
+		{path: "files", wantPath: "/v1alpha/files"},
+	}
+	for _, tt := range tests {
+		u, err := ac.createAPIURL(tt.path, http.MethodPost, &client.clientConfig.HTTPOptions)
+		if err != nil {
+			t.Fatalf("createAPIURL(%q) failed: %v", tt.path, err)
+		}
+		if u.Path != tt.wantPath {
+			t.Errorf("createAPIURL(%q) path = %q, want %q", tt.path, u.Path, tt.wantPath)
+		}
 	}
 }

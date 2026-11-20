@@ -33,10 +33,12 @@ func NewGemini(ctx context.Context, name, apiKey, endpoint, proxyURL string) (*P
 		APIKey:     apiKey,
 		Backend:    genaisdk.BackendGeminiAPI,
 		HTTPClient: telemetry.NewHTTPClient(),
+		// 前缀缓存依赖 Gemini Developer API 的 v1beta cachedContents。
+		HTTPOptions: genaisdk.HTTPOptions{APIVersion: "v1beta"},
 	}
 	if endpoint = strings.TrimRight(strings.TrimSpace(endpoint), "/"); endpoint != "" {
 		endpoint = strings.TrimSuffix(endpoint, "/v1")
-		cfg.HTTPOptions = genaisdk.HTTPOptions{BaseURL: endpoint}
+		cfg.HTTPOptions.BaseURL = endpoint
 	}
 	if proxyURL = strings.TrimSpace(proxyURL); proxyURL != "" {
 		parsed, err := url.Parse(proxyURL)

@@ -74,7 +74,7 @@ func mediaPatchBuild(ac *apiClient, params map[string]any, cfg *GenerateContentC
 	if ac.clientConfig.Backend == BackendVertexAI {
 		converter = generateContentParametersToVertex
 	}
-	body, err := converter(ac, params, nil)
+	body, err := converter(ac, params, nil, params)
 	if err != nil {
 		return nil, err
 	}

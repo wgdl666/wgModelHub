@@ -1,4 +1,4 @@
-// Copyright 2025 Google LLC
+// Copyright 2026 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,419 +26,467 @@ import (
 	"sync"
 )
 
-func batchJobDestinationFromMldev(fromObject map[string]any, parentObject map[string]any) (toObject map[string]any, err error) {
+func batchJobDestinationFromMldev(fromObject map[string]any, parentObject map[string]any, rootObject map[string]any) (toObject map[string]any, err error) {
 	toObject = make(map[string]any)
 
-	fromFileName := getValueByPath(fromObject, []string{"responsesFile"})
+	fromFileName := InternalGetValueByPath(fromObject, []string{"responsesFile"})
 	if fromFileName != nil {
-		setValueByPath(toObject, []string{"fileName"}, fromFileName)
+		InternalSetValueByPath(toObject, []string{"fileName"}, fromFileName)
 	}
 
-	fromInlinedResponses := getValueByPath(fromObject, []string{"inlinedResponses", "inlinedResponses"})
+	fromInlinedResponses := InternalGetValueByPath(fromObject, []string{"inlinedResponses", "inlinedResponses"})
 	if fromInlinedResponses != nil {
-		fromInlinedResponses, err = applyConverterToSlice(fromInlinedResponses.([]any), inlinedResponseFromMldev)
+		fromInlinedResponses, err = InternalApplyConverterToSliceWithRoot(fromInlinedResponses.([]any), inlinedResponseFromMldev, rootObject)
 		if err != nil {
 			return nil, err
 		}
 
-		setValueByPath(toObject, []string{"inlinedResponses"}, fromInlinedResponses)
+		InternalSetValueByPath(toObject, []string{"inlinedResponses"}, fromInlinedResponses)
 	}
 
-	fromInlinedEmbedContentResponses := getValueByPath(fromObject, []string{"inlinedEmbedContentResponses", "inlinedResponses"})
+	fromInlinedEmbedContentResponses := InternalGetValueByPath(fromObject, []string{"inlinedEmbedContentResponses", "inlinedResponses"})
 	if fromInlinedEmbedContentResponses != nil {
-		setValueByPath(toObject, []string{"inlinedEmbedContentResponses"}, fromInlinedEmbedContentResponses)
+		InternalSetValueByPath(toObject, []string{"inlinedEmbedContentResponses"}, fromInlinedEmbedContentResponses)
 	}
 
 	return toObject, nil
 }
 
-func batchJobDestinationFromVertex(fromObject map[string]any, parentObject map[string]any) (toObject map[string]any, err error) {
+func batchJobDestinationFromVertex(fromObject map[string]any, parentObject map[string]any, rootObject map[string]any) (toObject map[string]any, err error) {
 	toObject = make(map[string]any)
 
-	fromFormat := getValueByPath(fromObject, []string{"predictionsFormat"})
+	fromFormat := InternalGetValueByPath(fromObject, []string{"predictionsFormat"})
 	if fromFormat != nil {
-		setValueByPath(toObject, []string{"format"}, fromFormat)
+		InternalSetValueByPath(toObject, []string{"format"}, fromFormat)
 	}
 
-	fromGcsUri := getValueByPath(fromObject, []string{"gcsDestination", "outputUriPrefix"})
+	fromGcsUri := InternalGetValueByPath(fromObject, []string{"gcsDestination", "outputUriPrefix"})
 	if fromGcsUri != nil {
-		setValueByPath(toObject, []string{"gcsUri"}, fromGcsUri)
+		InternalSetValueByPath(toObject, []string{"gcsUri"}, fromGcsUri)
 	}
 
-	fromBigqueryUri := getValueByPath(fromObject, []string{"bigqueryDestination", "outputUri"})
+	fromBigqueryUri := InternalGetValueByPath(fromObject, []string{"bigqueryDestination", "outputUri"})
 	if fromBigqueryUri != nil {
-		setValueByPath(toObject, []string{"bigqueryUri"}, fromBigqueryUri)
+		InternalSetValueByPath(toObject, []string{"bigqueryUri"}, fromBigqueryUri)
 	}
 
-	return toObject, nil
-}
-
-func batchJobDestinationToVertex(fromObject map[string]any, parentObject map[string]any) (toObject map[string]any, err error) {
-	toObject = make(map[string]any)
-
-	fromFormat := getValueByPath(fromObject, []string{"format"})
-	if fromFormat != nil {
-		setValueByPath(toObject, []string{"predictionsFormat"}, fromFormat)
-	}
-
-	fromGcsUri := getValueByPath(fromObject, []string{"gcsUri"})
-	if fromGcsUri != nil {
-		setValueByPath(toObject, []string{"gcsDestination", "outputUriPrefix"}, fromGcsUri)
-	}
-
-	fromBigqueryUri := getValueByPath(fromObject, []string{"bigqueryUri"})
-	if fromBigqueryUri != nil {
-		setValueByPath(toObject, []string{"bigqueryDestination", "outputUri"}, fromBigqueryUri)
-	}
-
-	if getValueByPath(fromObject, []string{"fileName"}) != nil {
-		return nil, fmt.Errorf("fileName parameter is not supported in Vertex AI")
-	}
-
-	if getValueByPath(fromObject, []string{"inlinedResponses"}) != nil {
-		return nil, fmt.Errorf("inlinedResponses parameter is not supported in Vertex AI")
-	}
-
-	if getValueByPath(fromObject, []string{"inlinedEmbedContentResponses"}) != nil {
-		return nil, fmt.Errorf("inlinedEmbedContentResponses parameter is not supported in Vertex AI")
-	}
-
-	return toObject, nil
-}
-
-func batchJobFromMldev(fromObject map[string]any, parentObject map[string]any) (toObject map[string]any, err error) {
-	toObject = make(map[string]any)
-
-	fromName := getValueByPath(fromObject, []string{"name"})
-	if fromName != nil {
-		setValueByPath(toObject, []string{"name"}, fromName)
-	}
-
-	fromDisplayName := getValueByPath(fromObject, []string{"metadata", "displayName"})
-	if fromDisplayName != nil {
-		setValueByPath(toObject, []string{"displayName"}, fromDisplayName)
-	}
-
-	fromState := getValueByPath(fromObject, []string{"metadata", "state"})
-	if fromState != nil {
-		fromState, err = tJobState(fromState)
+	fromVertexDataset := InternalGetValueByPath(fromObject, []string{"vertexMultimodalDatasetDestination"})
+	if fromVertexDataset != nil {
+		fromVertexDataset, err = vertexMultimodalDatasetDestinationFromVertex(fromVertexDataset.(map[string]any), toObject, rootObject)
 		if err != nil {
 			return nil, err
 		}
 
-		setValueByPath(toObject, []string{"state"}, fromState)
+		InternalSetValueByPath(toObject, []string{"vertexDataset"}, fromVertexDataset)
 	}
 
-	fromCreateTime := getValueByPath(fromObject, []string{"metadata", "createTime"})
+	return toObject, nil
+}
+
+func batchJobDestinationToVertex(fromObject map[string]any, parentObject map[string]any, rootObject map[string]any) (toObject map[string]any, err error) {
+	toObject = make(map[string]any)
+
+	fromFormat := InternalGetValueByPath(fromObject, []string{"format"})
+	if fromFormat != nil {
+		InternalSetValueByPath(toObject, []string{"predictionsFormat"}, fromFormat)
+	}
+
+	fromGcsUri := InternalGetValueByPath(fromObject, []string{"gcsUri"})
+	if fromGcsUri != nil {
+		InternalSetValueByPath(toObject, []string{"gcsDestination", "outputUriPrefix"}, fromGcsUri)
+	}
+
+	fromBigqueryUri := InternalGetValueByPath(fromObject, []string{"bigqueryUri"})
+	if fromBigqueryUri != nil {
+		InternalSetValueByPath(toObject, []string{"bigqueryDestination", "outputUri"}, fromBigqueryUri)
+	}
+
+	if InternalGetValueByPath(fromObject, []string{"fileName"}) != nil {
+		return nil, fmt.Errorf("fileName parameter is only supported in Gemini Developer API mode, not in Gemini Enterprise Agent Platform mode.")
+	}
+
+	if InternalGetValueByPath(fromObject, []string{"inlinedResponses"}) != nil {
+		return nil, fmt.Errorf("inlinedResponses parameter is only supported in Gemini Developer API mode, not in Gemini Enterprise Agent Platform mode.")
+	}
+
+	if InternalGetValueByPath(fromObject, []string{"inlinedEmbedContentResponses"}) != nil {
+		return nil, fmt.Errorf("inlinedEmbedContentResponses parameter is only supported in Gemini Developer API mode, not in Gemini Enterprise Agent Platform mode.")
+	}
+
+	fromVertexDataset := InternalGetValueByPath(fromObject, []string{"vertexDataset"})
+	if fromVertexDataset != nil {
+		fromVertexDataset, err = vertexMultimodalDatasetDestinationToVertex(fromVertexDataset.(map[string]any), toObject, rootObject)
+		if err != nil {
+			return nil, err
+		}
+
+		InternalSetValueByPath(toObject, []string{"vertexMultimodalDatasetDestination"}, fromVertexDataset)
+	}
+
+	return toObject, nil
+}
+
+func batchJobFromMldev(fromObject map[string]any, parentObject map[string]any, rootObject map[string]any) (toObject map[string]any, err error) {
+	toObject = make(map[string]any)
+
+	fromName := InternalGetValueByPath(fromObject, []string{"name"})
+	if fromName != nil {
+		InternalSetValueByPath(toObject, []string{"name"}, fromName)
+	}
+
+	fromDisplayName := InternalGetValueByPath(fromObject, []string{"metadata", "displayName"})
+	if fromDisplayName != nil {
+		InternalSetValueByPath(toObject, []string{"displayName"}, fromDisplayName)
+	}
+
+	fromState := InternalGetValueByPath(fromObject, []string{"metadata", "state"})
+	if fromState != nil {
+		fromState, err = InternalTJobState(fromState)
+		if err != nil {
+			return nil, err
+		}
+
+		InternalSetValueByPath(toObject, []string{"state"}, fromState)
+	}
+
+	fromCreateTime := InternalGetValueByPath(fromObject, []string{"metadata", "createTime"})
 	if fromCreateTime != nil {
-		setValueByPath(toObject, []string{"createTime"}, fromCreateTime)
+		InternalSetValueByPath(toObject, []string{"createTime"}, fromCreateTime)
 	}
 
-	fromEndTime := getValueByPath(fromObject, []string{"metadata", "endTime"})
+	fromEndTime := InternalGetValueByPath(fromObject, []string{"metadata", "endTime"})
 	if fromEndTime != nil {
-		setValueByPath(toObject, []string{"endTime"}, fromEndTime)
+		InternalSetValueByPath(toObject, []string{"endTime"}, fromEndTime)
 	}
 
-	fromUpdateTime := getValueByPath(fromObject, []string{"metadata", "updateTime"})
+	fromUpdateTime := InternalGetValueByPath(fromObject, []string{"metadata", "updateTime"})
 	if fromUpdateTime != nil {
-		setValueByPath(toObject, []string{"updateTime"}, fromUpdateTime)
+		InternalSetValueByPath(toObject, []string{"updateTime"}, fromUpdateTime)
 	}
 
-	fromModel := getValueByPath(fromObject, []string{"metadata", "model"})
+	fromModel := InternalGetValueByPath(fromObject, []string{"metadata", "model"})
 	if fromModel != nil {
-		setValueByPath(toObject, []string{"model"}, fromModel)
+		InternalSetValueByPath(toObject, []string{"model"}, fromModel)
 	}
 
-	fromDest := getValueByPath(fromObject, []string{"metadata", "output"})
+	fromDest := InternalGetValueByPath(fromObject, []string{"metadata", "output"})
 	if fromDest != nil {
-		fromDest, err = tRecvBatchJobDestination(fromDest)
+		fromDest, err = InternalTRecvBatchJobDestination(fromDest)
 		if err != nil {
 			return nil, err
 		}
 
-		fromDest, err = batchJobDestinationFromMldev(fromDest.(map[string]any), toObject)
+		fromDest, err = batchJobDestinationFromMldev(fromDest.(map[string]any), toObject, rootObject)
 		if err != nil {
 			return nil, err
 		}
 
-		setValueByPath(toObject, []string{"dest"}, fromDest)
+		InternalSetValueByPath(toObject, []string{"dest"}, fromDest)
 	}
 
 	return toObject, nil
 }
 
-func batchJobFromVertex(fromObject map[string]any, parentObject map[string]any) (toObject map[string]any, err error) {
+func batchJobFromVertex(fromObject map[string]any, parentObject map[string]any, rootObject map[string]any) (toObject map[string]any, err error) {
 	toObject = make(map[string]any)
 
-	fromName := getValueByPath(fromObject, []string{"name"})
+	fromName := InternalGetValueByPath(fromObject, []string{"name"})
 	if fromName != nil {
-		setValueByPath(toObject, []string{"name"}, fromName)
+		InternalSetValueByPath(toObject, []string{"name"}, fromName)
 	}
 
-	fromDisplayName := getValueByPath(fromObject, []string{"displayName"})
+	fromDisplayName := InternalGetValueByPath(fromObject, []string{"displayName"})
 	if fromDisplayName != nil {
-		setValueByPath(toObject, []string{"displayName"}, fromDisplayName)
+		InternalSetValueByPath(toObject, []string{"displayName"}, fromDisplayName)
 	}
 
-	fromState := getValueByPath(fromObject, []string{"state"})
+	fromState := InternalGetValueByPath(fromObject, []string{"state"})
 	if fromState != nil {
-		fromState, err = tJobState(fromState)
+		fromState, err = InternalTJobState(fromState)
 		if err != nil {
 			return nil, err
 		}
 
-		setValueByPath(toObject, []string{"state"}, fromState)
+		InternalSetValueByPath(toObject, []string{"state"}, fromState)
 	}
 
-	fromError := getValueByPath(fromObject, []string{"error"})
+	fromError := InternalGetValueByPath(fromObject, []string{"error"})
 	if fromError != nil {
-		setValueByPath(toObject, []string{"error"}, fromError)
+		InternalSetValueByPath(toObject, []string{"error"}, fromError)
 	}
 
-	fromCreateTime := getValueByPath(fromObject, []string{"createTime"})
+	fromCreateTime := InternalGetValueByPath(fromObject, []string{"createTime"})
 	if fromCreateTime != nil {
-		setValueByPath(toObject, []string{"createTime"}, fromCreateTime)
+		InternalSetValueByPath(toObject, []string{"createTime"}, fromCreateTime)
 	}
 
-	fromStartTime := getValueByPath(fromObject, []string{"startTime"})
+	fromStartTime := InternalGetValueByPath(fromObject, []string{"startTime"})
 	if fromStartTime != nil {
-		setValueByPath(toObject, []string{"startTime"}, fromStartTime)
+		InternalSetValueByPath(toObject, []string{"startTime"}, fromStartTime)
 	}
 
-	fromEndTime := getValueByPath(fromObject, []string{"endTime"})
+	fromEndTime := InternalGetValueByPath(fromObject, []string{"endTime"})
 	if fromEndTime != nil {
-		setValueByPath(toObject, []string{"endTime"}, fromEndTime)
+		InternalSetValueByPath(toObject, []string{"endTime"}, fromEndTime)
 	}
 
-	fromUpdateTime := getValueByPath(fromObject, []string{"updateTime"})
+	fromUpdateTime := InternalGetValueByPath(fromObject, []string{"updateTime"})
 	if fromUpdateTime != nil {
-		setValueByPath(toObject, []string{"updateTime"}, fromUpdateTime)
+		InternalSetValueByPath(toObject, []string{"updateTime"}, fromUpdateTime)
 	}
 
-	fromModel := getValueByPath(fromObject, []string{"model"})
+	fromModel := InternalGetValueByPath(fromObject, []string{"model"})
 	if fromModel != nil {
-		setValueByPath(toObject, []string{"model"}, fromModel)
+		InternalSetValueByPath(toObject, []string{"model"}, fromModel)
 	}
 
-	fromSrc := getValueByPath(fromObject, []string{"inputConfig"})
+	fromSrc := InternalGetValueByPath(fromObject, []string{"inputConfig"})
 	if fromSrc != nil {
-		fromSrc, err = batchJobSourceFromVertex(fromSrc.(map[string]any), toObject)
+		fromSrc, err = batchJobSourceFromVertex(fromSrc.(map[string]any), toObject, rootObject)
 		if err != nil {
 			return nil, err
 		}
 
-		setValueByPath(toObject, []string{"src"}, fromSrc)
+		InternalSetValueByPath(toObject, []string{"src"}, fromSrc)
 	}
 
-	fromDest := getValueByPath(fromObject, []string{"outputConfig"})
+	fromDest := InternalGetValueByPath(fromObject, []string{"outputConfig"})
 	if fromDest != nil {
-		fromDest, err = tRecvBatchJobDestination(fromDest)
+		fromDest, err = InternalTRecvBatchJobDestination(fromDest)
 		if err != nil {
 			return nil, err
 		}
 
-		fromDest, err = batchJobDestinationFromVertex(fromDest.(map[string]any), toObject)
+		fromDest, err = batchJobDestinationFromVertex(fromDest.(map[string]any), toObject, rootObject)
 		if err != nil {
 			return nil, err
 		}
 
-		setValueByPath(toObject, []string{"dest"}, fromDest)
+		InternalSetValueByPath(toObject, []string{"dest"}, fromDest)
 	}
 
-	fromCompletionStats := getValueByPath(fromObject, []string{"completionStats"})
+	fromCompletionStats := InternalGetValueByPath(fromObject, []string{"completionStats"})
 	if fromCompletionStats != nil {
-		setValueByPath(toObject, []string{"completionStats"}, fromCompletionStats)
+		InternalSetValueByPath(toObject, []string{"completionStats"}, fromCompletionStats)
+	}
+
+	fromOutputInfo := InternalGetValueByPath(fromObject, []string{"outputInfo"})
+	if fromOutputInfo != nil {
+		InternalSetValueByPath(toObject, []string{"outputInfo"}, fromOutputInfo)
 	}
 
 	return toObject, nil
 }
 
-func batchJobSourceFromVertex(fromObject map[string]any, parentObject map[string]any) (toObject map[string]any, err error) {
+func batchJobSourceFromVertex(fromObject map[string]any, parentObject map[string]any, rootObject map[string]any) (toObject map[string]any, err error) {
 	toObject = make(map[string]any)
 
-	fromFormat := getValueByPath(fromObject, []string{"instancesFormat"})
+	fromFormat := InternalGetValueByPath(fromObject, []string{"instancesFormat"})
 	if fromFormat != nil {
-		setValueByPath(toObject, []string{"format"}, fromFormat)
+		InternalSetValueByPath(toObject, []string{"format"}, fromFormat)
 	}
 
-	fromGcsUri := getValueByPath(fromObject, []string{"gcsSource", "uris"})
+	fromGcsUri := InternalGetValueByPath(fromObject, []string{"gcsSource", "uris"})
 	if fromGcsUri != nil {
-		setValueByPath(toObject, []string{"gcsUri"}, fromGcsUri)
+		InternalSetValueByPath(toObject, []string{"gcsUri"}, fromGcsUri)
 	}
 
-	fromBigqueryUri := getValueByPath(fromObject, []string{"bigquerySource", "inputUri"})
+	fromBigqueryUri := InternalGetValueByPath(fromObject, []string{"bigquerySource", "inputUri"})
 	if fromBigqueryUri != nil {
-		setValueByPath(toObject, []string{"bigqueryUri"}, fromBigqueryUri)
+		InternalSetValueByPath(toObject, []string{"bigqueryUri"}, fromBigqueryUri)
+	}
+
+	fromVertexDatasetName := InternalGetValueByPath(fromObject, []string{"vertexMultimodalDatasetSource", "datasetName"})
+	if fromVertexDatasetName != nil {
+		InternalSetValueByPath(toObject, []string{"vertexDatasetName"}, fromVertexDatasetName)
 	}
 
 	return toObject, nil
 }
 
-func batchJobSourceToMldev(ac *apiClient, fromObject map[string]any, parentObject map[string]any) (toObject map[string]any, err error) {
+func batchJobSourceToMldev(ac *InternalAPIClient, fromObject map[string]any, parentObject map[string]any, rootObject map[string]any) (toObject map[string]any, err error) {
 	toObject = make(map[string]any)
-	if getValueByPath(fromObject, []string{"format"}) != nil {
-		return nil, fmt.Errorf("format parameter is not supported in Gemini API")
+	if InternalGetValueByPath(fromObject, []string{"format"}) != nil {
+		return nil, fmt.Errorf("format parameter is only supported in Gemini Enterprise Agent Platform mode, not in Gemini Developer API mode.")
 	}
 
-	if getValueByPath(fromObject, []string{"gcsUri"}) != nil {
-		return nil, fmt.Errorf("gcsUri parameter is not supported in Gemini API")
+	if InternalGetValueByPath(fromObject, []string{"gcsUri"}) != nil {
+		return nil, fmt.Errorf("gcsUri parameter is only supported in Gemini Enterprise Agent Platform mode, not in Gemini Developer API mode.")
 	}
 
-	if getValueByPath(fromObject, []string{"bigqueryUri"}) != nil {
-		return nil, fmt.Errorf("bigqueryUri parameter is not supported in Gemini API")
+	if InternalGetValueByPath(fromObject, []string{"bigqueryUri"}) != nil {
+		return nil, fmt.Errorf("bigqueryUri parameter is only supported in Gemini Enterprise Agent Platform mode, not in Gemini Developer API mode.")
 	}
 
-	fromFileName := getValueByPath(fromObject, []string{"fileName"})
+	fromFileName := InternalGetValueByPath(fromObject, []string{"fileName"})
 	if fromFileName != nil {
-		setValueByPath(toObject, []string{"fileName"}, fromFileName)
+		InternalSetValueByPath(toObject, []string{"fileName"}, fromFileName)
 	}
 
-	fromInlinedRequests := getValueByPath(fromObject, []string{"inlinedRequests"})
+	fromInlinedRequests := InternalGetValueByPath(fromObject, []string{"inlinedRequests"})
 	if fromInlinedRequests != nil {
-		fromInlinedRequests, err = applyConverterToSliceWithClient(ac, fromInlinedRequests.([]any), inlinedRequestToMldev)
+		fromInlinedRequests, err = applyConverterToSliceWithClientWithRoot(ac, fromInlinedRequests.([]any), inlinedRequestToMldev, rootObject)
 		if err != nil {
 			return nil, err
 		}
 
-		setValueByPath(toObject, []string{"requests", "requests"}, fromInlinedRequests)
+		InternalSetValueByPath(toObject, []string{"requests", "requests"}, fromInlinedRequests)
+	}
+
+	if InternalGetValueByPath(fromObject, []string{"vertexDatasetName"}) != nil {
+		return nil, fmt.Errorf("vertexDatasetName parameter is only supported in Gemini Enterprise Agent Platform mode, not in Gemini Developer API mode.")
 	}
 
 	return toObject, nil
 }
 
-func batchJobSourceToVertex(fromObject map[string]any, parentObject map[string]any) (toObject map[string]any, err error) {
+func batchJobSourceToVertex(fromObject map[string]any, parentObject map[string]any, rootObject map[string]any) (toObject map[string]any, err error) {
 	toObject = make(map[string]any)
 
-	fromFormat := getValueByPath(fromObject, []string{"format"})
+	fromFormat := InternalGetValueByPath(fromObject, []string{"format"})
 	if fromFormat != nil {
-		setValueByPath(toObject, []string{"instancesFormat"}, fromFormat)
+		InternalSetValueByPath(toObject, []string{"instancesFormat"}, fromFormat)
 	}
 
-	fromGcsUri := getValueByPath(fromObject, []string{"gcsUri"})
+	fromGcsUri := InternalGetValueByPath(fromObject, []string{"gcsUri"})
 	if fromGcsUri != nil {
-		setValueByPath(toObject, []string{"gcsSource", "uris"}, fromGcsUri)
+		InternalSetValueByPath(toObject, []string{"gcsSource", "uris"}, fromGcsUri)
 	}
 
-	fromBigqueryUri := getValueByPath(fromObject, []string{"bigqueryUri"})
+	fromBigqueryUri := InternalGetValueByPath(fromObject, []string{"bigqueryUri"})
 	if fromBigqueryUri != nil {
-		setValueByPath(toObject, []string{"bigquerySource", "inputUri"}, fromBigqueryUri)
+		InternalSetValueByPath(toObject, []string{"bigquerySource", "inputUri"}, fromBigqueryUri)
 	}
 
-	if getValueByPath(fromObject, []string{"fileName"}) != nil {
-		return nil, fmt.Errorf("fileName parameter is not supported in Vertex AI")
+	if InternalGetValueByPath(fromObject, []string{"fileName"}) != nil {
+		return nil, fmt.Errorf("fileName parameter is only supported in Gemini Developer API mode, not in Gemini Enterprise Agent Platform mode.")
 	}
 
-	if getValueByPath(fromObject, []string{"inlinedRequests"}) != nil {
-		return nil, fmt.Errorf("inlinedRequests parameter is not supported in Vertex AI")
+	if InternalGetValueByPath(fromObject, []string{"inlinedRequests"}) != nil {
+		return nil, fmt.Errorf("inlinedRequests parameter is only supported in Gemini Developer API mode, not in Gemini Enterprise Agent Platform mode.")
+	}
+
+	fromVertexDatasetName := InternalGetValueByPath(fromObject, []string{"vertexDatasetName"})
+	if fromVertexDatasetName != nil {
+		InternalSetValueByPath(toObject, []string{"vertexMultimodalDatasetSource", "datasetName"}, fromVertexDatasetName)
 	}
 
 	return toObject, nil
 }
 
-func cancelBatchJobParametersToMldev(ac *apiClient, fromObject map[string]any, parentObject map[string]any) (toObject map[string]any, err error) {
+func cancelBatchJobParametersToMldev(ac *InternalAPIClient, fromObject map[string]any, parentObject map[string]any, rootObject map[string]any) (toObject map[string]any, err error) {
 	toObject = make(map[string]any)
 
-	fromName := getValueByPath(fromObject, []string{"name"})
+	fromName := InternalGetValueByPath(fromObject, []string{"name"})
 	if fromName != nil {
-		fromName, err = tBatchJobName(ac, fromName)
+		fromName, err = InternalTBatchJobName(ac, fromName)
 		if err != nil {
 			return nil, err
 		}
 
-		setValueByPath(toObject, []string{"_url", "name"}, fromName)
+		InternalSetValueByPath(toObject, []string{"_url", "name"}, fromName)
 	}
 
 	return toObject, nil
 }
 
-func cancelBatchJobParametersToVertex(ac *apiClient, fromObject map[string]any, parentObject map[string]any) (toObject map[string]any, err error) {
+func cancelBatchJobParametersToVertex(ac *InternalAPIClient, fromObject map[string]any, parentObject map[string]any, rootObject map[string]any) (toObject map[string]any, err error) {
 	toObject = make(map[string]any)
 
-	fromName := getValueByPath(fromObject, []string{"name"})
+	fromName := InternalGetValueByPath(fromObject, []string{"name"})
 	if fromName != nil {
-		fromName, err = tBatchJobName(ac, fromName)
+		fromName, err = InternalTBatchJobName(ac, fromName)
 		if err != nil {
 			return nil, err
 		}
 
-		setValueByPath(toObject, []string{"_url", "name"}, fromName)
+		InternalSetValueByPath(toObject, []string{"_url", "name"}, fromName)
 	}
 
 	return toObject, nil
 }
 
-func createBatchJobConfigToMldev(fromObject map[string]any, parentObject map[string]any) (toObject map[string]any, err error) {
+func createBatchJobConfigToMldev(fromObject map[string]any, parentObject map[string]any, rootObject map[string]any) (toObject map[string]any, err error) {
 	toObject = make(map[string]any)
 
-	fromDisplayName := getValueByPath(fromObject, []string{"displayName"})
+	fromDisplayName := InternalGetValueByPath(fromObject, []string{"displayName"})
 	if fromDisplayName != nil {
-		setValueByPath(parentObject, []string{"batch", "displayName"}, fromDisplayName)
+		InternalSetValueByPath(parentObject, []string{"batch", "displayName"}, fromDisplayName)
 	}
 
-	if getValueByPath(fromObject, []string{"dest"}) != nil {
-		return nil, fmt.Errorf("dest parameter is not supported in Gemini API")
+	if InternalGetValueByPath(fromObject, []string{"dest"}) != nil {
+		return nil, fmt.Errorf("dest parameter is only supported in Gemini Enterprise Agent Platform mode, not in Gemini Developer API mode.")
+	}
+
+	fromWebhookConfig := InternalGetValueByPath(fromObject, []string{"webhookConfig"})
+	if fromWebhookConfig != nil {
+		InternalSetValueByPath(parentObject, []string{"batch", "webhookConfig"}, fromWebhookConfig)
 	}
 
 	return toObject, nil
 }
 
-func createBatchJobConfigToVertex(fromObject map[string]any, parentObject map[string]any) (toObject map[string]any, err error) {
+func createBatchJobConfigToVertex(fromObject map[string]any, parentObject map[string]any, rootObject map[string]any) (toObject map[string]any, err error) {
 	toObject = make(map[string]any)
 
-	fromDisplayName := getValueByPath(fromObject, []string{"displayName"})
+	fromDisplayName := InternalGetValueByPath(fromObject, []string{"displayName"})
 	if fromDisplayName != nil {
-		setValueByPath(parentObject, []string{"displayName"}, fromDisplayName)
+		InternalSetValueByPath(parentObject, []string{"displayName"}, fromDisplayName)
 	}
 
-	fromDest := getValueByPath(fromObject, []string{"dest"})
+	fromDest := InternalGetValueByPath(fromObject, []string{"dest"})
 	if fromDest != nil {
-		fromDest, err = tBatchJobDestination(fromDest)
+		fromDest, err = InternalTBatchJobDestination(fromDest)
 		if err != nil {
 			return nil, err
 		}
 
-		fromDest, err = batchJobDestinationToVertex(fromDest.(map[string]any), toObject)
+		fromDest, err = batchJobDestinationToVertex(fromDest.(map[string]any), toObject, rootObject)
 		if err != nil {
 			return nil, err
 		}
 
-		setValueByPath(parentObject, []string{"outputConfig"}, fromDest)
+		InternalSetValueByPath(parentObject, []string{"outputConfig"}, fromDest)
+	}
+
+	if InternalGetValueByPath(fromObject, []string{"webhookConfig"}) != nil {
+		return nil, fmt.Errorf("webhookConfig parameter is only supported in Gemini Developer API mode, not in Gemini Enterprise Agent Platform mode.")
 	}
 
 	return toObject, nil
 }
 
-func createBatchJobParametersToMldev(ac *apiClient, fromObject map[string]any, parentObject map[string]any) (toObject map[string]any, err error) {
+func createBatchJobParametersToMldev(ac *InternalAPIClient, fromObject map[string]any, parentObject map[string]any, rootObject map[string]any) (toObject map[string]any, err error) {
 	toObject = make(map[string]any)
 
-	fromModel := getValueByPath(fromObject, []string{"model"})
+	fromModel := InternalGetValueByPath(fromObject, []string{"model"})
 	if fromModel != nil {
-		fromModel, err = tModel(ac, fromModel)
+		fromModel, err = InternalTModel(ac, fromModel)
 		if err != nil {
 			return nil, err
 		}
 
-		setValueByPath(toObject, []string{"_url", "model"}, fromModel)
+		InternalSetValueByPath(toObject, []string{"_url", "model"}, fromModel)
 	}
 
-	fromSrc := getValueByPath(fromObject, []string{"src"})
+	fromSrc := InternalGetValueByPath(fromObject, []string{"src"})
 	if fromSrc != nil {
-		fromSrc, err = tBatchJobSource(fromSrc)
+		fromSrc, err = InternalTBatchJobSource(fromSrc)
 		if err != nil {
 			return nil, err
 		}
 
-		fromSrc, err = batchJobSourceToMldev(ac, fromSrc.(map[string]any), toObject)
+		fromSrc, err = batchJobSourceToMldev(ac, fromSrc.(map[string]any), toObject, rootObject)
 		if err != nil {
 			return nil, err
 		}
 
-		setValueByPath(toObject, []string{"batch", "inputConfig"}, fromSrc)
+		InternalSetValueByPath(toObject, []string{"batch", "inputConfig"}, fromSrc)
 	}
 
-	fromConfig := getValueByPath(fromObject, []string{"config"})
+	fromConfig := InternalGetValueByPath(fromObject, []string{"config"})
 	if fromConfig != nil {
-		_, err = createBatchJobConfigToMldev(fromConfig.(map[string]any), toObject)
+		_, err = createBatchJobConfigToMldev(fromConfig.(map[string]any), toObject, rootObject)
 		if err != nil {
 			return nil, err
 		}
@@ -447,37 +495,37 @@ func createBatchJobParametersToMldev(ac *apiClient, fromObject map[string]any, p
 	return toObject, nil
 }
 
-func createBatchJobParametersToVertex(ac *apiClient, fromObject map[string]any, parentObject map[string]any) (toObject map[string]any, err error) {
+func createBatchJobParametersToVertex(ac *InternalAPIClient, fromObject map[string]any, parentObject map[string]any, rootObject map[string]any) (toObject map[string]any, err error) {
 	toObject = make(map[string]any)
 
-	fromModel := getValueByPath(fromObject, []string{"model"})
+	fromModel := InternalGetValueByPath(fromObject, []string{"model"})
 	if fromModel != nil {
-		fromModel, err = tModel(ac, fromModel)
+		fromModel, err = InternalTModel(ac, fromModel)
 		if err != nil {
 			return nil, err
 		}
 
-		setValueByPath(toObject, []string{"model"}, fromModel)
+		InternalSetValueByPath(toObject, []string{"model"}, fromModel)
 	}
 
-	fromSrc := getValueByPath(fromObject, []string{"src"})
+	fromSrc := InternalGetValueByPath(fromObject, []string{"src"})
 	if fromSrc != nil {
-		fromSrc, err = tBatchJobSource(fromSrc)
+		fromSrc, err = InternalTBatchJobSource(fromSrc)
 		if err != nil {
 			return nil, err
 		}
 
-		fromSrc, err = batchJobSourceToVertex(fromSrc.(map[string]any), toObject)
+		fromSrc, err = batchJobSourceToVertex(fromSrc.(map[string]any), toObject, rootObject)
 		if err != nil {
 			return nil, err
 		}
 
-		setValueByPath(toObject, []string{"inputConfig"}, fromSrc)
+		InternalSetValueByPath(toObject, []string{"inputConfig"}, fromSrc)
 	}
 
-	fromConfig := getValueByPath(fromObject, []string{"config"})
+	fromConfig := InternalGetValueByPath(fromObject, []string{"config"})
 	if fromConfig != nil {
-		_, err = createBatchJobConfigToVertex(fromConfig.(map[string]any), toObject)
+		_, err = createBatchJobConfigToVertex(fromConfig.(map[string]any), toObject, rootObject)
 		if err != nil {
 			return nil, err
 		}
@@ -486,43 +534,43 @@ func createBatchJobParametersToVertex(ac *apiClient, fromObject map[string]any, 
 	return toObject, nil
 }
 
-func createEmbeddingsBatchJobConfigToMldev(fromObject map[string]any, parentObject map[string]any) (toObject map[string]any, err error) {
+func createEmbeddingsBatchJobConfigToMldev(fromObject map[string]any, parentObject map[string]any, rootObject map[string]any) (toObject map[string]any, err error) {
 	toObject = make(map[string]any)
 
-	fromDisplayName := getValueByPath(fromObject, []string{"displayName"})
+	fromDisplayName := InternalGetValueByPath(fromObject, []string{"displayName"})
 	if fromDisplayName != nil {
-		setValueByPath(parentObject, []string{"batch", "displayName"}, fromDisplayName)
+		InternalSetValueByPath(parentObject, []string{"batch", "displayName"}, fromDisplayName)
 	}
 
 	return toObject, nil
 }
 
-func createEmbeddingsBatchJobParametersToMldev(ac *apiClient, fromObject map[string]any, parentObject map[string]any) (toObject map[string]any, err error) {
+func createEmbeddingsBatchJobParametersToMldev(ac *InternalAPIClient, fromObject map[string]any, parentObject map[string]any, rootObject map[string]any) (toObject map[string]any, err error) {
 	toObject = make(map[string]any)
 
-	fromModel := getValueByPath(fromObject, []string{"model"})
+	fromModel := InternalGetValueByPath(fromObject, []string{"model"})
 	if fromModel != nil {
-		fromModel, err = tModel(ac, fromModel)
+		fromModel, err = InternalTModel(ac, fromModel)
 		if err != nil {
 			return nil, err
 		}
 
-		setValueByPath(toObject, []string{"_url", "model"}, fromModel)
+		InternalSetValueByPath(toObject, []string{"_url", "model"}, fromModel)
 	}
 
-	fromSrc := getValueByPath(fromObject, []string{"src"})
+	fromSrc := InternalGetValueByPath(fromObject, []string{"src"})
 	if fromSrc != nil {
-		fromSrc, err = embeddingsBatchJobSourceToMldev(ac, fromSrc.(map[string]any), toObject)
+		fromSrc, err = embeddingsBatchJobSourceToMldev(ac, fromSrc.(map[string]any), toObject, rootObject)
 		if err != nil {
 			return nil, err
 		}
 
-		setValueByPath(toObject, []string{"batch", "inputConfig"}, fromSrc)
+		InternalSetValueByPath(toObject, []string{"batch", "inputConfig"}, fromSrc)
 	}
 
-	fromConfig := getValueByPath(fromObject, []string{"config"})
+	fromConfig := InternalGetValueByPath(fromObject, []string{"config"})
 	if fromConfig != nil {
-		_, err = createEmbeddingsBatchJobConfigToMldev(fromConfig.(map[string]any), toObject)
+		_, err = createEmbeddingsBatchJobConfigToMldev(fromConfig.(map[string]any), toObject, rootObject)
 		if err != nil {
 			return nil, err
 		}
@@ -531,284 +579,289 @@ func createEmbeddingsBatchJobParametersToMldev(ac *apiClient, fromObject map[str
 	return toObject, nil
 }
 
-func deleteBatchJobParametersToMldev(ac *apiClient, fromObject map[string]any, parentObject map[string]any) (toObject map[string]any, err error) {
+func deleteBatchJobParametersToMldev(ac *InternalAPIClient, fromObject map[string]any, parentObject map[string]any, rootObject map[string]any) (toObject map[string]any, err error) {
 	toObject = make(map[string]any)
 
-	fromName := getValueByPath(fromObject, []string{"name"})
+	fromName := InternalGetValueByPath(fromObject, []string{"name"})
 	if fromName != nil {
-		fromName, err = tBatchJobName(ac, fromName)
+		fromName, err = InternalTBatchJobName(ac, fromName)
 		if err != nil {
 			return nil, err
 		}
 
-		setValueByPath(toObject, []string{"_url", "name"}, fromName)
+		InternalSetValueByPath(toObject, []string{"_url", "name"}, fromName)
 	}
 
 	return toObject, nil
 }
 
-func deleteBatchJobParametersToVertex(ac *apiClient, fromObject map[string]any, parentObject map[string]any) (toObject map[string]any, err error) {
+func deleteBatchJobParametersToVertex(ac *InternalAPIClient, fromObject map[string]any, parentObject map[string]any, rootObject map[string]any) (toObject map[string]any, err error) {
 	toObject = make(map[string]any)
 
-	fromName := getValueByPath(fromObject, []string{"name"})
+	fromName := InternalGetValueByPath(fromObject, []string{"name"})
 	if fromName != nil {
-		fromName, err = tBatchJobName(ac, fromName)
+		fromName, err = InternalTBatchJobName(ac, fromName)
 		if err != nil {
 			return nil, err
 		}
 
-		setValueByPath(toObject, []string{"_url", "name"}, fromName)
+		InternalSetValueByPath(toObject, []string{"_url", "name"}, fromName)
 	}
 
 	return toObject, nil
 }
 
-func deleteResourceJobFromMldev(fromObject map[string]any, parentObject map[string]any) (toObject map[string]any, err error) {
+func deleteResourceJobFromMldev(fromObject map[string]any, parentObject map[string]any, rootObject map[string]any) (toObject map[string]any, err error) {
 	toObject = make(map[string]any)
 
-	fromSdkHttpResponse := getValueByPath(fromObject, []string{"sdkHttpResponse"})
+	fromSdkHttpResponse := InternalGetValueByPath(fromObject, []string{"sdkHttpResponse"})
 	if fromSdkHttpResponse != nil {
-		setValueByPath(toObject, []string{"sdkHttpResponse"}, fromSdkHttpResponse)
+		InternalSetValueByPath(toObject, []string{"sdkHttpResponse"}, fromSdkHttpResponse)
 	}
 
-	fromName := getValueByPath(fromObject, []string{"name"})
+	fromName := InternalGetValueByPath(fromObject, []string{"name"})
 	if fromName != nil {
-		setValueByPath(toObject, []string{"name"}, fromName)
+		InternalSetValueByPath(toObject, []string{"name"}, fromName)
 	}
 
-	fromDone := getValueByPath(fromObject, []string{"done"})
+	fromDone := InternalGetValueByPath(fromObject, []string{"done"})
 	if fromDone != nil {
-		setValueByPath(toObject, []string{"done"}, fromDone)
+		InternalSetValueByPath(toObject, []string{"done"}, fromDone)
 	}
 
-	fromError := getValueByPath(fromObject, []string{"error"})
+	fromError := InternalGetValueByPath(fromObject, []string{"error"})
 	if fromError != nil {
-		setValueByPath(toObject, []string{"error"}, fromError)
+		InternalSetValueByPath(toObject, []string{"error"}, fromError)
 	}
 
 	return toObject, nil
 }
 
-func deleteResourceJobFromVertex(fromObject map[string]any, parentObject map[string]any) (toObject map[string]any, err error) {
+func deleteResourceJobFromVertex(fromObject map[string]any, parentObject map[string]any, rootObject map[string]any) (toObject map[string]any, err error) {
 	toObject = make(map[string]any)
 
-	fromSdkHttpResponse := getValueByPath(fromObject, []string{"sdkHttpResponse"})
+	fromSdkHttpResponse := InternalGetValueByPath(fromObject, []string{"sdkHttpResponse"})
 	if fromSdkHttpResponse != nil {
-		setValueByPath(toObject, []string{"sdkHttpResponse"}, fromSdkHttpResponse)
+		InternalSetValueByPath(toObject, []string{"sdkHttpResponse"}, fromSdkHttpResponse)
 	}
 
-	fromName := getValueByPath(fromObject, []string{"name"})
+	fromName := InternalGetValueByPath(fromObject, []string{"name"})
 	if fromName != nil {
-		setValueByPath(toObject, []string{"name"}, fromName)
+		InternalSetValueByPath(toObject, []string{"name"}, fromName)
 	}
 
-	fromDone := getValueByPath(fromObject, []string{"done"})
+	fromDone := InternalGetValueByPath(fromObject, []string{"done"})
 	if fromDone != nil {
-		setValueByPath(toObject, []string{"done"}, fromDone)
+		InternalSetValueByPath(toObject, []string{"done"}, fromDone)
 	}
 
-	fromError := getValueByPath(fromObject, []string{"error"})
+	fromError := InternalGetValueByPath(fromObject, []string{"error"})
 	if fromError != nil {
-		setValueByPath(toObject, []string{"error"}, fromError)
+		InternalSetValueByPath(toObject, []string{"error"}, fromError)
 	}
 
 	return toObject, nil
 }
 
-func embedContentBatchToMldev(ac *apiClient, fromObject map[string]any, parentObject map[string]any) (toObject map[string]any, err error) {
+func embedContentBatchToMldev(ac *InternalAPIClient, fromObject map[string]any, parentObject map[string]any, rootObject map[string]any) (toObject map[string]any, err error) {
 	toObject = make(map[string]any)
 
-	fromContents := getValueByPath(fromObject, []string{"contents"})
+	fromContents := InternalGetValueByPath(fromObject, []string{"contents"})
 	if fromContents != nil {
-		fromContents, err = tContentsForEmbed(ac, fromContents)
+		fromContents, err = InternalTContentsForEmbed(ac, fromContents)
 		if err != nil {
 			return nil, err
 		}
 
-		setValueByPath(toObject, []string{"requests[]", "request", "content"}, fromContents)
+		InternalSetValueByPath(toObject, []string{"requests[]", "request", "content"}, fromContents)
 	}
 
-	fromConfig := getValueByPath(fromObject, []string{"config"})
+	fromConfig := InternalGetValueByPath(fromObject, []string{"config"})
 	if fromConfig != nil {
-		fromConfig, err = embedContentConfigToMldev(fromConfig.(map[string]any), toObject)
+		fromConfig, err = embedContentConfigToMldev(fromConfig.(map[string]any), toObject, rootObject)
 		if err != nil {
 			return nil, err
 		}
 
-		setValueByPath(toObject, []string{"_self"}, fromConfig)
+		InternalSetValueByPath(toObject, []string{"_self"}, fromConfig)
 		moveValueByPath(toObject, map[string]string{"requests[].*": "requests[].request.*"})
 	}
 
 	return toObject, nil
 }
 
-func embeddingsBatchJobSourceToMldev(ac *apiClient, fromObject map[string]any, parentObject map[string]any) (toObject map[string]any, err error) {
+func embeddingsBatchJobSourceToMldev(ac *InternalAPIClient, fromObject map[string]any, parentObject map[string]any, rootObject map[string]any) (toObject map[string]any, err error) {
 	toObject = make(map[string]any)
 
-	fromFileName := getValueByPath(fromObject, []string{"fileName"})
+	fromFileName := InternalGetValueByPath(fromObject, []string{"fileName"})
 	if fromFileName != nil {
-		setValueByPath(toObject, []string{"file_name"}, fromFileName)
+		InternalSetValueByPath(toObject, []string{"file_name"}, fromFileName)
 	}
 
-	fromInlinedRequests := getValueByPath(fromObject, []string{"inlinedRequests"})
+	fromInlinedRequests := InternalGetValueByPath(fromObject, []string{"inlinedRequests"})
 	if fromInlinedRequests != nil {
-		fromInlinedRequests, err = embedContentBatchToMldev(ac, fromInlinedRequests.(map[string]any), toObject)
+		fromInlinedRequests, err = embedContentBatchToMldev(ac, fromInlinedRequests.(map[string]any), toObject, rootObject)
 		if err != nil {
 			return nil, err
 		}
 
-		setValueByPath(toObject, []string{"requests"}, fromInlinedRequests)
+		InternalSetValueByPath(toObject, []string{"requests"}, fromInlinedRequests)
 	}
 
 	return toObject, nil
 }
 
-func getBatchJobParametersToMldev(ac *apiClient, fromObject map[string]any, parentObject map[string]any) (toObject map[string]any, err error) {
+func getBatchJobParametersToMldev(ac *InternalAPIClient, fromObject map[string]any, parentObject map[string]any, rootObject map[string]any) (toObject map[string]any, err error) {
 	toObject = make(map[string]any)
 
-	fromName := getValueByPath(fromObject, []string{"name"})
+	fromName := InternalGetValueByPath(fromObject, []string{"name"})
 	if fromName != nil {
-		fromName, err = tBatchJobName(ac, fromName)
+		fromName, err = InternalTBatchJobName(ac, fromName)
 		if err != nil {
 			return nil, err
 		}
 
-		setValueByPath(toObject, []string{"_url", "name"}, fromName)
+		InternalSetValueByPath(toObject, []string{"_url", "name"}, fromName)
 	}
 
 	return toObject, nil
 }
 
-func getBatchJobParametersToVertex(ac *apiClient, fromObject map[string]any, parentObject map[string]any) (toObject map[string]any, err error) {
+func getBatchJobParametersToVertex(ac *InternalAPIClient, fromObject map[string]any, parentObject map[string]any, rootObject map[string]any) (toObject map[string]any, err error) {
 	toObject = make(map[string]any)
 
-	fromName := getValueByPath(fromObject, []string{"name"})
+	fromName := InternalGetValueByPath(fromObject, []string{"name"})
 	if fromName != nil {
-		fromName, err = tBatchJobName(ac, fromName)
+		fromName, err = InternalTBatchJobName(ac, fromName)
 		if err != nil {
 			return nil, err
 		}
 
-		setValueByPath(toObject, []string{"_url", "name"}, fromName)
+		InternalSetValueByPath(toObject, []string{"_url", "name"}, fromName)
 	}
 
 	return toObject, nil
 }
 
-func inlinedRequestToMldev(ac *apiClient, fromObject map[string]any, parentObject map[string]any) (toObject map[string]any, err error) {
+func inlinedRequestToMldev(ac *InternalAPIClient, fromObject map[string]any, parentObject map[string]any, rootObject map[string]any) (toObject map[string]any, err error) {
 	toObject = make(map[string]any)
 
-	fromModel := getValueByPath(fromObject, []string{"model"})
+	fromModel := InternalGetValueByPath(fromObject, []string{"model"})
 	if fromModel != nil {
-		fromModel, err = tModel(ac, fromModel)
+		fromModel, err = InternalTModel(ac, fromModel)
 		if err != nil {
 			return nil, err
 		}
 
-		setValueByPath(toObject, []string{"request", "model"}, fromModel)
+		InternalSetValueByPath(toObject, []string{"request", "model"}, fromModel)
 	}
 
-	fromContents := getValueByPath(fromObject, []string{"contents"})
+	fromContents := InternalGetValueByPath(fromObject, []string{"contents"})
 	if fromContents != nil {
-		fromContents, err = tContents(fromContents)
+		fromContents, err = InternalTContents(fromContents)
 		if err != nil {
 			return nil, err
 		}
 
-		fromContents, err = applyConverterToSlice(fromContents.([]any), contentToMldev)
+		fromContents, err = InternalApplyConverterToSliceWithRoot(fromContents.([]any), contentToMldev, rootObject)
 		if err != nil {
 			return nil, err
 		}
 
-		setValueByPath(toObject, []string{"request", "contents"}, fromContents)
+		InternalSetValueByPath(toObject, []string{"request", "contents"}, fromContents)
 	}
 
-	fromMetadata := getValueByPath(fromObject, []string{"metadata"})
+	fromMetadata := InternalGetValueByPath(fromObject, []string{"metadata"})
 	if fromMetadata != nil {
-		setValueByPath(toObject, []string{"metadata"}, fromMetadata)
+		InternalSetValueByPath(toObject, []string{"metadata"}, fromMetadata)
 	}
 
-	fromConfig := getValueByPath(fromObject, []string{"config"})
+	fromConfig := InternalGetValueByPath(fromObject, []string{"config"})
 	if fromConfig != nil {
-		fromConfig, err = generateContentConfigToMldev(ac, fromConfig.(map[string]any), getValueByPathOrDefault(toObject, []string{"request"}, map[string]any{}).(map[string]any))
+		fromConfig, err = generateContentConfigToMldev(ac, fromConfig.(map[string]any), getValueByPathOrDefault(toObject, []string{"request"}, map[string]any{}).(map[string]any), rootObject)
 		if err != nil {
 			return nil, err
 		}
 
-		setValueByPath(toObject, []string{"request", "generationConfig"}, fromConfig)
+		InternalSetValueByPath(toObject, []string{"request", "generationConfig"}, fromConfig)
 	}
 
 	return toObject, nil
 }
 
-func inlinedResponseFromMldev(fromObject map[string]any, parentObject map[string]any) (toObject map[string]any, err error) {
+func inlinedResponseFromMldev(fromObject map[string]any, parentObject map[string]any, rootObject map[string]any) (toObject map[string]any, err error) {
 	toObject = make(map[string]any)
 
-	fromResponse := getValueByPath(fromObject, []string{"response"})
+	fromResponse := InternalGetValueByPath(fromObject, []string{"response"})
 	if fromResponse != nil {
-		fromResponse, err = generateContentResponseFromMldev(fromResponse.(map[string]any), toObject)
+		fromResponse, err = generateContentResponseFromMldev(fromResponse.(map[string]any), toObject, rootObject)
 		if err != nil {
 			return nil, err
 		}
 
-		setValueByPath(toObject, []string{"response"}, fromResponse)
+		InternalSetValueByPath(toObject, []string{"response"}, fromResponse)
 	}
 
-	fromError := getValueByPath(fromObject, []string{"error"})
+	fromMetadata := InternalGetValueByPath(fromObject, []string{"metadata"})
+	if fromMetadata != nil {
+		InternalSetValueByPath(toObject, []string{"metadata"}, fromMetadata)
+	}
+
+	fromError := InternalGetValueByPath(fromObject, []string{"error"})
 	if fromError != nil {
-		setValueByPath(toObject, []string{"error"}, fromError)
+		InternalSetValueByPath(toObject, []string{"error"}, fromError)
 	}
 
 	return toObject, nil
 }
 
-func listBatchJobsConfigToMldev(fromObject map[string]any, parentObject map[string]any) (toObject map[string]any, err error) {
+func listBatchJobsConfigToMldev(fromObject map[string]any, parentObject map[string]any, rootObject map[string]any) (toObject map[string]any, err error) {
 	toObject = make(map[string]any)
 
-	fromPageSize := getValueByPath(fromObject, []string{"pageSize"})
+	fromPageSize := InternalGetValueByPath(fromObject, []string{"pageSize"})
 	if fromPageSize != nil {
-		setValueByPath(parentObject, []string{"_query", "pageSize"}, fromPageSize)
+		InternalSetValueByPath(parentObject, []string{"_query", "pageSize"}, fromPageSize)
 	}
 
-	fromPageToken := getValueByPath(fromObject, []string{"pageToken"})
+	fromPageToken := InternalGetValueByPath(fromObject, []string{"pageToken"})
 	if fromPageToken != nil {
-		setValueByPath(parentObject, []string{"_query", "pageToken"}, fromPageToken)
+		InternalSetValueByPath(parentObject, []string{"_query", "pageToken"}, fromPageToken)
 	}
 
-	if getValueByPath(fromObject, []string{"filter"}) != nil {
-		return nil, fmt.Errorf("filter parameter is not supported in Gemini API")
+	if InternalGetValueByPath(fromObject, []string{"filter"}) != nil {
+		return nil, fmt.Errorf("filter parameter is only supported in Gemini Enterprise Agent Platform mode, not in Gemini Developer API mode.")
 	}
 
 	return toObject, nil
 }
 
-func listBatchJobsConfigToVertex(fromObject map[string]any, parentObject map[string]any) (toObject map[string]any, err error) {
+func listBatchJobsConfigToVertex(fromObject map[string]any, parentObject map[string]any, rootObject map[string]any) (toObject map[string]any, err error) {
 	toObject = make(map[string]any)
 
-	fromPageSize := getValueByPath(fromObject, []string{"pageSize"})
+	fromPageSize := InternalGetValueByPath(fromObject, []string{"pageSize"})
 	if fromPageSize != nil {
-		setValueByPath(parentObject, []string{"_query", "pageSize"}, fromPageSize)
+		InternalSetValueByPath(parentObject, []string{"_query", "pageSize"}, fromPageSize)
 	}
 
-	fromPageToken := getValueByPath(fromObject, []string{"pageToken"})
+	fromPageToken := InternalGetValueByPath(fromObject, []string{"pageToken"})
 	if fromPageToken != nil {
-		setValueByPath(parentObject, []string{"_query", "pageToken"}, fromPageToken)
+		InternalSetValueByPath(parentObject, []string{"_query", "pageToken"}, fromPageToken)
 	}
 
-	fromFilter := getValueByPath(fromObject, []string{"filter"})
+	fromFilter := InternalGetValueByPath(fromObject, []string{"filter"})
 	if fromFilter != nil {
-		setValueByPath(parentObject, []string{"_query", "filter"}, fromFilter)
+		InternalSetValueByPath(parentObject, []string{"_query", "filter"}, fromFilter)
 	}
 
 	return toObject, nil
 }
 
-func listBatchJobsParametersToMldev(fromObject map[string]any, parentObject map[string]any) (toObject map[string]any, err error) {
+func listBatchJobsParametersToMldev(fromObject map[string]any, parentObject map[string]any, rootObject map[string]any) (toObject map[string]any, err error) {
 	toObject = make(map[string]any)
 
-	fromConfig := getValueByPath(fromObject, []string{"config"})
+	fromConfig := InternalGetValueByPath(fromObject, []string{"config"})
 	if fromConfig != nil {
-		_, err = listBatchJobsConfigToMldev(fromConfig.(map[string]any), toObject)
+		_, err = listBatchJobsConfigToMldev(fromConfig.(map[string]any), toObject, rootObject)
 		if err != nil {
 			return nil, err
 		}
@@ -817,12 +870,12 @@ func listBatchJobsParametersToMldev(fromObject map[string]any, parentObject map[
 	return toObject, nil
 }
 
-func listBatchJobsParametersToVertex(fromObject map[string]any, parentObject map[string]any) (toObject map[string]any, err error) {
+func listBatchJobsParametersToVertex(fromObject map[string]any, parentObject map[string]any, rootObject map[string]any) (toObject map[string]any, err error) {
 	toObject = make(map[string]any)
 
-	fromConfig := getValueByPath(fromObject, []string{"config"})
+	fromConfig := InternalGetValueByPath(fromObject, []string{"config"})
 	if fromConfig != nil {
-		_, err = listBatchJobsConfigToVertex(fromConfig.(map[string]any), toObject)
+		_, err = listBatchJobsConfigToVertex(fromConfig.(map[string]any), toObject, rootObject)
 		if err != nil {
 			return nil, err
 		}
@@ -831,53 +884,85 @@ func listBatchJobsParametersToVertex(fromObject map[string]any, parentObject map
 	return toObject, nil
 }
 
-func listBatchJobsResponseFromMldev(fromObject map[string]any, parentObject map[string]any) (toObject map[string]any, err error) {
+func listBatchJobsResponseFromMldev(fromObject map[string]any, parentObject map[string]any, rootObject map[string]any) (toObject map[string]any, err error) {
 	toObject = make(map[string]any)
 
-	fromSdkHttpResponse := getValueByPath(fromObject, []string{"sdkHttpResponse"})
+	fromSdkHttpResponse := InternalGetValueByPath(fromObject, []string{"sdkHttpResponse"})
 	if fromSdkHttpResponse != nil {
-		setValueByPath(toObject, []string{"sdkHttpResponse"}, fromSdkHttpResponse)
+		InternalSetValueByPath(toObject, []string{"sdkHttpResponse"}, fromSdkHttpResponse)
 	}
 
-	fromNextPageToken := getValueByPath(fromObject, []string{"nextPageToken"})
+	fromNextPageToken := InternalGetValueByPath(fromObject, []string{"nextPageToken"})
 	if fromNextPageToken != nil {
-		setValueByPath(toObject, []string{"nextPageToken"}, fromNextPageToken)
+		InternalSetValueByPath(toObject, []string{"nextPageToken"}, fromNextPageToken)
 	}
 
-	fromBatchJobs := getValueByPath(fromObject, []string{"operations"})
+	fromBatchJobs := InternalGetValueByPath(fromObject, []string{"operations"})
 	if fromBatchJobs != nil {
-		fromBatchJobs, err = applyConverterToSlice(fromBatchJobs.([]any), batchJobFromMldev)
+		fromBatchJobs, err = InternalApplyConverterToSliceWithRoot(fromBatchJobs.([]any), batchJobFromMldev, rootObject)
 		if err != nil {
 			return nil, err
 		}
 
-		setValueByPath(toObject, []string{"batchJobs"}, fromBatchJobs)
+		InternalSetValueByPath(toObject, []string{"batchJobs"}, fromBatchJobs)
 	}
 
 	return toObject, nil
 }
 
-func listBatchJobsResponseFromVertex(fromObject map[string]any, parentObject map[string]any) (toObject map[string]any, err error) {
+func listBatchJobsResponseFromVertex(fromObject map[string]any, parentObject map[string]any, rootObject map[string]any) (toObject map[string]any, err error) {
 	toObject = make(map[string]any)
 
-	fromSdkHttpResponse := getValueByPath(fromObject, []string{"sdkHttpResponse"})
+	fromSdkHttpResponse := InternalGetValueByPath(fromObject, []string{"sdkHttpResponse"})
 	if fromSdkHttpResponse != nil {
-		setValueByPath(toObject, []string{"sdkHttpResponse"}, fromSdkHttpResponse)
+		InternalSetValueByPath(toObject, []string{"sdkHttpResponse"}, fromSdkHttpResponse)
 	}
 
-	fromNextPageToken := getValueByPath(fromObject, []string{"nextPageToken"})
+	fromNextPageToken := InternalGetValueByPath(fromObject, []string{"nextPageToken"})
 	if fromNextPageToken != nil {
-		setValueByPath(toObject, []string{"nextPageToken"}, fromNextPageToken)
+		InternalSetValueByPath(toObject, []string{"nextPageToken"}, fromNextPageToken)
 	}
 
-	fromBatchJobs := getValueByPath(fromObject, []string{"batchPredictionJobs"})
+	fromBatchJobs := InternalGetValueByPath(fromObject, []string{"batchPredictionJobs"})
 	if fromBatchJobs != nil {
-		fromBatchJobs, err = applyConverterToSlice(fromBatchJobs.([]any), batchJobFromVertex)
+		fromBatchJobs, err = InternalApplyConverterToSliceWithRoot(fromBatchJobs.([]any), batchJobFromVertex, rootObject)
 		if err != nil {
 			return nil, err
 		}
 
-		setValueByPath(toObject, []string{"batchJobs"}, fromBatchJobs)
+		InternalSetValueByPath(toObject, []string{"batchJobs"}, fromBatchJobs)
+	}
+
+	return toObject, nil
+}
+
+func vertexMultimodalDatasetDestinationFromVertex(fromObject map[string]any, parentObject map[string]any, rootObject map[string]any) (toObject map[string]any, err error) {
+	toObject = make(map[string]any)
+
+	fromBigqueryDestination := InternalGetValueByPath(fromObject, []string{"bigqueryDestination", "outputUri"})
+	if fromBigqueryDestination != nil {
+		InternalSetValueByPath(toObject, []string{"bigqueryDestination"}, fromBigqueryDestination)
+	}
+
+	fromDisplayName := InternalGetValueByPath(fromObject, []string{"displayName"})
+	if fromDisplayName != nil {
+		InternalSetValueByPath(toObject, []string{"displayName"}, fromDisplayName)
+	}
+
+	return toObject, nil
+}
+
+func vertexMultimodalDatasetDestinationToVertex(fromObject map[string]any, parentObject map[string]any, rootObject map[string]any) (toObject map[string]any, err error) {
+	toObject = make(map[string]any)
+
+	fromBigqueryDestination := InternalGetValueByPath(fromObject, []string{"bigqueryDestination"})
+	if fromBigqueryDestination != nil {
+		InternalSetValueByPath(toObject, []string{"bigqueryDestination", "outputUri"}, fromBigqueryDestination)
+	}
+
+	fromDisplayName := InternalGetValueByPath(fromObject, []string{"displayName"})
+	if fromDisplayName != nil {
+		InternalSetValueByPath(toObject, []string{"displayName"}, fromDisplayName)
 	}
 
 	return toObject, nil
@@ -887,14 +972,14 @@ func listBatchJobsResponseFromVertex(fromObject map[string]any, parentObject map
 // You don't need to initiate this struct. Create a client instance via NewClient, and
 // then access Batches through client.Batches field.
 type Batches struct {
-	apiClient *apiClient
+	apiClient *InternalAPIClient
 }
 
 func (m Batches) create(ctx context.Context, model *string, src *BatchJobSource, config *CreateBatchJobConfig) (*BatchJob, error) {
 	parameterMap := make(map[string]any)
 
 	kwargs := map[string]any{"model": model, "src": src, "config": config}
-	deepMarshal(kwargs, &parameterMap)
+	InternalDeepMarshal(kwargs, &parameterMap)
 
 	var httpOptions *HTTPOptions
 	if config == nil || config.HTTPOptions == nil {
@@ -907,9 +992,9 @@ func (m Batches) create(ctx context.Context, model *string, src *BatchJobSource,
 	}
 	var response = new(BatchJob)
 	var responseMap map[string]any
-	var fromConverter func(map[string]any, map[string]any) (map[string]any, error)
-	var toConverter func(*apiClient, map[string]any, map[string]any) (map[string]any, error)
-	if m.apiClient.clientConfig.Backend == BackendVertexAI {
+	var fromConverter func(map[string]any, map[string]any, map[string]any) (map[string]any, error)
+	var toConverter func(*InternalAPIClient, map[string]any, map[string]any, map[string]any) (map[string]any, error)
+	if m.apiClient.ClientConfig().Backend == BackendVertexAI {
 		toConverter = createBatchJobParametersToVertex
 		fromConverter = batchJobFromVertex
 	} else {
@@ -917,26 +1002,27 @@ func (m Batches) create(ctx context.Context, model *string, src *BatchJobSource,
 		fromConverter = batchJobFromMldev
 	}
 
-	body, err := toConverter(m.apiClient, parameterMap, nil)
+	body, err := toConverter(m.apiClient, parameterMap, nil, parameterMap)
 	if err != nil {
 		return nil, err
 	}
+
 	var path string
 	var urlParams map[string]any
 	if _, ok := body["_url"]; ok {
 		urlParams = body["_url"].(map[string]any)
 		delete(body, "_url")
 	}
-	if m.apiClient.clientConfig.Backend == BackendVertexAI {
-		path, err = formatMap("batchPredictionJobs", urlParams)
+	if m.apiClient.ClientConfig().Backend == BackendVertexAI {
+		path, err = InternalFormatMap("batchPredictionJobs", urlParams)
 	} else {
-		path, err = formatMap("{model}:batchGenerateContent", urlParams)
+		path, err = InternalFormatMap("{model}:batchGenerateContent", urlParams)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("invalid url params: %#v.\n%w", urlParams, err)
 	}
 	if _, ok := body["_query"]; ok {
-		query, err := createURLQuery(body["_query"].(map[string]any))
+		query, err := InternalCreateURLQuery(body["_query"].(map[string]any))
 		if err != nil {
 			return nil, err
 		}
@@ -948,12 +1034,12 @@ func (m Batches) create(ctx context.Context, model *string, src *BatchJobSource,
 		return nil, err
 	}
 	if fromConverter != nil {
-		responseMap, err = fromConverter(responseMap, nil)
+		responseMap, err = fromConverter(responseMap, nil, parameterMap)
 	}
 	if err != nil {
 		return nil, err
 	}
-	err = mapToStruct(responseMap, response)
+	err = InternalMapToStruct(responseMap, response)
 	if err != nil {
 		return nil, err
 	}
@@ -975,7 +1061,7 @@ func (m Batches) createEmbeddings(ctx context.Context, model *string, src *Embed
 	parameterMap := make(map[string]any)
 
 	kwargs := map[string]any{"model": model, "src": src, "config": config}
-	deepMarshal(kwargs, &parameterMap)
+	InternalDeepMarshal(kwargs, &parameterMap)
 
 	var httpOptions *HTTPOptions
 	if config == nil || config.HTTPOptions == nil {
@@ -988,37 +1074,38 @@ func (m Batches) createEmbeddings(ctx context.Context, model *string, src *Embed
 	}
 	var response = new(BatchJob)
 	var responseMap map[string]any
-	var fromConverter func(map[string]any, map[string]any) (map[string]any, error)
-	var toConverter func(*apiClient, map[string]any, map[string]any) (map[string]any, error)
-	if m.apiClient.clientConfig.Backend == BackendVertexAI {
+	var fromConverter func(map[string]any, map[string]any, map[string]any) (map[string]any, error)
+	var toConverter func(*InternalAPIClient, map[string]any, map[string]any, map[string]any) (map[string]any, error)
+	if m.apiClient.ClientConfig().Backend == BackendVertexAI {
 
-		return nil, fmt.Errorf("method CreateEmbeddings is only supported in the Gemini Developer client. You can choose to use Gemini Developer client by setting ClientConfig.Backend to BackendGeminiAPI.")
+		return nil, fmt.Errorf("method CreateEmbeddings is only supported in Gemini Developer API mode, not in Gemini Enterprise Agent Platform mode. You can choose to use Gemini Developer client by setting ClientConfig.Backend to BackendGeminiAPI.")
 
 	} else {
 		toConverter = createEmbeddingsBatchJobParametersToMldev
 		fromConverter = batchJobFromMldev
 	}
 
-	body, err := toConverter(m.apiClient, parameterMap, nil)
+	body, err := toConverter(m.apiClient, parameterMap, nil, parameterMap)
 	if err != nil {
 		return nil, err
 	}
+
 	var path string
 	var urlParams map[string]any
 	if _, ok := body["_url"]; ok {
 		urlParams = body["_url"].(map[string]any)
 		delete(body, "_url")
 	}
-	if m.apiClient.clientConfig.Backend == BackendVertexAI {
-		path, err = formatMap("None", urlParams)
+	if m.apiClient.ClientConfig().Backend == BackendVertexAI {
+		path, err = InternalFormatMap("None", urlParams)
 	} else {
-		path, err = formatMap("{model}:asyncBatchEmbedContent", urlParams)
+		path, err = InternalFormatMap("{model}:asyncBatchEmbedContent", urlParams)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("invalid url params: %#v.\n%w", urlParams, err)
 	}
 	if _, ok := body["_query"]; ok {
-		query, err := createURLQuery(body["_query"].(map[string]any))
+		query, err := InternalCreateURLQuery(body["_query"].(map[string]any))
 		if err != nil {
 			return nil, err
 		}
@@ -1030,12 +1117,12 @@ func (m Batches) createEmbeddings(ctx context.Context, model *string, src *Embed
 		return nil, err
 	}
 	if fromConverter != nil {
-		responseMap, err = fromConverter(responseMap, nil)
+		responseMap, err = fromConverter(responseMap, nil, parameterMap)
 	}
 	if err != nil {
 		return nil, err
 	}
-	err = mapToStruct(responseMap, response)
+	err = InternalMapToStruct(responseMap, response)
 	if err != nil {
 		return nil, err
 	}
@@ -1058,7 +1145,7 @@ func (m Batches) Get(ctx context.Context, name string, config *GetBatchJobConfig
 	parameterMap := make(map[string]any)
 
 	kwargs := map[string]any{"name": name, "config": config}
-	deepMarshal(kwargs, &parameterMap)
+	InternalDeepMarshal(kwargs, &parameterMap)
 
 	var httpOptions *HTTPOptions
 	if config == nil || config.HTTPOptions == nil {
@@ -1071,9 +1158,9 @@ func (m Batches) Get(ctx context.Context, name string, config *GetBatchJobConfig
 	}
 	var response = new(BatchJob)
 	var responseMap map[string]any
-	var fromConverter func(map[string]any, map[string]any) (map[string]any, error)
-	var toConverter func(*apiClient, map[string]any, map[string]any) (map[string]any, error)
-	if m.apiClient.clientConfig.Backend == BackendVertexAI {
+	var fromConverter func(map[string]any, map[string]any, map[string]any) (map[string]any, error)
+	var toConverter func(*InternalAPIClient, map[string]any, map[string]any, map[string]any) (map[string]any, error)
+	if m.apiClient.ClientConfig().Backend == BackendVertexAI {
 		toConverter = getBatchJobParametersToVertex
 		fromConverter = batchJobFromVertex
 	} else {
@@ -1081,26 +1168,27 @@ func (m Batches) Get(ctx context.Context, name string, config *GetBatchJobConfig
 		fromConverter = batchJobFromMldev
 	}
 
-	body, err := toConverter(m.apiClient, parameterMap, nil)
+	body, err := toConverter(m.apiClient, parameterMap, nil, parameterMap)
 	if err != nil {
 		return nil, err
 	}
+
 	var path string
 	var urlParams map[string]any
 	if _, ok := body["_url"]; ok {
 		urlParams = body["_url"].(map[string]any)
 		delete(body, "_url")
 	}
-	if m.apiClient.clientConfig.Backend == BackendVertexAI {
-		path, err = formatMap("batchPredictionJobs/{name}", urlParams)
+	if m.apiClient.ClientConfig().Backend == BackendVertexAI {
+		path, err = InternalFormatMap("batchPredictionJobs/{name}", urlParams)
 	} else {
-		path, err = formatMap("batches/{name}", urlParams)
+		path, err = InternalFormatMap("batches/{name}", urlParams)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("invalid url params: %#v.\n%w", urlParams, err)
 	}
 	if _, ok := body["_query"]; ok {
-		query, err := createURLQuery(body["_query"].(map[string]any))
+		query, err := InternalCreateURLQuery(body["_query"].(map[string]any))
 		if err != nil {
 			return nil, err
 		}
@@ -1112,12 +1200,12 @@ func (m Batches) Get(ctx context.Context, name string, config *GetBatchJobConfig
 		return nil, err
 	}
 	if fromConverter != nil {
-		responseMap, err = fromConverter(responseMap, nil)
+		responseMap, err = fromConverter(responseMap, nil, parameterMap)
 	}
 	if err != nil {
 		return nil, err
 	}
-	err = mapToStruct(responseMap, response)
+	err = InternalMapToStruct(responseMap, response)
 	if err != nil {
 		return nil, err
 	}
@@ -1140,7 +1228,7 @@ func (m Batches) Cancel(ctx context.Context, name string, config *CancelBatchJob
 	parameterMap := make(map[string]any)
 
 	kwargs := map[string]any{"name": name, "config": config}
-	deepMarshal(kwargs, &parameterMap)
+	InternalDeepMarshal(kwargs, &parameterMap)
 
 	var httpOptions *HTTPOptions
 	if config == nil || config.HTTPOptions == nil {
@@ -1151,8 +1239,8 @@ func (m Batches) Cancel(ctx context.Context, name string, config *CancelBatchJob
 	if httpOptions.Headers == nil {
 		httpOptions.Headers = http.Header{}
 	}
-	var toConverter func(*apiClient, map[string]any, map[string]any) (map[string]any, error)
-	if m.apiClient.clientConfig.Backend == BackendVertexAI {
+	var toConverter func(*InternalAPIClient, map[string]any, map[string]any, map[string]any) (map[string]any, error)
+	if m.apiClient.ClientConfig().Backend == BackendVertexAI {
 		toConverter = cancelBatchJobParametersToVertex
 
 	} else {
@@ -1160,26 +1248,27 @@ func (m Batches) Cancel(ctx context.Context, name string, config *CancelBatchJob
 
 	}
 
-	body, err := toConverter(m.apiClient, parameterMap, nil)
+	body, err := toConverter(m.apiClient, parameterMap, nil, parameterMap)
 	if err != nil {
 		return err
 	}
+
 	var path string
 	var urlParams map[string]any
 	if _, ok := body["_url"]; ok {
 		urlParams = body["_url"].(map[string]any)
 		delete(body, "_url")
 	}
-	if m.apiClient.clientConfig.Backend == BackendVertexAI {
-		path, err = formatMap("batchPredictionJobs/{name}:cancel", urlParams)
+	if m.apiClient.ClientConfig().Backend == BackendVertexAI {
+		path, err = InternalFormatMap("batchPredictionJobs/{name}:cancel", urlParams)
 	} else {
-		path, err = formatMap("batches/{name}:cancel", urlParams)
+		path, err = InternalFormatMap("batches/{name}:cancel", urlParams)
 	}
 	if err != nil {
 		return fmt.Errorf("invalid url params: %#v.\n%w", urlParams, err)
 	}
 	if _, ok := body["_query"]; ok {
-		query, err := createURLQuery(body["_query"].(map[string]any))
+		query, err := InternalCreateURLQuery(body["_query"].(map[string]any))
 		if err != nil {
 			return err
 		}
@@ -1198,7 +1287,7 @@ func (m Batches) list(ctx context.Context, config *ListBatchJobsConfig) (*ListBa
 	parameterMap := make(map[string]any)
 
 	kwargs := map[string]any{"config": config}
-	deepMarshal(kwargs, &parameterMap)
+	InternalDeepMarshal(kwargs, &parameterMap)
 
 	var httpOptions *HTTPOptions
 	if config == nil || config.HTTPOptions == nil {
@@ -1211,9 +1300,9 @@ func (m Batches) list(ctx context.Context, config *ListBatchJobsConfig) (*ListBa
 	}
 	var response = new(ListBatchJobsResponse)
 	var responseMap map[string]any
-	var fromConverter func(map[string]any, map[string]any) (map[string]any, error)
-	var toConverter func(map[string]any, map[string]any) (map[string]any, error)
-	if m.apiClient.clientConfig.Backend == BackendVertexAI {
+	var fromConverter func(map[string]any, map[string]any, map[string]any) (map[string]any, error)
+	var toConverter func(map[string]any, map[string]any, map[string]any) (map[string]any, error)
+	if m.apiClient.ClientConfig().Backend == BackendVertexAI {
 		toConverter = listBatchJobsParametersToVertex
 		fromConverter = listBatchJobsResponseFromVertex
 	} else {
@@ -1221,26 +1310,27 @@ func (m Batches) list(ctx context.Context, config *ListBatchJobsConfig) (*ListBa
 		fromConverter = listBatchJobsResponseFromMldev
 	}
 
-	body, err := toConverter(parameterMap, nil)
+	body, err := toConverter(parameterMap, nil, parameterMap)
 	if err != nil {
 		return nil, err
 	}
+
 	var path string
 	var urlParams map[string]any
 	if _, ok := body["_url"]; ok {
 		urlParams = body["_url"].(map[string]any)
 		delete(body, "_url")
 	}
-	if m.apiClient.clientConfig.Backend == BackendVertexAI {
-		path, err = formatMap("batchPredictionJobs", urlParams)
+	if m.apiClient.ClientConfig().Backend == BackendVertexAI {
+		path, err = InternalFormatMap("batchPredictionJobs", urlParams)
 	} else {
-		path, err = formatMap("batches", urlParams)
+		path, err = InternalFormatMap("batches", urlParams)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("invalid url params: %#v.\n%w", urlParams, err)
 	}
 	if _, ok := body["_query"]; ok {
-		query, err := createURLQuery(body["_query"].(map[string]any))
+		query, err := InternalCreateURLQuery(body["_query"].(map[string]any))
 		if err != nil {
 			return nil, err
 		}
@@ -1252,12 +1342,12 @@ func (m Batches) list(ctx context.Context, config *ListBatchJobsConfig) (*ListBa
 		return nil, err
 	}
 	if fromConverter != nil {
-		responseMap, err = fromConverter(responseMap, nil)
+		responseMap, err = fromConverter(responseMap, nil, parameterMap)
 	}
 	if err != nil {
 		return nil, err
 	}
-	err = mapToStruct(responseMap, response)
+	err = InternalMapToStruct(responseMap, response)
 	if err != nil {
 		return nil, err
 	}
@@ -1270,7 +1360,7 @@ func (m Batches) Delete(ctx context.Context, name string, config *DeleteBatchJob
 	parameterMap := make(map[string]any)
 
 	kwargs := map[string]any{"name": name, "config": config}
-	deepMarshal(kwargs, &parameterMap)
+	InternalDeepMarshal(kwargs, &parameterMap)
 
 	var httpOptions *HTTPOptions
 	if config == nil || config.HTTPOptions == nil {
@@ -1283,9 +1373,9 @@ func (m Batches) Delete(ctx context.Context, name string, config *DeleteBatchJob
 	}
 	var response = new(DeleteResourceJob)
 	var responseMap map[string]any
-	var fromConverter func(map[string]any, map[string]any) (map[string]any, error)
-	var toConverter func(*apiClient, map[string]any, map[string]any) (map[string]any, error)
-	if m.apiClient.clientConfig.Backend == BackendVertexAI {
+	var fromConverter func(map[string]any, map[string]any, map[string]any) (map[string]any, error)
+	var toConverter func(*InternalAPIClient, map[string]any, map[string]any, map[string]any) (map[string]any, error)
+	if m.apiClient.ClientConfig().Backend == BackendVertexAI {
 		toConverter = deleteBatchJobParametersToVertex
 		fromConverter = deleteResourceJobFromVertex
 	} else {
@@ -1293,26 +1383,27 @@ func (m Batches) Delete(ctx context.Context, name string, config *DeleteBatchJob
 		fromConverter = deleteResourceJobFromMldev
 	}
 
-	body, err := toConverter(m.apiClient, parameterMap, nil)
+	body, err := toConverter(m.apiClient, parameterMap, nil, parameterMap)
 	if err != nil {
 		return nil, err
 	}
+
 	var path string
 	var urlParams map[string]any
 	if _, ok := body["_url"]; ok {
 		urlParams = body["_url"].(map[string]any)
 		delete(body, "_url")
 	}
-	if m.apiClient.clientConfig.Backend == BackendVertexAI {
-		path, err = formatMap("batchPredictionJobs/{name}", urlParams)
+	if m.apiClient.ClientConfig().Backend == BackendVertexAI {
+		path, err = InternalFormatMap("batchPredictionJobs/{name}", urlParams)
 	} else {
-		path, err = formatMap("batches/{name}", urlParams)
+		path, err = InternalFormatMap("batches/{name}", urlParams)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("invalid url params: %#v.\n%w", urlParams, err)
 	}
 	if _, ok := body["_query"]; ok {
-		query, err := createURLQuery(body["_query"].(map[string]any))
+		query, err := InternalCreateURLQuery(body["_query"].(map[string]any))
 		if err != nil {
 			return nil, err
 		}
@@ -1324,12 +1415,12 @@ func (m Batches) Delete(ctx context.Context, name string, config *DeleteBatchJob
 		return nil, err
 	}
 	if fromConverter != nil {
-		responseMap, err = fromConverter(responseMap, nil)
+		responseMap, err = fromConverter(responseMap, nil, parameterMap)
 	}
 	if err != nil {
 		return nil, err
 	}
-	err = mapToStruct(responseMap, response)
+	err = InternalMapToStruct(responseMap, response)
 	if err != nil {
 		return nil, err
 	}
@@ -1341,7 +1432,7 @@ func (m Batches) Delete(ctx context.Context, name string, config *DeleteBatchJob
 func (m Batches) List(ctx context.Context, config *ListBatchJobsConfig) (Page[BatchJob], error) {
 	listFunc := func(ctx context.Context, config map[string]any) ([]*BatchJob, string, *HTTPResponse, error) {
 		var c ListBatchJobsConfig
-		if err := mapToStruct(config, &c); err != nil {
+		if err := InternalMapToStruct(config, &c); err != nil {
 			return nil, "", nil, err
 		}
 		resp, err := m.list(ctx, &c)
@@ -1351,7 +1442,7 @@ func (m Batches) List(ctx context.Context, config *ListBatchJobsConfig) (Page[Ba
 		return resp.BatchJobs, resp.NextPageToken, resp.SDKHTTPResponse, nil
 	}
 	c := make(map[string]any)
-	deepMarshal(config, &c)
+	InternalDeepMarshal(config, &c)
 	return newPage(ctx, "batchJobs", c, listFunc)
 }
 
@@ -1364,7 +1455,7 @@ func (m Batches) List(ctx context.Context, config *ListBatchJobsConfig) (Page[Ba
 func (m Batches) All(ctx context.Context) iter.Seq2[*BatchJob, error] {
 	listFunc := func(ctx context.Context, config map[string]any) ([]*BatchJob, string, *HTTPResponse, error) {
 		var c ListBatchJobsConfig
-		if err := mapToStruct(config, &c); err != nil {
+		if err := InternalMapToStruct(config, &c); err != nil {
 			return nil, "", nil, err
 		}
 		resp, err := m.list(ctx, &c)
@@ -1383,17 +1474,25 @@ func (m Batches) All(ctx context.Context) iter.Seq2[*BatchJob, error] {
 // Create a batch job.
 func (b Batches) Create(ctx context.Context, model string, src *BatchJobSource, config *CreateBatchJobConfig) (*BatchJob, error) {
 	if b.apiClient.clientConfig.Backend == BackendVertexAI {
+		mldevSources := 0
 		if len(src.InlinedRequests) > 0 {
-			return nil, fmt.Errorf("InlinedRequests is not supported for Vertex AI backend.")
+			mldevSources++
 		}
 		if src.FileName != "" {
-			return nil, fmt.Errorf("FileName is not supported for Vertex AI backend.")
+			mldevSources++
 		}
-		if len(src.GCSURI) != 0 && src.BigqueryURI != "" {
-			return nil, fmt.Errorf("Only one of GCSURI ([]string) and BigqueryURI (string) can be set.")
+		vertexSources := 0
+		if len(src.GCSURI) > 0 {
+			vertexSources++
 		}
-		if len(src.GCSURI) == 0 && src.BigqueryURI == "" {
-			return nil, fmt.Errorf("One of GCSURI ([]string) and BigqueryURI (string) must be set.")
+		if src.BigqueryURI != "" {
+			vertexSources++
+		}
+		if src.VertexDatasetName != "" {
+			vertexSources++
+		}
+		if mldevSources > 0 || vertexSources != 1 {
+			return nil, fmt.Errorf("Exactly one of `gcs_uri` or `bigquery_uri`, or `vertex_dataset_name` must be set, other sources are not supported in Gemini Enterprise Agent Platform.")
 		}
 	} else {
 		if src.FileName != "" && len(src.InlinedRequests) > 0 {
@@ -1414,7 +1513,7 @@ func (b Batches) CreateEmbeddings(ctx context.Context, model *string, src *Embed
 		log.Println("The SDK's CreateEmbeddings implementation is experimental, and may change in future versions.")
 	})
 	if b.apiClient.clientConfig.Backend == BackendVertexAI {
-		return nil, fmt.Errorf("Vertex AI does not support batches.createEmbeddings.")
+		return nil, fmt.Errorf("The batches.createEmbeddings function is only supported in Gemini Developer API mode, not in Gemini Enterprise Agent Platform mode.")
 	}
 	return b.createEmbeddings(ctx, model, src, config)
 }

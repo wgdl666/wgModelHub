@@ -1,0 +1,1271 @@
+// Copyright 2026 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package genai
+
+import (
+	"context"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"reflect"
+	"strings"
+	"testing"
+	"time"
+
+	gaos "google.golang.org/genai/interactions"
+	"google.golang.org/genai/interactions/models/agents"
+	"google.golang.org/genai/interactions/models/components"
+	"google.golang.org/genai/interactions/models/credentials"
+	"google.golang.org/genai/interactions/models/interactions"
+	"google.golang.org/genai/interactions/models/operations"
+	"google.golang.org/genai/interactions/models/webhooks"
+)
+
+func TestInteractionsWorkflow(t *testing.T) {
+	// Create a mock server
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.EscapedPath() != "/"+googleAIAPIDefaultVersion+"/interactions" {
+			t.Errorf("Path unexpected: %s", r.URL.EscapedPath())
+		}
+		if r.Method != "POST" {
+			t.Errorf("Method unexpected: %s", r.Method)
+		}
+		ua := r.Header.Get("User-Agent")
+		if !strings.HasPrefix(ua, "google-genai-sdk/") || !strings.Contains(ua, "gl-go/") {
+			t.Errorf("Unexpected User-Agent header: %q", ua)
+		}
+		apiClient := r.Header.Get("X-Goog-Api-Client")
+		if apiClient != ua {
+			t.Errorf("Expected X-Goog-Api-Client %q to match User-Agent %q", apiClient, ua)
+		}
+
+		// Return a mock response
+		resp := map[string]any{
+			"id":      "mock_interaction_id",
+			"created": "2026-03-30T22:20:00Z",
+			"updated": "2026-03-30T22:20:00Z",
+			"status":  "completed",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}))
+	defer ts.Close()
+
+	// Create client pointing to the mock server
+	client, err := NewClient(context.Background(), &ClientConfig{
+		Backend: BackendGeminiAPI,
+		HTTPOptions: HTTPOptions{
+			BaseURL: ts.URL,
+		},
+		APIKey: "dummy_key",
+	})
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	if client.Interactions == nil {
+		t.Fatalf("client.Interactions is nil")
+	}
+
+	// Call Create
+	modelInput := interactions.NewInteractionsInput([]interactions.Content{{
+		TextContent: &interactions.TextContent{
+			Text: "Hello",
+		},
+	}})
+	body := operations.NewCreateInteractionRequestBody(interactions.CreateModelInteraction{
+		Model: interactions.Model("gemini-2.5-flash"),
+		Input: &modelInput,
+	})
+	res, err := client.Interactions.Create(context.Background(), operations.CreateInteractionRequest{Body: body})
+	if err != nil {
+		t.Fatalf("Failed to call Create: %v", err)
+	}
+
+	if res.Interaction.ID == nil || *res.Interaction.ID != "mock_interaction_id" {
+		t.Errorf("Expected ID 'mock_interaction_id', got '%v'", res.Interaction.ID)
+	}
+}
+
+func TestInteractionsWorkflow_ExplicitAPIVersion(t *testing.T) {
+	var gotPath string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(map[string]any{
+			"id":      "mock_interaction_id",
+			"created": "2026-03-30T22:20:00Z",
+			"updated": "2026-03-30T22:20:00Z",
+			"status":  "completed",
+		}); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	}))
+	defer ts.Close()
+
+	client, err := NewClient(context.Background(), &ClientConfig{
+		Backend:     BackendGeminiAPI,
+		APIKey:      "dummy_key",
+		HTTPOptions: HTTPOptions{BaseURL: ts.URL, APIVersion: "v1alpha"},
+	})
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	modelInput := interactions.NewInteractionsInput([]interactions.Content{{
+		TextContent: &interactions.TextContent{Text: "Hello"},
+	}})
+	body := operations.NewCreateInteractionRequestBody(interactions.CreateModelInteraction{
+		Model: interactions.Model("gemini-2.5-flash"),
+		Input: &modelInput,
+	})
+	if _, err := client.Interactions.Create(context.Background(), operations.CreateInteractionRequest{Body: body}); err != nil {
+		t.Fatalf("Failed to call Create: %v", err)
+	}
+	if want := "/v1alpha/interactions"; gotPath != want {
+		t.Errorf("Path = %q, want %q", gotPath, want)
+	}
+}
+
+func TestInteractionsWorkflow_Vertex(t *testing.T) {
+	// Create a mock server
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		expectedPath := "/v1beta1/projects/my-project/locations/my-location/interactions"
+		if r.URL.EscapedPath() != expectedPath {
+			t.Errorf("Path unexpected: got %s, want %s", r.URL.EscapedPath(), expectedPath)
+		}
+		if r.Method != "POST" {
+			t.Errorf("Method unexpected: %s", r.Method)
+		}
+		ua := r.Header.Get("User-Agent")
+		if !strings.HasPrefix(ua, "google-genai-sdk/") || !strings.Contains(ua, "gl-go/") {
+			t.Errorf("Unexpected User-Agent header: %q", ua)
+		}
+		apiClient := r.Header.Get("X-Goog-Api-Client")
+		if apiClient != ua {
+			t.Errorf("Expected X-Goog-Api-Client %q to match User-Agent %q", apiClient, ua)
+		}
+
+		// Return a mock response
+		resp := map[string]any{
+			"id":      "mock_interaction_id",
+			"created": "2026-03-30T22:20:00Z",
+			"updated": "2026-03-30T22:20:00Z",
+			"status":  "completed",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}))
+	defer ts.Close()
+
+	// Create client pointing to the mock server
+	client, err := NewClient(context.Background(), &ClientConfig{
+		Backend:    BackendVertexAI,
+		Project:    "my-project",
+		Location:   "my-location",
+		HTTPClient: &http.Client{},
+		HTTPOptions: HTTPOptions{
+			BaseURL: ts.URL,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	if client.Interactions == nil {
+		t.Fatalf("client.Interactions is nil")
+	}
+
+	// Call Create
+	modelInput := interactions.NewInteractionsInput([]interactions.Content{{
+		TextContent: &interactions.TextContent{
+			Text: "Hello",
+		},
+	}})
+	body := operations.NewCreateInteractionRequestBody(interactions.CreateModelInteraction{
+		Model: interactions.Model("gemini-2.5-flash"),
+		Input: &modelInput,
+	})
+	res, err := client.Interactions.Create(context.Background(), operations.CreateInteractionRequest{Body: body})
+	if err != nil {
+		t.Fatalf("Failed to call Create: %v", err)
+	}
+
+	if res.Interaction.ID == nil || *res.Interaction.ID != "mock_interaction_id" {
+		t.Errorf("Expected ID 'mock_interaction_id', got '%v'", res.Interaction.ID)
+	}
+}
+
+// TestInteractionsWorkflow_VertexGetByID checks that routes with further path
+// parameters also send the Vertex resource prefix with literal slashes.
+func TestInteractionsWorkflow_VertexGetByID(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		want := "/v1beta1/projects/my-project/locations/my-location/interactions/mock_interaction_id"
+		if got := r.URL.EscapedPath(); got != want {
+			t.Errorf("EscapedPath() = %s, want %s", got, want)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(map[string]any{
+			"id":      "mock_interaction_id",
+			"created": "2026-03-30T22:20:00Z",
+			"updated": "2026-03-30T22:20:00Z",
+			"status":  "completed",
+		}); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	}))
+	defer ts.Close()
+
+	client, err := NewClient(context.Background(), &ClientConfig{
+		Backend:     BackendVertexAI,
+		Project:     "my-project",
+		Location:    "my-location",
+		HTTPClient:  &http.Client{},
+		HTTPOptions: HTTPOptions{BaseURL: ts.URL},
+	})
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	res, err := client.Interactions.Get(context.Background(), operations.GetInteractionByIDRequest{ID: "mock_interaction_id"})
+	if err != nil {
+		t.Fatalf("Failed to call Get: %v", err)
+	}
+	if res.Interaction == nil || res.Interaction.ID == nil || *res.Interaction.ID != "mock_interaction_id" {
+		t.Errorf("Interaction = %v, want ID mock_interaction_id", res.Interaction)
+	}
+}
+
+func TestInteractions_ClientOptions(t *testing.T) {
+	// Set up a mock server that sleeps
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Verify custom header
+		if got := r.Header.Get("X-Custom-Header"); got != "custom-value" {
+			t.Errorf("Header X-Custom-Header = %q, want %q", got, "custom-value")
+		}
+
+		// Sleep to trigger timeout
+		time.Sleep(50 * time.Millisecond)
+
+		resp := map[string]any{
+			"id":      "mock_interaction_id",
+			"created": "2026-03-30T22:20:00Z",
+			"updated": "2026-03-30T22:20:00Z",
+			"status":  "completed",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer ts.Close()
+
+	// Configure client with custom headers, short timeout, and mock server base URL
+	timeout := 10 * time.Millisecond
+	client, err := NewClient(context.Background(), &ClientConfig{
+		Backend: BackendGeminiAPI,
+		APIKey:  "dummy_key",
+		HTTPOptions: HTTPOptions{
+			BaseURL: ts.URL,
+			Headers: http.Header{
+				"X-Custom-Header": []string{"custom-value"},
+			},
+			Timeout: &timeout,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	modelInput := interactions.NewInteractionsInput([]interactions.Content{{
+		TextContent: &interactions.TextContent{
+			Text: "Hello",
+		},
+	}})
+	body := operations.NewCreateInteractionRequestBody(interactions.CreateModelInteraction{
+		Model: interactions.Model("gemini-2.5-flash"),
+		Input: &modelInput,
+	})
+
+	_, err = client.Interactions.Create(context.Background(), operations.CreateInteractionRequest{Body: body})
+	if err == nil {
+		t.Fatalf("Expected timeout error, but call succeeded")
+	}
+
+	// The error should be context.DeadlineExceeded or wrap it
+	if !strings.Contains(err.Error(), "context deadline exceeded") {
+		t.Errorf("Expected error to contain 'context deadline exceeded', got: %v", err)
+	}
+}
+
+func TestWebhooksWorkflow(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/webhooks") {
+			resp := map[string]any{
+				"id":   "webhook_123",
+				"uri":  "https://example.com/callback",
+				"name": "My Webhook",
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+		if r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/webhooks/webhook_123") {
+			resp := map[string]any{
+				"id":   "webhook_123",
+				"uri":  "https://example.com/callback",
+				"name": "My Webhook",
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+
+	client, err := NewClient(context.Background(), &ClientConfig{
+		Backend: BackendGeminiAPI,
+		APIKey:  "dummy_key",
+		HTTPOptions: HTTPOptions{
+			BaseURL: ts.URL,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	webhookInput := webhooks.WebhookInput{
+		URI: "https://example.com/callback",
+	}
+	createRes, err := client.Webhooks.Create(context.Background(), operations.CreateWebhookRequest{Body: webhookInput})
+	if err != nil {
+		t.Fatalf("Failed to create webhook: %v", err)
+	}
+
+	if createRes.Webhook == nil || *createRes.Webhook.ID != "webhook_123" {
+		t.Errorf("Expected webhook ID 'webhook_123', got %+v", createRes.Webhook)
+	}
+
+	getRes, err := client.Webhooks.Get(context.Background(), operations.GetWebhookRequest{ID: "webhook_123"})
+	if err != nil {
+		t.Fatalf("Failed to get webhook: %v", err)
+	}
+
+	if getRes.Webhook == nil || getRes.Webhook.URI != "https://example.com/callback" {
+		t.Errorf("Expected webhook URI 'https://example.com/callback', got %+v", getRes.Webhook)
+	}
+}
+
+func TestAgentsWorkflow(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/agents") {
+			resp := map[string]any{
+				"id":                 "agent_456",
+				"base_agent":         "gemini-2.5-flash",
+				"system_instruction": "You are a coding tutor.",
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+		if r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/agents/agent_456") {
+			resp := map[string]any{
+				"id":                 "agent_456",
+				"base_agent":         "gemini-2.5-flash",
+				"system_instruction": "You are a coding tutor.",
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+
+	client, err := NewClient(context.Background(), &ClientConfig{
+		Backend: BackendGeminiAPI,
+		APIKey:  "dummy_key",
+		HTTPOptions: HTTPOptions{
+			BaseURL: ts.URL,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	baseAgent := "gemini-2.5-flash"
+	systemInstruction := "You are a coding tutor."
+	agentInput := agents.Agent{
+		BaseAgent:         &baseAgent,
+		SystemInstruction: &systemInstruction,
+	}
+
+	createRes, err := client.Agents.Create(context.Background(), operations.CreateAgentRequest{Body: agentInput})
+	if err != nil {
+		t.Fatalf("Failed to create agent: %v", err)
+	}
+
+	if createRes.Agent == nil || *createRes.Agent.ID != "agent_456" {
+		t.Errorf("Expected agent ID 'agent_456', got %+v", createRes.Agent)
+	}
+
+	getRes, err := client.Agents.Get(context.Background(), operations.GetAgentRequest{ID: "agent_456"})
+	if err != nil {
+		t.Fatalf("Failed to get agent: %v", err)
+	}
+
+	if getRes.Agent == nil || *getRes.Agent.SystemInstruction != "You are a coding tutor." {
+		t.Errorf("Expected system instruction 'You are a coding tutor.', got %+v", getRes.Agent)
+	}
+}
+
+func TestCredentialsLifecycle(t *testing.T) {
+	var captured []string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		captured = append(captured, r.Method+" "+r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+
+		if r.Method == "GET" && r.URL.Path == "/"+googleAIAPIDefaultVersion+"/credentials" {
+			resp := map[string]any{
+				"credentials": []map[string]any{
+					{
+						"id":          "cred_bearer_123",
+						"type":        "bearer_token",
+						"status":      "active",
+						"create_time": "2026-07-22T15:18:38Z",
+						"update_time": "2026-07-22T15:18:38Z",
+					},
+					{
+						"id":          "cred_env_123",
+						"type":        "environment_variable",
+						"status":      "active",
+						"create_time": "2026-07-22T15:18:38Z",
+						"update_time": "2026-07-22T15:18:38Z",
+					},
+					{
+						"id":          "cred_oauth_123",
+						"type":        "oauth2",
+						"status":      "active",
+						"create_time": "2026-07-22T15:18:38Z",
+						"update_time": "2026-07-22T15:18:38Z",
+					},
+				},
+				"next_page_token": "token_next_123",
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+
+		if r.Method == "DELETE" {
+			_ = json.NewEncoder(w).Encode(map[string]any{})
+			return
+		}
+
+		resp := map[string]any{
+			"id":          "cred_bearer_123",
+			"type":        "bearer_token",
+			"status":      "active",
+			"create_time": "2026-07-22T15:18:38Z",
+			"update_time": "2026-07-22T15:18:38Z",
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer ts.Close()
+
+	client, err := NewClient(context.Background(), &ClientConfig{
+		Backend: BackendGeminiAPI,
+		APIKey:  "dummy_key",
+		HTTPOptions: HTTPOptions{
+			BaseURL: ts.URL,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	if client.Credentials == nil {
+		t.Fatalf("client.Credentials is nil")
+	}
+
+	// 1. Bearer token credential creation with custom header and prefix
+	headerName := "X-Custom-Auth"
+	prefix := "Token"
+	bearerCred, err := client.Credentials.Create(context.Background(), operations.CreateCredentialRequest{
+		Body: credentials.NewCredentialCreateParams(credentials.HTTPBearerConfig{
+			ID:         "cred_bearer_123",
+			Token:      "test-bearer-token",
+			HeaderName: &headerName,
+			Prefix:     &prefix,
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Failed to create bearer credential: %v", err)
+	}
+	if bearerCred.Credential == nil || bearerCred.Credential.ID != "cred_bearer_123" {
+		t.Errorf("Expected credential ID 'cred_bearer_123', got %+v", bearerCred.Credential)
+	}
+
+	// 2. Environment variable credential creation with injection_location and trusted_domains
+	envLocations := []credentials.InjectionLocationEnum{
+		credentials.InjectionLocationEnumHeader,
+		credentials.InjectionLocationEnumQuery,
+	}
+	_, err = client.Credentials.Create(context.Background(), operations.CreateCredentialRequest{
+		Body: credentials.NewCredentialCreateParams(credentials.EnvironmentVariableConfig{
+			ID:                "cred_env_123",
+			Value:             "super-secret-key",
+			InjectionLocation: credentials.NewEnvironmentVariableConfigInjectionLocation(envLocations),
+			TrustedDomains:    []string{"api.example.com", "service.example.org"},
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Failed to create env var credential: %v", err)
+	}
+
+	// 3. OAuth2 credential creation with scopes
+	_, err = client.Credentials.Create(context.Background(), operations.CreateCredentialRequest{
+		Body: credentials.NewCredentialCreateParams(credentials.OAuth2Config{
+			ID:           "cred_oauth_123",
+			ClientID:     "test-client-id",
+			ClientSecret: "test-client-secret",
+			RefreshToken: "test-refresh-token",
+			TokenURL:     "https://oauth2.googleapis.com/token",
+			Scopes:       []string{"https://www.googleapis.com/auth/cloud-platform"},
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Failed to create oauth2 credential: %v", err)
+	}
+
+	// 4. List credentials
+	listRes, err := client.Credentials.List(context.Background(), operations.ListCredentialsRequest{})
+	if err != nil {
+		t.Fatalf("Failed to list credentials: %v", err)
+	}
+	if listRes.CredentialListResponse == nil || len(listRes.CredentialListResponse.Credentials) != 3 {
+		t.Errorf("Expected 3 credentials, got %+v", listRes.CredentialListResponse)
+	}
+
+	// 5. Get credential
+	getRes, err := client.Credentials.Get(context.Background(), operations.GetCredentialRequest{ID: "cred_bearer_123"})
+	if err != nil {
+		t.Fatalf("Failed to get credential: %v", err)
+	}
+	if getRes.Credential == nil || getRes.Credential.ID != "cred_bearer_123" {
+		t.Errorf("Expected fetched credential ID 'cred_bearer_123', got %+v", getRes.Credential)
+	}
+
+	// 6. Update bearer token credential
+	updatedToken := "updated-token"
+	authHeader := "Authorization"
+	bearerPrefix := "Bearer"
+	_, err = client.Credentials.Update(context.Background(), operations.UpdateCredentialRequest{
+		ID: "cred_bearer_123",
+		Body: credentials.NewCredentialUpdate(credentials.HTTPBearerUpdateConfig{
+			Token:      &updatedToken,
+			HeaderName: &authHeader,
+			Prefix:     &bearerPrefix,
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Failed to update bearer credential: %v", err)
+	}
+
+	// 7. Update environment variable credential
+	updatedValue := "updated-secret-key"
+	singleLoc := credentials.InjectionLocationEnumHeader
+	locUpdate := credentials.NewEnvironmentVariableUpdateConfigInjectionLocation(singleLoc)
+	_, err = client.Credentials.Update(context.Background(), operations.UpdateCredentialRequest{
+		ID: "cred_env_123",
+		Body: credentials.NewCredentialUpdate(credentials.EnvironmentVariableUpdateConfig{
+			Value:             &updatedValue,
+			InjectionLocation: &locUpdate,
+			TrustedDomains:    []string{"api.example.com"},
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Failed to update env var credential: %v", err)
+	}
+
+	// 8. Update OAuth2 credential
+	updatedSecret := "updated-secret"
+	_, err = client.Credentials.Update(context.Background(), operations.UpdateCredentialRequest{
+		ID: "cred_oauth_123",
+		Body: credentials.NewCredentialUpdate(credentials.OAuth2UpdateConfig{
+			ClientSecret: &updatedSecret,
+			Scopes:       []string{"scope1", "scope2"},
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Failed to update oauth2 credential: %v", err)
+	}
+
+	// 9. Delete credential
+	_, err = client.Credentials.Delete(context.Background(), operations.DeleteCredentialRequest{ID: "cred_bearer_123"})
+	if err != nil {
+		t.Fatalf("Failed to delete credential: %v", err)
+	}
+
+	// Verify captured endpoints
+	expectedCaptured := []string{
+		"POST /" + googleAIAPIDefaultVersion + "/credentials",
+		"POST /" + googleAIAPIDefaultVersion + "/credentials",
+		"POST /" + googleAIAPIDefaultVersion + "/credentials",
+		"GET /" + googleAIAPIDefaultVersion + "/credentials",
+		"GET /" + googleAIAPIDefaultVersion + "/credentials/cred_bearer_123",
+		"PATCH /" + googleAIAPIDefaultVersion + "/credentials/cred_bearer_123",
+		"PATCH /" + googleAIAPIDefaultVersion + "/credentials/cred_env_123",
+		"PATCH /" + googleAIAPIDefaultVersion + "/credentials/cred_oauth_123",
+		"DELETE /" + googleAIAPIDefaultVersion + "/credentials/cred_bearer_123",
+	}
+	if len(captured) != len(expectedCaptured) {
+		t.Fatalf("Expected %d requests, got %d: %v", len(expectedCaptured), len(captured), captured)
+	}
+	for i, exp := range expectedCaptured {
+		if captured[i] != exp {
+			t.Errorf("Captured request [%d]: got %q, want %q", i, captured[i], exp)
+		}
+	}
+}
+
+func TestEnvironmentsFilesWorkflow(t *testing.T) {
+	var uploadURL string
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut {
+			if !strings.HasPrefix(r.URL.Path, "/upload/") {
+				t.Errorf("Expected PUT path to start with /upload/, got %s", r.URL.Path)
+			}
+			w.Header().Set("X-Goog-Upload-URL", uploadURL)
+			w.Header().Set("X-Goog-Upload-Status", "active")
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if r.Method == http.MethodPost {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"name": "environments/env-1/files/test.txt", "path": "test.txt", "size_bytes": "12"}`))
+			return
+		}
+		if r.Method == http.MethodGet {
+			if r.URL.Query().Get("alt") != "media" {
+				t.Errorf("Query alt = %s; want media", r.URL.Query().Get("alt"))
+			}
+			w.Header().Set("Content-Type", "application/octet-stream")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("hello download"))
+			return
+		}
+		http.Error(w, "unexpected", http.StatusBadRequest)
+	}))
+	defer ts.Close()
+
+	uploadURL = ts.URL + "/upload/session"
+
+	client, err := NewClient(context.Background(), &ClientConfig{
+		Backend: BackendGeminiAPI,
+		HTTPOptions: HTTPOptions{
+			BaseURL: ts.URL,
+		},
+		APIKey: "dummy_key",
+	})
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	if client.Environments == nil {
+		t.Fatalf("client.Environments is nil")
+	}
+	if client.Environments.Files == nil {
+		t.Fatalf("client.Environments.Files is nil")
+	}
+
+	// Test Upload
+	uploadResp, err := client.Environments.Files.UploadBytes(context.Background(), "env-1", "test.txt", []byte("hello world!"))
+	if err != nil {
+		t.Fatalf("UploadBytes failed: %v", err)
+	}
+	if uploadResp.Files == nil || len(uploadResp.Files.Files) == 0 || uploadResp.Files.Files[0].GetName() == nil || *uploadResp.Files.Files[0].GetName() != "environments/env-1/files/test.txt" {
+		t.Errorf("Unexpected upload response: %+v", uploadResp.Files)
+	}
+
+	// Test Download
+	data, err := client.Environments.Files.Download(context.Background(), "env-1", "test.txt")
+	if err != nil {
+		t.Fatalf("Download failed: %v", err)
+	}
+	if string(data) != "hello download" {
+		t.Errorf("Download data = %s; want 'hello download'", string(data))
+	}
+}
+
+func TestEnvironmentsLifecycle(t *testing.T) {
+	var captured []string
+	var uploadURL string
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		captured = append(captured, r.Method+" "+r.URL.String())
+
+		// Handle file upload handshake and upload
+		if r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/files/") {
+			if !strings.HasPrefix(r.URL.Path, "/upload/") {
+				t.Errorf("Expected PUT path to start with /upload/, got %s", r.URL.Path)
+			}
+			w.Header().Set("X-Goog-Upload-URL", uploadURL)
+			w.Header().Set("X-Goog-Upload-Status", "active")
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if r.Method == http.MethodPost && r.URL.Path == "/scotty/upload/resumable" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"file": {"name": "environments/env-123/files/main.py", "path": "main.py", "size_bytes": "20"}}`))
+			return
+		}
+
+		// Handle file download
+		if r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/files/main.py") && r.URL.Query().Get("alt") == "media" {
+			w.Header().Set("Content-Type", "application/octet-stream")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("print('hello world')"))
+			return
+		}
+
+		// Handle file list
+		if r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/files") {
+			resp := map[string]any{
+				"files": []map[string]any{
+					{
+						"name":       "main.py",
+						"path":       "workspace/main.py",
+						"type":       "file",
+						"size_bytes": "20",
+					},
+				},
+				"next_page_token": "token_next",
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+
+		// Handle Environment CRUD
+		switch r.Method {
+		case http.MethodPost:
+			// CreateEnvironment
+			resp := map[string]any{
+				"id":      "env-123",
+				"status":  "active",
+				"created": "2026-07-22T15:18:38Z",
+				"updated": "2026-07-22T15:18:38Z",
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+		case http.MethodGet:
+			if strings.HasSuffix(r.URL.Path, "/environments/env-123") {
+				// GetEnvironment
+				resp := map[string]any{
+					"id":      "env-123",
+					"status":  "active",
+					"created": "2026-07-22T15:18:38Z",
+					"updated": "2026-07-22T15:18:38Z",
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(resp)
+			} else {
+				// ListEnvironments
+				resp := map[string]any{
+					"environments": []map[string]any{
+						{
+							"id":      "env-123",
+							"status":  "active",
+							"created": "2026-07-22T15:18:38Z",
+							"updated": "2026-07-22T15:18:38Z",
+						},
+					},
+					"next_page_token": "",
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(resp)
+			}
+		case http.MethodDelete:
+			// DeleteEnvironment
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{}`))
+		default:
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+
+	uploadURL = ts.URL + "/scotty/upload/resumable"
+
+	client, err := NewClient(context.Background(), &ClientConfig{
+		Backend: BackendGeminiAPI,
+		HTTPOptions: HTTPOptions{
+			BaseURL: ts.URL,
+		},
+		APIKey: "dummy_key",
+	})
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	if client.Environments == nil {
+		t.Fatalf("client.Environments is nil")
+	}
+	if client.Environments.Files == nil {
+		t.Fatalf("client.Environments.Files is nil")
+	}
+
+	ctx := context.Background()
+
+	// 1. CreateEnvironment
+	createResp, err := client.Environments.CreateEnvironment(ctx, operations.CreateEnvironmentRequest{})
+	if err != nil {
+		t.Fatalf("CreateEnvironment failed: %v", err)
+	}
+	if createResp.Environment == nil || createResp.Environment.ID != "env-123" {
+		t.Errorf("Unexpected CreateEnvironment response: %+v", createResp.Environment)
+	}
+
+	// 2. ListEnvironments
+	listResp, err := client.Environments.ListEnvironments(ctx, operations.ListEnvironmentsRequest{})
+	if err != nil {
+		t.Fatalf("ListEnvironments failed: %v", err)
+	}
+	if len(listResp.ListEnvironmentsResponse.Environments) == 0 {
+		t.Errorf("Expected at least 1 environment in list, got 0")
+	}
+
+	// 3. GetEnvironment
+	getResp, err := client.Environments.GetEnvironment(ctx, operations.GetEnvironmentRequest{
+		ID: "env-123",
+	})
+	if err != nil {
+		t.Fatalf("GetEnvironment failed: %v", err)
+	}
+	if getResp.Environment == nil || getResp.Environment.ID != "env-123" {
+		t.Errorf("Unexpected GetEnvironment response: %+v", getResp.Environment)
+	}
+
+	// 4. Files Upload
+	uploadResp, err := client.Environments.Files.UploadBytes(ctx, "env-123", "main.py", []byte("print('hello world')"))
+	if err != nil {
+		t.Fatalf("UploadBytes failed: %v", err)
+	}
+	if uploadResp.Files == nil || len(uploadResp.Files.Files) == 0 || uploadResp.Files.Files[0].GetName() == nil || *uploadResp.Files.Files[0].GetName() != "environments/env-123/files/main.py" {
+		t.Errorf("Unexpected upload response: %+v", uploadResp.Files)
+	}
+
+	// 5. Files List
+	filesListResp, err := client.Environments.Files.List(ctx, operations.GetEnvironmentFilesRequest{
+		Environment: "env-123",
+		Path:        "",
+	})
+	if err != nil {
+		t.Fatalf("Files.List failed: %v", err)
+	}
+	if len(filesListResp.GetEnvironmentFilesResponse.Files) == 0 {
+		t.Errorf("Expected at least 1 file in list, got 0")
+	}
+
+	// 6. Files Download
+	downloaded, err := client.Environments.Files.Download(ctx, "env-123", "main.py")
+	if err != nil {
+		t.Fatalf("Download failed: %v", err)
+	}
+	if string(downloaded) != "print('hello world')" {
+		t.Errorf("Download returned %s; want 'print(\\'hello world\\')'", string(downloaded))
+	}
+
+	// 7. DeleteEnvironment
+	_, err = client.Environments.DeleteEnvironment(ctx, operations.DeleteEnvironmentRequest{
+		ID: "env-123",
+	})
+	if err != nil {
+		t.Fatalf("DeleteEnvironment failed: %v", err)
+	}
+}
+
+func TestEnvironmentsFilesUploadAndDownload(t *testing.T) {
+	var uploadURL string
+	// This test constructs the interactions client directly (not via NewClient),
+	// so it uses the interactions package's own default API version rather than
+	// googleAIAPIDefaultVersion.
+	const apiVersion = "v1beta"
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/files/") {
+			if !strings.HasPrefix(r.URL.Path, "/upload/"+apiVersion+"/") {
+				t.Errorf("Expected PUT path to start with /upload/%s/, got %s", apiVersion, r.URL.Path)
+			}
+			w.Header().Set("X-Goog-Upload-URL", uploadURL)
+			w.Header().Set("X-Goog-Upload-Status", "active")
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if r.Method == http.MethodPost && r.URL.Path == "/scotty/upload/session" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"files": [{"name": "environments/env-1/files/test.txt", "path": "test.txt", "size_bytes": "12"}]}`))
+			return
+		}
+		if r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/files/test.txt") {
+			if !strings.HasPrefix(r.URL.Path, "/"+apiVersion+"/") {
+				t.Errorf("Expected GET path to start with /%s/, got %s", apiVersion, r.URL.Path)
+			}
+			if r.URL.Query().Get("alt") != "media" {
+				t.Errorf("Query alt = %s; want media", r.URL.Query().Get("alt"))
+			}
+			w.Header().Set("Content-Type", "application/octet-stream")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("downloaded content"))
+			return
+		}
+		if r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/files") {
+			resp := map[string]any{
+				"files": []map[string]any{
+					{
+						"name":       "environments/env-1/files/test.txt",
+						"path":       "test.txt",
+						"type":       "file",
+						"size_bytes": "12",
+					},
+				},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+		http.Error(w, "unexpected request: "+r.Method+" "+r.URL.String(), http.StatusBadRequest)
+	}))
+	defer ts.Close()
+
+	uploadURL = ts.URL + "/scotty/upload/session"
+
+	client := gaos.New(
+		gaos.WithServerURL(ts.URL),
+		gaos.WithSecurity(components.Security{
+			APIKey: gaos.String("dummy_key"),
+		}),
+	)
+
+	ctx := context.Background()
+
+	// Test Upload
+	uploadResp, err := client.Environments.Files.Upload(ctx, operations.UploadEnvironmentFileRequest{
+		Environment: "env-1",
+		Path:        "test.txt",
+		Content:     []byte("hello world!"),
+	})
+	if err != nil {
+		t.Fatalf("Upload failed: %v", err)
+	}
+	if uploadResp.Files == nil || len(uploadResp.Files.Files) == 0 {
+		t.Fatalf("Expected files in upload response, got none")
+	}
+
+	// Test Download bytes
+	data, err := client.Environments.Files.Download(ctx, "env-1", "test.txt")
+	if err != nil {
+		t.Fatalf("Download failed: %v", err)
+	}
+	if string(data) != "downloaded content" {
+		t.Errorf("Download content = %s; want 'downloaded content'", string(data))
+	}
+
+	// Test Download stream
+	rc, err := client.Environments.Files.DownloadStream(ctx, "env-1", "test.txt")
+	if err != nil {
+		t.Fatalf("DownloadStream failed: %v", err)
+	}
+	defer rc.Close()
+	streamData, err := io.ReadAll(rc)
+	if err != nil {
+		t.Fatalf("ReadAll failed: %v", err)
+	}
+	if string(streamData) != "downloaded content" {
+		t.Errorf("DownloadStream content = %s; want 'downloaded content'", string(streamData))
+	}
+
+	// Test List
+	listResp, err := client.Environments.Files.List(ctx, operations.GetEnvironmentFilesRequest{
+		Environment: "env-1",
+		Path:        "",
+	})
+	if err != nil {
+		t.Fatalf("List failed: %v", err)
+	}
+	if listResp.GetEnvironmentFilesResponse == nil || len(listResp.GetEnvironmentFilesResponse.Files) == 0 {
+		t.Fatalf("Expected files in list response, got none")
+	}
+}
+
+func TestEnvironmentsFilesUploadDifferentInputs(t *testing.T) {
+	type capturedReq struct {
+		method  string
+		path    string
+		headers http.Header
+		body    []byte
+	}
+	var captured []capturedReq
+	var uploadURL string
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		captured = append(captured, capturedReq{
+			method:  r.Method,
+			path:    r.URL.RequestURI(),
+			headers: r.Header.Clone(),
+			body:    body,
+		})
+
+		if r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/files/") {
+			w.Header().Set("X-Goog-Upload-URL", uploadURL)
+			w.Header().Set("X-Goog-Upload-Status", "active")
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if r.Method == http.MethodPost && r.URL.Path == "/scotty/upload/session" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"files": [{"name": "environments/env-1/files/output.txt", "path": "output.txt", "size_bytes": "20"}]}`))
+			return
+		}
+		if r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/files/download.txt") {
+			w.Header().Set("Content-Type", "application/octet-stream")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("saved file content"))
+			return
+		}
+		http.Error(w, "unexpected", http.StatusBadRequest)
+	}))
+	defer ts.Close()
+
+	uploadURL = ts.URL + "/scotty/upload/session"
+	client := gaos.New(
+		gaos.WithServerURL(ts.URL),
+		gaos.WithSecurity(components.Security{
+			APIKey: gaos.String("dummy_key"),
+		}),
+	)
+	ctx := context.Background()
+
+	// 1. Test UploadFile from temp file path
+	tmpDir := t.TempDir()
+	filePath := tmpDir + "/test_upload.py"
+	if err := os.WriteFile(filePath, []byte("print('from file')"), 0644); err != nil {
+		t.Fatalf("Failed to write temp file: %v", err)
+	}
+
+	captured = nil
+	fileResp, err := client.Environments.Files.UploadFile(ctx, "env-1", "test_upload.py", filePath)
+	if err != nil {
+		t.Fatalf("UploadFile failed: %v", err)
+	}
+	if fileResp.Files == nil || len(fileResp.Files.Files) == 0 {
+		t.Fatalf("Expected file in UploadFile response")
+	}
+	if len(captured) < 2 {
+		t.Fatalf("Expected at least 2 requests (init + upload), got %d", len(captured))
+	}
+
+	// 2. Test UploadStream
+	captured = nil
+	stream := strings.NewReader("stream content here")
+	streamResp, err := client.Environments.Files.UploadStream(ctx, "env-1", "test_stream.txt", stream, int64(stream.Len()))
+	if err != nil {
+		t.Fatalf("UploadStream failed: %v", err)
+	}
+	if streamResp.Files == nil || len(streamResp.Files.Files) == 0 {
+		t.Fatalf("Expected file in UploadStream response")
+	}
+
+	// 3. Test DownloadToFile
+	downloadDest := tmpDir + "/downloaded.txt"
+	if err := client.Environments.Files.DownloadToFile(ctx, "env-1", "download.txt", downloadDest); err != nil {
+		t.Fatalf("DownloadToFile failed: %v", err)
+	}
+	savedContent, err := os.ReadFile(downloadDest)
+	if err != nil {
+		t.Fatalf("Failed to read downloaded file: %v", err)
+	}
+	if string(savedContent) != "saved file content" {
+		t.Errorf("Saved content = %s; want 'saved file content'", string(savedContent))
+	}
+}
+
+func TestEnvironmentsFilesUploadMultiChunk(t *testing.T) {
+	const chunkSize = 8 * 1024 * 1024         // 8MB
+	totalSize := int64(chunkSize + 1024*1024) // 9MB total (2 chunks)
+	payload := make([]byte, totalSize)
+	for i := range payload {
+		payload[i] = byte(i % 256)
+	}
+
+	var uploadURL string
+	var chunkCommands []string
+	var chunkOffsets []string
+	var chunkLengths []int
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/files/large.bin") {
+			w.Header().Set("X-Goog-Upload-URL", uploadURL)
+			w.Header().Set("X-Goog-Upload-Status", "active")
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if r.Method == http.MethodPost && r.URL.Path == "/scotty/upload/multichunk" {
+			cmd := r.Header.Get("X-Goog-Upload-Command")
+			offset := r.Header.Get("X-Goog-Upload-Offset")
+			body, _ := io.ReadAll(r.Body)
+
+			chunkCommands = append(chunkCommands, cmd)
+			chunkOffsets = append(chunkOffsets, offset)
+			chunkLengths = append(chunkLengths, len(body))
+
+			if cmd == "upload, finalize" {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"files": [{"name": "environments/env-1/files/large.bin", "path": "large.bin", "size_bytes": "9437184"}]}`))
+				return
+			}
+			w.Header().Set("X-Goog-Upload-Status", "active")
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		http.Error(w, "unexpected request: "+r.Method+" "+r.URL.String(), http.StatusBadRequest)
+	}))
+	defer ts.Close()
+
+	uploadURL = ts.URL + "/scotty/upload/multichunk"
+	client := gaos.New(
+		gaos.WithServerURL(ts.URL),
+		gaos.WithSecurity(components.Security{
+			APIKey: gaos.String("dummy_key"),
+		}),
+	)
+
+	resp, err := client.Environments.Files.UploadBytes(context.Background(), "env-1", "large.bin", payload)
+	if err != nil {
+		t.Fatalf("UploadBytes multi-chunk failed: %v", err)
+	}
+	if resp.Files == nil || len(resp.Files.Files) == 0 {
+		t.Fatalf("Expected file in multi-chunk response, got none")
+	}
+
+	if len(chunkCommands) != 2 {
+		t.Fatalf("Expected 2 chunks, got %d", len(chunkCommands))
+	}
+	// Chunk 1
+	if chunkCommands[0] != "upload" {
+		t.Errorf("Chunk 1 command = %s; want 'upload'", chunkCommands[0])
+	}
+	if chunkOffsets[0] != "0" {
+		t.Errorf("Chunk 1 offset = %s; want '0'", chunkOffsets[0])
+	}
+	if chunkLengths[0] != chunkSize {
+		t.Errorf("Chunk 1 length = %d; want %d", chunkLengths[0], chunkSize)
+	}
+	// Chunk 2 (Final)
+	if chunkCommands[1] != "upload, finalize" {
+		t.Errorf("Chunk 2 command = %s; want 'upload, finalize'", chunkCommands[1])
+	}
+	if chunkOffsets[1] != "8388608" {
+		t.Errorf("Chunk 2 offset = %s; want '8388608'", chunkOffsets[1])
+	}
+	if chunkLengths[1] != 1024*1024 {
+		t.Errorf("Chunk 2 length = %d; want %d", chunkLengths[1], 1024*1024)
+	}
+}
+
+func TestVoicesWorkflow(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/voices") {
+			resp := map[string]any{
+				"voices": []map[string]any{
+					{
+						"id":           "Puck",
+						"display_name": "Puck",
+						"type":         "prebuilt",
+					},
+				},
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+		if r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/voices/Puck") {
+			resp := map[string]any{
+				"id":           "Puck",
+				"display_name": "Puck",
+				"type":         "prebuilt",
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+
+	client, err := NewClient(context.Background(), &ClientConfig{
+		Backend: BackendGeminiAPI,
+		APIKey:  "dummy_key",
+		HTTPOptions: HTTPOptions{
+			BaseURL: ts.URL,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	if client.Voices == nil {
+		t.Fatalf("client.Voices is nil")
+	}
+
+	listRes, err := client.Voices.List(context.Background(), operations.ListVoicesRequest{})
+	if err != nil {
+		t.Fatalf("Failed to call Voices.List: %v", err)
+	}
+	if listRes.ListVoicesResponse == nil || len(listRes.ListVoicesResponse.Voices) != 1 {
+		t.Fatalf("Expected 1 voice in ListVoicesResponse, got: %+v", listRes.ListVoicesResponse)
+	}
+
+	getRes, err := client.Voices.Get(context.Background(), operations.GetVoiceRequest{ID: "Puck"})
+	if err != nil {
+		t.Fatalf("Failed to call Voices.Get: %v", err)
+	}
+	if getRes.Voice == nil || getRes.Voice.ID == nil || *getRes.Voice.ID != "Puck" {
+		t.Errorf("Expected Voice.ID 'Puck', got '%v'", getRes.Voice)
+	}
+}
+
+func TestInteractionsDefaultClientTimeout(t *testing.T) {
+	sdk := gaos.New()
+	clientVal := reflect.ValueOf(sdk).Elem().FieldByName("sdkConfiguration").FieldByName("Client")
+	if !clientVal.IsValid() || clientVal.IsNil() {
+		t.Fatal("expected non-nil default Client in interactions.GenAI")
+	}
+	timeoutVal := clientVal.Elem().Elem().FieldByName("Timeout")
+	if got := time.Duration(timeoutVal.Int()); got != 0 {
+		t.Errorf("interactions.New() default client Timeout = %v, want 0 (no timeout)", got)
+	}
+}
