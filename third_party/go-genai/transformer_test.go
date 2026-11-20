@@ -64,6 +64,20 @@ func TestModelTransformer(t *testing.T) {
 			want:         "projects/test-project/locations/test-location/publishers/google/models/gemini-2.5-flash",
 			wantFullName: "projects/test-project/locations/test-location/publishers/google/models/gemini-2.5-flash",
 		},
+		{
+			name:         "VertexAI_Model_No_Project",
+			backend:      BackendVertexAI,
+			input:        "gemini-2.5-flash",
+			want:         "publishers/google/models/gemini-2.5-flash",
+			wantFullName: "publishers/google/models/gemini-2.5-flash", // Should not be prefixed with projects/ locations/ if project is empty
+		},
+		{
+			name:         "VertexAI_Model_No_Location",
+			backend:      BackendVertexAI,
+			input:        "publishers/google/models/gemini-2.5-flash",
+			want:         "publishers/google/models/gemini-2.5-flash",
+			wantFullName: "publishers/google/models/gemini-2.5-flash", // Should not be prefixed if either is empty
+		},
 
 		{
 			name:         "GoogleAI_Model_Short",
@@ -96,10 +110,19 @@ func TestModelTransformer(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			project := "test-project"
+			location := "test-location"
+			if tt.name == "VertexAI_Model_No_Project" {
+				project = ""
+			}
+			if tt.name == "VertexAI_Model_No_Location" {
+				location = ""
+			}
+
 			ac := &apiClient{clientConfig: &ClientConfig{
 				Backend:  tt.backend,
-				Project:  "test-project",
-				Location: "test-location",
+				Project:  project,
+				Location: location,
 			}}
 			got, err := tModel(ac, tt.input)
 			if (err != nil) != tt.wantErr {
@@ -255,5 +278,37 @@ func TestSchemaTransformer(t *testing.T) {
 				t.Errorf("tSchema() got = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestTIsVertexEmbedContentModel(t *testing.T) {
+	tests := []struct {
+		model string
+		want  bool
+	}{
+		{"gemini-embedding-001", true},
+		{"gemini-embedding-2", true},
+		{"publishers/google/models/gemini-embedding-001", true},
+		{"publishers/intfloat/models/multilingual-e5-large-instruct-maas", true},
+		{"text-embedding-005", false},
+		{"text-embedding-004", false},
+		{"text-multilingual-embedding-002", false},
+		{"textembedding-gecko@003", false},
+		{"projects/my-gemini-app/locations/us-central1/publishers/google/models/text-embedding-005", false},
+		{"projects/my-gemini-app/locations/us-central1/endpoints/12345", false},
+	}
+	for _, tt := range tests {
+		if got := tIsVertexEmbedContentModel(tt.model); got != tt.want {
+			t.Errorf("tIsVertexEmbedContentModel(%q) = %v, want %v", tt.model, got, tt.want)
+		}
+	}
+	if !tIsVertexMaasModel("publishers/intfloat/models/multilingual-e5-large-instruct-maas") {
+		t.Errorf("tIsVertexMaasModel(maas) = false, want true")
+	}
+	if tIsVertexMaasModel("gemini-embedding-001") {
+		t.Errorf("tIsVertexMaasModel(gemini-embedding-001) = true, want false")
+	}
+	if tIsVertexMaasModel("projects/my-maas-app/locations/us-central1/publishers/google/models/gemini-embedding-001") {
+		t.Errorf("tIsVertexMaasModel(project with maas) = true, want false")
 	}
 }

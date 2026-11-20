@@ -158,8 +158,8 @@ func TestFilesDownload(t *testing.T) {
 		if err == nil {
 			t.Errorf("Files.Download() succeeded, want error")
 		}
-		if !strings.Contains(err.Error(), "method Download is only supported in the Gemini Developer client") {
-			t.Errorf("Files.Download() error = %v, want error containing 'method Upload is only supported in the Gemini Developer client'", err)
+		if !strings.Contains(err.Error(), "method Download is only supported in Gemini Developer API mode") {
+			t.Errorf("Files.Download() error = %v, want error containing 'method Download is only supported in Gemini Developer API mode'", err)
 		}
 	})
 }
@@ -302,7 +302,7 @@ func NewMockUploadServer(t *testing.T) *MockUploadServer {
 
 func (s *MockUploadServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.t.Logf("Mock server received request: %s %s Headers: %v", r.Method, r.URL.Path, r.Header)
-	if strings.HasPrefix(r.URL.Path, "/upload/v1beta/files") && r.Header.Get("X-Goog-Upload-Protocol") == "resumable" && r.Header.Get("X-Goog-Upload-Command") == "start" {
+	if strings.HasPrefix(r.URL.Path, "/upload/"+googleAIAPIDefaultVersion+"/files") && r.Header.Get("X-Goog-Upload-Protocol") == "resumable" && r.Header.Get("X-Goog-Upload-Command") == "start" {
 		s.createHandler(w, r)
 	} else if strings.HasPrefix(r.URL.Path, "/upload-session/") {
 		s.uploadHandler(w, r)
@@ -830,4 +830,181 @@ type errorReader struct{}
 
 func (r *errorReader) Read(p []byte) (n int, err error) {
 	return 0, fmt.Errorf("intentional read error")
+}
+
+func TestFilesRegisterFiles(t *testing.T) {
+	ctx := context.Background()
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("Expected POST request, got %s", r.Method)
+		}
+		if r.URL.Path != "/test-version/files:register" {
+			t.Errorf("Expected path /test-version/files:register, got %s", r.URL.Path)
+		}
+
+		authHeader := r.Header.Get("Authorization")
+		if authHeader != "Bearer test-token" {
+			t.Errorf("Expected Authorization header 'Bearer test-token', got %s", authHeader)
+		}
+
+		userProject := r.Header.Get("X-Goog-User-Project")
+		if userProject != "test-quota-project" {
+			t.Errorf("Expected X-Goog-User-Project header 'test-quota-project', got %s", userProject)
+		}
+
+		var reqBody map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+			t.Errorf("Failed to decode request body: %v", err)
+		}
+		uris := reqBody["uris"].([]any)
+		if len(uris) != 1 || uris[0] != "gs://test-bucket/test-file" {
+			t.Errorf("Unexpected uris in request body: %v", uris)
+		}
+
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{"files": [{"name": "files/test-file"}]}`)
+	}))
+	defer ts.Close()
+
+	client, err := NewClient(ctx, &ClientConfig{
+		HTTPOptions: HTTPOptions{BaseURL: ts.URL, APIVersion: "test-version"},
+		envVarProvider: func() map[string]string {
+			return map[string]string{
+				"GOOGLE_API_KEY": "test-api-key",
+			}
+		},
+	})
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	creds := newStaticCredentials(&auth.Token{Value: "test-token"}, "test-quota-project")
+
+	resp, err := client.Files.RegisterFiles(ctx, []string{"gs://test-bucket/test-file"}, creds, nil)
+	if err != nil {
+		t.Fatalf("RegisterFiles failed: %v", err)
+	}
+
+	if len(resp.Files) != 1 || resp.Files[0].Name != "files/test-file" {
+		t.Errorf("Unexpected response: %+v", resp)
+	}
+}
+
+func TestFilesRegisterFilesVertex(t *testing.T) {
+	ctx := context.Background()
+	client, err := NewClient(ctx, &ClientConfig{
+		Backend: BackendVertexAI,
+		envVarProvider: func() map[string]string {
+			return map[string]string{
+				"GOOGLE_CLOUD_PROJECT":  "test-project",
+				"GOOGLE_CLOUD_LOCATION": "test-location",
+			}
+		},
+		Credentials: &auth.Credentials{},
+	})
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	creds := &auth.Credentials{}
+	_, err = client.Files.RegisterFiles(ctx, []string{"gs://bucket/file"}, creds, nil)
+	if err == nil {
+		t.Errorf("RegisterFiles should fail on Vertex AI")
+	}
+	if !strings.Contains(err.Error(), "is only supported in Gemini Developer API mode") {
+		t.Errorf("Unexpected error: %v", err)
+	}
+}
+
+func newStaticCredentials(token *auth.Token, quotaProjectID string) *auth.Credentials {
+	return auth.NewCredentials(&auth.CredentialsOptions{
+		TokenProvider:          &staticTokenProvider{token: token},
+		QuotaProjectIDProvider: staticPropertyProvider(quotaProjectID),
+	})
+}
+
+type staticTokenProvider struct {
+	token *auth.Token
+}
+
+func (s *staticTokenProvider) Token(ctx context.Context) (*auth.Token, error) {
+	return s.token, nil
+}
+
+type staticPropertyProvider string
+
+func (s staticPropertyProvider) GetProperty(ctx context.Context) (string, error) {
+	return string(s), nil
+}
+
+// TestUploadUsesClientAPIVersion checks that the resumable upload start request
+// for Files.Upload and FileSearchStores.UploadToFileSearchStore goes to
+// upload/<resolved client API version>/... rather than a hardcoded version.
+func TestUploadUsesClientAPIVersion(t *testing.T) {
+	tests := []struct {
+		name             string
+		apiVersion       string
+		envVersion       string
+		perReqAPIVersion string
+		wantVersion      string
+	}{
+		{name: "default", wantVersion: googleAIAPIDefaultVersion},
+		{name: "explicit APIVersion", apiVersion: "v1alpha", wantVersion: "v1alpha"},
+		{name: "GOOGLE_GENAI_API_VERSION env var", envVersion: "v1alpha", wantVersion: "v1alpha"},
+		{name: "explicit APIVersion overrides env var", apiVersion: "v1", envVersion: "v1alpha", wantVersion: "v1"},
+		{name: "per-request HTTPOptions.APIVersion overrides client", apiVersion: "v1", perReqAPIVersion: "v1alpha", wantVersion: "v1alpha"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("GOOGLE_GENAI_API_VERSION", tt.envVersion)
+			var startPaths []string
+			var ts *httptest.Server
+			ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Header.Get("X-Goog-Upload-Command") == "start" {
+					startPaths = append(startPaths, r.URL.Path)
+					w.Header().Set("X-Goog-Upload-URL", ts.URL+"/upload-session/1")
+					w.WriteHeader(http.StatusOK)
+					fmt.Fprint(w, `{}`)
+					return
+				}
+				w.Header().Set("X-Goog-Upload-Status", "final")
+				w.WriteHeader(http.StatusOK)
+				if strings.Contains(startPaths[len(startPaths)-1], "fileSearchStores") {
+					fmt.Fprint(w, `{"name": "fileSearchStores/store/upload/operations/op"}`)
+				} else {
+					fmt.Fprint(w, `{"file": {"name": "files/test"}}`)
+				}
+			}))
+			defer ts.Close()
+
+			client, err := NewClient(context.Background(), &ClientConfig{
+				Backend:     BackendGeminiAPI,
+				APIKey:      "test-api-key",
+				HTTPOptions: HTTPOptions{BaseURL: ts.URL, APIVersion: tt.apiVersion},
+				HTTPClient:  ts.Client(),
+			})
+			if err != nil {
+				t.Fatalf("NewClient failed: %v", err)
+			}
+
+			var reqHTTPOpts *HTTPOptions
+			if tt.perReqAPIVersion != "" {
+				reqHTTPOpts = &HTTPOptions{APIVersion: tt.perReqAPIVersion}
+			}
+			if _, err := client.Files.Upload(context.Background(), strings.NewReader("data"), &UploadFileConfig{MIMEType: "text/plain", HTTPOptions: reqHTTPOpts}); err != nil {
+				t.Fatalf("Files.Upload failed: %v", err)
+			}
+			if _, err := client.FileSearchStores.UploadToFileSearchStore(context.Background(), strings.NewReader("data"), "fileSearchStores/store", &UploadToFileSearchStoreConfig{MIMEType: "text/plain", HTTPOptions: reqHTTPOpts}); err != nil {
+				t.Fatalf("FileSearchStores.UploadToFileSearchStore failed: %v", err)
+			}
+
+			want := []string{
+				"/upload/" + tt.wantVersion + "/files",
+				"/upload/" + tt.wantVersion + "/fileSearchStores/store:uploadToFileSearchStore",
+			}
+			if diff := cmp.Diff(want, startPaths); diff != "" {
+				t.Errorf("upload start request paths mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
 }

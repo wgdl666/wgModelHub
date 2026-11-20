@@ -21,12 +21,16 @@ import (
 	"fmt"
 	"iter"
 	"log"
+	"math"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Ptr returns a pointer to its argument.
@@ -40,11 +44,14 @@ type converterFuncWithClientWithRoot func(*apiClient, map[string]any, map[string
 
 type converterFuncWithRoot func(map[string]any, map[string]any, map[string]any) (map[string]any, error)
 
-type converterFuncWithClient func(*apiClient, map[string]any, map[string]any) (map[string]any, error)
-
-type converterFunc func(map[string]any, map[string]any) (map[string]any, error)
-
 type transformerFunc[T any] func(T) (T, error)
+
+// InternalSetValueByPath is an internal function used for setting values by path.
+// This function is public only for internal purposes and its support is not guaranteed in future
+// versions. External consumers must not use it.
+func InternalSetValueByPath(data map[string]any, keys []string, value any) {
+	setValueByPath(data, keys, value)
+}
 
 // setValueByPath handles setting values within nested maps, including handling array-like structures.
 //
@@ -163,6 +170,13 @@ func setValueByPath(data map[string]any, keys []string, value any) {
 	}
 }
 
+// InternalGetValueByPath is an internal function used for retrieving values by path.
+// This function is public only for internal purposes and its support is not guaranteed in future
+// versions. External consumers must not use it.
+func InternalGetValueByPath(data any, keys []string) any {
+	return getValueByPath(data, keys)
+}
+
 // getValueByPath retrieves a value from a nested map or slice or struct based on a path of keys.
 //
 // Examples:
@@ -274,6 +288,13 @@ func getValueByPathOrDefault(data any, keys []string, defaultValue any) any {
 	return current
 }
 
+// InternalFormatMap is an internal function used for formatting maps.
+// This function is public only for internal purposes and its support is not guaranteed in future
+// versions. External consumers must not use it.
+func InternalFormatMap(template string, variables map[string]any) (string, error) {
+	return formatMap(template, variables)
+}
+
 func formatMap(template string, variables map[string]any) (string, error) {
 	var buffer bytes.Buffer
 	for i := 0; i < len(template); i++ {
@@ -291,6 +312,8 @@ func formatMap(template string, variables map[string]any) (string, error) {
 					default:
 						return "", errors.New("formatMap: nested interface or unsupported type found")
 					}
+				} else if key == "api_version" {
+					buffer.WriteString(template[i : j+1])
 				}
 				i = j
 			}
@@ -306,14 +329,25 @@ func formatMap(template string, variables map[string]any) (string, error) {
 //nolint:unused
 func applyConverterToSliceWithClientWithRoot(ac *apiClient, inputs []any, converter converterFuncWithClientWithRoot, rootObject map[string]any) ([]map[string]any, error) {
 	var outputs []map[string]any
-	for _, object := range inputs {
-		object, err := converter(ac, object.(map[string]any), nil, rootObject)
+	for i, object := range inputs {
+		fromObject, err := sliceElementToMap("applyConverterToSliceWithClientWithRoot", i, object)
 		if err != nil {
 			return nil, err
 		}
-		outputs = append(outputs, object)
+		output, err := converter(ac, fromObject, nil, rootObject)
+		if err != nil {
+			return nil, err
+		}
+		outputs = append(outputs, output)
 	}
 	return outputs, nil
+}
+
+// InternalApplyConverterToSliceWithRoot calls converter function to each element of the slice.
+//
+//nolint:unused
+func InternalApplyConverterToSliceWithRoot(inputs []any, converter converterFuncWithRoot, rootObject map[string]any) ([]map[string]any, error) {
+	return applyConverterToSliceWithRoot(inputs, converter, rootObject)
 }
 
 // applyConverterToSlice calls converter function to each element of the slice.
@@ -321,40 +355,31 @@ func applyConverterToSliceWithClientWithRoot(ac *apiClient, inputs []any, conver
 //nolint:unused
 func applyConverterToSliceWithRoot(inputs []any, converter converterFuncWithRoot, rootObject map[string]any) ([]map[string]any, error) {
 	var outputs []map[string]any
-	for _, object := range inputs {
-		object, err := converter(object.(map[string]any), nil, rootObject)
+	for i, object := range inputs {
+		fromObject, err := sliceElementToMap("applyConverterToSliceWithRoot", i, object)
 		if err != nil {
 			return nil, err
 		}
-		outputs = append(outputs, object)
+		output, err := converter(fromObject, nil, rootObject)
+		if err != nil {
+			return nil, err
+		}
+		outputs = append(outputs, output)
 	}
 	return outputs, nil
 }
 
-// applyConverterToSliceWithClient calls converter function (with API client) to each element of the slice.
-func applyConverterToSliceWithClient(ac *apiClient, inputs []any, converter converterFuncWithClient) ([]map[string]any, error) {
-	var outputs []map[string]any
-	for _, object := range inputs {
-		object, err := converter(ac, object.(map[string]any), nil)
-		if err != nil {
-			return nil, err
-		}
-		outputs = append(outputs, object)
+// sliceElementToMap returns the slice element at index i as a converter input.
+func sliceElementToMap(fn string, i int, object any) (map[string]any, error) {
+	switch v := object.(type) {
+	case map[string]any:
+		return v, nil
+	case nil:
+		// Matches the Python SDK, which converts null to an empty object.
+		return map[string]any{}, nil
+	default:
+		return nil, fmt.Errorf("%s: element %d has type %T, want an object", fn, i, object)
 	}
-	return outputs, nil
-}
-
-// applyConverterToSlice calls converter function to each element of the slice.
-func applyConverterToSlice(inputs []any, converter converterFunc) ([]map[string]any, error) {
-	var outputs []map[string]any
-	for _, object := range inputs {
-		object, err := converter(object.(map[string]any), nil)
-		if err != nil {
-			return nil, err
-		}
-		outputs = append(outputs, object)
-	}
-	return outputs, nil
 }
 
 // applyItemTransformerToSlice calls item transformer function to each element of the slice.
@@ -368,6 +393,13 @@ func applyItemTransformerToSlice[T any](inputs []T, itemTransformer transformerF
 		outputs = append(outputs, object)
 	}
 	return outputs, nil
+}
+
+// InternalDeepMarshal is an internal function used for deep marshaling.
+// This function is public only for internal purposes and its support is not guaranteed in future
+// versions. External consumers must not use it.
+func InternalDeepMarshal(input any, output *map[string]any) error {
+	return deepMarshal(input, output)
 }
 
 func deepMarshal(input any, output *map[string]any) error {
@@ -387,6 +419,13 @@ func deepCopy[T any](original T, copied *T) error {
 
 	err = json.Unmarshal(bytes, copied)
 	return err
+}
+
+// InternalCreateURLQuery is an internal function used for creating URL queries.
+// This function is public only for internal purposes and its support is not guaranteed in future
+// versions. External consumers must not use it.
+func InternalCreateURLQuery(query map[string]any) (string, error) {
+	return createURLQuery(query)
 }
 
 // createURLQuery creates a URL query string from a map of key-value pairs.
@@ -430,6 +469,134 @@ func yieldErrorAndEndIterator[T any](err error) iter.Seq2[*T, error] {
 	}
 }
 
+// Default HTTP retry configuration. The values mirror the Python SDK, which is
+// the reference implementation for cross-language behavior.
+const (
+	defaultRetryAttempts     = 5 // Including the initial call.
+	defaultRetryInitialDelay = 1.0
+	defaultRetryMaxDelay     = 60.0
+	defaultRetryExpBase      = 2.0
+	defaultRetryJitter       = 1.0
+)
+
+// LINT.IfChange
+var defaultRetryHTTPStatusCodes = []int32{
+	408, // Request timeout.
+	429, // Too many requests.
+	500, // Internal server error.
+	502, // Bad gateway.
+	503, // Service unavailable.
+	504, // Gateway timeout.
+}
+
+// LINT.ThenChange(//depot/google3/third_party/py/google/genai/_api_client.py)
+
+// retryHTTPRequest sends req via do, retrying according to opts.
+//
+// A nil opts means a single attempt. Retries must be requested explicitly,
+// matching the Python and JavaScript SDKs.
+//
+// Unlike Python, an explicitly zero InitialDelay, MaxDelay, ExpBase or Jitter
+// is honored rather than falling back to the default, so that callers can
+// disable backoff entirely.
+func retryHTTPRequest(req *http.Request, opts *HTTPRetryOptions, do func(*http.Request) (*http.Response, error)) (*http.Response, error) {
+	if opts == nil {
+		return do(req)
+	}
+
+	attempts := defaultRetryAttempts
+	if opts.Attempts != nil {
+		attempts = int(*opts.Attempts)
+	}
+	if attempts < 1 {
+		// Python coerces 0 attempts to 1; treat negatives the same way.
+		attempts = 1
+	}
+	retryableCodes := defaultRetryHTTPStatusCodes
+	if len(opts.HTTPStatusCodes) > 0 {
+		retryableCodes = opts.HTTPStatusCodes
+	}
+
+	ctx := req.Context()
+	var resp *http.Response
+	var err error
+	for attempt := 1; ; attempt++ {
+		resp, err = do(req)
+		if attempt >= attempts || ctx.Err() != nil {
+			break
+		}
+		if !shouldRetryHTTPRequest(resp, err, retryableCodes) {
+			break
+		}
+		// The body of a discarded response must be closed, otherwise the
+		// underlying connection leaks.
+		if resp != nil {
+			resp.Body.Close()
+		}
+		if req.GetBody != nil {
+			body, bodyErr := req.GetBody()
+			if bodyErr != nil {
+				return nil, fmt.Errorf("retryHTTPRequest: error rewinding request body: %w", bodyErr)
+			}
+			req.Body = body
+		} else if req.Body != nil {
+			// The body cannot be replayed, so a retry would send an empty one.
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(retryDelay(attempt, opts)):
+		}
+	}
+	return resp, err
+}
+
+// shouldRetryHTTPRequest reports whether an attempt is worth repeating.
+func shouldRetryHTTPRequest(resp *http.Response, err error, retryableCodes []int32) bool {
+	if err != nil {
+		// Transport-level failure. Mirrors the Python SDK, which retries
+		// httpx.TimeoutException and httpx.ConnectError.
+		return true
+	}
+	if resp == nil {
+		return false
+	}
+	return slices.Contains(retryableCodes, int32(resp.StatusCode))
+}
+
+// retryDelay returns how long to wait before the attempt following attempt.
+//
+// It uses the same exponential-backoff-with-jitter formula as the Python SDK's
+// tenacity configuration:
+//
+//	min(initialDelay*expBase^(attempt-1) + U(0, jitter), maxDelay)
+func retryDelay(attempt int, opts *HTTPRetryOptions) time.Duration {
+	initialDelay := float64(defaultRetryInitialDelay)
+	if opts.InitialDelay != nil {
+		initialDelay = *opts.InitialDelay
+	}
+	maxDelay := float64(defaultRetryMaxDelay)
+	if opts.MaxDelay != nil {
+		maxDelay = *opts.MaxDelay
+	}
+	expBase := float64(defaultRetryExpBase)
+	if opts.ExpBase != nil {
+		expBase = *opts.ExpBase
+	}
+	jitter := float64(defaultRetryJitter)
+	if opts.Jitter != nil {
+		jitter = *opts.Jitter
+	}
+
+	seconds := initialDelay*math.Pow(expBase, float64(attempt-1)) + rand.Float64()*jitter
+	seconds = min(seconds, maxDelay)
+	if seconds < 0 {
+		seconds = 0
+	}
+	return time.Duration(seconds * float64(time.Second))
+}
+
 func mergeHTTPOptions(clientConfig *ClientConfig, configHTTPOptions *HTTPOptions) *HTTPOptions {
 	var clientHTTPOptions *HTTPOptions
 	if clientConfig != nil {
@@ -445,12 +612,14 @@ func mergeHTTPOptions(clientConfig *ClientConfig, configHTTPOptions *HTTPOptions
 			BaseURL:               configHTTPOptions.BaseURL,
 			APIVersion:            configHTTPOptions.APIVersion,
 			ExtrasRequestProvider: configHTTPOptions.ExtrasRequestProvider,
+			RetryOptions:          configHTTPOptions.RetryOptions,
 		}
 	} else {
 		result = HTTPOptions{
 			BaseURL:               clientHTTPOptions.BaseURL,
 			APIVersion:            clientHTTPOptions.APIVersion,
 			ExtrasRequestProvider: clientHTTPOptions.ExtrasRequestProvider,
+			RetryOptions:          clientHTTPOptions.RetryOptions,
 		}
 	}
 
@@ -463,6 +632,9 @@ func mergeHTTPOptions(clientConfig *ClientConfig, configHTTPOptions *HTTPOptions
 		}
 		if configHTTPOptions.ExtrasRequestProvider != nil {
 			result.ExtrasRequestProvider = configHTTPOptions.ExtrasRequestProvider
+		}
+		if configHTTPOptions.RetryOptions != nil {
+			result.RetryOptions = configHTTPOptions.RetryOptions
 		}
 	}
 	result.Headers = mergeHeaders(clientHTTPOptions, configHTTPOptions)
@@ -595,5 +767,35 @@ func moveValueRecursive(data any, sourceKeys []string, destKeys []string, keyIdx
 				moveValueRecursive(nextData, sourceKeys, destKeys, keyIdx+1, excludeKeys)
 			}
 		}
+	}
+}
+
+func snakeToCamel(s string) string {
+	parts := strings.Split(s, "_")
+	for i := 1; i < len(parts); i++ {
+		if len(parts[i]) > 0 {
+			parts[i] = strings.ToUpper(parts[i][:1]) + parts[i][1:]
+		}
+	}
+	return strings.Join(parts, "")
+}
+
+//nolint:unused
+func convertKeysSnakeToCamel(val any) any {
+	switch v := val.(type) {
+	case map[string]any:
+		res := make(map[string]any)
+		for k, val := range v {
+			camelK := snakeToCamel(k)
+			res[camelK] = convertKeysSnakeToCamel(val)
+		}
+		return res
+	case []any:
+		for i, val := range v {
+			v[i] = convertKeysSnakeToCamel(val)
+		}
+		return v
+	default:
+		return val
 	}
 }

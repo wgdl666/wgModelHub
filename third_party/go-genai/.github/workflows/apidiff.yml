@@ -9,6 +9,8 @@ env:
   GOTOOLCHAIN: local
 jobs:
   scan_changes:
+    permissions:
+        contents: read
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
@@ -20,7 +22,7 @@ jobs:
     - uses: actions/checkout@v4
     - uses: actions/setup-go@v5
       with:
-        go-version: '1.24.x'
+        go-version: '1.25.x'
     - name: Get changed directories
       id: changed_dirs
       # Ignore changes to the internal and root directories.
@@ -45,11 +47,12 @@ jobs:
     if: ${{ !needs.scan_changes.outputs.skip && !contains(github.event.pull_request.labels.*.name, 'breaking change allowed') }}
     continue-on-error: true
     permissions:
+      contents: read
       pull-requests: write
     steps:
     - uses: actions/setup-go@v5
       with:
-        go-version: '1.24.x'
+        go-version: '1.26.x'
     - name: Install latest apidiff
       run: go install golang.org/x/exp/cmd/apidiff@latest
     - uses: actions/checkout@v4
@@ -87,8 +90,12 @@ jobs:
         fi
         # Ignore struct comparability changes, as they are common and accepted.
         sed -i '/: old is comparable, new is not/d' ./diff.txt
+        # Ignore union type-set expansions breaking coincidental subset relationships between *Member constraint interfaces.
+        sed -i '/Member: no longer implements .*Member$/d' ./diff.txt
         sed -i '/VideoGenerationMask.MaskMode: changed from string to VideoGenerationMaskMode/d' ./diff.txt
         sed -i '/ToolComputerUse: removed/d' ./diff.txt
+        sed -i '/DistillationHyperParameters.LearningRateMultiplier: changed from float64 to float32/d' ./diff.txt
+        sed -i '/AudioTranscriptionConfig.AdaptationPhrases: removed/d' ./diff.txt
         cat diff.txt && ! [ -s diff.txt ]
     # TODO(b/425394445): figure out how to solve permission issue.
     # - name: Add breaking change label

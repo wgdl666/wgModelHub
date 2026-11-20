@@ -1,5 +1,492 @@
 # Changelog
 
+## [1.79.1](https://github.com/googleapis/go-genai/compare/v1.79.0...v1.79.1) (2026-11-18)
+
+
+### Bug Fixes
+
+* update sdk enum ([9b0a57d](https://github.com/googleapis/go-genai/commit/9b0a57dc161dca1cc1e2d5d25615fd022f3095a5))
+
+## [1.79.0](https://github.com/googleapis/go-genai/compare/v1.78.0...v1.79.0) (2026-11-18)
+
+
+### Features
+
+* **sdk:** Add tool retrieval and function result schemas in public SDK ([25bf4e8](https://github.com/googleapis/go-genai/commit/25bf4e82a490b9e4505a068655fd8dea4eb87ab5))
+
+
+### Bug Fixes
+
+* send SDK User-Agent and x-goog-api-client headers on the Live WebSocket handshake ([99f48a5](https://github.com/googleapis/go-genai/commit/99f48a5d2511fbd29fa7c1fbdb73c65818842ac6)), refs [#1045](https://github.com/googleapis/go-genai/issues/1045)
+
+## [1.78.0](https://github.com/googleapis/go-genai/compare/v1.77.0...v1.78.0) (2026-11-17)
+
+
+### ⚠ BREAKING CHANGES
+
+* **Default Gemini Developer API version is now `v1` (was `v1beta`)** ([402dc81](https://github.com/googleapis/go-genai/commit/402dc815443e6eab4a7c4d11f8b4db6bdbc1a30a))
+  * Clients targeting the **Gemini Developer API** (the default backend, `genai.BackendGeminiAPI`) now default to API version `v1` instead of `v1beta`.
+    > **Note for Go users:** Although this default change is a runtime breaking change, we are shipping it in a minor `v1.x` release rather than `v2.0.0` as the less disruptive of the two options. In Go, a `v2` major version bump changes the module path to `google.golang.org/genai/v2`, which breaks every user and downstream library by forcing import rewrites across the ecosystem—even though no Go types or function signatures changed. Shipping in `v1.x` keeps existing imports and builds working, leaves most code unaffected, and lets anyone who needs the previous `v1beta` behavior restore it with a single config field or environment variable (see below).
+  * **No effect on Gemini Enterprise (Vertex AI) defaults:** Clients using `genai.BackendVertexAI` (or `GOOGLE_GENAI_USE_VERTEXAI=true`) are **unaffected** by this default change and continue to default to `v1beta1`.
+  * **Some models are not available on `v1`, notably:** the `gemini-flash-latest`, `gemini-flash-lite-latest`, and `gemini-pro-latest` aliases, some `-preview` models, and models that depend on `v1beta`-only features (such as TTS models). They exist only on `v1beta`. To keep using them, use a specific stable model version, or switch back to `v1beta` as shown below.
+  * **Some APIs are not available on `v1`:** The Live API (`client.Live`), context caching (`client.Caches`), and beta platform services (`client.Agents`, `client.Decisions`, `client.Webhooks`) are served only on `v1beta` in the Gemini Developer API. To keep using them, switch back to `v1beta` as shown below.
+  * **How to configure or restore the previous default via environment variable:** Set `GOOGLE_GENAI_API_VERSION` (works for both Gemini Developer API and Enterprise / Vertex AI clients when no version is set in code):
+    ```sh
+    # Restores the beta default ('v1beta' on Gemini Developer API, 'v1beta1' on Enterprise / Vertex AI)
+    export GOOGLE_GENAI_API_VERSION=beta
+
+    # Or set an explicit API version string on either platform (e.g. 'v1', 'v1beta', 'v1beta1')
+    export GOOGLE_GENAI_API_VERSION=v1beta
+    ```
+  * **How to set the API version in code:** Set `APIVersion` in `HTTPOptions` (takes precedence over `GOOGLE_GENAI_API_VERSION`):
+    ```go
+    import (
+    	"context"
+
+    	"google.golang.org/genai"
+    )
+
+    client, err := genai.NewClient(context.Background(), &genai.ClientConfig{
+    	HTTPOptions: genai.HTTPOptions{APIVersion: "v1beta"},
+    })
+    ```
+
+### Features
+
+* add `gemini-omni-1.2-flash` and make it the `gemini-api video` default ([04c227d](https://github.com/googleapis/go-genai/commit/04c227d25aba061d25f17ac99e544c303f8ba0d3))
+* Add `proactive_video` to `ProactivityConfig` for the Live API. ([4ac9851](https://github.com/googleapis/go-genai/commit/4ac985125e6aee2127b3ec351b4e7d80e84074b4))
+* Add `source_text` to `AudioTranscriptionConfig` and `SmartTranscriptionMode`. ([2b4e897](https://github.com/googleapis/go-genai/commit/2b4e8972459b4b39819e4d12702ae1a573ccef2a))
+* Add `XHIGH` and `xhigh` to `ThinkingLevel` across GenAI SDKs and CLI. ([78c23d6](https://github.com/googleapis/go-genai/commit/78c23d63f56c9ee499ad3f8edbefcb419e641651))
+* add `xhigh` thinking level to Interactions ThinkingLevel ([5a3af4c](https://github.com/googleapis/go-genai/commit/5a3af4c68042aea826b014c03f8d872e97608ff2))
+* Add MALFORMED_RESPONSE to FinishReason ([6ba4b48](https://github.com/googleapis/go-genai/commit/6ba4b4807e721486a535a7f6c3ad0f2fec3da84f)), refs [#2937](https://github.com/googleapis/go-genai/issues/2937)
+* Add missing enum values to FinishReason and ReinforcementTuningThinkingLevel ([9517de6](https://github.com/googleapis/go-genai/commit/9517de6ac48304ba9d0aa9914dbdc1373e7c0aae))
+* add the Decisions API (`client.decisions.create`) to the GenAI SDKs ([4e1c734](https://github.com/googleapis/go-genai/commit/4e1c734af6c8b549a3ff2b1fc188565752334483))
+* Add tool search types to the Interactions SDKs ([f2b5eea](https://github.com/googleapis/go-genai/commit/f2b5eeab7537954aeb0ccd350971502f6f746338))
+* add usage_metadata (including traffic_type) and truncated to EmbedContentResponse for Gemini Enterprise API ([850cdca](https://github.com/googleapis/go-genai/commit/850cdca5ec6131156eeadb87cb38f4fc977004fe))
+* **cli:** use gemini-3.5-transcribe as default model for transcribe command ([968e135](https://github.com/googleapis/go-genai/commit/968e13580a53b19b47ee6c8f10c4f2c52da319a3))
+* default Gemini API version to v1 instead of v1beta across SDKs ([402dc81](https://github.com/googleapis/go-genai/commit/402dc815443e6eab4a7c4d11f8b4db6bdbc1a30a))
+* Disable GenerateVideos for Gemini API, update tests/READMEs ([9cf04de](https://github.com/googleapis/go-genai/commit/9cf04deac32f2418781170b3cd41c09abf060564))
+* **environments:** introduce self-hosted BYOS mode, system_instruction, custom_config, and environment_key in SDKs and CLI ([eeafe6c](https://github.com/googleapis/go-genai/commit/eeafe6c4285395ee9ba62f5a5f1a02a1a7d168aa))
+* **environments:** introduce self-hosted BYOS mode, system_instruction, custom_config, and environment_key in SDKs and CLI ([ac12b34](https://github.com/googleapis/go-genai/commit/ac12b344c9423a54dc7fb9beac45b9cf3a41cd02))
+* **interactions:** add gemini-4-carbon and gemini-omni-1.2-flash to Model enum ([e08c6be](https://github.com/googleapis/go-genai/commit/e08c6bef3ff9ac8d5035725522927e91f05b11ed))
+* **interactions:** add gemini-4-hydrogen to Model enum ([1b7b34c](https://github.com/googleapis/go-genai/commit/1b7b34c91612454a7cc614418f3df36f8e12fffc))
+* **interactions:** add Office and OpenDocument MIME types ([36ba34e](https://github.com/googleapis/go-genai/commit/36ba34e477423db3260f320d42c7dd10cf30bf0f))
+* **interactions:** expose static file processing options ([5d76cf0](https://github.com/googleapis/go-genai/commit/5d76cf06ba477a7cf04ed0b2dfee1fc1e9ee9cc5))
+* **interactions:** support multimodal content in CodeExecutionResultStep.result ([0872815](https://github.com/googleapis/go-genai/commit/087281541b864840a1ff51a14d16eea23f0d8d83))
+* support batch inputs and usage metadata for Gemini embedding models on Gemini Enterprise API ([c1a7aa2](https://github.com/googleapis/go-genai/commit/c1a7aa2cb272bfeea4db577cf2bce877870948da))
+* support GOOGLE_GENAI_API_VERSION environment variable across SDKs ([402dc81](https://github.com/googleapis/go-genai/commit/402dc815443e6eab4a7c4d11f8b4db6bdbc1a30a))
+* update discovery doc ([8653ef7](https://github.com/googleapis/go-genai/commit/8653ef7de2c5490cd7fa42578399617586adcaac))
+
+
+### Bug Fixes
+
+* do not panic on a null element in a converted response slice or a null response body ([c7c9c43](https://github.com/googleapis/go-genai/commit/c7c9c430f459994cba0d22291cfabd97080c7f37)), refs [#899](https://github.com/googleapis/go-genai/issues/899)
+* **overlays:** fail CLI commands on failed interactions, redact tool headers, narrow ModelInteraction.required ([34be134](https://github.com/googleapis/go-genai/commit/34be13453949d4c12d38dab1276fe3cfb963146d))
+* respect configured and default API version for Gemini API file uploads across SDKs ([da10e09](https://github.com/googleapis/go-genai/commit/da10e090599ecacb00a7e247debe6a8912ca3149))
+* stop percent-encoding the Vertex resource prefix in Interactions URLs ([4348fe0](https://github.com/googleapis/go-genai/commit/4348fe0d6d37b46d1319f1309c911477a52773fc)), refs [#960](https://github.com/googleapis/go-genai/issues/960)
+
+
+### Miscellaneous Chores
+
+* set version to 1.78.0 ([bb9bfea](https://github.com/googleapis/go-genai/commit/bb9bfea417d56231d25f787e512dfe194473c5a1))
+
+## [1.77.0](https://github.com/googleapis/go-genai/compare/v1.76.0...v1.77.0) (2026-10-29)
+
+
+### Features
+
+* Add support for continuation_token and requires_continuation status ([51d761f](https://github.com/googleapis/go-genai/commit/51d761f10a0c6198fba3672be3314edb53501839))
+* add video upscale task parameter ([cab8bf7](https://github.com/googleapis/go-genai/commit/cab8bf7c11e98ae59fff764a028b4ddc39f15bd5))
+* **interactions:** add AutomaticContinuation to Interactions.Create in the Go SDK ([0a6da26](https://github.com/googleapis/go-genai/commit/0a6da26714d2f7ecd48802948e80ed2c4c131f9b))
+* **interactions:** declare continuation_ids on Interaction ([5b54979](https://github.com/googleapis/go-genai/commit/5b54979d4525f140a0409c095e7b88f358ef1cd7))
+* support video understanding in Gemini Developer API ([5407437](https://github.com/googleapis/go-genai/commit/5407437c41c1854cb6235395b8e4abfa46be1626))
+
+
+### Bug Fixes
+
+* **interactions:** align SDK User-Agent and x-goog-api-client headers ([58187ad](https://github.com/googleapis/go-genai/commit/58187ad9eba686df700d701195b4db936784ec1e))
+
+## [1.76.0](https://github.com/googleapis/go-genai/compare/v1.75.0...v1.76.0) (2026-10-22)
+
+
+### Features
+
+* Add `store` to `GenerateContentConfig` (Gemini Developer API only) and `labels` to `LiveConnectConfig`. ([2ca47f8](https://github.com/googleapis/go-genai/commit/2ca47f86440cb7bb02dbc874f5a9cdc8fe42f29c))
+* add base_voice to PromptedVoice in GAOS SDK ([bfc9e1c](https://github.com/googleapis/go-genai/commit/bfc9e1c348b93793bac48de99321e80f459ef01b))
+* Add generation_output_config to GenerateContentConfig ([6ae1299](https://github.com/googleapis/go-genai/commit/6ae1299c17e67b39b623e58302185caa8896db25))
+* Add Live API in-session context updates (`send_context_update`) and types across GenAI SDKs. ([f1d0c6c](https://github.com/googleapis/go-genai/commit/f1d0c6ce6e75ad0ef9fcc8bc7c15d73b56c28a79))
+* include AudioContent, DocumentContent, and VideoContent in FunctionResultSubContent ([68f1351](https://github.com/googleapis/go-genai/commit/68f13513f8cc25482383c44736f38712a50a059b))
+* **interactions:** populate output_text and output media helpers in the Go SDK ([db2b842](https://github.com/googleapis/go-genai/commit/db2b842c58533634cc59e4b457b82c89ab5cad2a))
+* **sdks:** enable `fixes.openSingleValueEnumsOct2026` across all SDKs ([3892a92](https://github.com/googleapis/go-genai/commit/3892a9260032c48ed1bcb9bbf6a6899b7b5e33ee))
+* update discovery doc ([525f275](https://github.com/googleapis/go-genai/commit/525f275a5a7e7c475569d6df811752e178b28b79))
+
+
+### Bug Fixes
+
+* **genai:** raise mid-stream SSE errors and dropped connections consistently across SDKs; add continuation conformance tests ([9aa2634](https://github.com/googleapis/go-genai/commit/9aa2634889343d6d0b64d0d73c6a73e1e6685221))
+* **interactions:** sync InteractionSseEventInteractionStatus enum with InteractionStatus ([7c129ed](https://github.com/googleapis/go-genai/commit/7c129edec2e43790405cfe9031d973c4fd4c6f0f))
+* keep streamed chat turns in curated history when the stream ends with an empty chunk ([4dd02c1](https://github.com/googleapis/go-genai/commit/4dd02c11596d4ecb333cf56618097c6b4211965c)), refs [#795](https://github.com/googleapis/go-genai/issues/795)
+
+## [1.75.0](https://github.com/googleapis/go-genai/compare/v1.74.0...v1.75.0) (2026-10-14)
+
+
+### Features
+
+* **interactions:** add gemini-4-argon to Model enum ([f8f7050](https://github.com/googleapis/go-genai/commit/f8f7050219c05206b0a7d0aab4b72e9e19c109a1))
+
+
+### Bug Fixes
+
+* clear continuation state and preserve prompt feedback when continuation hop returns no candidates ([f0c1430](https://github.com/googleapis/go-genai/commit/f0c1430ab13067edfbc1a56f0a8588b185c363bc))
+* fix the grounding metadata merging for automatic continuation in generate content and generate content stream ([19689a2](https://github.com/googleapis/go-genai/commit/19689a2f60df26f143a985fb1c6af52a619eb3df))
+* make continuation streams retry dropped hops, stop on prompt_feedback, and keep real errors in generate_content ([0828ad4](https://github.com/googleapis/go-genai/commit/0828ad45c7ac1dc27f0df9e55085ac4c2c39c748))
+
+## [1.74.0](https://github.com/googleapis/go-genai/compare/v1.73.0...v1.74.0) (2026-10-13)
+
+
+### Features
+
+* accumulate streaming continuation usage metadata and expose InitialPromptTokenCount ([67c96f3](https://github.com/googleapis/go-genai/commit/67c96f328b8bd89a25f85cfecad6b927307fe0dc))
+* Add `continuation_token` to the Interactions `interaction.status_update` event. ([397c14f](https://github.com/googleapis/go-genai/commit/397c14f0c3613f0d41a4da53548b57c3a5bbdf5f))
+* Add a CONTINUATION_REQUIRED Interaction status ([125cd3e](https://github.com/googleapis/go-genai/commit/125cd3efb20140dddcf6284ae06c237af696b742))
+* add billable token counts fields ([43c5132](https://github.com/googleapis/go-genai/commit/43c513202463ea63cdfe687daeee6cf7d2aa891a))
+* Add startOffset/endOffset to Transcription and interimTranscriptTimestampEnabled to RealtimeInputConfig ([3db3beb](https://github.com/googleapis/go-genai/commit/3db3beb49453f6944af5970c6983beb2defa14c0))
+* Add usage in InteractionStatusUpdate events ([ba9bb94](https://github.com/googleapis/go-genai/commit/ba9bb94e383a0c05ddf657441cb785749d974447))
+* **cli:** update Speakeasy generator to v2.948.0, bump CLI to v0.4.2, and apply CLI overlay fixes ([f660ee9](https://github.com/googleapis/go-genai/commit/f660ee9fc22393ab1192eb6ad7a2f9bda2f47322))
+* Support automatic continuation (long decoding) ([1f7179b](https://github.com/googleapis/go-genai/commit/1f7179b48142fffa8bc0fa6aa1a632633688b16a))
+
+
+### Bug Fixes
+
+* clear intermediate CONTINUATION FinishReason in streaming continuation ([2c08efa](https://github.com/googleapis/go-genai/commit/2c08efadeae762fa7b47151d685fcf131f56ace2))
+* **genai:** deduplicate Flash and Omni descriptions in ModelOption ([1957e9c](https://github.com/googleapis/go-genai/commit/1957e9c4684682ebd330d5a50ba73bd669eeffb7))
+* Raise default HTTP timeouts so long-running requests aren't killed client-side ([2e7f4aa](https://github.com/googleapis/go-genai/commit/2e7f4aac28828ce1979922365a9374dbc2c5a12b))
+* resume streaming generation from the latest checkpoint continuation token on mid-stream errors or cutoffs ([3e51164](https://github.com/googleapis/go-genai/commit/3e51164726dc40c482c6862c36ea64676bcb120e))
+* Update EnvironmentConfig.env schema to map keys to EnvVar or string. ([b84d964](https://github.com/googleapis/go-genai/commit/b84d9642bc7cfe357c66df891133068341db4f40))
+
+## [1.73.0](https://github.com/googleapis/go-genai/compare/v1.72.0...v1.73.0) (2026-10-07)
+
+
+### Features
+
+* add `lyria-3.5`, `gemini-omni-1.1-flash`, and `gemini-omni-flash-preview` to Interactions `Model` enum ([0a17bc3](https://github.com/googleapis/go-genai/commit/0a17bc3e070ec7e26c5677072162486578fb418c))
+* **go:** expose Voices service on genai.Client and add Voices examples ([770093f](https://github.com/googleapis/go-genai/commit/770093f72c1a01f00237cb5695d728110c19b8c1))
+* Support `"allowlist": "disabled"` in environment network config. ([3a7595e](https://github.com/googleapis/go-genai/commit/3a7595eccddf2530209ac9eb044802c71c246eb0))
+* support continuation_token in Interactions ([5fed937](https://github.com/googleapis/go-genai/commit/5fed9374ce1a519114650287bd99dd46f1689cd2))
+* update discovery doc ([aeef05c](https://github.com/googleapis/go-genai/commit/aeef05c7b2a0c12a01051ff4e3ec005b85e57faa))
+
+
+### Bug Fixes
+
+* **gemini-api-cli:** remove unsupported 2.5 and 1.6 models from Interactions model options and CLI examples ([b1c58b2](https://github.com/googleapis/go-genai/commit/b1c58b217d7b555fcdc685eb0ec5e3b2b236384a))
+
+## [1.72.0](https://github.com/googleapis/go-genai/compare/v1.71.0...v1.72.0) (2026-10-01)
+
+
+### Features
+
+* add gcs_metrics_uri for exporting tuning job metrics. ([a2adbb5](https://github.com/googleapis/go-genai/commit/a2adbb50f5a2b066e537c251adf12ba5dbf472c2))
+* Add interactions ([b85860b](https://github.com/googleapis/go-genai/commit/b85860bb65baa88ef7fd1fd4528a5163d897b1f9))
+* expose SpeechMetadata, VoiceConfig.voice, and SpeechAnnotation in public GenAI SDKs ([c342626](https://github.com/googleapis/go-genai/commit/c3426263052133c785bbadfeb554f037d21d9244))
+* **genai:** refresh examples and add build tests for Go SDK examples ([a8402d6](https://github.com/googleapis/go-genai/commit/a8402d625c3b70470d81dca7d87f5d621e770135))
+* implement environments files upload and download across .NET and Go SDKs ([ee76a1c](https://github.com/googleapis/go-genai/commit/ee76a1c35f21592c0dead523746c86638645258f))
+* include labels for LiveClientSetup ([69b3fa3](https://github.com/googleapis/go-genai/commit/69b3fa3d5bcd2ace8fc2eb11d6127ca64bc51aa4))
+* support continuation_token in GenerateContent ([3ecb7eb](https://github.com/googleapis/go-genai/commit/3ecb7ebbf750a30103da93f13d91daf0101343f3))
+* support labels for Gemini API GenerateContent ([bf539c0](https://github.com/googleapis/go-genai/commit/bf539c082c392854344319f8955a236a5274913d))
+* update discovery doc ([702e8d0](https://github.com/googleapis/go-genai/commit/702e8d0493918c44fc8a1d3081c87d4e8252fd8c))
+
+
+### Bug Fixes
+
+* **interactions:** ignore unchecked returns in mock server handlers in interaction_test.go ([1617851](https://github.com/googleapis/go-genai/commit/1617851cade14008c960736b2c88a5d79ab0cb9d))
+* Update GitHub Actions lint workflow for Node 24 compatibility ([aeb441a](https://github.com/googleapis/go-genai/commit/aeb441ac8a8e24cf718162b9e03cbd77da140eaa))
+* use `CreateAgentInteraction` for `Trigger.interaction` and `TriggerCreateParams.interaction` ([d918e85](https://github.com/googleapis/go-genai/commit/d918e85438735b4fda4b95eaf12b1c96554fe5cf))
+
+## [1.71.0](https://github.com/googleapis/go-genai/compare/v1.70.0...v1.71.0) (2026-08-31)
+
+
+### Features
+
+* Add translation_config SDK support for GEAP. ([83c445d](https://github.com/googleapis/go-genai/commit/83c445da0b4b1a166e4fd10b97674afd53a84852))
+
+## [1.70.0](https://github.com/googleapis/go-genai/compare/v1.69.0...v1.70.0) (2026-08-25)
+
+
+### Features
+
+* Add AudioTranscriptionConfigMode ([e601aac](https://github.com/googleapis/go-genai/commit/e601aac1f2565be602507ff4fc628018fa6ee045))
+
+## [1.69.0](https://github.com/googleapis/go-genai/compare/v1.68.0...v1.69.0) (2026-08-19)
+
+
+### Features
+
+* Add `mode` enum (`VERBATIM`, `SMART`) to `AudioTranscriptionConfig` and `TranscriptionConfig`. ([5ca93e0](https://github.com/googleapis/go-genai/commit/5ca93e08f43c1065f44ac9b69df4ed7ccc548113))
+* Add enable_data_retention to ToolParallelAiSearch, Add step_count to ReinforcementTuningHyperParameters, Add BidiGenerateContentSetup ([600a8cf](https://github.com/googleapis/go-genai/commit/600a8cfe12bf70aa40cf39dc0653d7a6603df1d9))
+* Add IDLE state to live connection status enum and mark REQUIRES_ACTION as deprecated. ([2bbd248](https://github.com/googleapis/go-genai/commit/2bbd2486c8d318048b30c7a515aa9b98e8f76313))
+
+## [1.68.0](https://github.com/googleapis/go-genai/compare/v1.67.0...v1.68.0) (2026-08-12)
+
+
+### Features
+
+* Add interaction_status to LiveServerContent ([b701130](https://github.com/googleapis/go-genai/commit/b701130e4472242891c3a1109d99bae5faf69d6d))
+
+## [1.67.0](https://github.com/googleapis/go-genai/compare/v1.66.0...v1.67.0) (2026-08-06)
+
+
+### Features
+
+* Add TOO_MANY_TOOL_CALLS to FinishReason enum. ([e5a3783](https://github.com/googleapis/go-genai/commit/e5a37838b1cc6ae9f342cfdbe4ed8431df75bcb4))
+* Support GoogleMaps Tool grounding_types places and routing ([d76fedf](https://github.com/googleapis/go-genai/commit/d76fedf5d327c331bcdcfaab36fda5073f28247a))
+* Support HTTP retries in the Go GenAI SDK. ([45c6782](https://github.com/googleapis/go-genai/commit/45c6782d25105748bd750004df921f067e527c80))
+
+
+### Bug Fixes
+
+* Add propertyOrdering auto-population for ResponseSchema and ResponseJsonSchema for Dotnet SDK ([1e113a5](https://github.com/googleapis/go-genai/commit/1e113a5572ddacb0794cbd10dcec828ae21052ec))
+
+## [1.66.0](https://github.com/googleapis/go-genai/compare/v1.65.0...v1.66.0) (2026-07-28)
+
+
+### Features
+
+* [GenerateContentConfig] Add GenerationConfig.audio_transcription_config and Part.audio_transcription. ([5d6dfc2](https://github.com/googleapis/go-genai/commit/5d6dfc276d582566522b43a30d13b65a15fb690c))
+* Add flat `language_codes` field to `AudioTranscriptionConfig`. ([3169529](https://github.com/googleapis/go-genai/commit/31695296338b0b960b6374da101fca7398462867))
+* Allow api key + proj/location for enterprise mode ([7357166](https://github.com/googleapis/go-genai/commit/7357166cc0623eefb548af9a11d4d85499d3a62a))
+
+## [1.65.0](https://github.com/googleapis/go-genai/compare/v1.64.0...v1.65.0) (2026-07-21)
+
+
+### Features
+
+* A new field `custom_vocabulary` is added to message `.google.cloud.aiplatform.v1beta1.BidiGenerateContentSetup` ([7d5b833](https://github.com/googleapis/go-genai/commit/7d5b83362d9304343ea33eb0eac6462bcaeb589e))
+
+
+### Bug Fixes
+
+* add deprecation warnings to Imagen generate_images, edit_images, generate_videos (if using prompt/text/image args), LiveConnectConfig.GenerationConfig which will be removed in the next major version ([d77df44](https://github.com/googleapis/go-genai/commit/d77df44a722d1748666910bef14fa0c8852e12f7))
+* Fix streaming truncation when HTTPOptions.Timeout is set. ([3417576](https://github.com/googleapis/go-genai/commit/3417576059b7e8c3ad058bcbc5ebf12611d1f4a9)), closes [#816](https://github.com/googleapis/go-genai/issues/816)
+
+## [1.64.0](https://github.com/googleapis/go-genai/compare/v1.63.0...v1.64.0) (2026-07-15)
+
+
+### Features
+
+* Add history config. ([315c1b1](https://github.com/googleapis/go-genai/commit/315c1b1e439c31f7b84c0f026cafdeb6b0cc8e54))
+* Populate per-modality prompt token count in embedding responses for gemini-embedding-2 ([7e186ba](https://github.com/googleapis/go-genai/commit/7e186ba131512a5bc87f27c7b3cf9882d66b55fd))
+
+## [1.63.0](https://github.com/googleapis/go-genai/compare/v1.62.0...v1.63.0) (2026-07-15)
+
+
+### Features
+
+* Add history config. ([315c1b1](https://github.com/googleapis/go-genai/commit/315c1b1e439c31f7b84c0f026cafdeb6b0cc8e54))
+* Add response_format and Translation_config in GenerationConfig ([caf2595](https://github.com/googleapis/go-genai/commit/caf25953db65011cd903d2b08631ea78e37c0a32))
+* Add Tool.exa_ai_search for Gemini Enterprise API ([caf2595](https://github.com/googleapis/go-genai/commit/caf25953db65011cd903d2b08631ea78e37c0a32))
+* Populate per-modality prompt token count in embedding responses for gemini-embedding-2 ([7e186ba](https://github.com/googleapis/go-genai/commit/7e186ba131512a5bc87f27c7b3cf9882d66b55fd))
+* voice consent signature types across all SDK languages. ([ff4e260](https://github.com/googleapis/go-genai/commit/ff4e26052344e10a1364f9f5d45c52615c90ed26))
+
+
+### Bug Fixes
+
+* Fix exponential backoff bug in Go GenAI SDK. ([55b57b9](https://github.com/googleapis/go-genai/commit/55b57b95b75ffcc2413c76cea94c32002cc48e1d))
+
+## [1.62.0](https://github.com/googleapis/go-genai/compare/v1.61.0...v1.62.0) (2026-06-24)
+
+
+### Features
+
+* Add ComputerUse.disabled_safety_policies ([c89e5eb](https://github.com/googleapis/go-genai/commit/c89e5eb0e45b11805adf87d419016e219b8ef5a9))
+
+## [1.61.0](https://github.com/googleapis/go-genai/compare/v1.60.0...v1.61.0) (2026-06-17)
+
+
+### Features
+
+* Add audioOffset to VoiceActivity ([43a352f](https://github.com/googleapis/go-genai/commit/43a352fc5ceafff366259afececc0d816f0c3816))
+* Add interimInputTranscription to LiveServerContent ([43a352f](https://github.com/googleapis/go-genai/commit/43a352fc5ceafff366259afececc0d816f0c3816))
+* Add LanguageAuto, LanguageHints, and adaptationPhrases to AudioTranscriptionConfig ([43a352f](https://github.com/googleapis/go-genai/commit/43a352fc5ceafff366259afececc0d816f0c3816))
+
+## [1.60.0](https://github.com/googleapis/go-genai/compare/v1.59.0...v1.60.0) (2026-06-04)
+
+
+### Features
+
+* Add ServiceTier to UsageMetadata ([74b1290](https://github.com/googleapis/go-genai/commit/74b1290a5c5cfef6ad8e8263ffc6aed8b4c4d865))
+
+## [1.59.0](https://github.com/googleapis/go-genai/compare/v1.58.0...v1.59.0) (2026-06-03)
+
+
+### Features
+
+* Add Agent Platform MCP support to async generate_content ([4b138c2](https://github.com/googleapis/go-genai/commit/4b138c23dba7df1d76626fbc4565d4838469ce96))
+* Add transcription language code. ([cc4dd9c](https://github.com/googleapis/go-genai/commit/cc4dd9cdd6e3c09044493c439c89cb67254539de))
+* Add TranslationConfig for live translation. ([76f4126](https://github.com/googleapis/go-genai/commit/76f4126a18dbb6c4606f649e1f8400003364f785))
+* additional computer_use field support for vertex. ([8831eb3](https://github.com/googleapis/go-genai/commit/8831eb39c99879b30695b3c1262d70a0b2b25450))
+* Support 'additionalProperties', 'defs' and 'ref' in the GenerateContent.Schema type. ([996b831](https://github.com/googleapis/go-genai/commit/996b8316fdc4dfe1bb5d70e3af45542a4a55bf9e))
+* Support Reinforcement Tuning in GenAI SDK ([fecb49e](https://github.com/googleapis/go-genai/commit/fecb49e3d7870921be23054457b7b5163b8bba4f))
+* Support ReinforcementTuning in GenAI SDK including ValidateReward API method. ([c95d115](https://github.com/googleapis/go-genai/commit/c95d115482daa0e69a02b25c239bd232bf62f054))
+
+## [1.58.0](https://github.com/googleapis/go-genai/compare/v1.57.0...v1.58.0) (2026-05-21)
+
+
+### Features
+
+* add `enable_prompt_injection_detection` for Computer Use feature for the Gemini API. ([19c2566](https://github.com/googleapis/go-genai/commit/19c2566dcfdbfdbc5821ab8ffb71f6155f084dab))
+* add new fields ([1608e80](https://github.com/googleapis/go-genai/commit/1608e807c1aa9d80dfc484db6cc37f49ee4e69a1))
+
+## [1.57.0](https://github.com/googleapis/go-genai/compare/v1.56.0...v1.57.0) (2026-05-12)
+
+
+### Features
+
+* Expose Test and Server of the Replay API Client for the cross module usage in the AgentPlatform module. ([27b142d](https://github.com/googleapis/go-genai/commit/27b142d7c2aea6794c4b9d88d6e3f68f69fb17a3))
+* support Blocking FunctionCall in Live API in AgentPlatform (Vertex) ([e5e653c](https://github.com/googleapis/go-genai/commit/e5e653c939fb25dba1d54726dba6735b51002267))
+* support speech to speech translation in Gemini Live ([621b55d](https://github.com/googleapis/go-genai/commit/621b55d07426e706991c7c9f2602658cf1068cbc))
+
+
+### Bug Fixes
+
+* Fix version redaction logic in the replay API client. ([af4c931](https://github.com/googleapis/go-genai/commit/af4c93111f6a266674370a45f3fb15e1742d064e))
+
+## [1.56.0](https://github.com/googleapis/go-genai/compare/v1.55.0...v1.56.0) (2026-05-04)
+
+
+### Features
+
+* [Python] Multimodal file search ([c32ae6e](https://github.com/googleapis/go-genai/commit/c32ae6e6a1708942b96216f51750523091f2304b))
+* Multimodal file search ([989d064](https://github.com/googleapis/go-genai/commit/989d0645da796e10c02ab2359512f600edc741d2))
+
+
+### Bug Fixes
+
+* Simplify generated Go URL path formatting when VertexAI and MLDev URLs are identical. ([d90a592](https://github.com/googleapis/go-genai/commit/d90a59223923bb95b58a79a6c080e953a966ae1d)), closes [#761](https://github.com/googleapis/go-genai/issues/761)
+
+## [1.55.0](https://github.com/googleapis/go-genai/compare/v1.54.0...v1.55.0) (2026-04-29)
+
+
+### Features
+
+* Add `output_info` to `BatchJob` ([9ec7d3b](https://github.com/googleapis/go-genai/commit/9ec7d3bff89e75126652363def92a820179209e4))
+* Add ImageResizeMode for GenerateVideos ([8fc27f4](https://github.com/googleapis/go-genai/commit/8fc27f4f670f864785424fcd8d0e7931c2989ecb))
+* Add InternalApplyConverterToSliceWithRoot to the common utilities. ([7aaf1eb](https://github.com/googleapis/go-genai/commit/7aaf1eb1eab03698454be3f9398945d2365debeb))
+* Add Vertex Dataset input and output options for batch jobs ([73ee07c](https://github.com/googleapis/go-genai/commit/73ee07cbdae9873271c90e66bb491178587f8495))
+* introduce BackendEnterprise and GOOGLE_GENAI_USE_ENTERPRISE env var ([1181fe0](https://github.com/googleapis/go-genai/commit/1181fe03dfc10ebab1b7d760fce7b18ac22f86d1))
+
+## [1.54.0](https://github.com/googleapis/go-genai/compare/v1.53.0...v1.54.0) (2026-04-13)
+
+
+### Features
+
+* Add "eu" as a supported service location for Vertex AI platform. ([9245aba](https://github.com/googleapis/go-genai/commit/9245aba251afea99b1560fae07b93498ed5b5d8e))
+* Add Live Avatar new fields ([2ae252c](https://github.com/googleapis/go-genai/commit/2ae252caaf0d5273d5656d32858e54c354326248))
+* Add webhook_config to batches.create() and models.generate_videos() ([4790027](https://github.com/googleapis/go-genai/commit/4790027b553d401d5cc99f21776dcfa49cbda16d))
+
+## [1.53.0](https://github.com/googleapis/go-genai/compare/v1.52.1...v1.53.0) (2026-04-08)
+
+
+### Miscellaneous Chores
+
+* release 1.53.0 ([07f38c9](https://github.com/googleapis/go-genai/commit/07f38c926798eb5f4d9ef3af531ee3f4d91c6fd6))
+
+## [1.52.1](https://github.com/googleapis/go-genai/compare/v1.52.0...v1.52.1) (2026-03-31)
+
+
+### Bug Fixes
+
+* Fix service_tier enums. ([5518442](https://github.com/googleapis/go-genai/commit/5518442a2a8dac4a00ad4248470ec995604974f6))
+
+## [1.52.0](https://github.com/googleapis/go-genai/compare/v1.51.0...v1.52.0) (2026-03-27)
+
+
+### Features
+
+* Add labels field to Veo configs ([3fab63a](https://github.com/googleapis/go-genai/commit/3fab63a5f628b8ffe35fe75c325108a75e5c5add))
+* Add model_status to GenerateContentResponse (Gemini API only) ([8c040e3](https://github.com/googleapis/go-genai/commit/8c040e35aaab4089303fbd0fcacdf80ae85cc9df))
+* Add part_metadata in Part (Gemini API only) ([8c040e3](https://github.com/googleapis/go-genai/commit/8c040e35aaab4089303fbd0fcacdf80ae85cc9df))
+* Add service tier to GenerateContent. ([c07b6a0](https://github.com/googleapis/go-genai/commit/c07b6a0b47408e038264a4b0d85183e4240cb30a))
+* **genai:** add TURN_INCLUDES_AUDIO_ACTIVITY_AND_ALL_VIDEO to TurnCoverage ([ea49f9a](https://github.com/googleapis/go-genai/commit/ea49f9a7d885d7d0fb2016c7621b1d22eee06b26))
+* support hyperparameters in distillation tuning ([b8873ea](https://github.com/googleapis/go-genai/commit/b8873ea18126d825b841794414c05c66cb2bc094))
+* Support rendered_parts in GroundingSupport ([8c040e3](https://github.com/googleapis/go-genai/commit/8c040e35aaab4089303fbd0fcacdf80ae85cc9df))
+
+
+### Bug Fixes
+
+* Fix empty InlinedEmbedContentResponses for inline batch embeddings in Go GenAI SDK ([e70c9d1](https://github.com/googleapis/go-genai/commit/e70c9d111e5f70e684537ae3ebb3fcaaf839d642)), closes [#712](https://github.com/googleapis/go-genai/issues/712)
+* support us region routing ([09d5be3](https://github.com/googleapis/go-genai/commit/09d5be32d28541debeb2fbfae13be29e51d0b42d))
+
+## [1.51.0](https://github.com/googleapis/go-genai/compare/v1.50.0...v1.51.0) (2026-03-17)
+
+
+### Features
+
+* Support include_server_side_tool_invocations for genai. ([cec4bfd](https://github.com/googleapis/go-genai/commit/cec4bfd51223b19740526a44a610a8c06de737d4))
+
+## [1.50.0](https://github.com/googleapis/go-genai/compare/v1.49.0...v1.50.0) (2026-03-12)
+
+
+### Features
+
+* Add inference_generation_config to EvaluationConfig for Tuning ([21b360f](https://github.com/googleapis/go-genai/commit/21b360fd8db6e14185262b5ed2b693c609fd10a0))
+* Add register_files ([43a12bf](https://github.com/googleapis/go-genai/commit/43a12bf26fa5a3ea30f5da6e5cf0c3b84bb47aa2))
+* Allow custom endpoints for authentication with Vertex AI in Go ([0ebf016](https://github.com/googleapis/go-genai/commit/0ebf016d9458ce9d93b68bc4ec6ba0e549dc7d79))
+* enable language code for audio transcription config in Live API for Vertex AI ([59610d4](https://github.com/googleapis/go-genai/commit/59610d4dfb093df13ac8de1cdbad925edb623a89))
+
+## [1.49.0](https://github.com/googleapis/go-genai/compare/v1.48.0...v1.49.0) (2026-02-28)
+
+
+### Features
+
+* Update data types from discovery doc. ([37134ea](https://github.com/googleapis/go-genai/commit/37134ea8c0c17d262c26ed46e31ada75406dff02))
+
+## [1.48.0](https://github.com/googleapis/go-genai/compare/v1.47.0...v1.48.0) (2026-02-25)
+
+
+### Features
+
+* Add Image Grounding support to GoogleSearch tool ([ba34adf](https://github.com/googleapis/go-genai/commit/ba34adf470dbb213383df5951ee641cd899958ef))
+* enable server side MCP and disable all other AFC when server side MCP is configured. ([a550b3c](https://github.com/googleapis/go-genai/commit/a550b3c7f84e0fe2fd5e5221ac3aa7d20ce4cbf2))
+
+## [1.47.0](https://github.com/googleapis/go-genai/compare/v1.46.0...v1.47.0) (2026-02-18)
+
+
+### Features
+
+* Support multimodal embedding for Gemini Embedding 2.0 and support MaaS models in Models.embed_content() (Vertex AI API) ([ef61dd1](https://github.com/googleapis/go-genai/commit/ef61dd1f3c65e185c594d07a2cf928e14f3b04ec))
+
+## [1.46.0](https://github.com/googleapis/go-genai/compare/v1.45.0...v1.46.0) (2026-02-09)
+
+
+### Features
+
+* Support encryption_spec in tuning job creation configuration for GenAI SDK ([025a3f0](https://github.com/googleapis/go-genai/commit/025a3f0c8d88c95ebb35f884e35d389cfdd7affa))
+
+
+### Bug Fixes
+
+* round up timeout ([4150d97](https://github.com/googleapis/go-genai/commit/4150d9759ab3cd35a8bea3040991c1e906f8e787))
+
+## [1.45.0](https://github.com/googleapis/go-genai/compare/v1.44.0...v1.45.0) (2026-02-04)
+
+
+### Features
+
+* Update data types from discovery doc. ([10f6ed9](https://github.com/googleapis/go-genai/commit/10f6ed99013387f1435f9d0fbdd89bc15581485f))
+
+## [1.44.0](https://github.com/googleapis/go-genai/compare/v1.43.0...v1.44.0) (2026-01-30)
+
+
+### Features
+
+* Support distillation tuning ([cf4c39c](https://github.com/googleapis/go-genai/commit/cf4c39c1a88af7c00ebe92a4a04a9def3de7939d))
+* Support OSS Tuning in GenAI SDK ([9621775](https://github.com/googleapis/go-genai/commit/962177563194d9ff8021bec3afff45e4b9ec7ebc))
+
+
+### Bug Fixes
+
+* Add metadata in batch inlined response ([f8e6b9b](https://github.com/googleapis/go-genai/commit/f8e6b9b9fa6251f798ae581448bd291dfe5398ec))
+
 ## [1.43.0](https://github.com/googleapis/go-genai/compare/v1.42.0...v1.43.0) (2026-01-18)
 
 

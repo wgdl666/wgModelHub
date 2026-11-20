@@ -6,6 +6,8 @@ on:
   push:
     branches:
       - main
+env:
+  SPEAKEASY_VERSION: v2.959.1
 jobs:
   go_tests_latest:
     runs-on: windows-latest
@@ -13,13 +15,14 @@ jobs:
       - name: Install Go
         uses: actions/setup-go@v5
         with:
-          go-version: 1.24
+          go-version: 1.26
 
       - name: Check out code into the Go module directory
         uses: actions/checkout@v4
 
       - name: Run vet
-        run: go vet ./...
+        shell: bash
+        run: go vet -structtag=false ./...
 
       - name: Test
         run: go test --mode=unit -v ./...
@@ -29,7 +32,7 @@ jobs:
   #     - name: Install Go
   #       uses: actions/setup-go@v5
   #       with:
-  #         go-version: 1.24
+  #         go-version: 1.26
 
   #     - name: Check out code into the Go module directory
   #       uses: actions/checkout@v4
@@ -45,13 +48,14 @@ jobs:
       - name: Install Go
         uses: actions/setup-go@v5
         with:
-          go-version: 1.24
+          go-version: 1.26
 
       - name: Check out code into the Go module directory
         uses: actions/checkout@v4
 
       - name: Run vet
-        run: go vet ./...
+        shell: bash
+        run: go vet -structtag=false ./...
 
       - name: Test
         run: go test --mode=unit -v ./...
@@ -61,13 +65,14 @@ jobs:
       - name: Install Go
         uses: actions/setup-go@v5
         with:
-          go-version: 1.23
+          go-version: 1.25
 
       - name: Check out code into the Go module directory
         uses: actions/checkout@v4
 
       - name: Run vet
-        run: go vet ./...
+        shell: bash
+        run: go vet -structtag=false ./...
 
       - name: Test
         run: go test --mode=unit -v ./...
@@ -78,13 +83,14 @@ jobs:
       - name: Install Go
         uses: actions/setup-go@v5
         with:
-          go-version: 1.23
+          go-version: 1.25
 
       - name: Check out code into the Go module directory
         uses: actions/checkout@v4
 
       - name: Run vet
-        run: go vet ./...
+        shell: bash
+        run: go vet -structtag=false ./...
 
       - name: Test
         run: go test --mode=unit -v ./...
@@ -94,13 +100,14 @@ jobs:
       - name: Install Go
         uses: actions/setup-go@v5
         with:
-          go-version: 1.23
+          go-version: 1.25
 
       - name: Check out code into the Go module directory
         uses: actions/checkout@v4
 
       - name: Run vet
-        run: go vet ./...
+        shell: bash
+        run: go vet -structtag=false ./...
 
       - name: Test
         run: go test --mode=unit -v ./...
@@ -108,13 +115,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Setup go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.25'
       - name: Checkout repository
-        uses: actions/checkout@v3
-      - name: Setup golangci-lint
-        uses: golangci/golangci-lint-action@v3
-        with:
-          version: latest
-          args: --max-same-issues 0 --out-format colored-line-number --exclude-dirs=examples
+        uses: actions/checkout@v4
+      - name: Install golangci-lint
+        # Build from source: the prebuilt v1.64.8 binary uses Go 1.24 and rejects go 1.25 modules.
+        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
+      - name: Run golangci-lint
+        run: golangci-lint run --max-same-issues 0 --out-format colored-line-number --exclude-dirs="examples,interactions.*,internal.*"

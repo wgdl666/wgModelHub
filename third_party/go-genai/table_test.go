@@ -17,6 +17,7 @@ package genai
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -38,22 +39,71 @@ func snakeToPascal(s string) string {
 	return strings.Join(parts, "")
 }
 
-func snakeToCamel(s string) string {
-	parts := strings.Split(s, "_")
-	for i, part := range parts {
-		if i == 0 {
-			continue
-		}
-		parts[i] = strings.ToUpper(part[:1]) + part[1:]
-	}
-	return strings.Join(parts, "")
-}
-
 // methodParamType is extra mapping of method param name to its param type because reflect module cannot process private struct.
 var methodParamType = map[string]map[string]reflect.Type{
 	"editImage": map[string]reflect.Type{
 		"referenceImages": reflect.TypeOf(([]ReferenceImage)(nil)),
 	},
+}
+
+// goParameterNames overrides a test table's parameterNames, keyed by test
+// method, for the methods whose Go signature does not take the same
+// parameters, in the same order, as the shared test table declares.
+var goParameterNames = map[string][]string{
+	"models.generate_videos": {"model", "prompt", "image", "config"},
+}
+
+// parameterNamesFor returns the test table parameter names to bind against the
+// Go method, applying any goParameterNames override.
+func parameterNamesFor(t *testing.T, testTableFile *testTableFile, method reflect.Value) []string {
+	t.Helper()
+	names := testTableFile.ParameterNames
+	if override, ok := goParameterNames[testTableFile.TestMethod]; ok {
+		names = override
+	}
+	// Guard against silently mis-binding parameters: this must hold for the
+	// positional mapping in extractArgs to be meaningful.
+	if got, want := method.Type().NumIn()-1, len(names); got != want {
+		t.Fatalf("Method %s takes %d parameters (excluding ctx) but the test table declares %d (%v). "+
+			"Add an entry to goParameterNames in table_test.go mapping the Go parameters, in order, "+
+			"to the test table keys.", testTableFile.TestMethod, got, want, names)
+	}
+	return names
+}
+
+// errorFromResponse extracts the error return value of a reflected SDK call.
+// The check is kind-safe because the error's dynamic type can be a struct,
+// which reflect.Value.IsNil panics on.
+func errorFromResponse(response []reflect.Value) error {
+	if len(response) < 2 {
+		return nil
+	}
+	value := response[1]
+	if !value.IsValid() {
+		return nil
+	}
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		if value.IsNil() {
+			return nil
+		}
+	}
+	err, _ := value.Interface().(error)
+	return err
+}
+
+// errorMatchesWant reports whether err contains the test table's expected
+// exception. The table records Python's rendering, so an APIError is also
+// matched against that form.
+func errorMatchesWant(err error, want string) bool {
+	if strings.Contains(err.Error(), want) {
+		return true
+	}
+	var apiErr APIError
+	if errors.As(err, &apiErr) {
+		return strings.Contains(fmt.Sprintf("%d %s. %v", apiErr.Code, apiErr.Status, apiErr.Details), want)
+	}
+	return false
 }
 
 type interfaceDeserialize func([]byte) (reflect.Value, error)
@@ -103,8 +153,9 @@ func extractArgs(ctx context.Context, t *testing.T, method reflect.Value, testTa
 		reflect.ValueOf(ctx),
 	}
 	fromParams := []any{ctx}
+	parameterNames := parameterNamesFor(t, testTableFile, method)
 	for i := 1; i < method.Type().NumIn(); i++ {
-		parameterName := snakeToCamel(testTableFile.ParameterNames[i-1])
+		parameterName := snakeToCamel(parameterNames[i-1])
 		parameterValue, ok := testTableItem.Parameters[parameterName]
 		if ok {
 			// converts string contents to []*Content, required for some streaming tests.
@@ -142,6 +193,11 @@ func extractArgs(ctx context.Context, t *testing.T, method reflect.Value, testTa
 				}
 				return result
 			}, false)
+			if *mode == replayMode {
+				sanitizeMapByPath(parameterValue, "httpOptions.baseUrl", func(data any, path string) any {
+					return ""
+				}, false)
+			}
 			convertedJSON, err := json.Marshal(parameterValue)
 			if err != nil {
 				t.Error("ExtractArgs: error marshalling:", err)
@@ -243,6 +299,35 @@ func createReplayAPIClient(t *testing.T, testTableDirectory string, testTableIte
 	return replayAPIClient
 }
 
+// sharedTestRetryOptions returns the retry options for the shared integration
+// tests, applied to every request the test client makes so that a transient 5xx
+// or 429 does not fail the nightly.
+//
+// The max delay is deliberately capped below the SDK default: a multistep test
+// retries per request, so the backoff (about 30 s per request) has to stay well
+// inside the test timeout. Keep aligned with conftest.py in the Python SDK tests.
+func sharedTestRetryOptions() *HTTPRetryOptions {
+	return &HTTPRetryOptions{
+		Attempts:        Ptr[int32](5),
+		InitialDelay:    Ptr[float64](2.0),
+		MaxDelay:        Ptr[float64](16.0),
+		ExpBase:         Ptr[float64](2.0),
+		HTTPStatusCodes: []int32{408, 429, 500, 502, 503, 504},
+	}
+}
+
+// skipIfLoadOnly skips the current test right before its SDK call when
+// GOOGLE_GENAI_TESTS_LOAD_ONLY is set. Everything up to the call (the client
+// built from the environment, the method and its arguments) still runs, so the
+// SDK presubmit can load the nightly API-mode suite with a dummy key without
+// calling the API.
+func skipIfLoadOnly(t *testing.T) {
+	t.Helper()
+	if os.Getenv("GOOGLE_GENAI_TESTS_LOAD_ONLY") != "" {
+		t.Skip("Skipping the SDK call: GOOGLE_GENAI_TESTS_LOAD_ONLY is set.")
+	}
+}
+
 // TestTable only runs in apiMode or replayMode.
 func TestTable(t *testing.T) {
 	if *mode == unitMode {
@@ -260,6 +345,16 @@ func TestTable(t *testing.T) {
 
 	for _, backend := range backends {
 		t.Run(backend.name, func(t *testing.T) {
+			if *mode == apiMode {
+				runVertexOnly := os.Getenv("GOOGLE_GENAI_RUN_VERTEX_ONLY_IN_API_MODE") != ""
+				runGeminiOnly := os.Getenv("GOOGLE_GENAI_RUN_GEMINI_ONLY_IN_API_MODE") != ""
+
+				if backend.Backend == BackendVertexAI && runGeminiOnly {
+					t.Skip("Skipping Vertex AI tests in API mode (GEMINI ONLY config enabled).")
+				} else if backend.Backend == BackendGeminiAPI && runVertexOnly {
+					t.Skip("Skipping Gemini API tests in API mode (VERTEX ONLY config enabled).")
+				}
+			}
 			err := filepath.Walk(walkPath, func(testFilePath string, info os.FileInfo, err error) error {
 				if err != nil {
 					return err
@@ -289,16 +384,33 @@ func TestTable(t *testing.T) {
 								t.Skipf("Skipping because %s", testTableItem.SkipInAPIMode)
 							}
 
-							if !strings.Contains(testTableFile.TestMethod, ".") {
-								if *mode == apiMode {
-									t.Skipf("Custom test method %s not supported in Go yet", testTableFile.TestMethod)
-								} else { // replay mode
-									t.Skipf("Custom test method %s not supported in replay mode in Go", testTableFile.TestMethod)
-								}
-								return
+							// Custom test methods (a testMethod with no ".") come from
+							// customTestMethods and only run in API mode.
+							if !strings.Contains(testTableFile.TestMethod, ".") && *mode != apiMode {
+								t.Skipf("Custom test method %s only supported in API mode in Go", testTableFile.TestMethod)
 							}
 
 							config := ClientConfig{Backend: backend.Backend}
+							if *mode == apiMode {
+								config.HTTPOptions.RetryOptions = sharedTestRetryOptions()
+								if backend.Backend == BackendGeminiAPI && strings.Contains(testName, "caches") {
+									// The Gemini API only serves cachedContents on v1beta.
+									config.HTTPOptions.APIVersion = "v1beta"
+								}
+							}
+							if *mode == apiMode && backend.Backend == BackendVertexAI &&
+								strings.Contains(testName, "tunings") &&
+								os.Getenv("GOOGLE_CLOUD_LOCATION") == "global" {
+								// Fine-tuning is not offered on the global endpoint.
+								config.Location = "us-central1"
+							}
+							if *mode == apiMode && backend.Backend == BackendVertexAI &&
+								testTableItem.Parameters["model"] == "gemini-embedding-001" &&
+								os.Getenv("GOOGLE_CLOUD_LOCATION") == "global" {
+								// gemini-embedding-001 is not served on the Vertex global endpoint, so its
+								// Vertex case runs in us-central1.
+								config.Location = "us-central1"
+							}
 							replayClient := createReplayAPIClient(t, testTableDirectory, testTableItem, backend.name)
 							if *mode == replayMode {
 								config.HTTPOptions.BaseURL = replayClient.GetBaseURL()
@@ -315,17 +427,60 @@ func TestTable(t *testing.T) {
 							if err != nil {
 								t.Fatalf("Error creating client: %v", err)
 							}
-							method := extractMethod(t, &testTableFile, client)
-							args := extractArgs(ctx, t, method, &testTableFile, testTableItem)
 
-							// Inject unknown fields to the replay file to simulate the case where the SDK adds
-							// unknown fields to the response.
-							// For forward compatibility tests.
-							if testName == "TestTable/vertex/models/generate_content" {
-								injectUnknownFields(t, replayClient)
+							var response []reflect.Value
+							if !strings.Contains(testTableFile.TestMethod, ".") {
+								customMethodKey := testName
+								if customMethod, ok := customTestMethods[customMethodKey]; ok {
+									skipIfLoadOnly(t)
+									response = customMethod(ctx, client, testTableItem)
+								} else {
+									t.Skipf("Custom test method %s (%s) not supported in Go yet", testTableFile.TestMethod, customMethodKey)
+									return
+								}
+							} else {
+								method := extractMethod(t, &testTableFile, client)
+
+								// Sanitize replay response body segments based on the method's return type.
+								// This is needed because some numeric fields in the replay files might be
+								// represented as strings, which causes unmarshalling errors in the Go SDK.
+								for _, interaction := range replayClient.ReplayFile.Interactions {
+									for _, bodySegment := range interaction.Response.BodySegments {
+										sanitizeMapWithSourceType(t, method.Type().Out(0), bodySegment)
+									}
+								}
+
+								args := extractArgs(ctx, t, method, &testTableFile, testTableItem)
+
+								// Inject unknown fields to the replay file to simulate the case where the SDK adds
+								// unknown fields to the response.
+								// For forward compatibility tests.
+								if testName == "TestTable/vertex/models/generate_content" {
+									injectUnknownFields(t, replayClient)
+								}
+								skipIfLoadOnly(t)
+								response = method.Call(args)
 							}
-							response := method.Call(args)
+
 							if *mode == apiMode {
+								// Live responses are not deterministic, so assert only that the
+								// call behaved as the test table says.
+								wantException := extractWantException(testTableItem, backend.Backend)
+								gotErr := errorFromResponse(response)
+
+								if gotErr != nil && strings.Contains(gotErr.Error(), "429") {
+									t.Skipf("Resource Exhausted (429). Skipping test instead of failing: %v", gotErr)
+								}
+
+								if wantException != "" {
+									if gotErr == nil {
+										t.Errorf("Calling method expected to fail but it didn't, want err: %v", wantException)
+									} else if !errorMatchesWant(gotErr, wantException) {
+										t.Errorf("Exception mismatch, got: %v, want it to contain: %v", gotErr, wantException)
+									}
+								} else if gotErr != nil {
+									t.Errorf("Calling method failed unexpectedly, err: %v", gotErr)
+								}
 								return
 							}
 							// TODO(b/399217361): Re-enable response checks after replay files record using extras.

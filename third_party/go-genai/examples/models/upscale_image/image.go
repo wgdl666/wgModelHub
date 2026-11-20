@@ -63,7 +63,7 @@ func run(ctx context.Context) {
 
 	fmt.Println("Upscale image example. Only supported in BackendVertexAI.")
 	response2, err := client.Models.UpscaleImage(
-		ctx, "imagen-3.0-generate-002",
+		ctx, "imagen-4.0-generate-001",
 		&genai.Image{ImageBytes: data},
 		/*upscaleFactor=*/ "x2",
 		&genai.UpscaleImageConfig{
